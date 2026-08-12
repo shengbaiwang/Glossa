@@ -205,6 +205,9 @@ const isExcludedTextNode = (node: Text): boolean => {
   return false;
 };
 
+/** Shared trustworthy-text rule for EPUB context extraction and anchor recovery. */
+export const isEpubReadableTextNode = (node: Text): boolean => !isExcludedTextNode(node);
+
 const textNodesInRange = (range: Range): Text[] => {
   const document = range.startContainer.ownerDocument;
   if (!document) return [];
@@ -230,6 +233,9 @@ const textFromRange = (range: Range): string => {
   });
   return parts.join('').trim();
 };
+
+/** Read a real EPUB Range with the same hidden/untrusted-node filtering as B01–B05. */
+export const textFromEpubRange = (range: Range): string => textFromRange(range);
 
 const truncateUnicode = (text: string, maximum: number, fromEnd = false): string => {
   const characters = Array.from(text);

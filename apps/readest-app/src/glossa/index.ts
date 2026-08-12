@@ -8,6 +8,8 @@
  */
 export { isGlossaEnabled } from './featureFlag';
 export { createEpubDocumentAdapter } from './context/epubAdapter';
+export { createEpubAnchorNavigator } from './context/epubNavigation';
+export type { EpubAnchorNavigatorOptions, EpubNavigationRuntime } from './context/epubNavigation';
 export type {
   DocumentAdapter,
   DocumentFormat,
@@ -22,3 +24,10 @@ export {
   sourceAnchorSchema,
 } from './citations/sourceAnchor';
 export type { EpubSourceAnchorV1, SourceAnchor } from './citations/sourceAnchor';
+export type {
+  AnchorNavigationFailureReason,
+  AnchorNavigationResult,
+  AnchorNavigationSession,
+  AnchorResolutionMethod,
+  DocumentNavigator,
+} from './citations/navigation';

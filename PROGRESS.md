@@ -5,10 +5,10 @@
 ## 1. 当前状态
 
 - 当前阶段：M1 EPUB 垂直闭环进行中。
-- 当前里程碑：M1（B01–B05 已完成；B06–B08、C–E 尚未开始）。
+- 当前里程碑：M1（B01–B07 已完成；B08 的单元与浏览器级重排验证已完成，桌面端完整交互复核待正式来源 UI；C–E 尚未开始）。
 - 仓库状态：已导入 Readest v0.12.1；`main` 指向上游 release commit `f3e1df7e0572c0119cbb420e1e27ca9af859f91c`，并保留完整上游 Git 历史及 `upstream` remote（`https://github.com/readest/readest.git`）。
 - 可运行版本：Readest 桌面开发版已在本机实际启动并显示 EPUB 阅读窗口；开发进程已优雅退出，没有遗留本轮启动的后台服务。
-- 总体状态：A01–A06、B01–B05 已完成。Glossa 已具备默认关闭的 EPUB 只读上下文入口、最小 `DocumentAdapter` 与可验证的 `SourceAnchor` V1，但仍没有 AI 请求、聊天界面、检索、来源跳转或笔记行为。完整单测仍存在 3 个可复现的上游 Turso 向量距离精度失败，见“最近验证”。
+- 总体状态：A01–A06、B01–B07 已完成；B08 部分完成。Glossa 现有默认关闭的 EPUB 只读上下文、`DocumentAdapter`、`SourceAnchor` V1 和可调用但尚未接入正式 UI 的 EPUB 锚点导航；没有 AI 请求、聊天界面、检索或笔记行为。完整单测仍存在 3 个可复现的上游 Turso 向量距离精度失败，见“最近验证”。
 
 ## 2. 已完成
 
@@ -62,13 +62,19 @@
 - [x] **B05 `SourceAnchor` V1。** 新增 `apps/readest-app/src/glossa/citations/sourceAnchor.ts`。zod 严格校验 EPUB V1 的版本、`documentId`、格式、TextQuote 和 `sectionId`/CFI 定位要求；提供 parse/serialize/deserialize API。每个 adapter `SourceSegment` 的文本都等于 `anchor.quote.exact`，并绑定调用方的同一 `documentId`。CFI 可用时与最多 48 个 Unicode 字符的真实 TextQuote 上下文共同保存。
 - [x] **B04–B05 测试与协议文档。** 新增 `src/__tests__/glossa/sourceAnchor.test.ts`、`epubAdapter.test.ts` 与 `apps/readest-app/docs/glossa-domain-protocol.md`。测试覆盖 round-trip、非法输入、选区/可见/邻近文本锚点、运行时更新、未初始化、JSON 序列化和 CFI 降级。
 
+### M1：B06–B08
+
+- [x] **B06 EPUB 锚点恢复与跳转。** 新增 `src/glossa/citations/navigation.ts` 和 `src/glossa/context/epubNavigation.ts`，并从 `@/glossa` 导出 `createEpubAnchorNavigator()`。导航先严格校验 `SourceAnchor` 和 documentId；按 CFI（重新解析真实 Range 并验证 `quote.exact`）→ 同章节 TextQuote（href 或 `spine:<index>`）→ 章节级降级执行。失败、reader 未初始化、超时与 AbortSignal 均为结构化结果；新请求中止旧请求，旧异步结果不能覆盖新结果。
+- [x] **B07 临时高亮与返回位置。** 精确恢复只用 foliate `Overlayer.highlight` 的唯一 `glossa-transient:*` SVG key，不调用 `addAnnotation()`、不写 booknote/annotation、不修改 EPUB DOM，也不使用原生 Selection。高亮在 timeout、新导航、返回或 dispose 时移除。返回位置仅保存在导航会话内，按 CFI → href → spine index → fraction 返回，保持同 runtime/document 且幂等，不写阅读进度或 history。
+- [ ] **B08 定向测试与桌面复核（部分完成）。** 新增 `epubAnchorResolution.test.ts`、`epubNavigation.test.ts` 和 `epubNavigation.browser.test.ts`。单元测试覆盖恢复、消歧、过滤、取消、超时、并发、overlay 与返回；真实浏览器 foliate 矩阵覆盖 3 章节 × 27 锚点 × 4 布局（字体、宽度、分页/滚动），有效/无/陈旧 CFI 共 **108/108（100%）**，并检查真实 Range 文本和 viewport 可见性。桌面开发版可启动，但本轮没有正式来源 UI；尝试使用临时 WebDriver 开发启动时，Tauri 对 `localhost:3000` 就绪检查未完成，且临时探针已删除。因此无法诚实声明完整桌面端“跳转→高亮→返回”人工复核已经完成。
+
 ## 3. 正在进行
 
-M1 已开始；B01–B05 的 EPUB 只读上下文、适配器和锚点协议已完成。B06–B08 以及所有 AI/UI/检索/来源跳转功能尚未开始。
+M1 已完成 B01–B07。B08 的控制器、单元测试和真实浏览器重排验证已完成；只缺桌面应用完整交互复核。所有 AI/UI/检索/正式来源跳转功能仍未开始。
 
 ## 4. 下一步
 
-1. B06–B08：实现并测试 EPUB 锚点跳转、恢复、临时高亮和返回阅读位置；必须先验证 CFI + TextQuote 在真实重排后的恢复表现。
+1. 在后续正式来源 UI 接入时，用同一 fixture 完成桌面端“生成锚点→换章/改字体→跳转→短暂高亮→返回→无持久笔记”的人工复核，并将 B08 标为完成；不要为此单独保留调试入口。
 2. 若需要零失败上游基线，向 Readest 上游报告或在其后续 release 中复核 Turso `vector_distance_l2` 的精度断言；不要修改或放宽锁定上游测试。
 
 ## 5. 当前阻塞项
@@ -80,7 +86,7 @@ M1 已开始；B01–B05 的 EPUB 只读上下文、适配器和锚点协议已�
 
 ## 6. 已知风险
 
-- EPUB CFI + TextQuote 在字体、窗口和分页变化后的恢复成功率仍未验证，是 M1 最大技术风险；本轮只生成并校验锚点，未调用 `view.goTo()`。
+- EPUB CFI + TextQuote 已在真实浏览器 foliate 的 108 个重排场景中恢复 108/108；仍缺桌面 WebView 的完整交互复核，不能将该浏览器结果外推为人工桌面验证。
 - `view.lastLocation.range` 是 foliate 本地实现暴露的运行时字段而非正式 Glossa 协议；重排或首个 relocate 前会不可用，模块已安全返回空片段。
 - `BookProgress.fraction` 是当前位置，不是用户历史最远已读边界；B05/E05 前不得用它作为防剧透判断。
 - 当前 EPUB iframe 的原生 Selection 不天然跨文档；跨章节/跨页拖选要由后续锚点与跳转工作单独验证。
@@ -112,10 +118,14 @@ M1 已开始；B01–B05 的 EPUB 只读上下文、适配器和锚点协议已�
 - [x] `pnpm --filter @readest/readest-app exec vitest run src/__tests__/glossa`：Node.js 24.11.1 下通过，4 个文件、23 个测试；覆盖 B01–B05。
 - [x] `pnpm lint`：Node.js 24.11.1 下通过；`tsgo --noEmit && biome lint .` 检查 2,003 个文件。
 - [x] `git diff --check`：通过。
+- [x] `pnpm --filter @readest/readest-app exec vitest run src/__tests__/glossa`：Node.js 24.11.1 下通过，6 个文件、55 个测试（含 B06–B08 控制器与 TextQuote 单元测试）。
+- [x] `pnpm --filter @readest/readest-app exec vitest run --config vitest.browser.config.mts src/__tests__/glossa/epubNavigation.browser.test.ts`：通过，1 个文件、3 个测试。真实 foliate 运行原创 fixture 的 108 个锚点重排矩阵恢复 108/108（100%）；另验证文本节点拆分/普通空白重排、短暂 SVG overlayer 和返回位置。为此安装了测试运行器官方 Chromium；未修改锁文件。
+- [x] `pnpm --filter @readest/readest-app lint`：B06–B08 代码检查通过，2,008 个文件。
+- [ ] 桌面 B08 交互复核：未完成。临时 WebDriver 桌面启动受 `http://localhost:3000` 就绪检查阻塞；未保留探针或调试入口，避免扩大 UI 范围。
 
 ## 8. 下一个完成标志
 
-当前 M1 B01–B05 已完成，满足：
+当前 M1 B01–B07 已完成，B08 部分完成，满足：
 
 - Readest 源码和许可证已纳入项目。
 - 锁定的上游 commit 已记录。
@@ -125,3 +135,4 @@ M1 已开始；B01–B05 的 EPUB 只读上下文、适配器和锚点协议已�
 - 合法、可再生的双语 EPUB fixture 已由桌面开发版实际导入并打开。
 - EPUB 选区、当前位置、可见文本和同章节邻近段已有经测试的只读入口；默认关闭不增加监听。
 - EPUB `DocumentAdapter` 及其 JSON-safe 的领域协议已公开；SourceAnchor V1 可严格校验、序列化，并在 CFI 失败时降级为章节/脊柱定位加真实 TextQuote。
+- EPUB 导航器可验证 CFI、使用有界 TextQuote 及章节降级，并提供不可持久化的短暂 overlay 与内存返回会话；真实浏览器重排矩阵为 108/108。桌面交互复核仍是进入正式来源 UI 前的最小剩余证据。
