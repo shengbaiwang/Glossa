@@ -5,10 +5,10 @@
 ## 1. 当前状态
 
 - 当前阶段：M1 EPUB 垂直闭环进行中。
-- 当前里程碑：M1（B01–B03 已完成；B04–B08、C–E 尚未开始）。
+- 当前里程碑：M1（B01–B05 已完成；B06–B08、C–E 尚未开始）。
 - 仓库状态：已导入 Readest v0.12.1；`main` 指向上游 release commit `f3e1df7e0572c0119cbb420e1e27ca9af859f91c`，并保留完整上游 Git 历史及 `upstream` remote（`https://github.com/readest/readest.git`）。
 - 可运行版本：Readest 桌面开发版已在本机实际启动并显示 EPUB 阅读窗口；开发进程已优雅退出，没有遗留本轮启动的后台服务。
-- 总体状态：A01–A06、B01–B03 已完成。Glossa 已具备默认关闭的 EPUB 只读上下文入口，但仍没有 AI 请求、聊天界面、检索、引用、笔记、`DocumentAdapter` 或 `SourceAnchor` 行为。完整单测仍存在 3 个可复现的上游 Turso 向量距离精度失败，见“最近验证”。
+- 总体状态：A01–A06、B01–B05 已完成。Glossa 已具备默认关闭的 EPUB 只读上下文入口、最小 `DocumentAdapter` 与可验证的 `SourceAnchor` V1，但仍没有 AI 请求、聊天界面、检索、来源跳转或笔记行为。完整单测仍存在 3 个可复现的上游 Turso 向量距离精度失败，见“最近验证”。
 
 ## 2. 已完成
 
@@ -56,15 +56,20 @@
 - [x] **B03 可见内容与邻近段。** 以 `view.lastLocation.range` 限制当前可见文本，仅处理 `getContents()` 已加载章节；段落按 DOM 顺序返回并裁剪至真实可见范围。选区邻近段只在所属章节内选取（默认前后各 2，最多 4），不会跨章节或退化为整章。抽取排除脚本、样式、导航、隐藏节点。
 - [x] **接口勘探记录。** `apps/readest-app/docs/glossa-epub-context.md` 记录状态所有者、关键符号、事件生命周期、推荐接入点、限制和接口稳定性。
 
+### M1：B04–B05
+
+- [x] **B04 EPUB `DocumentAdapter`。** 新增 `apps/readest-app/src/glossa/context/types.ts` 与 `epubAdapter.ts`。领域协议只包含 JSON-safe 的选区、位置、可见文本与有限选区邻近段；EPUB 实现在每个方法调用时读取调用方传入的最新 runtime，未初始化时安全返回空状态。Readest/foliate 的 DOM、Range、iframe 和 CFI 计算仅停留在 EPUB 边界，公开入口只导出稳定协议与 `createEpubDocumentAdapter()`。
+- [x] **B05 `SourceAnchor` V1。** 新增 `apps/readest-app/src/glossa/citations/sourceAnchor.ts`。zod 严格校验 EPUB V1 的版本、`documentId`、格式、TextQuote 和 `sectionId`/CFI 定位要求；提供 parse/serialize/deserialize API。每个 adapter `SourceSegment` 的文本都等于 `anchor.quote.exact`，并绑定调用方的同一 `documentId`。CFI 可用时与最多 48 个 Unicode 字符的真实 TextQuote 上下文共同保存。
+- [x] **B04–B05 测试与协议文档。** 新增 `src/__tests__/glossa/sourceAnchor.test.ts`、`epubAdapter.test.ts` 与 `apps/readest-app/docs/glossa-domain-protocol.md`。测试覆盖 round-trip、非法输入、选区/可见/邻近文本锚点、运行时更新、未初始化、JSON 序列化和 CFI 降级。
+
 ## 3. 正在进行
 
-M1 已开始；本轮仅完成 B01–B03 的 EPUB 只读上下文入口。未开始 B04–B08 或任何 AI/UI/检索/引用功能。
+M1 已开始；B01–B05 的 EPUB 只读上下文、适配器和锚点协议已完成。B06–B08 以及所有 AI/UI/检索/来源跳转功能尚未开始。
 
 ## 4. 下一步
 
-1. B04：以已验证的 `getEpubReadingContext()` 输入边界封装最小 EPUB `DocumentAdapter`，不扩大到 PDF/网页。
-2. B05：定义并测试可序列化的 `SourceAnchor`；不要把当前临时 CFI/Range 直接当作正式锚点。
-3. 若需要零失败上游基线，向 Readest 上游报告或在其后续 release 中复核 Turso `vector_distance_l2` 的精度断言；不要修改或放宽锁定上游测试。
+1. B06–B08：实现并测试 EPUB 锚点跳转、恢复、临时高亮和返回阅读位置；必须先验证 CFI + TextQuote 在真实重排后的恢复表现。
+2. 若需要零失败上游基线，向 Readest 上游报告或在其后续 release 中复核 Turso `vector_distance_l2` 的精度断言；不要修改或放宽锁定上游测试。
 
 ## 5. 当前阻塞项
 
@@ -75,7 +80,7 @@ M1 已开始；本轮仅完成 B01–B03 的 EPUB 只读上下文入口。未开
 
 ## 6. 已知风险
 
-- EPUB 引用在字体、窗口和分页变化后是否稳定，是 M1 最大技术风险。
+- EPUB CFI + TextQuote 在字体、窗口和分页变化后的恢复成功率仍未验证，是 M1 最大技术风险；本轮只生成并校验锚点，未调用 `view.goTo()`。
 - `view.lastLocation.range` 是 foliate 本地实现暴露的运行时字段而非正式 Glossa 协议；重排或首个 relocate 前会不可用，模块已安全返回空片段。
 - `BookProgress.fraction` 是当前位置，不是用户历史最远已读边界；B05/E05 前不得用它作为防剧透判断。
 - 当前 EPUB iframe 的原生 Selection 不天然跨文档；跨章节/跨页拖选要由后续锚点与跳转工作单独验证。
@@ -104,10 +109,13 @@ M1 已开始；本轮仅完成 B01–B03 的 EPUB 只读上下文入口。未开
 - [x] `pnpm lint`：通过；`tsgo --noEmit && biome lint .` 检查 1,996 个文件。
 - [x] `pnpm fmt:check`：通过；`cargo fmt -p Readest --check`。
 - [x] `pnpm tauri dev -- -- -- apps/readest-app/src/__tests__/fixtures/data/glossa-reading-sample.epub`：使用 Node.js 24.11.1 与 Rust stable 1.97.1 实际启动桌面开发版；Tauri 仅向应用传入 fixture 路径，原生窗口报告 `Window is ready, proceeding to handle files`，Readest 导入后请求 `/reader?ids=0ee1de940483059e2220f99c2648c0ee`。三章导航和双语正文来自已验证的 EPUB package/spine；没有影响正文导入的错误。无封面 fixture 会触发 Readest 既有的 cover.png 缺失警告。
+- [x] `pnpm --filter @readest/readest-app exec vitest run src/__tests__/glossa`：Node.js 24.11.1 下通过，4 个文件、23 个测试；覆盖 B01–B05。
+- [x] `pnpm lint`：Node.js 24.11.1 下通过；`tsgo --noEmit && biome lint .` 检查 2,003 个文件。
+- [x] `git diff --check`：通过。
 
 ## 8. 下一个完成标志
 
-当前 M1 B01–B03 已完成，满足：
+当前 M1 B01–B05 已完成，满足：
 
 - Readest 源码和许可证已纳入项目。
 - 锁定的上游 commit 已记录。
@@ -116,3 +124,4 @@ M1 已开始；本轮仅完成 B01–B03 的 EPUB 只读上下文入口。未开
 - Glossa 的唯一功能开关默认关闭，并有最小公开入口和单元测试。
 - 合法、可再生的双语 EPUB fixture 已由桌面开发版实际导入并打开。
 - EPUB 选区、当前位置、可见文本和同章节邻近段已有经测试的只读入口；默认关闭不增加监听。
+- EPUB `DocumentAdapter` 及其 JSON-safe 的领域协议已公开；SourceAnchor V1 可严格校验、序列化，并在 CFI 失败时降级为章节/脊柱定位加真实 TextQuote。

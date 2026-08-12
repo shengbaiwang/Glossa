@@ -210,8 +210,8 @@ MVP：
 - [x] B01 定位 Readest 的选区事件和选区文本接口。
 - [x] B02 获取当前章节、阅读位置和已读进度。
 - [x] B03 获取当前可见内容及前后段落。
-- [ ] B04 封装 EPUB `DocumentAdapter`。
-- [ ] B05 定义并序列化 `SourceAnchor`。
+- [x] B04 封装 EPUB `DocumentAdapter`。
+- [x] B05 定义并序列化 `SourceAnchor`。
 - [ ] B06 实现从锚点跳回 EPUB 原文。
 - [ ] B07 实现跳转后的临时高亮和返回阅读位置。
 - [ ] B08 为选区、定位和跳转增加测试。

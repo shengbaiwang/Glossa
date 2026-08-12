@@ -7,3 +7,18 @@
  * model behavior yet.
  */
 export { isGlossaEnabled } from './featureFlag';
+export { createEpubDocumentAdapter } from './context/epubAdapter';
+export type {
+  DocumentAdapter,
+  DocumentFormat,
+  DocumentLocation,
+  SelectedText,
+  SourceSegment,
+} from './context/types';
+export {
+  deserializeSourceAnchor,
+  parseSourceAnchor,
+  serializeSourceAnchor,
+  sourceAnchorSchema,
+} from './citations/sourceAnchor';
+export type { EpubSourceAnchorV1, SourceAnchor } from './citations/sourceAnchor';

@@ -26,6 +26,24 @@ export type EpubReadingContext = {
   selectionParagraphs: EpubTextSegment[];
 };
 
+/** Plain EPUB boundary data used by the adapter to construct SourceAnchor V1. */
+export type EpubAnchorTextSegment = EpubTextSegment & {
+  cfi?: string;
+  quote: {
+    exact: string;
+    prefix?: string;
+    suffix?: string;
+  };
+  isSelectionParagraph?: boolean;
+};
+
+export type EpubAnchorReadingContext = {
+  selection: EpubAnchorTextSegment | null;
+  location: EpubLocation | null;
+  visibleText: EpubAnchorTextSegment[];
+  selectionParagraphs: EpubAnchorTextSegment[];
+};
+
 type EpubContent = {
   doc: Document;
   index?: number;
@@ -213,6 +231,64 @@ const textFromRange = (range: Range): string => {
   return parts.join('').trim();
 };
 
+const truncateUnicode = (text: string, maximum: number, fromEnd = false): string => {
+  const characters = Array.from(text);
+  return (fromEnd ? characters.slice(-maximum) : characters.slice(0, maximum)).join('');
+};
+
+const quoteForRange = (
+  range: Range,
+  exact: string,
+): { exact: string; prefix?: string; suffix?: string } => {
+  const doc = range.startContainer.ownerDocument;
+  if (!doc?.body) return { exact };
+
+  const allTextNodes: Text[] = [];
+  const walker = doc.createTreeWalker(doc.body, TEXT_NODE);
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    if (!isExcludedTextNode(node as Text)) allTextNodes.push(node as Text);
+  }
+
+  let documentText = '';
+  let selectedText = '';
+  let selectedStart: number | null = null;
+  let selectedEnd: number | null = null;
+  for (const textNode of allTextNodes) {
+    const nodeStart = documentText.length;
+    const nodeRange = doc.createRange();
+    nodeRange.selectNodeContents(textNode);
+    if (intersects(range, textNode)) {
+      const startsInsideNode = range.compareBoundaryPoints(Range.START_TO_START, nodeRange) > 0;
+      const endsInsideNode = range.compareBoundaryPoints(Range.END_TO_END, nodeRange) < 0;
+      const start = startsInsideNode ? range.startOffset : 0;
+      const end = endsInsideNode ? range.endOffset : textNode.data.length;
+      if (end > start) {
+        if (selectedStart === null) selectedStart = nodeStart + start;
+        selectedEnd = nodeStart + end;
+        selectedText += textNode.data.slice(start, end);
+      }
+    }
+    documentText += textNode.data;
+  }
+
+  const normalizedSelection = selectedText.trim();
+  if (selectedStart === null || selectedEnd === null || normalizedSelection !== exact) {
+    return { exact };
+  }
+  const leadingWhitespace = selectedText.length - selectedText.trimStart().length;
+  const trailingWhitespace = selectedText.length - selectedText.trimEnd().length;
+  const start = selectedStart + leadingWhitespace;
+  const end = selectedEnd - trailingWhitespace;
+  const prefix = truncateUnicode(documentText.slice(0, start), 48, true);
+  const suffix = truncateUnicode(documentText.slice(end), 48);
+  return {
+    exact,
+    ...(prefix ? { prefix } : {}),
+    ...(suffix ? { suffix } : {}),
+  };
+};
+
 const paragraphsForDocument = (doc: Document, sectionIndex: number): Paragraph[] => {
   const paragraphs: Paragraph[] = [];
   for (const element of doc.querySelectorAll(BLOCK_SELECTOR)) {
@@ -226,10 +302,15 @@ const paragraphsForDocument = (doc: Document, sectionIndex: number): Paragraph[]
 };
 
 const textFromRangeIntersection = (range: Range, element: Element): string => {
+  const intersection = rangeIntersection(range, element);
+  return intersection ? textFromRange(intersection) : '';
+};
+
+const rangeIntersection = (range: Range, element: Element): Range | null => {
   const doc = element.ownerDocument;
   const elementRange = doc.createRange();
   elementRange.selectNodeContents(element);
-  if (!intersects(range, element)) return '';
+  if (!intersects(range, element)) return null;
   const intersection = doc.createRange();
   const startsInsideElement = range.compareBoundaryPoints(Range.START_TO_START, elementRange) > 0;
   const endsInsideElement = range.compareBoundaryPoints(Range.END_TO_END, elementRange) < 0;
@@ -241,7 +322,7 @@ const textFromRangeIntersection = (range: Range, element: Element): string => {
     endsInsideElement ? range.endContainer : elementRange.endContainer,
     endsInsideElement ? range.endOffset : elementRange.endOffset,
   );
-  return textFromRange(intersection);
+  return intersection;
 };
 
 const findContentForDocument = (contents: EpubContent[], doc: Document): EpubContent | null =>
@@ -308,6 +389,81 @@ const getVisibleText = (view: EpubView): EpubTextSegment[] => {
     .filter((segment) => !!segment.text);
 };
 
+const getCfi = (view: EpubView, sectionIndex: number, range: Range): string | undefined => {
+  try {
+    return view.getCFI(sectionIndex, range) || undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const anchorSegment = (
+  view: EpubView,
+  sectionIndex: number,
+  range: Range,
+  text: string,
+  isSelectionParagraph = false,
+): EpubAnchorTextSegment => {
+  const cfi = getCfi(view, sectionIndex, range);
+  return {
+    sectionIndex,
+    text,
+    ...(cfi ? { cfi } : {}),
+    quote: quoteForRange(range, text),
+    ...(isSelectionParagraph ? { isSelectionParagraph: true } : {}),
+  };
+};
+
+const getAnchorVisibleText = (view: EpubView): EpubAnchorTextSegment[] => {
+  const location = asViewLocation(view.lastLocation);
+  if (!location) return [];
+  const doc = location.range.startContainer.ownerDocument;
+  if (!doc) return [];
+  const content = findContentForDocument(getContents(view), doc);
+  const sectionIndex = content?.index;
+  if (typeof sectionIndex !== 'number' || sectionIndex < 0) return [];
+  return paragraphsForDocument(doc, sectionIndex).flatMap((paragraph) => {
+    const range = rangeIntersection(location.range, paragraph.element);
+    const text = range ? textFromRange(range) : '';
+    return range && text ? [anchorSegment(view, sectionIndex, range, text)] : [];
+  });
+};
+
+const getAnchorSelectionParagraphs = (
+  view: EpubView,
+  range: Range,
+  sectionIndex: number,
+  adjacentParagraphs: number,
+): EpubAnchorTextSegment[] => {
+  const doc = range.startContainer.ownerDocument;
+  if (!doc) return [];
+  const paragraphs = paragraphsForDocument(doc, sectionIndex);
+  const selected = paragraphs
+    .map((paragraph, index) => (intersects(range, paragraph.element) ? index : -1))
+    .filter((index) => index >= 0);
+  if (selected.length === 0) return [];
+  const first = selected[0]!;
+  const last = selected[selected.length - 1]!;
+  const before = Math.max(0, first - adjacentParagraphs);
+  const after = Math.min(paragraphs.length, last + adjacentParagraphs + 1);
+  return paragraphs.slice(before, after).flatMap((paragraph, index) => {
+    const paragraphRange = doc.createRange();
+    paragraphRange.selectNodeContents(paragraph.element);
+    const text = textFromRange(paragraphRange);
+    return text
+      ? [
+          anchorSegment(
+            view,
+            sectionIndex,
+            paragraphRange,
+            text,
+            index + before >= first && index + before <= last,
+          ),
+        ]
+      : [];
+  });
+};
+
 const getLocation = (runtime: EpubRuntime): EpubLocation | null => {
   const progress = asReaderProgress(runtime.progress);
   if (!progress) return null;
@@ -339,6 +495,40 @@ export const getEpubReadingContext = (
     visibleText: getVisibleText(runtime.view),
     selectionParagraphs: selection
       ? getSelectionParagraphs(selection.range, selection.data.sectionIndex, adjacentParagraphs)
+      : [],
+  };
+};
+
+/**
+ * Adapter-only counterpart of getEpubReadingContext. It performs the same
+ * bounded extraction but retains no DOM values after calculating CFI and
+ * TextQuote data, so callers can safely turn every segment into JSON.
+ */
+export const getEpubAnchorReadingContext = (
+  runtime: EpubRuntime,
+  options: EpubContextOptions = {},
+): EpubAnchorReadingContext => {
+  const location = getLocation(runtime);
+  const selection = getSelection(runtime.view, location?.sectionIndex ?? null);
+  const adjacentParagraphs = Math.max(0, Math.min(options.adjacentParagraphs ?? 2, 4));
+  return {
+    selection: selection
+      ? anchorSegment(
+          runtime.view,
+          selection.data.sectionIndex,
+          selection.range,
+          selection.data.text,
+        )
+      : null,
+    location,
+    visibleText: getAnchorVisibleText(runtime.view),
+    selectionParagraphs: selection
+      ? getAnchorSelectionParagraphs(
+          runtime.view,
+          selection.range,
+          selection.data.sectionIndex,
+          adjacentParagraphs,
+        )
       : [],
   };
 };
