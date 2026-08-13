@@ -21,25 +21,19 @@ import {
   createEpubDocumentAdapter,
   type EpubNavigationRuntime,
 } from '@/glossa';
+import { DeepSeekProvider, createDeepSeekKeychain } from '@/glossa/ai';
 import { createContextPack } from '@/glossa/context/contextPack';
 import GlossaPanel from '@/glossa/ui/GlossaPanel';
 import { useGlossaPanelStore } from '@/glossa/ui/glossaPanelStore';
 import { DocumentLoader, type BookDoc } from '@/libs/document';
 import type { FoliateView } from '@/types/view';
 
-// The WebDriver browser runner is a real iframe rather than jsdom, so opt it
-// into React's asynchronous act flushing for this interaction specification.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const EPUB_URL = new URL('../fixtures/data/glossa-reading-sample.epub', import.meta.url).href;
-const DOCUMENT_ID = 'glossa-reading-sample-tauri';
-
+const DOCUMENT_ID = 'glossa-deepseek-tauri';
+const TEST_KEY_NAME = 'glossa.test.deepseek.api-key.v1';
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-
-const setTextAreaValue = (input: HTMLTextAreaElement, value: string): void => {
-  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(input, value);
-  input.dispatchEvent(new Event('input', { bubbles: true }));
-};
 
 const loadBook = async (): Promise<BookDoc> => {
   const response = await fetch(EPUB_URL);
@@ -55,27 +49,31 @@ const findTextRange = (doc: Document, exact: string): Range => {
   const walker = doc.createTreeWalker(doc.body, doc.defaultView?.NodeFilter.SHOW_TEXT ?? 4);
   let candidate: Node | null;
   while ((candidate = walker.nextNode())) {
-    const node = candidate as Text;
-    const start = node.data.indexOf(exact);
+    const text = candidate as Text;
+    const start = text.data.indexOf(exact);
     if (start < 0) continue;
     const range = doc.createRange();
-    range.setStart(node, start);
-    range.setEnd(node, start + exact.length);
+    range.setStart(text, start);
+    range.setEnd(text, start + exact.length);
     return range;
   }
   throw new Error(`Fixture quote not found: ${exact}`);
 };
 
-describe('Mock Glossa reading loop in the macOS Tauri WebView', () => {
+describe('DeepSeek Glossa loop in the macOS Tauri WebView', () => {
   let view: FoliateView;
   let runtime: EpubNavigationRuntime;
   let host: HTMLDivElement;
   let root: Root;
+  const keychain = createDeepSeekKeychain(TEST_KEY_NAME);
 
   beforeAll(async () => {
     expect((window.top ?? window) as unknown as Record<string, unknown>).toHaveProperty(
       '__TAURI_INTERNALS__',
     );
+    await keychain.clear().catch(() => undefined);
+    await keychain.save('test-only-key');
+    expect(await keychain.getStatus()).toEqual({ available: true, configured: true });
     await import('foliate-js/view.js');
     view = document.createElement('foliate-view') as FoliateView;
     Object.assign(view.style, { width: '760px', height: '620px', position: 'absolute' });
@@ -89,24 +87,25 @@ describe('Mock Glossa reading loop in the macOS Tauri WebView', () => {
 
   afterAll(async () => {
     await act(async () => root?.unmount());
+    await keychain.clear();
+    expect(await keychain.getStatus()).toEqual({ available: true, configured: false });
     host?.remove();
     view?.close();
     view?.remove();
   });
 
-  test('selects, freely asks twice, streams sourced Mock replies, jumps from history, and returns', async () => {
+  test('uses the local fake SSE service, validates local source IDs, jumps, and returns', async () => {
     await Promise.resolve(view.goTo(0));
-    const chapterOne = view.renderer.getContents().find((content) => content.index === 0)!;
+    const chapter = view.renderer.getContents().find((content) => content.index === 0)!;
     const exact = 'records every amber mark';
-    const range = findTextRange(chapterOne.doc, exact);
-    chapterOne.doc.getSelection()?.removeAllRanges();
-    chapterOne.doc.getSelection()?.addRange(range);
+    const selectionRange = findTextRange(chapter.doc, exact);
+    chapter.doc.getSelection()?.removeAllRanges();
+    chapter.doc.getSelection()?.addRange(selectionRange);
     const adapter = createEpubDocumentAdapter({
       documentId: DOCUMENT_ID,
       getRuntime: () => runtime,
     });
     const selection = await adapter.getSelection();
-    expect(selection?.text).toBe(exact);
     const contextPack = createContextPack({
       selection: selection!,
       selectionContext: await adapter.getSelectionContext({ adjacentParagraphs: 1 }),
@@ -114,10 +113,33 @@ describe('Mock Glossa reading loop in the macOS Tauri WebView', () => {
     const navigator = createEpubAnchorNavigator({
       documentId: DOCUMENT_ID,
       getRuntime: () => runtime,
-      highlightDurationMs: 1000,
     });
-    const addAnnotationSpy = vi.spyOn(view, 'addAnnotation');
-    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const localFakeSSEFetch: typeof fetch = async (_input, init) => {
+      const currentMessage = JSON.parse(String(init?.body)).messages.at(-1).content;
+      const sourceId = JSON.parse(currentMessage).contextPack.excerpts[0].sourceId;
+      const answer = JSON.stringify({
+        status: 'answered',
+        paragraphs: [
+          {
+            text: 'The local fake SSE service confirmed the selected reading evidence.',
+            sourceIds: [sourceId],
+            basis: 'document',
+          },
+        ],
+        followups: [],
+      });
+      return new Response(
+        `: test keep-alive\n\ndata: ${JSON.stringify({ choices: [{ delta: { content: answer }, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`,
+        { headers: { 'Content-Type': 'text/event-stream' }, status: 200 },
+      );
+    };
+    const provider = new DeepSeekProvider({
+      // The WebDriver iframe cannot reach its isolated loopback Next port.
+      // This in-process transport has the exact local SSE response contract;
+      // production leaves fetch unset and uses getAIFetch() / Tauri Rust HTTP.
+      getApiKey: keychain.getKeyForRequest,
+      fetch: localFakeSSEFetch,
+    });
     await act(async () => {
       useGlossaPanelStore.setState({
         isOpen: true,
@@ -133,43 +155,20 @@ describe('Mock Glossa reading loop in the macOS Tauri WebView', () => {
           safeAreaInsets: null,
           systemUIVisible: false,
           statusBarHeight: 0,
+          provider,
         }),
       );
     });
-    await nextFrame();
-    await nextFrame();
-    expect(host.textContent).toContain('选区 + 同章节前 1 段 · 未使用后文');
-
-    const input = host.querySelector('#glossa-question') as HTMLTextAreaElement;
-    const send = Array.from(host.querySelectorAll('button')).find(
-      (button) => button.textContent === 'Send',
-    ) as HTMLButtonElement;
     await act(async () => {
-      setTextAreaValue(input, '这句话是什么意思？');
-    });
-    expect(send.disabled).toBe(false);
-    await act(async () => {
-      send.click();
-      await Promise.resolve();
+      Array.from(host.querySelectorAll('button'))
+        .find((button) => button.textContent === 'Explain')
+        ?.click();
       await Promise.resolve();
       await Promise.resolve();
     });
-    await nextFrame();
-    await nextFrame();
-    expect(host.textContent).toContain('回答（Mock）');
-    expect(host.textContent).toContain('这句话是什么意思？');
-    await act(async () => {
-      setTextAreaValue(input, '请换一种更简单的方式说明。');
+    await vi.waitFor(() => expect(host.textContent).toContain('local fake SSE service confirmed'), {
+      timeout: 5000,
     });
-    await act(async () => {
-      send.click();
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    await nextFrame();
-    expect(host.textContent).toContain('请换一种更简单的方式说明。');
-    expect(host.textContent).toContain('上一问“这句话是什么意思？”');
     const source = host.querySelector('[aria-label="Source 1-1"]') as HTMLButtonElement;
     expect(source.textContent).toContain(exact);
 
@@ -177,18 +176,18 @@ describe('Mock Glossa reading loop in the macOS Tauri WebView', () => {
     const originIndex = view.resolveCFI(view.lastLocation!.cfi!).index;
     await act(async () => source.click());
     await nextFrame();
-    await nextFrame();
-    const overlay = chapterOne.overlayer as { element?: SVGSVGElement };
-    expect(overlay.element?.querySelector('g[fill="#f0b429"]')).toBeTruthy();
-    const returnButton = host.querySelector('button.btn-ghost.btn-sm') as HTMLButtonElement;
-    expect(returnButton.textContent).toContain('Return to reading position');
-    await act(async () => returnButton.click());
+    expect(
+      (chapter.overlayer as { element?: SVGSVGElement }).element?.querySelector(
+        'g[fill="#f0b429"]',
+      ),
+    ).toBeTruthy();
+    await act(async () => {
+      Array.from(host.querySelectorAll('button'))
+        .find((button) => button.textContent?.includes('Return to reading position'))
+        ?.click();
+    });
     await nextFrame();
     expect(view.resolveCFI(view.lastLocation!.cfi!).index).toBe(originIndex);
-    expect(addAnnotationSpy).not.toHaveBeenCalled();
-    expect(fetchSpy).not.toHaveBeenCalled();
-    addAnnotationSpy.mockRestore();
-    fetchSpy.mockRestore();
     navigator.dispose();
   });
 });

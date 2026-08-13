@@ -43,6 +43,7 @@ Entitlements*.plist
 tauri.*.conf.json
 # tracked exception: the direct-distribution iCloud overlay ships in the repo
 !tauri.macos-nonestore.conf.json
+!tauri.glossa-dev.conf.json
 
 # vercel
 .vercel

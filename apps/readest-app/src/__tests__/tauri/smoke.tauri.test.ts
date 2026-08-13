@@ -14,6 +14,12 @@ describe('Tauri Smoke Tests', () => {
     expect(execDir.length).toBeGreaterThan(0);
   });
 
+  it('should invoke get_app_identifier', async () => {
+    const identifier = (await invoke('get_app_identifier')) as string;
+    expect(typeof identifier).toBe('string');
+    expect(identifier.length).toBeGreaterThan(0);
+  });
+
   it('should invoke get_environment_variable for HOME', async () => {
     const home = (await invoke('get_environment_variable', { name: 'HOME' })) as string;
     expect(typeof home).toBe('string');

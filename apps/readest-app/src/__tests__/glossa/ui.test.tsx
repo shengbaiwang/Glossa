@@ -17,11 +17,24 @@ vi.mock('@/hooks/useSwipeToDismiss', async () => {
 vi.mock('@/hooks/usePanelResize', () => ({
   usePanelResize: () => ({ handleResizeStart: vi.fn(), handleResizeKeyDown: vi.fn() }),
 }));
+vi.mock('@/glossa/ai/deepseekKeychain', () => ({
+  DEEPSEEK_API_KEYCHAIN_KEY: 'glossa.deepseek.api-key.v1',
+  clearDeepSeekApiKey: vi.fn(),
+  getDeepSeekApiKey: vi.fn(),
+  getDeepSeekKeychainStatus: vi.fn(),
+  saveDeepSeekApiKey: vi.fn(),
+}));
 
 import GlossaPanel from '@/glossa/ui/GlossaPanel';
 import { useGlossaPanelStore } from '@/glossa/ui/glossaPanelStore';
 import { createContextPack } from '@/glossa/context/contextPack';
 import type { AIProvider } from '@/glossa/ai';
+import {
+  clearDeepSeekApiKey,
+  getDeepSeekApiKey,
+  getDeepSeekKeychainStatus,
+  saveDeepSeekApiKey,
+} from '@/glossa/ai/deepseekKeychain';
 import type { DocumentNavigator } from '@/glossa/citations/navigation';
 import {
   canAskGlossaForEpubSelection,
@@ -69,12 +82,17 @@ beforeEach(() => {
     contextPack: null,
     navigator: null,
   });
+  vi.mocked(getDeepSeekKeychainStatus).mockResolvedValue({ available: false, configured: false });
+  vi.mocked(getDeepSeekApiKey).mockResolvedValue(null);
+  vi.mocked(saveDeepSeekApiKey).mockResolvedValue();
+  vi.mocked(clearDeepSeekApiKey).mockResolvedValue();
 });
 
 afterEach(() => {
   cleanup();
   if (originalFlag === undefined) delete env[flagName];
   else env[flagName] = originalFlag;
+  vi.clearAllMocks();
 });
 
 describe('Glossa selection entry', () => {
@@ -102,6 +120,66 @@ describe('Glossa selection entry', () => {
 });
 
 describe('Glossa panel', () => {
+  test('defaults to Mock and makes DeepSeek configuration explicit without rendering a key', async () => {
+    const selection = selected('amber mark');
+    vi.mocked(getDeepSeekKeychainStatus).mockResolvedValue({ available: true, configured: false });
+    useGlossaPanelStore.getState().open(selection, contextFor(selection));
+    renderPanel();
+    expect(screen.getByRole('radio', { name: 'Mock' }).getAttribute('aria-checked')).toBe('true');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('radio', { name: 'DeepSeek' }));
+      await Promise.resolve();
+    });
+    expect(screen.getByText('DeepSeek API key: not configured')).toBeTruthy();
+    const keyInput = screen.getByLabelText('DeepSeek API key') as HTMLInputElement;
+    fireEvent.change(keyInput, { target: { value: 'test-only-key' } });
+    await act(async () => {
+      fireEvent.click(screen.getByText('Save key'));
+      await Promise.resolve();
+    });
+    expect(saveDeepSeekApiKey).toHaveBeenCalledWith('test-only-key');
+    expect(keyInput.value).toBe('');
+  });
+
+  test('requires a one-time DeepSeek sending-range confirmation before any request', async () => {
+    const selection = selected('amber mark');
+    vi.mocked(getDeepSeekKeychainStatus).mockResolvedValue({ available: true, configured: true });
+    vi.mocked(getDeepSeekApiKey).mockResolvedValue('test-only-key');
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response(
+          'data: {"choices":[{"delta":{"content":"{\\"status\\":\\"insufficient_evidence\\",\\"paragraphs\\":[],\\"followups\\":[]}"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+          { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+      );
+    useGlossaPanelStore.getState().open(selection, contextFor(selection));
+    renderPanel();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('radio', { name: 'DeepSeek' }));
+      await Promise.resolve();
+    });
+    fireEvent.change(screen.getByPlaceholderText('Ask about the selected text'), {
+      target: { value: 'What does this mean?' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText('Send'));
+      await Promise.resolve();
+    });
+    expect(screen.getByLabelText('DeepSeek privacy confirmation').textContent).toContain(
+      'the current selection + one preceding paragraph',
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(screen.getByText('Send to DeepSeek'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    fetchSpy.mockRestore();
+  });
+
   test('does not render or register a panel while the flag is disabled', () => {
     env[flagName] = 'false';
     useGlossaPanelStore.getState().open(selected('amber mark'));
@@ -162,7 +240,7 @@ describe('Glossa panel', () => {
       await Promise.resolve();
     });
     expect(screen.getByText(/解释（Mock）/u)).toBeTruthy();
-    expect(screen.getByLabelText('Source 1').textContent).toContain('amber mark');
+    expect(screen.getByLabelText('Source 1-1').textContent).toContain('amber mark');
 
     await act(async () => {
       fireEvent.click(screen.getByText('Translate'));
@@ -175,6 +253,103 @@ describe('Glossa panel', () => {
       await Promise.resolve();
     });
     expect(screen.getByText(/Evidence insufficient/u)).toBeTruthy();
+  });
+
+  test('sends free questions with Enter, keeps Shift+Enter as a newline, and uses the prior turn', async () => {
+    const selection = selected('amber mark');
+    useGlossaPanelStore.getState().open(selection, contextFor(selection));
+    renderPanel();
+    const input = screen.getByPlaceholderText('Ask about the selected text');
+
+    fireEvent.change(input, { target: { value: '这句话是什么意思？' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText('这句话是什么意思？')).toBeTruthy();
+    expect(screen.getByText(/回答（Mock）/u)).toBeTruthy();
+    expect((input as HTMLTextAreaElement).value).toBe('');
+
+    fireEvent.change(input, { target: { value: '第一行' } });
+    fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+    expect((input as HTMLTextAreaElement).value).toBe('第一行');
+    expect(screen.getByLabelText('Glossa conversation').textContent).not.toContain('第一行');
+
+    fireEvent.change(input, { target: { value: '请换一种更简单的方式说明。' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText(/上一问“这句话是什么意思？”/u)).toBeTruthy();
+  });
+
+  test('does not send blank or overlong Unicode questions and shows a limit message', () => {
+    const selection = selected('amber mark');
+    useGlossaPanelStore.getState().open(selection, contextFor(selection));
+    renderPanel();
+    const input = screen.getByPlaceholderText('Ask about the selected text');
+    expect((screen.getByText('Send') as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(input, { target: { value: '🙂'.repeat(2001) } });
+    expect(screen.getByText('Questions must be 2,000 characters or fewer.')).toBeTruthy();
+    expect((screen.getByText('Send') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test('replaces a streaming free question, marks the old reply cancelled, and ignores its stale output', async () => {
+    const aborted = vi.fn();
+    const blockingProvider: AIProvider = {
+      async *stream(request, signal) {
+        yield { type: 'text-delta', text: `partial ${request.question}` };
+        await new Promise<void>((_resolve, reject) =>
+          signal.addEventListener(
+            'abort',
+            () => {
+              aborted();
+              reject(new DOMException('aborted', 'AbortError'));
+            },
+            { once: true },
+          ),
+        );
+      },
+    };
+    const selection = selected('amber mark');
+    useGlossaPanelStore.getState().open(selection, contextFor(selection));
+    renderPanel(blockingProvider);
+    const input = screen.getByPlaceholderText('Ask about the selected text');
+    fireEvent.change(input, { target: { value: 'first question' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await act(async () => await Promise.resolve());
+    fireEvent.change(input, { target: { value: 'second question' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await act(async () => await Promise.resolve());
+    expect(screen.getByText('Request cancelled.')).toBeTruthy();
+    expect(screen.getByText('second question')).toBeTruthy();
+    expect(aborted).toHaveBeenCalledOnce();
+  });
+
+  test('clears the ephemeral conversation on selection replacement and panel close', async () => {
+    const selection = selected('amber mark');
+    useGlossaPanelStore.getState().open(selection, contextFor(selection));
+    renderPanel();
+    const input = screen.getByPlaceholderText('Ask about the selected text');
+    fireEvent.change(input, { target: { value: '这句话是什么意思？' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText('这句话是什么意思？')).toBeTruthy();
+
+    const replacement = selected('shared margin');
+    await act(async () =>
+      useGlossaPanelStore.getState().open(replacement, contextFor(replacement)),
+    );
+    expect(screen.queryByText('这句话是什么意思？')).toBeNull();
+    fireEvent.click(screen.getByLabelText('Close Glossa'));
+    useGlossaPanelStore.getState().open(replacement, contextFor(replacement));
+    expect(screen.queryByText('这句话是什么意思？')).toBeNull();
   });
 
   test('shows structured provider errors, cancellation, and source navigation without fetch', async () => {
@@ -254,7 +429,7 @@ describe('Glossa panel', () => {
       await Promise.resolve();
     });
     await act(async () => {
-      fireEvent.click(screen.getByLabelText('Source 1'));
+      fireEvent.click(screen.getByLabelText('Source 1-1'));
       await Promise.resolve();
     });
     expect(navigate).toHaveBeenCalledWith(selection.anchor);
@@ -265,5 +440,40 @@ describe('Glossa panel', () => {
     expect(returned).toHaveBeenCalledOnce();
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
+  });
+
+  test('keeps a completed historical answer source clickable after a follow-up', async () => {
+    const selection = selected('amber mark');
+    const navigate = vi.fn(async () => ({
+      result: {
+        status: 'resolved' as const,
+        method: 'cfi' as const,
+        exact: true,
+        anchor: selection.anchor,
+        canReturn: true,
+      },
+      returnToOrigin: vi.fn(async () => true),
+      dispose: vi.fn(),
+    }));
+    useGlossaPanelStore.getState().open(selection, contextFor(selection), {
+      navigate,
+      dispose: vi.fn(),
+    });
+    renderPanel();
+    const input = screen.getByPlaceholderText('Ask about the selected text');
+    for (const question of ['这句话是什么意思？', '请换一种更简单的方式说明。']) {
+      fireEvent.change(input, { target: { value: question } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    }
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Source 1-1'));
+      await Promise.resolve();
+    });
+    expect(navigate).toHaveBeenCalledWith(selection.anchor);
+    expect(screen.getByLabelText('Source 2-1')).toBeTruthy();
   });
 });

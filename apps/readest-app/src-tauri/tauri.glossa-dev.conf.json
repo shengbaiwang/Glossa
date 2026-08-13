@@ -1,0 +1,15 @@
+{
+  "productName": "Glossa Dev",
+  "mainBinaryName": "glossa-dev",
+  "identifier": "app.glossa.reader.dev",
+  "bundle": {
+    "active": false
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["glossa-dev"]
+      }
+    }
+  }
+}

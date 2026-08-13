@@ -49,6 +49,8 @@ import { copyFiles } from '@/utils/files';
 import { detectViewTransitionGroup, detectViewTransitionsAPI } from '@/utils/viewTransition';
 
 import { BaseAppService } from './appService';
+import { isGlossaEnabled } from '@/glossa/featureFlag';
+import { getGlossaRuntimeSafetyError } from '@/glossa/runtime';
 import { DatabaseOpts, DatabaseService } from '@/types/database';
 import { SchemaType } from '@/services/database/migrate';
 import {
@@ -69,6 +71,26 @@ declare global {
 }
 
 const OS_TYPE = osType();
+
+const assertSafeGlossaRuntime = async (): Promise<void> => {
+  const expectedIdentifier = process.env['NEXT_PUBLIC_GLOSSA_RUNTIME_ID'];
+  const initialError = getGlossaRuntimeSafetyError({
+    enabled: isGlossaEnabled(),
+    expectedIdentifier,
+    portable: Boolean(process.env['NEXT_PUBLIC_PORTABLE_APP']),
+  });
+  if (initialError) throw new Error(initialError);
+  if (!isGlossaEnabled()) return;
+
+  const actualIdentifier = await invoke<string>('get_app_identifier');
+  const identifierError = getGlossaRuntimeSafetyError({
+    enabled: true,
+    expectedIdentifier,
+    actualIdentifier,
+    portable: false,
+  });
+  if (identifierError) throw new Error(identifierError);
+};
 
 const safeDecodePath = (input: string) => {
   try {
@@ -613,6 +635,7 @@ export class NativeAppService extends BaseAppService {
   }
 
   override async init() {
+    await assertSafeGlossaRuntime();
     const execDir = await invoke<string>('get_executable_dir');
     this.execDir = execDir;
     // Report the WebView User-Agent so Sentry can tag crashes with the

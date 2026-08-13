@@ -5,10 +5,10 @@
 ## 1. 当前状态
 
 - 当前阶段：M1 EPUB 垂直闭环进行中。
-- 当前里程碑：M1（B01–B08、C01–C03、C05–C07、D01、D04–D05、E02–E03 已完成；C04 仅完成取消/替换）。
+- 当前里程碑：M1（B01–B08、C01–C07、D01–D05、E02–E03 已完成；D06/D07 部分完成）。
 - 仓库状态：已导入 Readest v0.12.1；`main` 指向上游 release commit `f3e1df7e0572c0119cbb420e1e27ca9af859f91c`，并保留完整上游 Git 历史及 `upstream` remote（`https://github.com/readest/readest.git`）。
 - 可运行版本：Readest 桌面开发版已在本机实际启动并显示 EPUB 阅读窗口；开发进程已优雅退出，没有遗留本轮启动的后台服务。
-- 总体状态：A01–A06、B01–B08、C01–C03、C05–C07、D01、D04–D05、E02–E03 已完成。Glossa 现有默认关闭的 EPUB 选区→最小上下文→Mock 流式回答→本地来源→跳转/返回闭环；不含真实模型、自由输入、连续追问、全文检索或笔记。完整单测仍存在 3 个可复现的上游 Turso 向量距离精度失败，见“最近验证”。
+- 总体状态：A01–A06、B01–B08、C01–C07、D01–D05、E02–E03 已完成。Glossa 现有默认 Mock 的 EPUB 选区→最小上下文→自由问题/三种快捷动作→最多三轮有界追问→本地来源→跳转/返回闭环；DeepSeek V4 Flash 仅在用户选择、钥匙串已配置且首次发送范围确认后启用。隔离的 Glossa Dev 已完成一次用户主动的真实桌面验收：Rust HTTP transport、系统钥匙串、首轮回答、两轮追问、来源跳转/临时高亮和返回均成功。另有独立的 Glossa Dev 运行身份，避免与本机 Readest 共用应用数据或构建输出。完整单测仍存在 3 个可复现的上游 Turso 向量距离精度失败，见“最近验证”。
 
 ## 2. 已完成
 
@@ -79,15 +79,27 @@
 - [x] **最小 ContextPack（E02–E03）。** `context/contextPack.ts` 为选区及当前章节中紧邻的前一段分配基于完整 `SourceAnchor` 的稳定 `sourceId`，并严格保留 anchor。当前 `BookProgress.fraction` 不能证明选区后的段落已经读过，因此包只含选区和前一段，明确显示“选区 + 同章节前 1 段 · 未使用后文”；没有前文时只保留选区，`联系前文` 不会臆造证据。不会读取后续章节、全文或 embedding。
 - [x] **模型无关协议与 MockProvider（D01、D04、D05）。** 新增 `ai/` 的 stream-first `AIProvider`、`AbortSignal`、结构化事件/错误、严格 zod `GlossaAnswer` 和 `GlossaRequestController`。白名单校验拒绝 schema 非法、未知或重复 sourceId；UI 引文的文本和 anchor 仅从本地 ContextPack 解析。`MockProvider` 无网络、无 API Key、无真实延时，对解释/翻译/联系前文给出确定性、包含当前选区的流式结果。
 - [x] **侧边栏闭环（C03、C05–C07）。** 面板显示快捷动作、真实范围、加载/流式、取消、错误、证据不足和可点击本地来源预览。新请求替换旧流，关闭或选区替换会取消请求；来源经现有 `DocumentNavigator` 跳转、临时高亮，并在可用时显示“返回原位置”。固定、折叠、拖拽、移动 sheet 和关闭行为保持原有瞬态逻辑；没有 fetch、AIAssistant、notebook、annotation 或持久化写入。
-- [ ] **C04（部分完成）。** 请求取消和新请求替换已实现；自由输入与连续追问尚未开始，按本轮范围留给下一轮。
+- [x] **C04 自由输入、连续追问和取消。** 面板已升级为瞬态普通文本对话列表：支持多行自由问题、Enter 发送、Shift+Enter 换行、空白拦截、Unicode 字符上限 2,000 与清晰提示；发送后清空输入。快捷动作仍可用。新问题/动作会取消旧流并将未完成回答明确标为“已取消”，旧流不能写回 UI；用户也可随时取消。协议只向 Provider 发送同一 documentId 与当前 ContextPack 的最近 3 个完整轮次，旧 document/ContextPack 轮次和旧 sourceId 都不能绕过当前白名单。新选区、面板关闭和卸载取消请求、结束导航会话并清空本次对话；没有 localStorage、notebook、阅读历史或数据库写入。MockProvider 无网络，确定性地包含自由问题、选区及上一轮问题，并为明显超出当前证据的问题返回 evidence insufficient。历史回答各自保留可点击的本地来源。
+- [x] **D02 DeepSeekProvider。** 新增独立 `DeepSeekProvider`，复用 `getAIFetch()`（Tauri Rust HTTP transport）访问官方 OpenAI-compatible `https://api.deepseek.com/chat/completions`。模型固定为 `deepseek-v4-flash`，请求显式包含 `stream: true`、`thinking: { type: "disabled" }`、`response_format: { type: "json_object" }` 和适中的 2,048 `max_tokens`；不发送工具、外部搜索、服务端会话、整本书、后文或笔记。SSE 支持 data-only 事件、keep-alive、`[DONE]`、content delta、finish reason 和中断；不显示 JSON/SSE/reasoning_content。当前 SDK 未提供可靠的 partial structured output，因此流式期间仅显示“正在生成”，完整 JSON 在 zod + 当前 ContextPack sourceId 白名单通过后才显示。用户必须选中 DeepSeek、钥匙串可用且已配置，并在第一次真实请求前确认精确发送范围。
+- [x] **D03 DeepSeek 系统钥匙串。** 使用已有 `setSecureItem`/`getSecureItem`/`clearSecureItem`/`isSyncKeychainAvailable`，生产键名固定为 `glossa.deepseek.api-key.v1`。Key 不进入 React state、Zustand、localStorage、数据库、日志、测试快照或仓库文件；UI 只显示已配置/未配置，密码框保存后清空并可删除。Web 或钥匙串不可用时禁用 DeepSeek、保留 Mock。Tauri WebView 测试使用专用 `glossa.test.deepseek.api-key.v1` 并清理。
+- [x] **真实桌面验收（用户主动）。** 用户在隔离的 Glossa Dev 中仅通过应用界面保存自己的 Key，并手动完成一次首轮真实回答和两轮追问；每个答案的本地来源均可点击，且成功跳回原文、临时高亮并返回原阅读位置。此验收确认真实 Rust HTTP transport 与钥匙串路径；不记录问题、正文、回答、Key、header 或原始服务端响应。自动测试继续只用假 transport/测试钥匙串，不访问公网；真实请求由用户主动操作，可能产生模型费用。
+- [ ] **D06（部分）。** 已显示 `insufficient_evidence`；DeepSeek 拒绝 `external` basis，防止外部知识以原文答案进入 UI。推断的单独 UI 标记未实现。
+- [ ] **D07（部分）。** 已实现真实 HTTP Abort（新请求、取消、关闭、选区/Provider 切换）、45 秒 timeout，及 missing-key、401、402、400/422、429、500、503、network、invalid-response、evidence-insufficient 分类。按本轮范围未实现自动重试。
+
+### 开发运行时隔离
+
+- [x] **Glossa Dev 独立身份。** 新增 `apps/readest-app/src-tauri/tauri.glossa-dev.conf.json`：产品名 `Glossa Dev`、二进制名 `glossa-dev`、identifier `app.glossa.reader.dev`、独立 `glossa-dev://` 深链且不创建 bundle。默认 Readest 配置保持不改，降低同步上游时的冲突。
+- [x] **单命令启动与防误用锁。** 根目录 `pnpm dev:glossa` 自动重启到 Node 24、发现 Cargo、设置 Glossa feature flag、禁用 updater、使用 `.glossa-dev/target`，并拒绝 portable mode。`NativeAppService` 会在创建 Books/Settings 等目录之前从 Rust 读取实际 identifier；Glossa feature 只有在声明 identifier 与实际 identifier 一致时才能继续。`pnpm dev:glossa:check` 可只校验环境。
+- [x] **隔离说明与验证。** `apps/readest-app/docs/glossa-development.md` 记录启动方式、数据/构建边界及禁止事项。`runtime.test.ts` 覆盖关闭、缺少身份、portable、Readest 身份错配和 Glossa Dev 身份成功共 5 个场景；目标 TypeScript 检查、Biome lint、`cargo check -p Readest` 与配置 JSON 校验通过。Rust 检查中有锁定上游依赖警告，无新增失败。
+- [x] **隔离 IPC 权限。** `get_app_identifier` 已列入 Tauri app manifest，并仅授予 default / WebDriver 测试 capability；新增 Tauri smoke test 确认该命令可调用。重新生成 permission manifest 后，`cargo check -p Readest` 通过。完整 WebView smoke test 本轮未重跑：已有用户启动的 Next 开发进程占用项目 `.next` 锁，未强制停止该用户进程。
 
 ## 3. 正在进行
 
-M1 的第一个手动 Mock 闭环已完成：C03、C05–C07、D01、D04–D05、E02–E03 完成；C04 只完成取消/替换。真实模型、自由输入/连续追问、检索和笔记仍未开始。
+M1 的真实 Provider 基线已完成并经过一次用户主动的真实桌面验收：C01–C07、D01–D05、E02–E03 已完成，D06/D07 如上部分完成。下一步只收口 D06 的事实/推断边界与 D07 的有界结构修复、人工重试；全文检索和笔记仍未开始。
 
 ## 4. 下一步
 
-1. 下一步建议只做 C04 的自由输入与连续追问，继续复用本轮 `ContextPack`、provider 和白名单协议；不得接入真实模型，除非另行授权。
+1. 完成 D06–D07：逐段显示原文/推断依据、拒绝 `external`，并对结构性无效回答最多进行一次同范围修复；非结构性可恢复错误只允许用户主动重试。不得在该切片中扩展检索、笔记、格式或供应商。
 
 ## 5. 当前阻塞项
 
@@ -111,6 +123,13 @@ M1 的第一个手动 Mock 闭环已完成：C03、C05–C07、D01、D04–D05�
 
 ## 7. 最近验证
 
+- [x] `pnpm --filter @readest/readest-app test --run src/__tests__/glossa`：通过，14 个文件、111 个测试；覆盖 DeepSeek 请求/SSE/JSON/错误/Abort、本地 sourceId 白名单、钥匙串保存/状态/删除/不可用/失败、默认 Mock、DeepSeek 选择与发送范围确认，以及既有连续追问和来源跳转。
+- [x] `pnpm --filter @readest/readest-app lint`：通过，检查 2,034 个文件。
+- [x] `pnpm --filter @readest/readest-app fmt:check`：通过；`pnpm --filter @readest/readest-app clippy:check`：通过。后者仍输出锁定上游依赖与 Objective-C 宏的既有 warning，目标 Readest 未新增 lint 失败。
+- [x] `git diff --check`：通过。
+- [x] **真实 Provider 手动验收。** 用户在隔离 Glossa Dev 的桌面 UI 中主动完成首轮真实回答、两轮追问、来源跳转/临时高亮及返回；系统钥匙串保存路径正常。该验收可能产生费用；本轮没有由自动测试或 Codex 发起真实 API 请求。
+- [ ] **DeepSeek Tauri WebView 网络路径。** WebDriver、真实 EPUB/导航器和测试专用钥匙串都能启动并运行；该 WebDriver iframe 对其隔离 loopback Next server 的 HTTP transport 返回 network-error，即使同源/跨源策略调整后亦复现。因此该环境中用相同 SSE 事件契约的进程内假 transport 覆盖 Provider→schema/白名单→本地来源跳转/返回与测试钥匙串清理；公网从未访问。真实 Rust HTTP transport 的请求格式、Abort 和错误分类仍由注入 transport 单测覆盖。该 WebView 网络限制是 D02 手动桌面验收前的剩余验证风险。
+
 - [x] `git fetch --tags upstream`：获取 Readest 上游完整历史和 release 标签；`v0.12.1` 指向 `f3e1df7e0572c0119cbb420e1e27ca9af859f91c`。
 - [x] `git checkout -B main v0.12.1`：`main` 已锁定到该 release commit；`git submodule update --init --recursive --checkout` 已将所有子模块恢复到锁定提交。
 - [x] `pnpm install --frozen-lockfile`：完成 6 个 workspace 的锁文件依赖安装，未修改 `pnpm-lock.yaml`。
@@ -132,6 +151,11 @@ M1 的第一个手动 Mock 闭环已完成：C03、C05–C07、D01、D04–D05�
 - [x] `pnpm tauri dev -- -- -- apps/readest-app/src/__tests__/fixtures/data/glossa-reading-sample.epub`：使用 Node.js 24.11.1 与 Rust stable 1.97.1 实际启动桌面开发版；Tauri 仅向应用传入 fixture 路径，原生窗口报告 `Window is ready, proceeding to handle files`，Readest 导入后请求 `/reader?ids=0ee1de940483059e2220f99c2648c0ee`。三章导航和双语正文来自已验证的 EPUB package/spine；没有影响正文导入的错误。无封面 fixture 会触发 Readest 既有的 cover.png 缺失警告。
 - [x] `pnpm --filter @readest/readest-app exec vitest run src/__tests__/glossa`：Node.js 24.11.1 下通过，4 个文件、23 个测试；覆盖 B01–B05。
 - [x] `pnpm lint`：Node.js 24.11.1 下通过；`tsgo --noEmit && biome lint .` 检查 2,003 个文件。
+- [x] `git diff --check`：通过。
+- [x] `git commit -m "feat(glossa): add sourced mock reading loop"`：已创建仅本地检查点 `05eee395`，包含此前 B08、C01–C03、C05–C07、D01、D04–D05、E02–E03 的已验证基线；未 push，`.pnpm-store/` 未暂存。
+- [x] `PATH="/Users/nidao./.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/nidao./.cargo/bin:/Users/nidao./.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --filter @readest/readest-app exec vitest run src/__tests__/glossa`：通过，11 个文件、86 个测试；含自由问题、快捷动作兼容、有界完整轮次、ContextPack/document 绑定、旧 sourceId 白名单拒绝、Mock 追问与 Abort、输入/Enter/Shift+Enter/Unicode 上限、取消替换、选区/关闭清理和历史来源点击。
+- [x] `PATH="/Users/nidao./.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/nidao./.cargo/bin:/Users/nidao./.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --filter @readest/readest-app lint`：通过，2,026 个文件。
+- [x] macOS Tauri WebView：`mockGlossaLoop.tauri.test.tsx` 通过，1 文件、1 测试（10.88 s）。复用现有 harness/真实原创 EPUB 选区、输入两轮自由问题、Mock 流式来源、历史来源跳转/高亮与返回；断言无 fetch、annotation 或持久化写入。独立 harness 因已有用户 Next dev server 的 `.next/dev` 锁不能并行启动，故测试安全复用该本地 loopback server 并只启动/清理测试专用 Tauri WebDriver；未停止该已有服务。
 - [x] `git diff --check`：通过。
 - [x] `pnpm --filter @readest/readest-app exec vitest run src/__tests__/glossa`：Node.js 24.11.1 下通过，6 个文件、55 个测试（含 B06–B08 控制器与 TextQuote 单元测试）。
 - [x] `pnpm --filter @readest/readest-app exec vitest run --config vitest.browser.config.mts src/__tests__/glossa/epubNavigation.browser.test.ts`：通过，1 个文件、3 个测试。真实 foliate 运行原创 fixture 的 108 个锚点重排矩阵恢复 108/108（100%）；另验证文本节点拆分/普通空白重排、短暂 SVG overlayer 和返回位置。为此安装了测试运行器官方 Chromium；未修改锁文件。
@@ -164,4 +188,4 @@ M1 的第一个手动 Mock 闭环已完成：C03、C05–C07、D01、D04–D05�
 - 合法、可再生的双语 EPUB fixture 已由桌面开发版实际导入并打开。
 - EPUB 选区、当前位置、可见文本和同章节邻近段已有经测试的只读入口；默认关闭不增加监听。
 - EPUB `DocumentAdapter` 及其 JSON-safe 的领域协议已公开；SourceAnchor V1 可严格校验、序列化，并在 CFI 失败时降级为章节/脊柱定位加真实 TextQuote。
-- EPUB 导航器可验证 CFI、使用有界 TextQuote 及章节降级，并提供不可持久化的短暂 overlay 与内存返回会话；真实浏览器重排矩阵为 108/108。C01–C03、C05–C07、D01、D04–D05、E02–E03 已形成经单元与 macOS Tauri WebView 验证的本地 Mock 闭环；C04 的自由输入/连续追问及真实模型仍未实施。
+- EPUB 导航器可验证 CFI、使用有界 TextQuote 及章节降级，并提供不可持久化的短暂 overlay 与内存返回会话；真实浏览器重排矩阵为 108/108。C01–C07、D01–D05、E02–E03 已形成经单元、macOS Tauri WebView 和一次用户主动真实桌面验收验证的阅读闭环；D06/D07 仍待本轮收口。

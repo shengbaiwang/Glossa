@@ -3,6 +3,7 @@ docker/.env
 
 # dependencies
 /node_modules
+/.pnpm-store/
 /.pnp
 .pnp.js
 .yarn/install-state.gz
@@ -39,6 +40,7 @@ next-env.d.ts
 
 # Rust build
 target
+.glossa-dev/
 
 fastlane/report.xml
 fastlane/metadata/android/en-US/changelogs

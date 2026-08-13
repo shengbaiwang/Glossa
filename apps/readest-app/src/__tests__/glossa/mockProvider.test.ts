@@ -1,6 +1,11 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 
-import { MockProvider, collectProviderResponse, validateGlossaAnswer } from '@/glossa/ai';
+import {
+  MockProvider,
+  collectProviderResponse,
+  getContextPackId,
+  validateGlossaAnswer,
+} from '@/glossa/ai';
 import { createContextPack } from '@/glossa/context/contextPack';
 import type { SourceSegment } from '@/glossa/context/types';
 
@@ -51,6 +56,57 @@ describe('MockProvider and answer validation', () => {
       status: 'insufficient_evidence',
       paragraphs: [],
     });
+  });
+
+  test('answers a free question deterministically with the selected local evidence', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const response = await collectProviderResponse(new MockProvider(), {
+      question: '这句话是什么意思？',
+      contextPack: pack(),
+    });
+
+    expect(response.text).toContain('这句话是什么意思？');
+    expect(response.text).toContain('amber mark points to a passage');
+    expect(validateGlossaAnswer(response.answer, pack()).ok).toBe(true);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  test('references the immediately preceding complete turn for a follow-up', async () => {
+    const contextPack = pack();
+    const first = await collectProviderResponse(new MockProvider(), {
+      question: '这句话是什么意思？',
+      contextPack,
+    });
+    const firstAnswer = validateGlossaAnswer(first.answer, contextPack);
+    expect(firstAnswer.ok).toBe(true);
+    if (!firstAnswer.ok) return;
+    const second = await collectProviderResponse(new MockProvider(), {
+      question: '请换一种更简单的方式说明。',
+      contextPack,
+      history: [
+        {
+          documentId: 'fixture-book',
+          contextPackId: getContextPackId(contextPack),
+          user: { role: 'user', text: '这句话是什么意思？' },
+          assistant: {
+            role: 'assistant',
+            text: first.text,
+            answer: firstAnswer.answer,
+          },
+        },
+      ],
+    });
+
+    expect(second.text).toContain('上一问“这句话是什么意思？”');
+  });
+
+  test('returns insufficient evidence for a question outside the current ContextPack', async () => {
+    const response = await collectProviderResponse(new MockProvider(), {
+      question: '这本书的作者是谁？',
+      contextPack: pack(),
+    });
+    expect(response.answer).toMatchObject({ status: 'insufficient_evidence', paragraphs: [] });
   });
 
   test('rejects unknown, duplicate, and malformed citations and derives previews locally', () => {

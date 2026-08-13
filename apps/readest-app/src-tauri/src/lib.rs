@@ -248,6 +248,13 @@ fn get_executable_dir() -> String {
         .unwrap_or_default()
 }
 
+/// Returns the Tauri application identifier so the frontend can reject an
+/// accidentally unsafe development runtime before it writes any user data.
+#[tauri::command]
+fn get_app_identifier(app: AppHandle) -> String {
+    app.config().identifier.clone()
+}
+
 // Pure decision for whether the in-app updater should be hidden. Kept
 // dependency-free so it can be unit tested for every platform combination.
 //
@@ -407,6 +414,7 @@ pub fn run() {
             upload_file,
             get_environment_variable,
             get_executable_dir,
+            get_app_identifier,
             set_webview_info,
             #[cfg(desktop)]
             is_updater_disabled,

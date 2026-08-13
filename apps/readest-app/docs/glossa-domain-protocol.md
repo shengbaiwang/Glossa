@@ -60,3 +60,39 @@ Vitest 单元测试覆盖 schema/documentId/reader 失败、CFI 文本验证与�
 `context/contextPack.ts` creates the C03 evidence boundary from one `SelectedText` and adapter-provided same-section neighbours. Every segment has a deterministic `sourceId` derived from its complete `SourceAnchor`; C03 currently retains the selection plus at most the immediately preceding paragraph. Readest exposes current position, not a verified historical read frontier, so a following paragraph is excluded and the UI states `未使用后文`.
 
 `ai/` contains the stream-first provider-neutral protocol, strict zod `GlossaAnswer`, source-id whitelist validation, and a no-network `MockProvider`. Provider events contain source IDs only; after validation, displayed quote previews and jump anchors are resolved exclusively from the local `ContextPack`. Unknown, duplicated, or malformed references are structured failures and never reach the panel. The request controller passes `AbortSignal`, cancels on replacement/close/selection change, and ignores stale streams.
+
+## C04 ephemeral conversation protocol
+
+`AIProviderRequest` now accepts either an existing `action` or a plain-text `question`, together with JSON-safe complete user/assistant turns. `getBoundedHistory()` first binds turns to the current `documentId` and ContextPack source-set identity, then keeps only the latest three whole turns. The caller never sends a dangling assistant message, and a source ID retained in old history cannot become valid for the current request: every completed answer is still validated against the current ContextPack only.
+
+The panel keeps this conversation only in component memory. A changed ContextPack, panel close, unmount, or replacement request cancels the active stream; incomplete answers are visibly marked cancelled. No turns, input, source text, or model data are written to localStorage, notebook state, reader history, or a database. The deterministic `MockProvider` performs no fetch and returns evidence insufficient for plainly out-of-context bibliographic/unseen-text questions.
+
+## DeepSeek provider and keychain boundary
+
+`ai/deepseekProvider.ts` uses the official OpenAI-compatible DeepSeek Chat
+Completions endpoint (`https://api.deepseek.com/chat/completions`) with the
+fixed `deepseek-v4-flash` model, `stream: true`,
+`thinking: { type: "disabled" }`, `response_format: { type: "json_object" }`,
+and a bounded 2,048-token output. Its compact system prompt treats every EPUB
+excerpt as untrusted reading material, forbids tools, web search, external
+knowledge and later text, and requires JSON plus the ContextPack source-ID
+allowlist. It discards `reasoning_content`; structured partial JSON is never
+shown. Because the current SDK path cannot safely expose partial structured
+fields, the panel uses an honest “responding” state and renders an answer only
+after the complete JSON string passes the Glossa zod schema and the existing
+local source-ID whitelist.
+
+The provider sends only the current ContextPack excerpts, the current question
+or shortcut action, and at most three complete bound turns. It sends no tools,
+whole book, later chapters, notes, database records, or provider-side session
+ID. `length`, empty JSON, malformed SSE/JSON, invalid schema, or invalid local
+citations are rejected before UI display. HTTP 400/401/402/422/429/500/503,
+network failure, timeout, and user abort map to non-sensitive UI errors; there
+is intentionally no retry in this validation slice.
+
+`ai/deepseekKeychain.ts` uses only the existing keyed OS keychain bridge with
+the production key name `glossa.deepseek.api-key.v1`. UI receives a boolean
+configured status—not the key—and wipes the password field immediately after a
+successful save. Tauri-only test code may create a separate `glossa.test.*`
+key name, then clears it at test completion. Web and unavailable-keychain
+runtimes disable DeepSeek while Mock remains available.

@@ -1,9 +1,30 @@
 import type { ContextPack } from '../context/contextPack';
+import type { GlossaAnswer } from './answer';
 
 export type GlossaAction = 'explain' | 'translate' | 'relate';
+export const MAX_GLOSSA_HISTORY_TURNS = 3;
+
+export type GlossaConversationTurn = {
+  documentId: string;
+  contextPackId: string;
+  user: { role: 'user'; text: string };
+  assistant: { role: 'assistant'; text: string; answer: GlossaAnswer };
+};
 
 export type ProviderError = {
-  code: 'aborted' | 'provider-error' | 'invalid-response';
+  code:
+    | 'aborted'
+    | 'missing-key'
+    | 'invalid-auth'
+    | 'insufficient-balance'
+    | 'invalid-request'
+    | 'rate-limited'
+    | 'server-error'
+    | 'overloaded'
+    | 'timeout'
+    | 'network-error'
+    | 'provider-error'
+    | 'invalid-response';
   message: string;
 };
 
@@ -13,8 +34,42 @@ export type AIProviderEvent =
   | { type: 'error'; error: ProviderError };
 
 export type AIProviderRequest = {
-  action: GlossaAction;
+  /** Existing selection actions stay supported for the current reading loop. */
+  action?: GlossaAction;
+  /** A plain-text question bound to the same selected evidence. */
+  question?: string;
   contextPack: ContextPack;
+  /** Complete turns only; providers receive at most the last three. */
+  history?: GlossaConversationTurn[];
+};
+
+const contextPackId = (contextPack: ContextPack): string =>
+  contextPack.segments.map(({ sourceId }) => sourceId).join('|');
+
+export const getContextPackId = contextPackId;
+
+/**
+ * Rejects another document or evidence set and trims only at whole-turn
+ * boundaries. This is deliberately provider-neutral and JSON-safe.
+ */
+export function getBoundedHistory(request: AIProviderRequest): GlossaConversationTurn[] {
+  const documentId = request.contextPack.segments[0]?.anchor.documentId;
+  if (!documentId) return [];
+  const expectedContextPackId = contextPackId(request.contextPack);
+  return (request.history ?? [])
+    .filter(
+      (turn) =>
+        turn.documentId === documentId &&
+        turn.contextPackId === expectedContextPackId &&
+        turn.user.role === 'user' &&
+        turn.assistant.role === 'assistant',
+    )
+    .slice(-MAX_GLOSSA_HISTORY_TURNS);
+}
+
+export const getFreeQuestion = (request: AIProviderRequest): string | null => {
+  const question = request.question?.trim();
+  return question ? question : null;
 };
 
 /** Model-neutral, stream-first protocol. Implementations never receive DOM or reader state. */
