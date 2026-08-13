@@ -51,4 +51,12 @@ type EpubSourceAnchorV1 = {
 
 Vitest 单元测试覆盖 schema/documentId/reader 失败、CFI 文本验证与降级、href 与 spine 定位、TextQuote 消歧、Unicode、隐藏内容、超时/中止/并发、返回和临时 overlay 生命周期。浏览器级测试加载原创 `glossa-reading-sample.epub` 到真实 foliate view：3 个章节 × 27 个锚点 × 4 种宽度/字体/分页或滚动布局，含有效、缺失和故意陈旧 CFI，共恢复 **108/108（100%）**；每次还验证重解析的真实 Range 文本及其在 viewport 中可见。另有真实 DOM 文本节点拆分与空白重排，以及 overlayer 自动清理与返回位置测试。
 
-该数字是浏览器级 foliate 测量，不等同于桌面应用的人工 UI 冒烟。当前没有正式来源 UI；桌面开发版可启动并打开 fixture，但在 B06–B08 范围内没有保留调试入口来人工触发导航。因此桌面端完整交互仍需在未来引用 UI 接入后复核，不能把浏览器矩阵表述为人工桌面验证。
+`epubNavigation.tauri.test.ts` 是独立的 macOS Tauri WebView 层：它首先断言 `window.__TAURI_INTERNALS__`，再用同一原创 fixture 的真实 `DocumentLoader` 与 `foliate-view` 验证换章/重排后的精确恢复、SVG transient overlay 的 timeout 与 `dispose()` 清理、已有用户 overlay 保留、内存返回位置的单次语义，以及陈旧 CFI 到唯一 TextQuote 的恢复。它由 `bash scripts/test-tauri.sh src/__tests__/glossa/epubNavigation.tauri.test.ts` 启动；harness 自选 Next 端口并将同一个 `build.devUrl` 传给 Tauri，保留子进程日志、接受任意 HTTP 响应、拒绝占用的 WebDriver 端口，且只停止本轮记录的进程。
+
+2026-08-13 的 macOS 实测使用 Node.js 24.19.0 与 Rust/Cargo 1.97.1 的命令级 PATH，Tauri WebDriver 返回 HTTP 200，Vitest 为 **1 文件 / 3 测试通过（2.74 s）**。测试还直接断言没有调用 `addAnnotation()`、`history.pushState()` 或 `history.replaceState()`。harness 用独立 `com.bilingify.readest.webdriver-test` identifier 避开用户已运行的 Readest single-instance，不停止用户进程；测试后已清理本轮服务和测试专用 macOS log/persisted-scope 数据。C07 的来源标签 UI 继续复用该 navigator，并由独立的 Mock 闭环 Tauri 测试覆盖点击跳转与返回。
+
+## Mock reading-loop protocol
+
+`context/contextPack.ts` creates the C03 evidence boundary from one `SelectedText` and adapter-provided same-section neighbours. Every segment has a deterministic `sourceId` derived from its complete `SourceAnchor`; C03 currently retains the selection plus at most the immediately preceding paragraph. Readest exposes current position, not a verified historical read frontier, so a following paragraph is excluded and the UI states `未使用后文`.
+
+`ai/` contains the stream-first provider-neutral protocol, strict zod `GlossaAnswer`, source-id whitelist validation, and a no-network `MockProvider`. Provider events contain source IDs only; after validation, displayed quote previews and jump anchors are resolved exclusively from the local `ContextPack`. Unknown, duplicated, or malformed references are structured failures and never reach the panel. The request controller passes `AbortSignal`, cancels on replacement/close/selection change, and ignores stale streams.

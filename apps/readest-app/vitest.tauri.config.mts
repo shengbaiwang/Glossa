@@ -4,7 +4,14 @@ import { webdriverio } from '@vitest/browser-webdriverio';
 import { loadEnvFile } from './vitest.env.mts';
 
 // Load .env and .env.tauri so tauri tests have the same env as the desktop app.
-const env = { ...loadEnvFile('.env'), ...loadEnvFile('.env.tauri'), CWD: process.cwd() };
+const env = {
+  ...loadEnvFile('.env'),
+  ...loadEnvFile('.env.tauri'),
+  // Tauri UI specs exercise the explicit opt-in path. Product builds still
+  // receive their value only from NEXT_PUBLIC_GLOSSA_ENABLED.
+  NEXT_PUBLIC_GLOSSA_ENABLED: 'true',
+  CWD: process.cwd(),
+};
 
 export default defineConfig({
   plugins: [tsconfigPaths()],
@@ -37,7 +44,7 @@ export default defineConfig({
     ],
   },
   test: {
-    include: ['src/**/*.tauri.test.ts'],
+    include: ['src/**/*.tauri.test.{ts,tsx}'],
     setupFiles: ['./vitest.tauri.setup.ts'],
     testTimeout: 30000,
     browser: {

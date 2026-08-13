@@ -80,6 +80,14 @@ import {
   sourceCfiFromSyntheticValue,
 } from '../../utils/globalAnnotations';
 import { annotationToolButtons } from './AnnotationTools';
+import { FiMessageCircle } from 'react-icons/fi';
+import { createEpubAnchorNavigator, createEpubDocumentAdapter } from '@/glossa';
+import { useGlossaPanelStore } from '@/glossa/ui/glossaPanelStore';
+import {
+  canAskGlossaForEpubSelection,
+  captureMinimalContextPack,
+  captureAndOpenGlossaPanel,
+} from '@/glossa/ui/selectionAction';
 import AnnotationRangeEditor from './AnnotationRangeEditor';
 import SelectionRangeEditor from './SelectionRangeEditor';
 import AnnotationPopup from './AnnotationPopup';
@@ -220,16 +228,16 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   const proofreadPopupWidth = Math.min(440, maxWidth);
   const proofreadPopupHeight = Math.min(200, maxHeight);
   const canShare = canShareText(appService);
+  const glossaAvailable = canAskGlossaForEpubSelection(bookData.book?.format, selection?.text);
   // The toolbar is now customizable, so size the selection popup to the number
   // of visible tools (responsive) up to a max — otherwise a 2-tool toolbar
   // renders a sparse, full-width bar. Annotated selections keep the max width
   // since they show the wider highlight options / notes instead of the buttons.
   const annotPopupMaxWidth = Math.min(useResponsiveSize(300), maxWidth);
   const annotPopupToolSize = useResponsiveSize(44);
-  const visibleToolCount = getToolbarToolTypes(
-    viewSettings.annotationToolbarItems,
-    canShare,
-  ).length;
+  const visibleToolCount =
+    getToolbarToolTypes(viewSettings.annotationToolbarItems, canShare).length +
+    (glossaAvailable ? 1 : 0);
   const annotPopupWidth = selection?.annotated
     ? annotPopupMaxWidth
     : Math.min(Math.max(visibleToolCount, 1) * annotPopupToolSize, annotPopupMaxWidth);
@@ -1367,6 +1375,33 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     handleDismissPopup();
   };
 
+  const handleAskGlossa = async () => {
+    if (!glossaAvailable || !view) return;
+    const adapter = createEpubDocumentAdapter({
+      documentId: bookKey.split('-')[0]!,
+      getRuntime: () => ({ view, progress: getBookProgress(bookKey) }),
+    });
+    const navigator = createEpubAnchorNavigator({
+      documentId: bookKey.split('-')[0]!,
+      getRuntime: () => ({ view, progress: getBookProgress(bookKey) }),
+    });
+    const opened = await captureAndOpenGlossaPanel(
+      () => adapter.getSelection(),
+      useGlossaPanelStore.getState().open,
+      {
+        captureContext: (selected) =>
+          captureMinimalContextPack(selected, () =>
+            adapter.getSelectionContext({ adjacentParagraphs: 1 }),
+          ),
+        navigator,
+      },
+    );
+    // The adapter reads the live browser Selection above. Only after it returns
+    // a valid immutable snapshot may the normal annotator flow consume it.
+    if (opened) handleDismissPopupAndSelection();
+    else navigator.dispose();
+  };
+
   const handleSearch = () => {
     if (!selection || !selection.text) return;
     handleDismissPopupAndSelection();
@@ -1935,6 +1970,13 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   const toolButtons = getToolbarToolTypes(viewSettings.annotationToolbarItems, canShare)
     .map(buildToolButton)
     .filter((button): button is NonNullable<typeof button> => button !== null);
+  if (glossaAvailable) {
+    toolButtons.push({
+      tooltipText: _('Ask Glossa'),
+      Icon: FiMessageCircle,
+      onClick: () => void handleAskGlossa(),
+    });
+  }
 
   // The lookup popups never deselect (handleDictionary / handleTranslation /
   // handleProofread only flip popup flags), so a genuine selection is still

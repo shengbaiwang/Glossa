@@ -1,13 +1,13 @@
 /**
  * Public entry point for Glossa's reader-assistance module.
  *
- * Future implementation belongs beneath this root: `ui`, `context`,
- * `retrieval`, `ai`, `citations`, and `notes`. They are deliberately not
- * created until they have real callers, so the scaffold has no product UI or
- * model behavior yet.
+ * The first EPUB vertical slice uses only the bounded `context`, `ai`, `ui`,
+ * and `citations` contracts below. Retrieval, notes, real providers, and
+ * persistence deliberately remain outside this public surface.
  */
 export { isGlossaEnabled } from './featureFlag';
 export { createEpubDocumentAdapter } from './context/epubAdapter';
+export { createContextPack } from './context/contextPack';
 export { createEpubAnchorNavigator } from './context/epubNavigation';
 export type { EpubAnchorNavigatorOptions, EpubNavigationRuntime } from './context/epubNavigation';
 export type {
@@ -17,6 +17,7 @@ export type {
   SelectedText,
   SourceSegment,
 } from './context/types';
+export type { ContextPack, ContextSegment } from './context/contextPack';
 export {
   deserializeSourceAnchor,
   parseSourceAnchor,
@@ -31,3 +32,19 @@ export type {
   AnchorResolutionMethod,
   DocumentNavigator,
 } from './citations/navigation';
+export {
+  GlossaRequestController,
+  MockProvider,
+  glossaAnswerSchema,
+  validateGlossaAnswer,
+} from './ai';
+export type {
+  AIProvider,
+  AIProviderEvent,
+  AIProviderRequest,
+  GlossaAction,
+  GlossaAnswer,
+  GlossaAnswerValidation,
+  ProviderError,
+  ValidatedGlossaAnswer,
+} from './ai';

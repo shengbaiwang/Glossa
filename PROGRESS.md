@@ -5,10 +5,10 @@
 ## 1. 当前状态
 
 - 当前阶段：M1 EPUB 垂直闭环进行中。
-- 当前里程碑：M1（B01–B07 已完成；B08 的单元与浏览器级重排验证已完成，桌面端完整交互复核待正式来源 UI；C–E 尚未开始）。
+- 当前里程碑：M1（B01–B08、C01–C03、C05–C07、D01、D04–D05、E02–E03 已完成；C04 仅完成取消/替换）。
 - 仓库状态：已导入 Readest v0.12.1；`main` 指向上游 release commit `f3e1df7e0572c0119cbb420e1e27ca9af859f91c`，并保留完整上游 Git 历史及 `upstream` remote（`https://github.com/readest/readest.git`）。
 - 可运行版本：Readest 桌面开发版已在本机实际启动并显示 EPUB 阅读窗口；开发进程已优雅退出，没有遗留本轮启动的后台服务。
-- 总体状态：A01–A06、B01–B07 已完成；B08 部分完成。Glossa 现有默认关闭的 EPUB 只读上下文、`DocumentAdapter`、`SourceAnchor` V1 和可调用但尚未接入正式 UI 的 EPUB 锚点导航；没有 AI 请求、聊天界面、检索或笔记行为。完整单测仍存在 3 个可复现的上游 Turso 向量距离精度失败，见“最近验证”。
+- 总体状态：A01–A06、B01–B08、C01–C03、C05–C07、D01、D04–D05、E02–E03 已完成。Glossa 现有默认关闭的 EPUB 选区→最小上下文→Mock 流式回答→本地来源→跳转/返回闭环；不含真实模型、自由输入、连续追问、全文检索或笔记。完整单测仍存在 3 个可复现的上游 Turso 向量距离精度失败，见“最近验证”。
 
 ## 2. 已完成
 
@@ -66,30 +66,45 @@
 
 - [x] **B06 EPUB 锚点恢复与跳转。** 新增 `src/glossa/citations/navigation.ts` 和 `src/glossa/context/epubNavigation.ts`，并从 `@/glossa` 导出 `createEpubAnchorNavigator()`。导航先严格校验 `SourceAnchor` 和 documentId；按 CFI（重新解析真实 Range 并验证 `quote.exact`）→ 同章节 TextQuote（href 或 `spine:<index>`）→ 章节级降级执行。失败、reader 未初始化、超时与 AbortSignal 均为结构化结果；新请求中止旧请求，旧异步结果不能覆盖新结果。
 - [x] **B07 临时高亮与返回位置。** 精确恢复只用 foliate `Overlayer.highlight` 的唯一 `glossa-transient:*` SVG key，不调用 `addAnnotation()`、不写 booknote/annotation、不修改 EPUB DOM，也不使用原生 Selection。高亮在 timeout、新导航、返回或 dispose 时移除。返回位置仅保存在导航会话内，按 CFI → href → spine index → fraction 返回，保持同 runtime/document 且幂等，不写阅读进度或 history。
-- [ ] **B08 定向测试与桌面复核（部分完成）。** 新增 `epubAnchorResolution.test.ts`、`epubNavigation.test.ts` 和 `epubNavigation.browser.test.ts`。单元测试覆盖恢复、消歧、过滤、取消、超时、并发、overlay 与返回；真实浏览器 foliate 矩阵覆盖 3 章节 × 27 锚点 × 4 布局（字体、宽度、分页/滚动），有效/无/陈旧 CFI 共 **108/108（100%）**，并检查真实 Range 文本和 viewport 可见性。桌面开发版可启动，但本轮没有正式来源 UI；尝试使用临时 WebDriver 开发启动时，Tauri 对 `localhost:3000` 就绪检查未完成，且临时探针已删除。因此无法诚实声明完整桌面端“跳转→高亮→返回”人工复核已经完成。
+- [x] **B08 定向测试与桌面复核。** 单元层为 **6 文件 / 55 测试通过**；真实 Chromium foliate 层为 **1 文件 / 3 测试通过**，3 章节 × 27 锚点 × 4 布局（字体、宽度、分页/滚动）恢复 **108/108（100%）**。macOS Tauri WebView 层 `epubNavigation.tauri.test.ts` 为 **1 文件 / 3 测试通过**（Vitest 2.74 s）：在真实 `DocumentLoader`/`foliate-view` 中验证重排后精确跳转、陈旧 CFI 的唯一 TextQuote 恢复、SVG transient overlay 的出现、timeout 与 `dispose()` 清理、同 CFI 用户 overlay 保留、`addAnnotation()` 与 browser history 均不被调用，以及 `returnToOrigin()` 成功且第二次安全返回 `false`。测试没有创建 annotation/booknote 或正式产品 UI。
+
+### M1：C01–C02
+
+- [x] **C01 “Ask Glossa” 选区入口。** `Annotator` 不改动 `AnnotationToolType`、默认工具栏或定制系统；只有严格 `NEXT_PUBLIC_GLOSSA_ENABLED=true`、EPUB 格式且现有非空文本选区时，才在当前工具栏末尾附加入口。点击后通过已有 `createEpubDocumentAdapter()` 从真实浏览器 Selection 取得 JSON-safe `SelectedText`/`SourceAnchor` 快照；只有成功取得快照才调用既有的选择清理流程。该路径不调用 `addAnnotation()`、booknote、阅读进度、history 或任何模型/API。
+- [x] **C02 Glossa 瞬态右侧面板。** 新增 `src/glossa/ui/`：独立 Zustand UI 状态只保存开关、固定、折叠、临时宽度和最近选区快照，既不复用 `notebookStore` 也不接入 `AIAssistant`/provider。`GlossaPanel` 复用了 Notebook 的桌面宽度/固定、遮罩、Escape、可拖拽宽度、移动端底部 sheet/下拉关闭和安全区域逻辑；包含 Glossa 标题、最多 500 字符的选区预览、后续 AI 问答提示、关闭、固定与桌面端折叠入口。重复选区会替换快照；关闭只隐藏面板，未写入任何阅读数据。
+- [x] **C01–C02 测试。** 新增 `src/__tests__/glossa/ui.test.tsx`（6 个测试）覆盖 flag/EPUB/空选区门控、不可变快照、关闭功能时无面板、预览替换、Escape/关闭、独立固定/折叠和无 fetch；新增 `epubGlossaSelection.tauri.test.ts` 在真实 macOS Tauri WebView 与原创 EPUB 中验证 adapter 快照、随后 `deselect()`、无 annotation/history/fetch；`glossaPanel.tauri.test.tsx` 在同一 WebView 渲染真实面板、预览和关闭路径且无 fetch。
+
+### M1：Mock AI 阅读闭环（C03、C05–C07、D01、D04–D05、E02–E03）
+
+- [x] **最小 ContextPack（E02–E03）。** `context/contextPack.ts` 为选区及当前章节中紧邻的前一段分配基于完整 `SourceAnchor` 的稳定 `sourceId`，并严格保留 anchor。当前 `BookProgress.fraction` 不能证明选区后的段落已经读过，因此包只含选区和前一段，明确显示“选区 + 同章节前 1 段 · 未使用后文”；没有前文时只保留选区，`联系前文` 不会臆造证据。不会读取后续章节、全文或 embedding。
+- [x] **模型无关协议与 MockProvider（D01、D04、D05）。** 新增 `ai/` 的 stream-first `AIProvider`、`AbortSignal`、结构化事件/错误、严格 zod `GlossaAnswer` 和 `GlossaRequestController`。白名单校验拒绝 schema 非法、未知或重复 sourceId；UI 引文的文本和 anchor 仅从本地 ContextPack 解析。`MockProvider` 无网络、无 API Key、无真实延时，对解释/翻译/联系前文给出确定性、包含当前选区的流式结果。
+- [x] **侧边栏闭环（C03、C05–C07）。** 面板显示快捷动作、真实范围、加载/流式、取消、错误、证据不足和可点击本地来源预览。新请求替换旧流，关闭或选区替换会取消请求；来源经现有 `DocumentNavigator` 跳转、临时高亮，并在可用时显示“返回原位置”。固定、折叠、拖拽、移动 sheet 和关闭行为保持原有瞬态逻辑；没有 fetch、AIAssistant、notebook、annotation 或持久化写入。
+- [ ] **C04（部分完成）。** 请求取消和新请求替换已实现；自由输入与连续追问尚未开始，按本轮范围留给下一轮。
 
 ## 3. 正在进行
 
-M1 已完成 B01–B07。B08 的控制器、单元测试和真实浏览器重排验证已完成；只缺桌面应用完整交互复核。所有 AI/UI/检索/正式来源跳转功能仍未开始。
+M1 的第一个手动 Mock 闭环已完成：C03、C05–C07、D01、D04–D05、E02–E03 完成；C04 只完成取消/替换。真实模型、自由输入/连续追问、检索和笔记仍未开始。
 
 ## 4. 下一步
 
-1. 在后续正式来源 UI 接入时，用同一 fixture 完成桌面端“生成锚点→换章/改字体→跳转→短暂高亮→返回→无持久笔记”的人工复核，并将 B08 标为完成；不要为此单独保留调试入口。
-2. 若需要零失败上游基线，向 Readest 上游报告或在其后续 release 中复核 Turso `vector_distance_l2` 的精度断言；不要修改或放宽锁定上游测试。
+1. 下一步建议只做 C04 的自由输入与连续追问，继续复用本轮 `ContextPack`、provider 和白名单协议；不得接入真实模型，除非另行授权。
 
 ## 5. 当前阻塞项
 
-- **默认 shell PATH：** 已安装的官方 rustup stable 工具链不在当前 shell 的 PATH；本轮通过命令级 PATH 启用，未修改 `.zshrc`、`.bash_profile` 或其他 shell 配置。
+- **Tauri 测试工具链：** Rust stable 位于 `/Users/nidao./.cargo/bin`，不在默认 shell PATH；测试命令以 `PATH="/Users/nidao./.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/nidao./.cargo/bin:…"` 临时启用 Node 24.19.0 与 Cargo 1.97.1，未修改 shell 或全局安装。
 - **默认 Node.js：** 全局默认仍为 Node.js 26.0.0，上游要求 Node.js 24；本轮从 Node.js 官方归档临时下载并 SHA-256 校验 Node.js 24.11.1，仅用于命令级 PATH，不修改全局默认版本。
 - **Xcode：** `pnpm tauri info` 仍报告完整 Xcode 未安装，但 Xcode Command Line Tools 已安装且已成功完成本轮 macOS 桌面编译、链接和启动，因此不是 A03/A04 的硬阻塞。
 - **上游测试基线：** Node.js 24 下完整 `pnpm test` 可复现 3 个 Turso 向量距离精度失败，详见“最近验证”；这是目前唯一的质量基线失败。
 
 ## 6. 已知风险
 
-- EPUB CFI + TextQuote 已在真实浏览器 foliate 的 108 个重排场景中恢复 108/108；仍缺桌面 WebView 的完整交互复核，不能将该浏览器结果外推为人工桌面验证。
+- EPUB CFI + TextQuote 已在真实浏览器 foliate 的 108 个重排场景中恢复 108/108，并已由 macOS Tauri WebView 真实运行验证关键导航、高亮清理、降级和返回位置流程。
 - `view.lastLocation.range` 是 foliate 本地实现暴露的运行时字段而非正式 Glossa 协议；重排或首个 relocate 前会不可用，模块已安全返回空片段。
 - `BookProgress.fraction` 是当前位置，不是用户历史最远已读边界；B05/E05 前不得用它作为防剧透判断。
 - 当前 EPUB iframe 的原生 Selection 不天然跨文档；跨章节/跨页拖选要由后续锚点与跳转工作单独验证。
+- C01 只在现有 Readest 选区已经有效时显示入口；如果 foliate 在一次极端重排中先失去原生 Selection，点击会安全无操作，不会产生持久化副作用。
+- C02 复用 Notebook 已验证的交互模式而不共享其持久化设置；Glossa 宽度只保存在当前进程，关闭后仍保留最后一次瞬态快照以支持无副作用重开，重启后丢弃。
+- 本轮的“未使用后文”是保守实现：当前没有可验证的最远已读边界，因此不发送选区后的邻近段；E05 完成前不得把当前位置或章节剩余文字当作已读证据。
 - Readest 现有全文搜索是否能直接限定到已读范围，尚未验证。
 - PDF、网页和移动端目前只有接口规划，没有实现证据。
 - 如果未来公开分发或闭源商业化，需要重新评估 AGPL-3.0。
@@ -121,11 +136,25 @@ M1 已完成 B01–B07。B08 的控制器、单元测试和真实浏览器重排
 - [x] `pnpm --filter @readest/readest-app exec vitest run src/__tests__/glossa`：Node.js 24.11.1 下通过，6 个文件、55 个测试（含 B06–B08 控制器与 TextQuote 单元测试）。
 - [x] `pnpm --filter @readest/readest-app exec vitest run --config vitest.browser.config.mts src/__tests__/glossa/epubNavigation.browser.test.ts`：通过，1 个文件、3 个测试。真实 foliate 运行原创 fixture 的 108 个锚点重排矩阵恢复 108/108（100%）；另验证文本节点拆分/普通空白重排、短暂 SVG overlayer 和返回位置。为此安装了测试运行器官方 Chromium；未修改锁文件。
 - [x] `pnpm --filter @readest/readest-app lint`：B06–B08 代码检查通过，2,008 个文件。
-- [ ] 桌面 B08 交互复核：未完成。临时 WebDriver 桌面启动受 `http://localhost:3000` 就绪检查阻塞；未保留探针或调试入口，避免扩大 UI 范围。
+- [x] `pnpm --filter @readest/readest-app exec vitest run src/__tests__/glossa`：Node.js 24.19.0 下通过，6 个文件、55 个测试。
+- [x] `pnpm --filter @readest/readest-app exec vitest run --config vitest.browser.config.mts src/__tests__/glossa/epubNavigation.browser.test.ts`：通过，1 个文件、3 个测试；真实 foliate 108/108（100%）恢复。
+- [x] `pnpm lint`：Node.js 24.19.0 下通过；`tsgo --noEmit && biome lint .`。
+- [x] `git diff --check`：通过。
+- [x] `PATH="/Users/nidao./.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/nidao./.cargo/bin:/Users/nidao./.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" bash scripts/test-tauri.sh src/__tests__/glossa/epubNavigation.tauri.test.ts`：通过，1 个文件、3 个 macOS Tauri WebView 测试，Vitest 2.74 s。Next 自选 `127.0.0.1:25943` 并返回 HTTP 200，Tauri WebDriver `127.0.0.1:4445/status` 返回 HTTP 200。
+- [x] `PATH="/Users/nidao./.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/nidao./.cargo/bin:/Users/nidao./.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --filter @readest/readest-app exec vitest run src/__tests__/glossa`：通过，7 个文件、61 个测试（B01–B08 与 C01–C02）。
+- [x] `pnpm --filter @readest/readest-app lint`：C01–C02 代码检查通过，2,014 个文件。
+- [x] `PATH="/Users/nidao./.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/nidao./.cargo/bin:/Users/nidao./.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" bash scripts/test-tauri.sh src/__tests__/glossa/epubGlossaSelection.tauri.test.ts`：通过，1 个文件、1 个真实 macOS Tauri WebView 测试（Vitest 1.60 s）。测试专用 identifier 成功启动，Next/driver 均在 `127.0.0.1` 就绪；原创 fixture 的 iframe 原生 Selection 被 adapter 序列化后才清除，且 `addAnnotation()`、history `pushState`/`replaceState` 与 fetch 均未调用。
+- [x] `PATH="/Users/nidao./.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/nidao./.cargo/bin:/Users/nidao./.cache/codex-primary-runtime/dependencies/bin/fallback:$PATH" bash scripts/test-tauri.sh src/__tests__/glossa/glossaPanel.tauri.test.tsx`：通过，1 个真实 macOS Tauri WebView 面板测试。Tauri 测试配置仅为 UI 规格显式设置 `NEXT_PUBLIC_GLOSSA_ENABLED=true`；验证实际 React 面板显示选区预览和后续 AI 空状态、关闭后保留瞬态快照，且无 fetch。
+- [x] Tauri harness 诊断与修复：原先 `localhost:3000` 不是端口占用；旧 harness 固定 3000、将非 2xx 当作未就绪，并曾调用到系统 Python `dotenv`。现使用项目本地 CLI、自选 Next 端口、同一 `build.devUrl` 覆盖、显式 `127.0.0.1` host、任意 HTTP 响应 readiness、超时日志与 4445 占用拒绝。它不再使用 `lsof | xargs kill`，只结束本轮 PID/子进程。已有 `/Applications/Readest.app` 实例还会触发同 identifier 的 single-instance 退出；因此 harness 使用 `com.bilingify.readest.webdriver-test` 的测试专用 identifier，绝不结束用户实例。
+- [x] 清理：测试结束后没有 Next、Tauri 或 WebDriver listener，没有仓库日志/PID/测试数据库/EPUB；测试专用的 macOS log 与 `.persisted-scope` 目录已删除。
+- [x] `pnpm --filter @readest/readest-app lint`：Node.js 24.19.0 下通过，`tsgo --noEmit && biome lint .` 检查 2,025 个文件。
+- [x] `pnpm --filter @readest/readest-app exec vitest run src/__tests__/glossa`：Node.js 24.19.0 下通过，10 个文件、75 个测试；覆盖 ContextPack 边界、schema/白名单/本地引文、Mock 三动作/中止、请求替换、面板快捷动作/流式/取消/错误/证据不足/来源/返回以及既有 EPUB 协议。
+- [x] `PATH="/Users/nidao./.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/nidao./.cargo/bin:/Users/nidao./.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" bash scripts/test-tauri.sh --reporter=verbose src/__tests__/glossa/epubGlossaSelection.tauri.test.ts src/__tests__/glossa/glossaPanel.tauri.test.tsx src/__tests__/glossa/mockGlossaLoop.tauri.test.tsx`：通过，3 文件、3 个真实 macOS Tauri WebView 测试。新 `mockGlossaLoop.tauri.test.tsx` 使用原创 EPUB fixture 的真实原生选区、Adapter、ContextPack、React 面板、MockProvider 与 EPUB navigator，验证解释回答、无 fetch、无 annotation、来源点击后的 `#f0b429` transient SVG 高亮及返回原位置。
+- [x] `git diff --check`：通过。
 
 ## 8. 下一个完成标志
 
-当前 M1 B01–B07 已完成，B08 部分完成，满足：
+当前 M1 的 Mock 阅读闭环已完成，满足：
 
 - Readest 源码和许可证已纳入项目。
 - 锁定的上游 commit 已记录。
@@ -135,4 +164,4 @@ M1 已完成 B01–B07。B08 的控制器、单元测试和真实浏览器重排
 - 合法、可再生的双语 EPUB fixture 已由桌面开发版实际导入并打开。
 - EPUB 选区、当前位置、可见文本和同章节邻近段已有经测试的只读入口；默认关闭不增加监听。
 - EPUB `DocumentAdapter` 及其 JSON-safe 的领域协议已公开；SourceAnchor V1 可严格校验、序列化，并在 CFI 失败时降级为章节/脊柱定位加真实 TextQuote。
-- EPUB 导航器可验证 CFI、使用有界 TextQuote 及章节降级，并提供不可持久化的短暂 overlay 与内存返回会话；真实浏览器重排矩阵为 108/108。桌面交互复核仍是进入正式来源 UI 前的最小剩余证据。
+- EPUB 导航器可验证 CFI、使用有界 TextQuote 及章节降级，并提供不可持久化的短暂 overlay 与内存返回会话；真实浏览器重排矩阵为 108/108。C01–C03、C05–C07、D01、D04–D05、E02–E03 已形成经单元与 macOS Tauri WebView 验证的本地 Mock 闭环；C04 的自由输入/连续追问及真实模型仍未实施。

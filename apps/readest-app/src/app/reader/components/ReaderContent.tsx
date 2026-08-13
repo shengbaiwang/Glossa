@@ -38,6 +38,8 @@ import SideBar from './sidebar/SideBar';
 import Notebook from './notebook/Notebook';
 import BooksGrid from './BooksGrid';
 import SettingsDialog from '@/components/settings/SettingsDialog';
+import GlossaPanel from '@/glossa/ui/GlossaPanel';
+import { useThemeStore } from '@/store/themeStore';
 
 const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ ids, settings }) => {
   const _ = useTranslation();
@@ -49,6 +51,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
   const { saveSettings } = useSettingsStore();
   const { getConfig, getBookData, saveConfig } = useBookDataStore();
   const { getView, setBookKeys, getViewSettings } = useReaderStore();
+  const { safeAreaInsets, systemUIVisible, statusBarHeight } = useThemeStore();
   const { initViewState, getViewState, clearViewState } = useReaderStore();
   const { isSettingsDialogOpen, settingsDialogBookKey } = useSettingsStore();
   const [showDetailsBook, setShowDetailsBook] = useState<Book | null>(null);
@@ -297,6 +300,14 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
       />
       {isSettingsDialogOpen && <SettingsDialog bookKey={settingsDialogBookKey} />}
       <Notebook />
+      <GlossaPanel
+        dir={viewSettings.rtl ? 'rtl' : 'ltr'}
+        isEink={viewSettings.isEink}
+        hasRoundedWindow={!!appService?.hasRoundedWindow}
+        safeAreaInsets={safeAreaInsets}
+        systemUIVisible={systemUIVisible}
+        statusBarHeight={statusBarHeight}
+      />
       {showDetailsBook && (
         <BookDetailModal
           isOpen={!!showDetailsBook}

@@ -14,10 +14,14 @@ type RangeAnchor = (doc: Document) => unknown;
 type EpubNavigationContent = {
   doc: Document;
   index?: number;
-  overlayer?: {
-    add(key: string, range: Range, draw: unknown, options?: { color?: string }): void;
-    remove(key: string): void;
-  };
+  // Foliate's public TypeScript surface intentionally leaves this runtime
+  // extension as unknown; validate it at the EPUB boundary before use.
+  overlayer?: unknown;
+};
+
+type EpubOverlayer = {
+  add(key: string, range: Range, draw: unknown, options?: { color?: string }): void;
+  remove(key: string): void;
 };
 
 type ResolvedNavigation = { index: number; anchor?: RangeAnchor | number };
@@ -74,7 +78,7 @@ type QuoteMatch =
 
 type ActiveHighlight = {
   key: string;
-  overlayer: NonNullable<EpubNavigationContent['overlayer']>;
+  overlayer: EpubOverlayer;
   timer: ReturnType<typeof setTimeout>;
 };
 
@@ -96,6 +100,13 @@ const asFiniteNumber = (value: unknown): number | undefined =>
 
 const asInteger = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+
+const asOverlayer = (value: unknown): EpubOverlayer | null => {
+  const record = asRecord(value);
+  return record && typeof record['add'] === 'function' && typeof record['remove'] === 'function'
+    ? (record as unknown as EpubOverlayer)
+    : null;
+};
 
 const isRange = (value: unknown): value is Range => {
   const record = asRecord(value);
@@ -447,7 +458,7 @@ export function createEpubAnchorNavigator(options: EpubAnchorNavigatorOptions): 
     range: Range,
     currentGeneration: number,
   ) => {
-    const overlayer = content.overlayer;
+    const overlayer = asOverlayer(content.overlayer);
     if (!overlayer || highlightDurationMs === 0) return;
     clearHighlight();
     const key = `glossa-transient:${instanceId}:${currentGeneration}`;
