@@ -85,8 +85,8 @@ import { createEpubAnchorNavigator, createEpubDocumentAdapter } from '@/glossa';
 import { useGlossaPanelStore } from '@/glossa/ui/glossaPanelStore';
 import {
   canAskGlossaForEpubSelection,
-  captureMinimalContextPack,
   captureAndOpenGlossaPanel,
+  captureContextPacks,
 } from '@/glossa/ui/selectionAction';
 import AnnotationRangeEditor from './AnnotationRangeEditor';
 import SelectionRangeEditor from './SelectionRangeEditor';
@@ -1390,8 +1390,10 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
       useGlossaPanelStore.getState().open,
       {
         captureContext: (selected) =>
-          captureMinimalContextPack(selected, () =>
-            adapter.getSelectionContext({ adjacentParagraphs: 1 }),
+          captureContextPacks(
+            selected,
+            () => adapter.getSelectionContext({ adjacentParagraphs: 1 }),
+            () => adapter.getSelectionChapterContext(),
           ),
         navigator,
       },

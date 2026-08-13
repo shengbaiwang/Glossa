@@ -1,11 +1,20 @@
 import type { SourceAnchor } from '../citations/sourceAnchor';
 import {
   getEpubAnchorReadingContext,
+  getEpubStructuredChapterToSelection,
+  getEpubStructuredSectionText,
   getEpubReadingContext,
   type EpubAnchorTextSegment,
   type EpubRuntime,
 } from './epub';
-import type { DocumentAdapter, DocumentLocation, SourceSegment } from './types';
+import type {
+  DocumentAdapter,
+  DocumentLocation,
+  SelectionChapterContext,
+  SourceSegment,
+  StructuredSectionText,
+  StructuredTextBlock,
+} from './types';
 
 const sectionIdFor = (
   segment: EpubAnchorTextSegment,
@@ -29,6 +38,34 @@ const toSourceSegment = (
     quote: segment.quote,
   };
   return { text: segment.text, anchor };
+};
+
+const toStructuredSection = (
+  documentId: string,
+  section: NonNullable<ReturnType<typeof getEpubStructuredSectionText>>,
+): StructuredSectionText => {
+  const sectionId = section.sectionHref ?? `spine:${section.sectionIndex}`;
+  const blocks: StructuredTextBlock[] = section.blocks.map((block) => ({
+    kind: block.kind,
+    order: block.order,
+    text: block.text,
+    anchor: {
+      version: 1,
+      documentId,
+      format: 'epub',
+      sectionId,
+      ...(block.cfi ? { cfi: block.cfi } : {}),
+      quote: block.quote,
+    },
+  }));
+  return {
+    documentId,
+    format: 'epub',
+    sectionId,
+    sectionIndex: section.sectionIndex,
+    ...(section.sectionLabel ? { sectionLabel: section.sectionLabel } : {}),
+    blocks,
+  };
 };
 
 export function createEpubDocumentAdapter(options: {
@@ -100,6 +137,18 @@ export function createEpubDocumentAdapter(options: {
           )
           .map((paragraph) => toSourceSegment(documentId, paragraph, context.location)),
       ];
+    },
+    async getCurrentSectionText() {
+      const runtime = getRuntime();
+      if (!runtime) return null;
+      const section = getEpubStructuredSectionText(runtime);
+      return section ? toStructuredSection(documentId, section) : null;
+    },
+    async getSelectionChapterContext(): Promise<SelectionChapterContext | null> {
+      const runtime = getRuntime();
+      if (!runtime) return null;
+      const section = getEpubStructuredChapterToSelection(runtime);
+      return section ? { section: toStructuredSection(documentId, section) } : null;
     },
   };
 }

@@ -27,7 +27,10 @@ vi.mock('@/glossa/ai/deepseekKeychain', () => ({
 
 import GlossaPanel from '@/glossa/ui/GlossaPanel';
 import { useGlossaPanelStore } from '@/glossa/ui/glossaPanelStore';
-import { createContextPack } from '@/glossa/context/contextPack';
+import {
+  createChapterToSelectionContextPack,
+  createContextPack,
+} from '@/glossa/context/contextPack';
 import type { AIProvider } from '@/glossa/ai';
 import {
   clearDeepSeekApiKey,
@@ -80,6 +83,8 @@ beforeEach(() => {
     width: '32%',
     selection: null,
     contextPack: null,
+    chapterContextPack: null,
+    chapterContextUnavailableReason: null,
     navigator: null,
   });
   vi.mocked(getDeepSeekKeychainStatus).mockResolvedValue({ available: false, configured: false });
@@ -168,7 +173,7 @@ describe('Glossa panel', () => {
       await Promise.resolve();
     });
     expect(screen.getByLabelText('DeepSeek privacy confirmation').textContent).toContain(
-      'the current selection + one preceding paragraph',
+      '仅选区 · 未使用后文 (1 segments)',
     );
     expect(fetchSpy).not.toHaveBeenCalled();
     await act(async () => {
@@ -204,6 +209,50 @@ describe('Glossa panel', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByLabelText('Glossa')).toBeNull();
     expect(useGlossaPanelStore.getState().selection?.text).toBe('shared margin');
+  });
+
+  test('defaults to the minimal range and swaps to the frozen chapter-to-selection snapshot', async () => {
+    const selection = selected('amber mark');
+    const minimal = contextFor(selection);
+    const chapter = createChapterToSelectionContextPack({
+      selection,
+      precedingBlocks: [
+        { ...selected('chapter heading'), kind: 'heading', order: 0 },
+        { ...selected('earlier only'), kind: 'paragraph', order: 1 },
+      ],
+    });
+    const seenPacks: string[][] = [];
+    const localProvider: AIProvider = {
+      async *stream(request) {
+        seenPacks.push(request.contextPack.segments.map(({ text }) => text));
+        yield {
+          type: 'complete',
+          answer: {
+            status: 'answered',
+            paragraphs: [
+              {
+                text: 'bounded answer',
+                sourceIds: [request.contextPack.selectionSourceId],
+                basis: 'document',
+              },
+            ],
+            followups: [],
+          },
+        };
+      },
+    };
+    useGlossaPanelStore.getState().open(selection, minimal, undefined, { pack: chapter });
+    renderPanel(localProvider);
+    expect(screen.getByRole('radio', { name: '最小范围' }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
+    fireEvent.click(screen.getByRole('radio', { name: '本章开头至选区' }));
+    expect(screen.getByText('本章开头至选区 · 3 段 · 未使用后文')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByText('Explain'));
+      await Promise.resolve();
+    });
+    expect(seenPacks).toEqual([['chapter heading', 'earlier only', 'amber mark']]);
   });
 
   test('closes without reader persistence or model activity', () => {

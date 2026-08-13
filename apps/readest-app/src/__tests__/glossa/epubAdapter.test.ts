@@ -156,4 +156,55 @@ describe('EpubDocumentAdapter', () => {
     expect((await adapter.getSelection())?.text).toBe('Its');
     expect((await adapter.getCurrentLocation())?.documentId).toBe('fixture-book');
   });
+
+  test('cleans a semantic chapter structure and snapshots only text before the selection', async () => {
+    const doc = document.implementation.createHTMLDocument('structured chapter');
+    doc.body.innerHTML = `
+      <h1>标题 / Heading</h1><nav>skip navigation</nav><p>第一段  with   spaces</p>
+      <ul><li>列表 <em>项目</em> <p>nested duplicate</p></li></ul>
+      <blockquote>引用文本</blockquote><pre>const x = 1;\n  keep newline</pre>
+      <table><tr><th>字段</th><td>值</td></tr></table><figure><figcaption>图注</figcaption></figure>
+      <p hidden>hidden</p><p style="display:none">display none</p><p aria-hidden="true">aria hidden</p>
+      <p id="selected">前文 中文 Unicode — selection 后文不得进入</p><p>下一章节外的后文</p>`;
+    const selectedText = doc.getElementById('selected')!.textContent!;
+    const selectionStart = selectedText.indexOf('selection');
+    selectText(doc, 'selected', selectionStart, selectionStart + 'selection'.length);
+    const adapter = createEpubDocumentAdapter({
+      documentId: 'fixture-book',
+      getRuntime: () => makeRuntime(doc),
+    });
+
+    const section = await adapter.getCurrentSectionText();
+    expect(section?.blocks.map(({ kind, text }) => [kind, text])).toEqual([
+      ['heading', '标题 / Heading'],
+      ['paragraph', '第一段 with spaces'],
+      ['list-item', '列表 项目 nested duplicate'],
+      ['quote', '引用文本'],
+      ['code', 'const x = 1;\n  keep newline'],
+      ['table', '字段'],
+      ['table', '值'],
+      ['caption', '图注'],
+      ['paragraph', selectedText],
+      ['paragraph', '下一章节外的后文'],
+    ]);
+    expect(section?.blocks.map((block) => block.order)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    for (const block of section?.blocks ?? []) {
+      expect(parseSourceAnchor(block.anchor)).toEqual(block.anchor);
+    }
+
+    const bounded = await adapter.getSelectionChapterContext();
+    expect(bounded?.section.blocks.map((block) => block.text)).toEqual([
+      '标题 / Heading',
+      '第一段 with spaces',
+      '列表 项目 nested duplicate',
+      '引用文本',
+      'const x = 1;\n  keep newline',
+      '字段',
+      '值',
+      '图注',
+      '前文 中文 Unicode —',
+    ]);
+    expect(JSON.stringify(bounded)).not.toContain('selection 后文不得进入');
+    expect(JSON.stringify(bounded)).not.toContain('下一章节外的后文');
+  });
 });

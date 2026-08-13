@@ -1,4 +1,5 @@
 import { isGlossaEnabled } from '../featureFlag';
+import type { StructuredTextBlockKind } from './types';
 
 export type EpubTextSegment = {
   sectionIndex: number;
@@ -42,6 +43,18 @@ export type EpubAnchorReadingContext = {
   location: EpubLocation | null;
   visibleText: EpubAnchorTextSegment[];
   selectionParagraphs: EpubAnchorTextSegment[];
+};
+
+export type EpubStructuredTextBlock = EpubAnchorTextSegment & {
+  kind: StructuredTextBlockKind;
+  order: number;
+};
+
+export type EpubStructuredSectionText = {
+  sectionIndex: number;
+  sectionHref?: string;
+  sectionLabel?: string;
+  blocks: EpubStructuredTextBlock[];
 };
 
 type EpubContent = {
@@ -91,6 +104,7 @@ type ViewLocation = {
 };
 
 type Paragraph = EpubTextSegment & { element: Element };
+type StructuredElement = { element: Element; kind: StructuredTextBlockKind };
 
 const TEXT_NODE = 4;
 const BLOCK_SELECTOR = 'p, li, blockquote, pre, h1, h2, h3, h4, h5, h6, td, th, figcaption';
@@ -234,6 +248,16 @@ const textFromRange = (range: Range): string => {
   return parts.join('').trim();
 };
 
+const normalizeReadableText = (text: string): string => text.replace(/\s+/gu, ' ').trim();
+
+const normalizeCodeText = (text: string): string =>
+  text
+    .replace(/\r\n?/gu, '\n')
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+$/gu, ''))
+    .join('\n')
+    .trim();
+
 /** Read a real EPUB Range with the same hidden/untrusted-node filtering as B01–B05. */
 export const textFromEpubRange = (range: Range): string => textFromRange(range);
 
@@ -306,6 +330,32 @@ const paragraphsForDocument = (doc: Document, sectionIndex: number): Paragraph[]
   }
   return paragraphs;
 };
+
+const structuredElementFor = (element: Element): StructuredElement | null => {
+  if (element.matches('h1, h2, h3, h4, h5, h6')) return { element, kind: 'heading' };
+  if (element.matches('li')) return { element, kind: 'list-item' };
+  if (element.matches('blockquote')) return { element, kind: 'quote' };
+  if (element.matches('pre, code')) return { element, kind: 'code' };
+  if (element.matches('td, th')) return { element, kind: 'table' };
+  if (element.matches('figcaption')) return { element, kind: 'caption' };
+  if (element.matches('p')) return { element, kind: 'paragraph' };
+  return null;
+};
+
+const isStructuredDuplicate = (element: Element): boolean =>
+  // A list item, quote, or pre is the semantic unit. Its descendants must not
+  // become a second copy of the same body text.
+  (!!element.closest('li') && !element.matches('li')) ||
+  (!!element.closest('blockquote') && !element.matches('blockquote')) ||
+  (!!element.closest('pre') && !element.matches('pre'));
+
+const structuredElementsForDocument = (doc: Document): StructuredElement[] =>
+  [...doc.querySelectorAll(BLOCK_SELECTOR)]
+    .filter((element) => !element.matches(EXCLUDED_SELECTOR) && !isStructuredDuplicate(element))
+    .flatMap((element) => {
+      const structured = structuredElementFor(element);
+      return structured ? [structured] : [];
+    });
 
 const textFromRangeIntersection = (range: Range, element: Element): string => {
   const intersection = rangeIntersection(range, element);
@@ -417,6 +467,125 @@ const anchorSegment = (
     ...(cfi ? { cfi } : {}),
     quote: quoteForRange(range, text),
     ...(isSelectionParagraph ? { isSelectionParagraph: true } : {}),
+  };
+};
+
+const structuredAnchorBlock = (
+  view: EpubView,
+  sectionIndex: number,
+  range: Range,
+  kind: StructuredTextBlockKind,
+  order: number,
+  excludeSuffix = false,
+): EpubStructuredTextBlock | null => {
+  const rawText = textFromRange(range);
+  const text = kind === 'code' ? normalizeCodeText(rawText) : normalizeReadableText(rawText);
+  if (!text) return null;
+  const anchored = anchorSegment(view, sectionIndex, range, rawText);
+  return {
+    ...anchored,
+    ...(excludeSuffix
+      ? {
+          quote: {
+            exact: anchored.quote.exact,
+            ...(anchored.quote.prefix ? { prefix: anchored.quote.prefix } : {}),
+          },
+        }
+      : {}),
+    text,
+    kind,
+    order,
+  };
+};
+
+const structuredSectionForDocument = (
+  view: EpubView,
+  doc: Document,
+  sectionIndex: number,
+  location: EpubLocation | null,
+): EpubStructuredSectionText => {
+  const blocks: EpubStructuredTextBlock[] = [];
+  for (const { element, kind } of structuredElementsForDocument(doc)) {
+    const range = doc.createRange();
+    range.selectNodeContents(element);
+    const block = structuredAnchorBlock(view, sectionIndex, range, kind, blocks.length);
+    if (block) blocks.push(block);
+  }
+  return {
+    sectionIndex,
+    ...(location?.sectionHref ? { sectionHref: location.sectionHref } : {}),
+    ...(location?.sectionLabel ? { sectionLabel: location.sectionLabel } : {}),
+    blocks,
+  };
+};
+
+const rangeBeforeSelectionStart = (selection: Range, element: Element): Range | null => {
+  const doc = element.ownerDocument;
+  const elementRange = doc.createRange();
+  elementRange.selectNodeContents(element);
+  // The full block is safe only when it ends no later than the selection start.
+  const startRelation = elementRange.comparePoint(selection.startContainer, selection.startOffset);
+  if (startRelation === 1) return elementRange;
+  if (startRelation !== 0) return null;
+  // The block holding the selection start contributes only its prefix. The
+  // selection itself stays a distinct source, so no selected or later text is
+  // duplicated into chapter context.
+  const prefix = doc.createRange();
+  prefix.setStart(elementRange.startContainer, elementRange.startOffset);
+  prefix.setEnd(selection.startContainer, selection.startOffset);
+  return prefix;
+};
+
+/**
+ * Reads the current loaded EPUB section into cleaned semantic blocks. This is
+ * an adapter boundary: returned values are JSON-safe and anchors retain the
+ * original local quote used by the existing navigator.
+ */
+export const getEpubStructuredSectionText = (
+  runtime: EpubRuntime,
+): EpubStructuredSectionText | null => {
+  const location = getLocation(runtime);
+  const sectionIndex = location?.sectionIndex;
+  if (typeof sectionIndex !== 'number') return null;
+  const content = getContents(runtime.view).find((entry) => entry.index === sectionIndex);
+  if (!content) return null;
+  return structuredSectionForDocument(runtime.view, content.doc, sectionIndex, location);
+};
+
+/**
+ * Returns only blocks conclusively before the native selection start. It never
+ * consults BookProgress.fraction and therefore has no unsafe progress fallback.
+ */
+export const getEpubStructuredChapterToSelection = (
+  runtime: EpubRuntime,
+): EpubStructuredSectionText | null => {
+  const location = getLocation(runtime);
+  const selection = getSelection(runtime.view, location?.sectionIndex ?? null);
+  if (!selection) return null;
+  const doc = selection.range.startContainer.ownerDocument;
+  if (!doc) return null;
+  const content = findContentForDocument(getContents(runtime.view), doc);
+  if (!content || content.index !== selection.data.sectionIndex) return null;
+  const blocks: EpubStructuredTextBlock[] = [];
+  for (const { element, kind } of structuredElementsForDocument(content.doc)) {
+    const range = rangeBeforeSelectionStart(selection.range, element);
+    const block = range
+      ? structuredAnchorBlock(
+          runtime.view,
+          selection.data.sectionIndex,
+          range,
+          kind,
+          blocks.length,
+          true,
+        )
+      : null;
+    if (block) blocks.push(block);
+  }
+  return {
+    sectionIndex: selection.data.sectionIndex,
+    ...(location?.sectionHref ? { sectionHref: location.sectionHref } : {}),
+    ...(location?.sectionLabel ? { sectionLabel: location.sectionLabel } : {}),
+    blocks,
   };
 };
 

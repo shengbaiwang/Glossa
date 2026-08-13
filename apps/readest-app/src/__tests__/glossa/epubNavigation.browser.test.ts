@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
-import { createEpubAnchorNavigator, type EpubNavigationRuntime, type SourceAnchor } from '@/glossa';
+import {
+  createEpubAnchorNavigator,
+  createEpubDocumentAdapter,
+  type EpubNavigationRuntime,
+  type SourceAnchor,
+} from '@/glossa';
 import { DocumentLoader, type BookDoc } from '@/libs/document';
 import type { FoliateView } from '@/types/view';
 
@@ -324,4 +329,35 @@ describe('EPUB anchor recovery under real foliate reflow (browser)', () => {
     expect(returned.index).toBe(origin.index);
     navigator.dispose();
   });
+
+  test('snapshots only cleaned chapter blocks before a real foliate selection across reflow', async () => {
+    await Promise.resolve(view.goTo(0));
+    const { doc } = rendered(view, 0);
+    const range = findTextRange(doc, 'amber mark');
+    const nativeSelection = doc.getSelection();
+    nativeSelection?.removeAllRanges();
+    nativeSelection?.addRange(range);
+    const adapter = createEpubDocumentAdapter({
+      documentId: DOCUMENT_ID,
+      getRuntime: () => ({
+        view: view as unknown as EpubNavigationRuntime['view'],
+        progress: null,
+      }),
+    });
+    const snapshot = await adapter.getSelectionChapterContext();
+    expect(snapshot?.section.blocks.map(({ text }) => text)).toEqual([
+      'The Aster Index / 星标索引',
+      'The Aster Index records every',
+    ]);
+    expect(JSON.stringify(snapshot)).not.toContain('amber mark');
+    expect(JSON.stringify(snapshot)).not.toContain('星标索引在读者翻页前');
+
+    await settleReflow(view, () => {
+      view.style.width = '640px';
+      view.renderer.setStyles?.(':root { font-size: 24px !important; }');
+    });
+    // The JSON-safe snapshot has no remaining live DOM dependency, so reflow
+    // cannot expand its evidence range after the panel has opened.
+    expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
+  }, 30000);
 });

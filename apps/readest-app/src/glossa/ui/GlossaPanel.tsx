@@ -34,6 +34,7 @@ const SELECTION_PREVIEW_LIMIT = 500;
 const QUESTION_CHARACTER_LIMIT = 2000;
 
 type ProviderChoice = 'mock' | 'deepseek';
+type ContextScopeChoice = 'minimal' | 'chapter-to-selection';
 
 type PendingDeepSeekRequest = {
   request: Pick<AIProviderRequest, 'action' | 'question'>;
@@ -129,6 +130,8 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
     width,
     selection,
     contextPack,
+    chapterContextPack,
+    chapterContextUnavailableReason,
     navigator,
     close,
     togglePinned,
@@ -142,6 +145,7 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [navigationSession, setNavigationSession] = useState<AnchorNavigationSession | null>(null);
   const [providerChoice, setProviderChoice] = useState<ProviderChoice>('mock');
+  const [contextScope, setContextScope] = useState<ContextScopeChoice>('minimal');
   const [deepSeekStatus, setDeepSeekStatus] = useState({ available: false, configured: false });
   const [deepSeekStatusError, setDeepSeekStatusError] = useState<string | null>(null);
   const [pendingDeepSeekRequest, setPendingDeepSeekRequest] =
@@ -159,6 +163,8 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
   const activeProvider =
     provider ??
     (providerChoice === 'deepseek' ? deepSeekProviderRef.current : mockProviderRef.current);
+  const activeContextPack =
+    contextScope === 'chapter-to-selection' ? (chapterContextPack ?? contextPack) : contextPack;
   if (!requestControllerRef.current) {
     requestControllerRef.current = new GlossaRequestController(activeProvider);
     activeProviderRef.current = activeProvider;
@@ -193,6 +199,7 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
     setErrorMessage(null);
     setPendingDeepSeekRequest(null);
     setHasConfirmedDeepSeekScope(false);
+    setContextScope('minimal');
     close();
     setIsFullHeightInMobile(isMobile);
   }, [close, isMobile, navigationSession]);
@@ -234,6 +241,24 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
     // selection; clearing an older stream here prevents stale evidence/UI.
   }, [contextPack]);
 
+  const changeContextScope = useCallback(
+    (scope: ContextScopeChoice) => {
+      if (scope === contextScope) return;
+      if (scope === 'chapter-to-selection' && !chapterContextPack) return;
+      requestControllerRef.current?.cancel();
+      navigationSession?.dispose();
+      setNavigationSession(null);
+      setTurns([]);
+      setQuestion('');
+      setQuestionError(null);
+      setErrorMessage(null);
+      setPendingDeepSeekRequest(null);
+      setHasConfirmedDeepSeekScope(false);
+      setContextScope(scope);
+    },
+    [chapterContextPack, contextScope, navigationSession],
+  );
+
   useEffect(() => {
     conversationEndRef.current?.scrollIntoView?.({ block: 'nearest' });
   }, [turns]);
@@ -252,12 +277,12 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
       displayQuestion: string,
       retryTurn?: GlossaPanelTurn,
     ) => {
-      if (!contextPack) {
+      if (!activeContextPack) {
         setErrorMessage(_('Selected context is no longer available.'));
         return;
       }
-      const documentId = contextPack.segments[0]?.anchor.documentId;
-      const contextPackId = getContextPackId(contextPack);
+      const documentId = activeContextPack.segments[0]?.anchor.documentId;
+      const contextPackId = getContextPackId(activeContextPack);
       if (
         retryTurn &&
         (retryTurn.contextPackId !== contextPackId || retryTurn.provider !== activeProvider)
@@ -329,7 +354,7 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
       }
       setErrorMessage(null);
       void requestControllerRef.current?.run(
-        { ...request, contextPack, history },
+        { ...request, contextPack: activeContextPack, history },
         {
           onText: (text) => {
             setTurns((current) =>
@@ -381,7 +406,7 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
         },
       );
     },
-    [_, activeProvider, contextPack, turns],
+    [_, activeContextPack, activeProvider, turns],
   );
 
   const retryRequest = useCallback(
@@ -637,8 +662,45 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
                 {_('Context')}
               </p>
               <p className='text-base-content/65 text-sm leading-6'>
-                {contextPack?.scopeLabel ?? _('Selected context is no longer available.')}
+                {activeContextPack?.scopeLabel ?? _('Selected context is no longer available.')}
               </p>
+              <div
+                className='mt-2 flex flex-wrap gap-2'
+                role='radiogroup'
+                aria-label={_('Context range')}
+              >
+                <button
+                  type='button'
+                  role='radio'
+                  aria-checked={contextScope === 'minimal'}
+                  className={clsx(
+                    'btn btn-sm',
+                    contextScope === 'minimal' ? 'btn-contrast' : 'btn-ghost',
+                  )}
+                  onClick={() => changeContextScope('minimal')}
+                >
+                  {_('最小范围')}
+                </button>
+                <button
+                  type='button'
+                  role='radio'
+                  aria-checked={contextScope === 'chapter-to-selection'}
+                  disabled={!chapterContextPack}
+                  title={chapterContextUnavailableReason ?? undefined}
+                  className={clsx(
+                    'btn btn-sm',
+                    contextScope === 'chapter-to-selection' ? 'btn-contrast' : 'btn-ghost',
+                  )}
+                  onClick={() => changeContextScope('chapter-to-selection')}
+                >
+                  {_('本章开头至选区')}
+                </button>
+              </div>
+              {chapterContextUnavailableReason && !chapterContextPack && (
+                <p className='text-base-content/60 mt-2 text-xs'>
+                  {_(chapterContextUnavailableReason)}
+                </p>
+              )}
             </section>
             {!provider && (
               <section aria-label={_('Glossa provider')} className='space-y-2'>
@@ -732,7 +794,7 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
                 <p className='font-medium'>{_('Confirm sending reading context')}</p>
                 <p className='text-base-content/65 leading-6'>
                   {_(
-                    'Will send: the current selection + one preceding paragraph in the same chapter + up to 3 recent conversation turns. It will not send later text, the whole book, or notes.',
+                    `Will send: ${activeContextPack?.scopeLabel ?? _('selected context')} (${activeContextPack?.segments.length ?? 0} segments) + up to 3 recent conversation turns. It will not send selection-later text, the whole book, or notes.`,
                   )}
                 </p>
                 <p className='text-base-content/65 leading-6'>

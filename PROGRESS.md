@@ -5,10 +5,10 @@
 ## 1. 当前状态
 
 - 当前阶段：M1 EPUB 垂直闭环进行中。
-- 当前里程碑：M1（B01–B08、C01–C07、D01–D07、E02–E03 已完成）。
+- 当前里程碑：M1（B01–B08、C01–C07、D01–D07、E01–E04 已完成）。
 - 仓库状态：已导入 Readest v0.12.1；`main` 指向上游 release commit `f3e1df7e0572c0119cbb420e1e27ca9af859f91c`，并保留完整上游 Git 历史及 `upstream` remote（`https://github.com/readest/readest.git`）。
 - 可运行版本：Readest 桌面开发版已在本机实际启动并显示 EPUB 阅读窗口；开发进程已优雅退出，没有遗留本轮启动的后台服务。
-- 总体状态：A01–A06、B01–B08、C01–C07、D01–D07、E02–E03 已完成。Glossa 现有默认 Mock 的 EPUB 选区→最小上下文→自由问题/三种快捷动作→最多三轮有界追问→本地来源→跳转/返回闭环；DeepSeek V4 Flash 仅在用户选择、钥匙串已配置且首次发送范围确认后启用。隔离的 Glossa Dev 已完成一次用户主动的真实桌面验收：Rust HTTP transport、系统钥匙串、首轮回答、两轮追问、来源跳转/临时高亮和返回均成功。另有独立的 Glossa Dev 运行身份，避免与本机 Readest 共用应用数据或构建输出。完整单测仍存在 3 个可复现的上游 Turso 向量距离精度失败，见“最近验证”。
+- 总体状态：A01–A06、B01–B08、C01–C07、D01–D07、E01–E04 已完成。EPUB 选区打开时会一次性快照最小范围与可验证的“本章开头至选区”；后者永远不含选区后文或下一章，范围切换不持久化且会取消旧请求、清空对话、结束旧导航并重新确认 DeepSeek。DeepSeek V4 Flash 仅在用户选择、钥匙串已配置且首次发送范围确认后启用；本轮没有真实 API 请求。完整单测仍存在 3 个可复现的上游 Turso 向量距离精度失败，见“最近验证”。
 
 ## 2. 已完成
 
@@ -95,11 +95,11 @@
 
 ## 3. 正在进行
 
-M1 的真实 Provider 基线与 D06–D07 最小可靠性切片均已完成：C01–C07、D01–D07、E02–E03 已完成。全文检索和笔记仍未开始。
+M1 的 EPUB 纵向闭环已完成：C01–C07、D01–D07、E01–E04 均已完成。全文检索、最远已读边界和笔记仍未开始。
 
 ## 4. 下一步
 
-1. 下一步建议评估是否开始 E01/E04 的章节文本与已读范围基础；在固定评测证明需要前，不加入全文语义检索、笔记、格式或新供应商。
+1. 下一步建议先评估 E05 的可信最远已读边界；在此之前不得扩大章节范围、加入全文检索、笔记、格式或新供应商。
 
 ## 5. 当前阻塞项
 
@@ -117,11 +117,14 @@ M1 的真实 Provider 基线与 D06–D07 最小可靠性切片均已完成：C0
 - C01 只在现有 Readest 选区已经有效时显示入口；如果 foliate 在一次极端重排中先失去原生 Selection，点击会安全无操作，不会产生持久化副作用。
 - C02 复用 Notebook 已验证的交互模式而不共享其持久化设置；Glossa 宽度只保存在当前进程，关闭后仍保留最后一次瞬态快照以支持无副作用重开，重启后丢弃。
 - 本轮的“未使用后文”是保守实现：当前没有可验证的最远已读边界，因此不发送选区后的邻近段；E05 完成前不得把当前位置或章节剩余文字当作已读证据。
+- E04 的章节模式不是“整章”：它只从章节起点累积到选区结束，选区中段时把该段落前缀与独立选区分开；无法证明边界时禁用章节模式并降级最小范围。预算为最多 32 个 segments、约 12,000 个 Unicode 字符，始终保留选区，超出时保留标题及最邻近前文。
 - Readest 现有全文搜索是否能直接限定到已读范围，尚未验证。
 - PDF、网页和移动端目前只有接口规划，没有实现证据。
 - 如果未来公开分发或闭源商业化，需要重新评估 AGPL-3.0。
 
 ## 7. 最近验证
+
+- [x] E01/E04：`pnpm --filter @readest/readest-app test --run src/__tests__/glossa` 通过；覆盖章节清洗、隐藏/父子去重、中文与代码换行、选区中段后文排除、章节 ContextPack 预算/顺序/sourceId、范围 UI 与 Provider 边界。`pnpm --filter @readest/readest-app exec vitest run --config vitest.browser.config.mts src/__tests__/glossa/epubNavigation.browser.test.ts` 通过，使用原创真实 foliate EPUB 选区并在重排后验证快照语义范围不变。自动测试只用 Mock/fake transport。
 
 - [x] `pnpm --filter @readest/readest-app test --run src/__tests__/glossa`：通过，14 个文件、123 个测试；新增 D06 的逐段原文/推断文字与 aria 标签、external 拒绝、insufficient 独立状态，以及 D07 的六种结构错误各一次修复、第二次停止、相同 ContextPack/历史边界、修复取消、非结构错误不自动重试和用户主动重试覆盖。全部使用 Mock 或注入假 transport，不访问公网。
 - [x] macOS Tauri WebView `deepseekProvider.tauri.test.tsx`：通过，使用测试专用钥匙串和进程内假 SSE transport；首个 external 结果被本地校验拒绝，单次修复后的 inference 回答显示依据标签，并继续验证来源跳转、临时高亮、返回与测试 Key 清理。为避开用户已运行 Next 开发进程的 `.next` 锁，复用其本地服务并只启动/清理本轮 WebDriver/Tauri 子进程；未访问 DeepSeek。

@@ -11,8 +11,15 @@ export type GlossaPanelState = {
   width: string;
   selection: SelectedText | null;
   contextPack: ContextPack | null;
+  chapterContextPack: ContextPack | null;
+  chapterContextUnavailableReason: string | null;
   navigator: DocumentNavigator | null;
-  open: (selection: SelectedText, contextPack?: ContextPack, navigator?: DocumentNavigator) => void;
+  open: (
+    selection: SelectedText,
+    contextPack?: ContextPack,
+    navigator?: DocumentNavigator,
+    chapterContext?: { pack: ContextPack | null; unavailableReason?: string },
+  ) => void;
   close: () => void;
   togglePinned: () => void;
   toggleCollapsed: () => void;
@@ -30,8 +37,10 @@ export const useGlossaPanelStore = create<GlossaPanelState>((set) => ({
   width: '32%',
   selection: null,
   contextPack: null,
+  chapterContextPack: null,
+  chapterContextUnavailableReason: null,
   navigator: null,
-  open: (selection, contextPack, navigator) =>
+  open: (selection, contextPack, navigator, chapterContext) =>
     set((state) => {
       if (state.navigator && state.navigator !== navigator) state.navigator.dispose();
       return {
@@ -39,6 +48,8 @@ export const useGlossaPanelStore = create<GlossaPanelState>((set) => ({
         isCollapsed: false,
         selection,
         contextPack: contextPack ?? null,
+        chapterContextPack: chapterContext?.pack ?? null,
+        chapterContextUnavailableReason: chapterContext?.unavailableReason ?? null,
         navigator: navigator ?? null,
       };
     }),

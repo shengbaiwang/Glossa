@@ -2,11 +2,15 @@
 
 ## DocumentAdapter
 
-`src/glossa/context/types.ts` 定义格式无关、可 JSON 序列化的最小读取协议：选区、当前位置、可见文本和有限邻近段。领域协议不导入 DOM、React、Readest store 或 foliate 类型，也不包含 `Range`、`Document`、`HTMLElement` 或 iframe。
+`src/glossa/context/types.ts` 定义格式无关、可 JSON 序列化的读取协议：选区、当前位置、可见文本、有限邻近段及 `StructuredSectionText`。章节协议为 `{ documentId, format, sectionId, sectionIndex?, sectionLabel?, blocks }`；每个 block 是 `{ kind, order, text, anchor }`，`kind` 限于 heading、paragraph、list-item、quote、code、table、caption。领域协议不导入 DOM、React、Readest store 或 foliate 类型，也不包含 `Range`、`Document`、`HTMLElement` 或 iframe。
 
 `createEpubDocumentAdapter({ documentId, getRuntime })` 是当前唯一实现。`documentId` 必须由书库/调用方提供，不能从书名或文件路径推断；适配器每次调用 `getRuntime()`，因此不会持有重排或重载前的 EPUB runtime。未初始化 reader 返回 `null` 或空数组。
 
 Readest/foliate 的 iframe、`Range`、`renderer.getContents()`、`lastLocation` 和 `view.getCFI()` 只留在 `context/epub.ts` 与 `context/epubAdapter.ts` 的 EPUB 边界。适配器复用 B01–B03 的有界上下文读取，不监听、定时、持久化，也不调用模型、网络或数据库。
+
+EPUB 是唯一真实章节实现。它复用可信文本过滤，排除 script/style/template/nav、`hidden`、`aria-hidden` 和 `display:none`/`visibility:hidden`；普通正文统一空白，code 保留有意义换行，列表/引用/pre 的子元素不会重复抽取。block 的清洗文本供模型阅读，而其 `SourceAnchor` 保留真实本地 TextQuote 和 CFI，因此现有导航器仍可恢复每个 block。
+
+`getSelectionChapterContext()` 只能在原生 Selection 被清理前调用。它返回同一章节中可证明位于 selection 起点之前的 blocks，并把所在 block 截为前缀；selection 仍是独立 source。它不使用 `BookProgress.fraction`，也没有“整章”或不确定边界回退。
 
 ## SourceAnchor V1
 
@@ -58,6 +62,8 @@ Vitest 单元测试覆盖 schema/documentId/reader 失败、CFI 文本验证与�
 ## Mock reading-loop protocol
 
 `context/contextPack.ts` creates the C03 evidence boundary from one `SelectedText` and adapter-provided same-section neighbours. Every segment has a deterministic `sourceId` derived from its complete `SourceAnchor`; C03 currently retains the selection plus at most the immediately preceding paragraph. Readest exposes current position, not a verified historical read frontier, so a following paragraph is excluded and the UI states `未使用后文`.
+
+E04 additionally creates a `chapter-to-selection` ContextPack only from that selection-time snapshot. Its scope is explicit and JSON-safe; it always retains the separate selection, never includes selection-later text or a later section, and uses no history/progress inference. The deterministic budget is `MAX_CHAPTER_CONTEXT_SEGMENTS = 32` and `MAX_CHAPTER_CONTEXT_CHARACTERS = 12,000` Unicode characters (selection may exceed the approximate character budget rather than being cut). On overflow it preserves a fitting chapter heading plus nearest preceding blocks, restores document order, marks truncation, and leaves ordinary blocks uncut. Switching the panel from “最小范围” to “本章开头至选区” cancels active/repair requests, clears turns and navigation, invalidates old retry, and requires a fresh DeepSeek scope confirmation; it writes nothing to stores or disk.
 
 `ai/` contains the stream-first provider-neutral protocol, strict zod `GlossaAnswer`, source-id whitelist validation, and a no-network `MockProvider`. Provider events contain source IDs only; after validation, displayed quote previews and jump anchors are resolved exclusively from the local `ContextPack`. Unknown, duplicated, or malformed references are structured failures and never reach the panel. The request controller passes `AbortSignal`, cancels on replacement/close/selection change, and ignores stale streams.
 

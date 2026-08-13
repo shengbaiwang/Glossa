@@ -1,7 +1,12 @@
 import { describe, expect, test } from 'vitest';
 
-import { createContextPack } from '@/glossa/context/contextPack';
-import type { SelectedText, SourceSegment } from '@/glossa/context/types';
+import {
+  createChapterToSelectionContextPack,
+  createContextPack,
+  MAX_CHAPTER_CONTEXT_CHARACTERS,
+  MAX_CHAPTER_CONTEXT_SEGMENTS,
+} from '@/glossa/context/contextPack';
+import type { SelectedText, SourceSegment, StructuredTextBlock } from '@/glossa/context/types';
 
 const segment = (text: string, cfi: string): SourceSegment => ({
   text,
@@ -63,5 +68,56 @@ describe('ContextPack', () => {
 
     expect(pack.hasPreviousContext).toBe(false);
     expect(pack.segments).toHaveLength(1);
+  });
+
+  test('builds a chapter-to-selection pack in document order without selection duplication', () => {
+    const selected = segment('selected text', 'epubcfi(/6/2!/4/7:0)');
+    const blocks: StructuredTextBlock[] = [
+      { ...segment('Chapter one', 'epubcfi(/6/2!/4/1:0)'), kind: 'heading', order: 0 },
+      { ...segment('earlier paragraph', 'epubcfi(/6/2!/4/3:0)'), kind: 'paragraph', order: 1 },
+      { ...selected, kind: 'paragraph', order: 2 },
+    ];
+    const pack = createChapterToSelectionContextPack({
+      selection: selected,
+      precedingBlocks: blocks,
+    });
+    expect(pack.scope).toMatchObject({ kind: 'chapter-to-selection', truncated: false });
+    expect(pack.segments.map(({ text }) => text)).toEqual([
+      'Chapter one',
+      'earlier paragraph',
+      'selected text',
+    ]);
+    expect(pack.segments.filter(({ role }) => role === 'selection')).toHaveLength(1);
+    expect(pack.scopeLabel).toBe('本章开头至选区 · 3 段 · 未使用后文');
+  });
+
+  test('uses deterministic segment and Unicode budgets while retaining the selection', () => {
+    const selected = segment('选区', 'epubcfi(/6/2!/4/99:0)');
+    const blocks: StructuredTextBlock[] = Array.from(
+      { length: MAX_CHAPTER_CONTEXT_SEGMENTS + 5 },
+      (_, order) => ({
+        ...segment(
+          `${'文'.repeat(Math.floor(MAX_CHAPTER_CONTEXT_CHARACTERS / 3))}${order}`,
+          `epubcfi(/6/2!/4/${order}:0)`,
+        ),
+        kind: order === 0 ? 'heading' : 'paragraph',
+        order,
+      }),
+    );
+    const pack = createChapterToSelectionContextPack({
+      selection: selected,
+      precedingBlocks: blocks,
+    });
+    expect(pack.scope).toMatchObject({ kind: 'chapter-to-selection', truncated: true });
+    expect(pack.segments).toHaveLength(3);
+    expect(pack.segments.at(-1)?.text).toBe('选区');
+    expect(pack.segments.map(({ text }) => text)).toEqual([
+      blocks[0]!.text,
+      blocks.at(-1)!.text,
+      '选区',
+    ]);
+    expect(Array.from(pack.segments.map(({ text }) => text).join('')).length).toBeLessThanOrEqual(
+      MAX_CHAPTER_CONTEXT_CHARACTERS,
+    );
   });
 });

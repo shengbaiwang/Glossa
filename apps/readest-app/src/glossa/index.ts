@@ -7,17 +7,26 @@
  */
 export { isGlossaEnabled } from './featureFlag';
 export { createEpubDocumentAdapter } from './context/epubAdapter';
-export { createContextPack } from './context/contextPack';
+export {
+  createChapterToSelectionContextPack,
+  createContextPack,
+  MAX_CHAPTER_CONTEXT_CHARACTERS,
+  MAX_CHAPTER_CONTEXT_SEGMENTS,
+} from './context/contextPack';
 export { createEpubAnchorNavigator } from './context/epubNavigation';
 export type { EpubAnchorNavigatorOptions, EpubNavigationRuntime } from './context/epubNavigation';
 export type {
   DocumentAdapter,
   DocumentFormat,
   DocumentLocation,
+  SelectionChapterContext,
   SelectedText,
   SourceSegment,
+  StructuredSectionText,
+  StructuredTextBlock,
+  StructuredTextBlockKind,
 } from './context/types';
-export type { ContextPack, ContextSegment } from './context/contextPack';
+export type { ContextPack, ContextScope, ContextSegment } from './context/contextPack';
 export {
   deserializeSourceAnchor,
   parseSourceAnchor,
