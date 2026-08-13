@@ -33,6 +33,7 @@ export type {
   GlossaConversationTurn,
   GlossaAction,
   ProviderError,
+  StructuralRepairReason,
 } from './provider';
 export { GlossaRequestController } from './requestController';
 export type { GlossaRequestHandlers } from './requestController';

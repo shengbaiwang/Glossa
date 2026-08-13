@@ -5,10 +5,10 @@
 ## 1. 当前状态
 
 - 当前阶段：M1 EPUB 垂直闭环进行中。
-- 当前里程碑：M1（B01–B08、C01–C07、D01–D05、E02–E03 已完成；D06/D07 部分完成）。
+- 当前里程碑：M1（B01–B08、C01–C07、D01–D07、E02–E03 已完成）。
 - 仓库状态：已导入 Readest v0.12.1；`main` 指向上游 release commit `f3e1df7e0572c0119cbb420e1e27ca9af859f91c`，并保留完整上游 Git 历史及 `upstream` remote（`https://github.com/readest/readest.git`）。
 - 可运行版本：Readest 桌面开发版已在本机实际启动并显示 EPUB 阅读窗口；开发进程已优雅退出，没有遗留本轮启动的后台服务。
-- 总体状态：A01–A06、B01–B08、C01–C07、D01–D05、E02–E03 已完成。Glossa 现有默认 Mock 的 EPUB 选区→最小上下文→自由问题/三种快捷动作→最多三轮有界追问→本地来源→跳转/返回闭环；DeepSeek V4 Flash 仅在用户选择、钥匙串已配置且首次发送范围确认后启用。隔离的 Glossa Dev 已完成一次用户主动的真实桌面验收：Rust HTTP transport、系统钥匙串、首轮回答、两轮追问、来源跳转/临时高亮和返回均成功。另有独立的 Glossa Dev 运行身份，避免与本机 Readest 共用应用数据或构建输出。完整单测仍存在 3 个可复现的上游 Turso 向量距离精度失败，见“最近验证”。
+- 总体状态：A01–A06、B01–B08、C01–C07、D01–D07、E02–E03 已完成。Glossa 现有默认 Mock 的 EPUB 选区→最小上下文→自由问题/三种快捷动作→最多三轮有界追问→本地来源→跳转/返回闭环；DeepSeek V4 Flash 仅在用户选择、钥匙串已配置且首次发送范围确认后启用。隔离的 Glossa Dev 已完成一次用户主动的真实桌面验收：Rust HTTP transport、系统钥匙串、首轮回答、两轮追问、来源跳转/临时高亮和返回均成功。另有独立的 Glossa Dev 运行身份，避免与本机 Readest 共用应用数据或构建输出。完整单测仍存在 3 个可复现的上游 Turso 向量距离精度失败，见“最近验证”。
 
 ## 2. 已完成
 
@@ -83,8 +83,8 @@
 - [x] **D02 DeepSeekProvider。** 新增独立 `DeepSeekProvider`，复用 `getAIFetch()`（Tauri Rust HTTP transport）访问官方 OpenAI-compatible `https://api.deepseek.com/chat/completions`。模型固定为 `deepseek-v4-flash`，请求显式包含 `stream: true`、`thinking: { type: "disabled" }`、`response_format: { type: "json_object" }` 和适中的 2,048 `max_tokens`；不发送工具、外部搜索、服务端会话、整本书、后文或笔记。SSE 支持 data-only 事件、keep-alive、`[DONE]`、content delta、finish reason 和中断；不显示 JSON/SSE/reasoning_content。当前 SDK 未提供可靠的 partial structured output，因此流式期间仅显示“正在生成”，完整 JSON 在 zod + 当前 ContextPack sourceId 白名单通过后才显示。用户必须选中 DeepSeek、钥匙串可用且已配置，并在第一次真实请求前确认精确发送范围。
 - [x] **D03 DeepSeek 系统钥匙串。** 使用已有 `setSecureItem`/`getSecureItem`/`clearSecureItem`/`isSyncKeychainAvailable`，生产键名固定为 `glossa.deepseek.api-key.v1`。Key 不进入 React state、Zustand、localStorage、数据库、日志、测试快照或仓库文件；UI 只显示已配置/未配置，密码框保存后清空并可删除。Web 或钥匙串不可用时禁用 DeepSeek、保留 Mock。Tauri WebView 测试使用专用 `glossa.test.deepseek.api-key.v1` 并清理。
 - [x] **真实桌面验收（用户主动）。** 用户在隔离的 Glossa Dev 中仅通过应用界面保存自己的 Key，并手动完成一次首轮真实回答和两轮追问；每个答案的本地来源均可点击，且成功跳回原文、临时高亮并返回原阅读位置。此验收确认真实 Rust HTTP transport 与钥匙串路径；不记录问题、正文、回答、Key、header 或原始服务端响应。自动测试继续只用假 transport/测试钥匙串，不访问公网；真实请求由用户主动操作，可能产生模型费用。
-- [ ] **D06（部分）。** 已显示 `insufficient_evidence`；DeepSeek 拒绝 `external` basis，防止外部知识以原文答案进入 UI。推断的单独 UI 标记未实现。
-- [ ] **D07（部分）。** 已实现真实 HTTP Abort（新请求、取消、关闭、选区/Provider 切换）、45 秒 timeout，及 missing-key、401、402、400/422、429、500、503、network、invalid-response、evidence-insufficient 分类。按本轮范围未实现自动重试。
+- [x] **D06 事实、推断和外部知识边界。** 每个正式回答段落现在以可读文本和 aria 标签显示“原文”或“基于原文的推断”；推断与原文都必须通过当前 ContextPack 的 sourceId 白名单，引用文字与 `SourceAnchor` 仍只从本地读取。`external`、无来源、未知/重复 sourceId 与 schema 无效回答均不会显示或降级伪装；`insufficient_evidence` 保持独立“当前证据不足”状态且不显示空引用标签。Mock 确定性覆盖 document、inference、insufficient 三种场景。
+- [x] **D07 有界结构修复与人工重试。** 同一用户请求只会对空 JSON、非法 JSON、schema、未知 sourceId、重复 sourceId 或 external basis 自动修复一次；第二次仅附加简短校验失败类型、合法 JSON、当前 sourceId 白名单、禁止 external、证据不足时返回 `insufficient_evidence` 的约束，不发送旧无效输出、不扩大 ContextPack。修复与首次请求共用同一 Provider、模型、问题、历史和 AbortSignal；第二次失败安全停止且不显示未验证内容。401、402、400/422、429、500、503、timeout、network-error 和用户取消均不自动重试；仅 429、500、503、timeout、network-error 显示用户主动“重试”按钮。重试复用保存的当前问题、ContextPack 与最多三轮完整历史；选区/ContextPack、Provider 或文档变化会清除旧对话并使旧重试失效，范围变化时重新确认发送范围。
 
 ### 开发运行时隔离
 
@@ -95,11 +95,11 @@
 
 ## 3. 正在进行
 
-M1 的真实 Provider 基线已完成并经过一次用户主动的真实桌面验收：C01–C07、D01–D05、E02–E03 已完成，D06/D07 如上部分完成。下一步只收口 D06 的事实/推断边界与 D07 的有界结构修复、人工重试；全文检索和笔记仍未开始。
+M1 的真实 Provider 基线与 D06–D07 最小可靠性切片均已完成：C01–C07、D01–D07、E02–E03 已完成。全文检索和笔记仍未开始。
 
 ## 4. 下一步
 
-1. 完成 D06–D07：逐段显示原文/推断依据、拒绝 `external`，并对结构性无效回答最多进行一次同范围修复；非结构性可恢复错误只允许用户主动重试。不得在该切片中扩展检索、笔记、格式或供应商。
+1. 下一步建议评估是否开始 E01/E04 的章节文本与已读范围基础；在固定评测证明需要前，不加入全文语义检索、笔记、格式或新供应商。
 
 ## 5. 当前阻塞项
 
@@ -122,6 +122,11 @@ M1 的真实 Provider 基线已完成并经过一次用户主动的真实桌面�
 - 如果未来公开分发或闭源商业化，需要重新评估 AGPL-3.0。
 
 ## 7. 最近验证
+
+- [x] `pnpm --filter @readest/readest-app test --run src/__tests__/glossa`：通过，14 个文件、123 个测试；新增 D06 的逐段原文/推断文字与 aria 标签、external 拒绝、insufficient 独立状态，以及 D07 的六种结构错误各一次修复、第二次停止、相同 ContextPack/历史边界、修复取消、非结构错误不自动重试和用户主动重试覆盖。全部使用 Mock 或注入假 transport，不访问公网。
+- [x] macOS Tauri WebView `deepseekProvider.tauri.test.tsx`：通过，使用测试专用钥匙串和进程内假 SSE transport；首个 external 结果被本地校验拒绝，单次修复后的 inference 回答显示依据标签，并继续验证来源跳转、临时高亮、返回与测试 Key 清理。为避开用户已运行 Next 开发进程的 `.next` 锁，复用其本地服务并只启动/清理本轮 WebDriver/Tauri 子进程；未访问 DeepSeek。
+- [x] `pnpm --filter @readest/readest-app lint`、`fmt:check`、`clippy:check`、`git diff --check`：通过。clippy 仍仅输出锁定上游依赖与 Objective-C 宏 warning，没有目标 Readest lint 失败。
+- [x] 本轮没有由 Codex、自动测试或 Tauri 测试发起真实 DeepSeek API 请求。
 
 - [x] `pnpm --filter @readest/readest-app test --run src/__tests__/glossa`：通过，14 个文件、111 个测试；覆盖 DeepSeek 请求/SSE/JSON/错误/Abort、本地 sourceId 白名单、钥匙串保存/状态/删除/不可用/失败、默认 Mock、DeepSeek 选择与发送范围确认，以及既有连续追问和来源跳转。
 - [x] `pnpm --filter @readest/readest-app lint`：通过，检查 2,034 个文件。
@@ -188,4 +193,4 @@ M1 的真实 Provider 基线已完成并经过一次用户主动的真实桌面�
 - 合法、可再生的双语 EPUB fixture 已由桌面开发版实际导入并打开。
 - EPUB 选区、当前位置、可见文本和同章节邻近段已有经测试的只读入口；默认关闭不增加监听。
 - EPUB `DocumentAdapter` 及其 JSON-safe 的领域协议已公开；SourceAnchor V1 可严格校验、序列化，并在 CFI 失败时降级为章节/脊柱定位加真实 TextQuote。
-- EPUB 导航器可验证 CFI、使用有界 TextQuote 及章节降级，并提供不可持久化的短暂 overlay 与内存返回会话；真实浏览器重排矩阵为 108/108。C01–C07、D01–D05、E02–E03 已形成经单元、macOS Tauri WebView 和一次用户主动真实桌面验收验证的阅读闭环；D06/D07 仍待本轮收口。
+- EPUB 导航器可验证 CFI、使用有界 TextQuote 及章节降级，并提供不可持久化的短暂 overlay 与内存返回会话；真实浏览器重排矩阵为 108/108。C01–C07、D01–D07、E02–E03 已形成经单元、macOS Tauri WebView 和一次用户主动真实桌面验收验证的阅读闭环；全文检索和笔记仍未实施。

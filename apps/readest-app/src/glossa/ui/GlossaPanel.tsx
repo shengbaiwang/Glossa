@@ -18,7 +18,9 @@ import {
   saveDeepSeekApiKey,
   type AIProvider,
   type AIProviderRequest,
+  type GlossaConversationTurn,
   type GlossaAction,
+  type ProviderError,
   getContextPackId,
   type ValidatedGlossaAnswer,
 } from '../ai';
@@ -38,7 +40,7 @@ type PendingDeepSeekRequest = {
   label: string;
 };
 
-type TurnStatus = 'loading' | 'streaming' | 'complete' | 'insufficient' | 'cancelled' | 'error';
+type TurnStatus = 'generating' | 'repairing' | 'complete' | 'insufficient' | 'cancelled' | 'error';
 
 type GlossaPanelTurn = {
   id: number;
@@ -47,6 +49,31 @@ type GlossaPanelTurn = {
   streamedText: string;
   answer: ValidatedGlossaAnswer | null;
   errorMessage: string | null;
+  errorCode: ProviderError['code'] | null;
+  request: Pick<AIProviderRequest, 'action' | 'question'>;
+  history: GlossaConversationTurn[];
+  contextPackId: string;
+  provider: AIProvider;
+};
+
+const canManuallyRetry = (code: ProviderError['code'] | null): boolean =>
+  code === 'rate-limited' ||
+  code === 'server-error' ||
+  code === 'overloaded' ||
+  code === 'timeout' ||
+  code === 'network-error';
+
+const errorGuidance = (
+  error: ProviderError,
+  translate: (text: string) => string,
+): string | null => {
+  if (error.code === 'invalid-auth')
+    return translate('Delete or reconfigure the DeepSeek API key.');
+  if (error.code === 'insufficient-balance')
+    return translate('Check the DeepSeek account balance.');
+  if (error.code === 'invalid-request')
+    return translate('This request cannot be retried automatically.');
+  return null;
 };
 
 type GlossaPanelProps = {
@@ -201,6 +228,8 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
     setQuestion('');
     setQuestionError(null);
     setErrorMessage(null);
+    setPendingDeepSeekRequest(null);
+    setHasConfirmedDeepSeekScope(false);
     // A new ContextPack is only created while replacing the live browser
     // selection; clearing an older stream here prevents stale evidence/UI.
   }, [contextPack]);
@@ -218,49 +247,86 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
   );
 
   const executeRequest = useCallback(
-    (request: Omit<AIProviderRequest, 'contextPack' | 'history'>, displayQuestion: string) => {
+    (
+      request: Pick<AIProviderRequest, 'action' | 'question'>,
+      displayQuestion: string,
+      retryTurn?: GlossaPanelTurn,
+    ) => {
       if (!contextPack) {
         setErrorMessage(_('Selected context is no longer available.'));
         return;
       }
-      const turnId = nextTurnId.current++;
       const documentId = contextPack.segments[0]?.anchor.documentId;
       const contextPackId = getContextPackId(contextPack);
-      const history = turns
-        .filter(
-          (turn) => turn.answer && (turn.status === 'complete' || turn.status === 'insufficient'),
-        )
-        .slice(-3)
-        .flatMap((turn) =>
-          documentId
-            ? [
-                {
-                  documentId,
-                  contextPackId,
-                  user: { role: 'user' as const, text: turn.question },
-                  assistant: {
-                    role: 'assistant' as const,
-                    text:
-                      turn.answer!.answer.status === 'answered'
-                        ? turn.answer!.answer.paragraphs.map(({ text }) => text).join('\n')
-                        : turn.streamedText,
-                    answer: turn.answer!.answer,
-                  },
-                },
-              ]
-            : [],
+      if (
+        retryTurn &&
+        (retryTurn.contextPackId !== contextPackId || retryTurn.provider !== activeProvider)
+      ) {
+        setErrorMessage(
+          _('This retry is no longer available because its reading context changed.'),
         );
-      setTurns((current) => [
-        ...current,
-        {
-          id: turnId,
-          question: displayQuestion,
-          status: 'loading',
-          streamedText: '',
-          answer: null,
-          errorMessage: null,
-        },
-      ]);
+        return;
+      }
+      const history =
+        retryTurn?.history ??
+        turns
+          .filter(
+            (turn) => turn.answer && (turn.status === 'complete' || turn.status === 'insufficient'),
+          )
+          .slice(-3)
+          .flatMap((turn) =>
+            documentId
+              ? [
+                  {
+                    documentId,
+                    contextPackId,
+                    user: { role: 'user' as const, text: turn.question },
+                    assistant: {
+                      role: 'assistant' as const,
+                      text:
+                        turn.answer!.answer.status === 'answered'
+                          ? turn.answer!.answer.paragraphs.map(({ text }) => text).join('\n')
+                          : turn.streamedText,
+                      answer: turn.answer!.answer,
+                    },
+                  },
+                ]
+              : [],
+          );
+      const turnId = retryTurn?.id ?? nextTurnId.current++;
+      if (retryTurn) {
+        setTurns((current) =>
+          current.map((turn) =>
+            turn.id === turnId
+              ? {
+                  ...turn,
+                  status: 'generating',
+                  streamedText: '',
+                  answer: null,
+                  errorMessage: null,
+                  errorCode: null,
+                }
+              : turn,
+          ),
+        );
+      } else {
+        setTurns((current) => [
+          ...current,
+          {
+            id: turnId,
+            question: displayQuestion,
+            status: 'generating',
+            streamedText: '',
+            answer: null,
+            errorMessage: null,
+            errorCode: null,
+            request,
+            history,
+            contextPackId,
+            provider: activeProvider,
+          },
+        ]);
+      }
       setErrorMessage(null);
       void requestControllerRef.current?.run(
         { ...request, contextPack, history },
@@ -268,12 +334,16 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
           onText: (text) => {
             setTurns((current) =>
               current.map((turn) =>
-                turn.id === turnId
-                  ? { ...turn, status: 'streaming', streamedText: turn.streamedText + text }
-                  : turn,
+                turn.id === turnId ? { ...turn, streamedText: turn.streamedText + text } : turn,
               ),
             );
           },
+          onRepairing: () =>
+            setTurns((current) =>
+              current.map((turn) =>
+                turn.id === turnId ? { ...turn, status: 'repairing', streamedText: '' } : turn,
+              ),
+            ),
           onComplete: (result) => {
             setTurns((current) =>
               current.map((turn) =>
@@ -298,7 +368,12 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
             setTurns((current) =>
               current.map((turn) =>
                 turn.id === turnId
-                  ? { ...turn, status: 'error', errorMessage: error.message }
+                  ? {
+                      ...turn,
+                      status: 'error',
+                      errorMessage: error.message,
+                      errorCode: error.code,
+                    }
                   : turn,
               ),
             );
@@ -306,7 +381,12 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
         },
       );
     },
-    [_, contextPack, turns],
+    [_, activeProvider, contextPack, turns],
+  );
+
+  const retryRequest = useCallback(
+    (turn: GlossaPanelTurn) => executeRequest(turn.request, turn.question, turn),
+    [executeRequest],
   );
 
   const runRequest = useCallback(
@@ -655,6 +735,11 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
                     'Will send: the current selection + one preceding paragraph in the same chapter + up to 3 recent conversation turns. It will not send later text, the whole book, or notes.',
                   )}
                 </p>
+                <p className='text-base-content/65 leading-6'>
+                  {_(
+                    'If the answer structure is invalid, Glossa may repair it once, which may make a second model call.',
+                  )}
+                </p>
                 <div className='flex gap-2'>
                   <button
                     type='button'
@@ -751,7 +836,9 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
                   {label}
                 </button>
               ))}
-              {turns.some((turn) => turn.status === 'loading' || turn.status === 'streaming') && (
+              {turns.some(
+                (turn) => turn.status === 'generating' || turn.status === 'repairing',
+              ) && (
                 <button
                   type='button'
                   className='btn btn-ghost btn-sm'
@@ -775,11 +862,16 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
                   </div>
                   <div className='border-base-content/20 border-s-2 ps-3 text-sm leading-6 break-words'>
                     <p className='text-base-content/60 mb-1 text-xs font-medium'>{_('Glossa')}</p>
-                    {(turn.status === 'loading' || turn.status === 'streaming') && (
+                    {turn.status === 'generating' && (
                       <div aria-live='polite'>
                         <p className='text-base-content/65'>{_('Glossa is responding…')}</p>
                         {turn.streamedText && <p className='mt-2'>{turn.streamedText}</p>}
                       </div>
+                    )}
+                    {turn.status === 'repairing' && (
+                      <p role='status' aria-live='polite' className='text-base-content/65'>
+                        {_('Repairing answer (1/1)…')}
+                      </p>
                     )}
                     {turn.status === 'cancelled' && (
                       <p role='status' className='text-base-content/65'>
@@ -787,9 +879,26 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
                       </p>
                     )}
                     {turn.status === 'error' && (
-                      <p role='alert' className='text-error'>
-                        {turn.errorMessage ?? _('Glossa could not complete this request.')}
-                      </p>
+                      <div className='space-y-2'>
+                        <p role='alert' className='text-error'>
+                          {turn.errorMessage ?? _('Glossa could not complete this request.')}
+                        </p>
+                        {turn.errorCode &&
+                          errorGuidance({ code: turn.errorCode, message: '' }, _) && (
+                            <p className='text-base-content/65'>
+                              {errorGuidance({ code: turn.errorCode, message: '' }, _)}
+                            </p>
+                          )}
+                        {canManuallyRetry(turn.errorCode) && (
+                          <button
+                            type='button'
+                            className='btn btn-ghost btn-sm'
+                            onClick={() => retryRequest(turn)}
+                          >
+                            {_('Retry')}
+                          </button>
+                        )}
+                      </div>
                     )}
                     {turn.status === 'insufficient' && (
                       <p role='status' className='text-base-content/65'>
@@ -800,35 +909,51 @@ const EnabledGlossaPanel: React.FC<GlossaPanelProps> = ({
                     )}
                     {turn.status === 'complete' && turn.answer && (
                       <>
-                        {turn.answer.answer.paragraphs.map((paragraph, index) => (
-                          <p key={`${paragraph.text}-${index}`} className='mb-2 last:mb-0'>
-                            {paragraph.text}
-                          </p>
-                        ))}
-                        {turn.answer.citations.length > 0 && (
-                          <div
-                            className='mt-2 flex flex-col items-start gap-2'
-                            aria-label={_('Sources')}
-                          >
-                            {turn.answer.citations.map((citation, index) => (
-                              <button
-                                key={citation.sourceId}
-                                type='button'
-                                className='btn btn-ghost h-auto min-h-0 max-w-full justify-start px-2 py-1 text-left text-xs'
-                                aria-label={`${_('Source')} ${turn.id}-${index + 1}`}
-                                disabled={!navigator}
-                                onClick={() => void navigateToCitation(citation)}
+                        {turn.answer.answer.paragraphs.map((paragraph, index) => {
+                          const basis =
+                            paragraph.basis === 'document' ? _('原文') : _('基于原文的推断');
+                          const citations = turn.answer!.citations.filter((citation) =>
+                            paragraph.sourceIds.includes(citation.sourceId),
+                          );
+                          return (
+                            <div key={`${paragraph.text}-${index}`} className='mb-3 last:mb-0'>
+                              <span
+                                className='badge badge-ghost mb-1 text-xs'
+                                aria-label={`${_('Paragraph basis')}: ${basis}`}
                               >
-                                <span className='font-medium'>
-                                  {_('Source')} {index + 1}:{' '}
-                                </span>
-                                <span className='truncate'>
-                                  {Array.from(citation.text).slice(0, 140).join('')}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
+                                {basis}
+                              </span>
+                              <p>{paragraph.text}</p>
+                              <div
+                                className='mt-2 flex flex-col items-start gap-2'
+                                aria-label={_('Sources')}
+                              >
+                                {citations.map((citation) => {
+                                  const citationIndex = turn.answer!.citations.findIndex(
+                                    ({ sourceId }) => sourceId === citation.sourceId,
+                                  );
+                                  return (
+                                    <button
+                                      key={citation.sourceId}
+                                      type='button'
+                                      className='btn btn-ghost h-auto min-h-0 max-w-full justify-start px-2 py-1 text-left text-xs'
+                                      aria-label={`${_('Source')} ${turn.id}-${citationIndex + 1}`}
+                                      disabled={!navigator}
+                                      onClick={() => void navigateToCitation(citation)}
+                                    >
+                                      <span className='font-medium'>
+                                        {_('Source')} {citationIndex + 1}:{' '}
+                                      </span>
+                                      <span className='truncate'>
+                                        {Array.from(citation.text).slice(0, 140).join('')}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </>
                     )}
                   </div>

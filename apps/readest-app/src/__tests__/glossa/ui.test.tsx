@@ -368,6 +368,78 @@ describe('Glossa panel', () => {
     expect(screen.getByRole('alert').textContent).toContain('Mock provider failed');
   });
 
+  test('labels each local-answer paragraph as document or inference in text and aria metadata', async () => {
+    const selection = selected('amber mark');
+    const localProvider: AIProvider = {
+      async *stream(request) {
+        const sourceId = request.contextPack.segments[0]!.sourceId;
+        yield {
+          type: 'complete',
+          answer: {
+            status: 'answered',
+            paragraphs: [
+              { text: 'Direct evidence.', sourceIds: [sourceId], basis: 'document' },
+              { text: 'Supported interpretation.', sourceIds: [sourceId], basis: 'inference' },
+            ],
+            followups: [],
+          },
+        };
+      },
+    };
+    useGlossaPanelStore.getState().open(selection, contextFor(selection));
+    renderPanel(localProvider);
+    await act(async () => {
+      fireEvent.click(screen.getByText('Explain'));
+      await Promise.resolve();
+    });
+    expect(screen.getByText('原文')).toBeTruthy();
+    expect(screen.getByText('基于原文的推断')).toBeTruthy();
+    expect(screen.getByLabelText('Paragraph basis: 原文')).toBeTruthy();
+    expect(screen.getByLabelText('Paragraph basis: 基于原文的推断')).toBeTruthy();
+  });
+
+  test('only retries a recoverable error after the user clicks Retry', async () => {
+    const selection = selected('amber mark');
+    let calls = 0;
+    const retryProvider: AIProvider = {
+      async *stream(request) {
+        calls++;
+        if (calls === 1) {
+          yield { type: 'error', error: { code: 'rate-limited', message: 'Slow down' } };
+          return;
+        }
+        yield {
+          type: 'complete',
+          answer: {
+            status: 'answered',
+            paragraphs: [
+              {
+                text: 'Retried local result.',
+                sourceIds: [request.contextPack.segments[0]!.sourceId],
+                basis: 'document',
+              },
+            ],
+            followups: [],
+          },
+        };
+      },
+    };
+    useGlossaPanelStore.getState().open(selection, contextFor(selection));
+    renderPanel(retryProvider);
+    await act(async () => {
+      fireEvent.click(screen.getByText('Explain'));
+      await Promise.resolve();
+    });
+    expect(calls).toBe(1);
+    expect(screen.getByText('Retry')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByText('Retry'));
+      await Promise.resolve();
+    });
+    expect(calls).toBe(2);
+    expect(screen.getByText('Retried local result.')).toBeTruthy();
+  });
+
   test('cancels a streaming request from both Cancel and panel close', async () => {
     const aborted = vi.fn();
     const blockingProvider: AIProvider = {

@@ -94,7 +94,7 @@ describe('DeepSeek Glossa loop in the macOS Tauri WebView', () => {
     view?.remove();
   });
 
-  test('uses the local fake SSE service, validates local source IDs, jumps, and returns', async () => {
+  test('repairs one local fake SSE result, labels inference, jumps, and returns', async () => {
     await Promise.resolve(view.goTo(0));
     const chapter = view.renderer.getContents().find((content) => content.index === 0)!;
     const exact = 'records every amber mark';
@@ -114,16 +114,21 @@ describe('DeepSeek Glossa loop in the macOS Tauri WebView', () => {
       documentId: DOCUMENT_ID,
       getRuntime: () => runtime,
     });
+    let fakeRequestCount = 0;
     const localFakeSSEFetch: typeof fetch = async (_input, init) => {
+      fakeRequestCount++;
       const currentMessage = JSON.parse(String(init?.body)).messages.at(-1).content;
       const sourceId = JSON.parse(currentMessage).contextPack.excerpts[0].sourceId;
       const answer = JSON.stringify({
         status: 'answered',
         paragraphs: [
           {
-            text: 'The local fake SSE service confirmed the selected reading evidence.',
+            text:
+              fakeRequestCount === 1
+                ? 'This invalid external answer must not render.'
+                : 'The local fake SSE service confirmed the selected reading evidence.',
             sourceIds: [sourceId],
-            basis: 'document',
+            basis: fakeRequestCount === 1 ? 'external' : 'inference',
           },
         ],
         followups: [],
@@ -169,6 +174,9 @@ describe('DeepSeek Glossa loop in the macOS Tauri WebView', () => {
     await vi.waitFor(() => expect(host.textContent).toContain('local fake SSE service confirmed'), {
       timeout: 5000,
     });
+    expect(fakeRequestCount).toBe(2);
+    expect(host.textContent).toContain('基于原文的推断');
+    expect(host.textContent).not.toContain('invalid external answer');
     const source = host.querySelector('[aria-label="Source 1-1"]') as HTMLButtonElement;
     expect(source.textContent).toContain(exact);
 

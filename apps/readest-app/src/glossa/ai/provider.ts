@@ -26,7 +26,17 @@ export type ProviderError = {
     | 'provider-error'
     | 'invalid-response';
   message: string;
+  /** Present only for the bounded, safe-to-repair response failures. */
+  repairReason?: StructuralRepairReason;
 };
+
+export type StructuralRepairReason =
+  | 'empty-json'
+  | 'invalid-json'
+  | 'invalid-schema'
+  | 'unknown-source-id'
+  | 'duplicate-source-id'
+  | 'external-basis';
 
 export type AIProviderEvent =
   | { type: 'text-delta'; text: string }
@@ -41,6 +51,8 @@ export type AIProviderRequest = {
   contextPack: ContextPack;
   /** Complete turns only; providers receive at most the last three. */
   history?: GlossaConversationTurn[];
+  /** A controller-only bounded repair instruction; never includes prior output. */
+  repair?: { reason: StructuralRepairReason };
 };
 
 const contextPackId = (contextPack: ContextPack): string =>

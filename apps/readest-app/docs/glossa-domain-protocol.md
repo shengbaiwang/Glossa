@@ -85,10 +85,19 @@ local source-ID whitelist.
 The provider sends only the current ContextPack excerpts, the current question
 or shortcut action, and at most three complete bound turns. It sends no tools,
 whole book, later chapters, notes, database records, or provider-side session
-ID. `length`, empty JSON, malformed SSE/JSON, invalid schema, or invalid local
-citations are rejected before UI display. HTTP 400/401/402/422/429/500/503,
-network failure, timeout, and user abort map to non-sensitive UI errors; there
-is intentionally no retry in this validation slice.
+ID. `length`, malformed SSE, empty JSON, malformed JSON, invalid schema, and
+invalid local citations are rejected before UI display. A request may make one
+and only one repair attempt for empty JSON, malformed JSON, schema failure,
+unknown/duplicate source IDs, or `external` basis. The repair has the same
+model, question, ContextPack and bounded history; it adds only the failed
+validation category plus “JSON only, allowed source IDs only, no external,
+otherwise insufficient evidence”. It never resends raw invalid output or
+widens reading scope. A second failure stops safely. HTTP
+400/401/402/422/429/500/503, network failure, timeout, malformed SSE/length,
+and user abort never auto-retry. The UI offers a user-triggered retry only for
+429/500/503/timeout/network errors; changed ContextPack, provider, or document
+invalidates the old retry. 401 guides key reconfiguration and 402 points to
+the DeepSeek balance. All errors remain non-sensitive.
 
 `ai/deepseekKeychain.ts` uses only the existing keyed OS keychain bridge with
 the production key name `glossa.deepseek.api-key.v1`. UI receives a boolean

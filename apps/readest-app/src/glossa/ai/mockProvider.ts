@@ -74,7 +74,7 @@ export class MockProvider implements AIProvider {
                       {
                         text: `联系前文（Mock）：选区“${selection.text}”延续了前文“${previous!.text}”。`,
                         sourceIds: [previous!.sourceId, selection.sourceId],
-                        basis: 'document',
+                        basis: 'inference',
                       },
                     ],
                     followups: [],

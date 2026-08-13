@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 
 import {
+  type GlossaAnswer,
   MockProvider,
   collectProviderResponse,
   getContextPackId,
@@ -55,6 +56,22 @@ describe('MockProvider and answer validation', () => {
     expect(response.answer as { status?: string; paragraphs?: unknown[] }).toMatchObject({
       status: 'insufficient_evidence',
       paragraphs: [],
+    });
+  });
+
+  test('keeps deterministic document and inference scenarios distinct', async () => {
+    const documentAnswer = await collectProviderResponse(new MockProvider(), {
+      action: 'explain',
+      contextPack: pack(),
+    });
+    const inferenceAnswer = await collectProviderResponse(new MockProvider(), {
+      action: 'relate',
+      contextPack: pack(),
+    });
+    expect((documentAnswer.answer as GlossaAnswer).paragraphs[0]?.basis).toBe('document');
+    expect((inferenceAnswer.answer as GlossaAnswer).paragraphs[0]).toMatchObject({
+      basis: 'inference',
+      sourceIds: expect.arrayContaining([pack().segments[0]!.sourceId]),
     });
   });
 

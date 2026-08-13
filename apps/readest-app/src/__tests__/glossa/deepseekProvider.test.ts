@@ -190,7 +190,7 @@ describe('DeepSeekProvider', () => {
     }
   });
 
-  test('rejects external knowledge markings and maps an expired timeout', async () => {
+  test('leaves external markings for the local ContextPack validator and maps an expired timeout', async () => {
     const pack = contextPack();
     const external = JSON.stringify({
       status: 'answered',
@@ -210,10 +210,14 @@ describe('DeepSeekProvider', () => {
           ]),
         ),
     });
-    await expect(
-      collectProviderResponse(externalProvider, { action: 'explain', contextPack: pack }),
-    ).resolves.toMatchObject({
-      error: { code: 'invalid-response' },
+    const externalResult = await collectProviderResponse(externalProvider, {
+      action: 'explain',
+      contextPack: pack,
+    });
+    expect(externalResult).toMatchObject({ answer: expect.any(Object) });
+    expect(validateGlossaAnswer(externalResult.answer, pack)).toMatchObject({
+      ok: false,
+      reason: 'external-basis',
     });
 
     const timeoutProvider = new DeepSeekProvider({

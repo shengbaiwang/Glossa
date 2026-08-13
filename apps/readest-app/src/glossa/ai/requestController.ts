@@ -1,12 +1,21 @@
 import { validateGlossaAnswer, type ValidatedGlossaAnswer } from './answer';
-import type { AIProvider, AIProviderRequest, ProviderError } from './provider';
+import type {
+  AIProvider,
+  AIProviderRequest,
+  ProviderError,
+  StructuralRepairReason,
+} from './provider';
 
 export type GlossaRequestHandlers = {
   onText(text: string): void;
+  onRepairing(): void;
   onComplete(result: ValidatedGlossaAnswer): void;
   onCancelled(): void;
   onError(error: ProviderError): void;
 };
+
+const repairReasonForError = (error: ProviderError): StructuralRepairReason | null =>
+  error.code === 'invalid-response' ? (error.repairReason ?? null) : null;
 
 type ActiveRequest = {
   controller: AbortController;
@@ -39,38 +48,51 @@ export class GlossaRequestController {
     this.cancel();
     const active: ActiveRequest = { controller: new AbortController(), handlers, settled: false };
     this.active = active;
-    try {
-      for await (const event of this.provider.stream(request, active.controller.signal)) {
-        if (this.active !== active || active.settled) return;
+    const runAttempt = async (
+      attempt: AIProviderRequest,
+    ): Promise<StructuralRepairReason | null> => {
+      for await (const event of this.provider.stream(attempt, active.controller.signal)) {
+        if (this.active !== active || active.settled) return null;
         if (event.type === 'text-delta') {
           handlers.onText(event.text);
           continue;
         }
         if (event.type === 'error') {
+          const repairReason = repairReasonForError(event.error);
+          if (repairReason) return repairReason;
           active.settled = true;
           this.active = null;
           handlers.onError(event.error);
-          return;
+          return null;
         }
         const validation = validateGlossaAnswer(event.answer, request.contextPack);
+        if (!validation.ok) return validation.reason;
         active.settled = true;
         this.active = null;
-        if (!validation.ok) {
-          handlers.onError({
-            code: 'invalid-response',
-            message: `Glossa provider returned ${validation.reason}`,
-          });
-          return;
-        }
         handlers.onComplete(validation);
-        return;
+        return null;
       }
-      if (this.active !== active || active.settled) return;
+      if (this.active !== active || active.settled) return null;
       active.settled = true;
       this.active = null;
       handlers.onError({
         code: 'invalid-response',
         message: 'Glossa provider ended without a completion result',
+      });
+      return null;
+    };
+    try {
+      const repairReason = await runAttempt(request);
+      if (this.active !== active || active.settled || !repairReason) return;
+      handlers.onRepairing();
+      const retryReason = await runAttempt({ ...request, repair: { reason: repairReason } });
+      if (this.active !== active || active.settled || !retryReason) return;
+      active.settled = true;
+      this.active = null;
+      handlers.onError({
+        code: 'invalid-response',
+        message: 'Glossa could not verify the repaired answer.',
+        repairReason: retryReason,
       });
     } catch (error) {
       if (this.active !== active || active.settled) return;

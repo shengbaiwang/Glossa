@@ -238,8 +238,8 @@ MVP：
 - [x] D03 将 DeepSeek API Key 存储到系统钥匙串（`glossa.deepseek.api-key.v1`；Web/钥匙串不可用时禁用）。
 - [x] D04 定义并校验 `GlossaAnswer` schema。
 - [x] D05 实现 sourceId 白名单校验。
-- [ ] D06 部分完成：`insufficient_evidence` 已显示；DeepSeek 拒绝 `external`，但推断的独立 UI 标记尚未实现。
-- [ ] D07 部分完成：DeepSeek 已有真实 Abort、45 秒超时和错误分类；未实现自动重试（按本轮范围）。
+- [x] D06 逐段显示“原文”或“基于原文的推断”，推断保持本地来源；`external` 与无来源段落不会进入正式回答 UI，`insufficient_evidence` 独立显示。
+- [x] D07 仅对空 JSON、非法 JSON、schema、未知/重复 sourceId 与 external 结构错误进行一次同范围修复；非结构错误不自动重试，可恢复错误由用户主动重试。
 - [ ] D08 显示单次请求 token/费用估算，便于个人验证。
 
 验收：模型不能引用未提供的 sourceId；非法结构不会进入 UI；密钥不出现在仓库、日志和前端存储中。

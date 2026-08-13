@@ -43,7 +43,10 @@ export type ValidatedGlossaAnswer = {
 
 export type GlossaAnswerValidation =
   | { ok: true; answer: GlossaAnswer; citations: LocalCitation[] }
-  | { ok: false; reason: 'invalid-schema' | 'unknown-source-id' | 'duplicate-source-id' };
+  | {
+      ok: false;
+      reason: 'invalid-schema' | 'unknown-source-id' | 'duplicate-source-id' | 'external-basis';
+    };
 
 /**
  * Providers submit source IDs only. This resolves the actual quote and anchor
@@ -58,6 +61,7 @@ export function validateGlossaAnswer(
   const sources = new Map(contextPack.segments.map((segment) => [segment.sourceId, segment]));
   const citationIds: string[] = [];
   for (const paragraph of parsed.data.paragraphs) {
+    if (paragraph.basis === 'external') return { ok: false, reason: 'external-basis' };
     const seenInParagraph = new Set<string>();
     for (const sourceId of paragraph.sourceIds) {
       if (seenInParagraph.has(sourceId)) return { ok: false, reason: 'duplicate-source-id' };
