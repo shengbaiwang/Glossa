@@ -1,12 +1,16 @@
 import type { SourceAnchor } from '../citations/sourceAnchor';
+import { CFI } from '@/libs/document';
+import { searchReadEpubText } from '../retrieval/epubKeywordSearch';
 import {
   getEpubAnchorReadingContext,
+  getEpubStructuredReadSectionText,
   getEpubStructuredChapterToSelection,
   getEpubStructuredSectionText,
   getEpubReadingContext,
   type EpubAnchorTextSegment,
   type EpubRuntime,
 } from './epub';
+import { isEpubRangeInReadCoverage } from './readCoverage';
 import type {
   DocumentAdapter,
   DocumentLocation,
@@ -71,8 +75,9 @@ const toStructuredSection = (
 export function createEpubDocumentAdapter(options: {
   documentId: string;
   getRuntime: () => EpubRuntime | null;
+  getReadCoverage?: () => unknown;
 }): DocumentAdapter {
-  const { documentId, getRuntime } = options;
+  const { documentId, getRuntime, getReadCoverage } = options;
   if (!documentId.trim()) throw new Error('EpubDocumentAdapter requires a non-empty documentId');
 
   const read = (adjacentParagraphs?: number) => {
@@ -116,6 +121,18 @@ export function createEpubDocumentAdapter(options: {
           )
         : [];
     },
+    async searchReadText(query, { signal } = {}) {
+      const runtime = getRuntime();
+      if (!runtime?.view.book) return [];
+      return searchReadEpubText({
+        documentId,
+        view: { book: runtime.view.book, getCFI: runtime.view.getCFI },
+        query,
+        coverage: getReadCoverage?.(),
+        compareCfi: CFI.compare,
+        signal,
+      });
+    },
     async getSelectionContext({ adjacentParagraphs } = {}) {
       const context = read(adjacentParagraphs);
       if (!context?.selection) return [];
@@ -142,6 +159,20 @@ export function createEpubDocumentAdapter(options: {
       const runtime = getRuntime();
       if (!runtime) return null;
       const section = getEpubStructuredSectionText(runtime);
+      return section ? toStructuredSection(documentId, section) : null;
+    },
+    async getCurrentReadSectionText() {
+      const runtime = getRuntime();
+      if (!runtime) return null;
+      const section = getEpubStructuredReadSectionText(runtime, (range) =>
+        isEpubRangeInReadCoverage(
+          range.startCfi,
+          range.endCfi,
+          range.sectionIndex,
+          getReadCoverage?.(),
+          CFI.compare,
+        ),
+      );
       return section ? toStructuredSection(documentId, section) : null;
     },
     async getSelectionChapterContext(): Promise<SelectionChapterContext | null> {

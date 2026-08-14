@@ -1,7 +1,7 @@
-import type { GlossaAnswer } from './answer';
+import type { GlossaAnswer, GlossaChapterSummary } from './answer';
 import {
-  getBoundedHistory,
   getFreeQuestion,
+  getHistorySummary,
   type AIProvider,
   type AIProviderEvent,
   type AIProviderRequest,
@@ -25,7 +25,49 @@ const isClearlyOutsideEvidence = (question: string): boolean =>
 
 /** A deterministic no-network provider for the first end-to-end reading loop. */
 export class MockProvider implements AIProvider {
+  readonly modelVersion = 'mock-v1';
+
   async *stream(request: AIProviderRequest, signal: AbortSignal): AsyncGenerator<AIProviderEvent> {
+    if (request.action === 'summarize-read-section') {
+      const readBlocks = request.contextPack.segments.filter(({ role }) => role === 'chapter');
+      const answer: GlossaChapterSummary =
+        readBlocks.length === 0
+          ? {
+              status: 'insufficient_evidence',
+              corePoints: [],
+              evidence: [],
+              concepts: [],
+              openQuestions: [],
+            }
+          : {
+              status: 'summarized',
+              corePoints: [
+                {
+                  text: `核心观点（Mock）：${readBlocks[0]!.text}`,
+                  sourceIds: [readBlocks[0]!.sourceId],
+                },
+              ],
+              evidence: [
+                {
+                  text: `证据（Mock）：${readBlocks.at(-1)!.text}`,
+                  sourceIds: [readBlocks.at(-1)!.sourceId],
+                },
+              ],
+              concepts: [],
+              openQuestions: [],
+            };
+      const text =
+        answer.status === 'summarized'
+          ? answer.corePoints[0]!.text
+          : '证据不足：当前章节没有已读来源。';
+      for (const chunk of splitForStream(text)) {
+        if (signal.aborted) throw abortError();
+        yield { type: 'text-delta', text: chunk };
+      }
+      if (signal.aborted) throw abortError();
+      yield { type: 'complete', answer };
+      return;
+    }
     const selection = request.contextPack.segments.find(({ role }) => role === 'selection');
     if (!selection) {
       yield {
@@ -36,8 +78,7 @@ export class MockProvider implements AIProvider {
     }
     const previous = request.contextPack.segments.find(({ role }) => role === 'previous');
     const question = getFreeQuestion(request);
-    const history = getBoundedHistory(request);
-    const priorTurn = history.at(-1);
+    const historySummary = getHistorySummary(request);
     const answer: GlossaAnswer =
       question && isClearlyOutsideEvidence(question)
         ? { status: 'insufficient_evidence', paragraphs: [], followups: [] }
@@ -46,7 +87,7 @@ export class MockProvider implements AIProvider {
               status: 'answered',
               paragraphs: [
                 {
-                  text: `回答（Mock）：关于“${question}”，当前选区“${selection.text}”是可验证的依据。${priorTurn ? `这次追问参考上一问“${priorTurn.user.text}”。` : ''}`,
+                  text: `回答（Mock）：关于“${question}”，当前选区“${selection.text}”是可验证的依据。${historySummary ? '这次追问保留了同一文档中先前问题的摘要。' : ''}`,
                   sourceIds: [selection.sourceId],
                   basis: 'document',
                 },

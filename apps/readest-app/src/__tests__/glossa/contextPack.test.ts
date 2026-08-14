@@ -3,6 +3,8 @@ import { describe, expect, test } from 'vitest';
 import {
   createChapterToSelectionContextPack,
   createContextPack,
+  createReadSectionContextPack,
+  addReadKeywordCandidates,
   MAX_CHAPTER_CONTEXT_CHARACTERS,
   MAX_CHAPTER_CONTEXT_SEGMENTS,
 } from '@/glossa/context/contextPack';
@@ -119,5 +121,54 @@ describe('ContextPack', () => {
     expect(Array.from(pack.segments.map(({ text }) => text).join('')).length).toBeLessThanOrEqual(
       MAX_CHAPTER_CONTEXT_CHARACTERS,
     );
+  });
+
+  test('deduplicates, ranks, and budgets read-keyword candidates without removing selected evidence', () => {
+    const selected = segment('selected text', 'epubcfi(/6/2!/4/7:0)');
+    const current = createContextPack({ selection: selected, selectionContext: [selected] });
+    const amber = segment(
+      'The amber mark is defined in this read passage.',
+      'epubcfi(/6/2!/4/1:0)',
+    );
+    const repeatedAmber = { ...amber, anchor: { ...amber.anchor } };
+    const unrelated = segment('A different read passage.', 'epubcfi(/6/2!/4/3:0)');
+    const enriched = addReadKeywordCandidates({
+      contextPack: current,
+      query: 'what is an amber mark',
+      candidates: [unrelated, repeatedAmber, amber],
+      maximumCharacters: 80,
+      maximumSegments: 2,
+    });
+
+    expect(enriched.segments.map(({ text }) => text)).toEqual([selected.text, amber.text]);
+    expect(enriched.segments.at(-1)?.role).toBe('retrieval');
+    expect(enriched.retrieval).toEqual({ segmentCount: 1, truncated: true });
+    expect(enriched.scopeLabel).toContain('已读范围关键词检索 1 段');
+  });
+
+  test('builds a chapter-summary pack only from the supplied verified read blocks', () => {
+    const readHeading = {
+      ...segment('Read chapter', 'epubcfi(/6/2!/4/1:0)'),
+      kind: 'heading' as const,
+      order: 0,
+    };
+    const readParagraph = {
+      ...segment('A proved read claim.', 'epubcfi(/6/2!/4/3:0)'),
+      kind: 'paragraph' as const,
+      order: 1,
+    };
+    const pack = createReadSectionContextPack({ section: [readHeading, readParagraph] });
+
+    expect(pack?.scope).toMatchObject({
+      kind: 'read-section',
+      excludesUnreadSectionText: true,
+      chapterSegmentCount: 2,
+    });
+    expect(pack?.segments.map(({ text, role }) => [text, role])).toEqual([
+      ['Read chapter', 'chapter'],
+      ['A proved read claim.', 'chapter'],
+    ]);
+    expect(pack?.scopeLabel).toBe('本章已读部分 · 2 段 · 未使用后文');
+    expect(createReadSectionContextPack({ section: [] })).toBeNull();
   });
 });

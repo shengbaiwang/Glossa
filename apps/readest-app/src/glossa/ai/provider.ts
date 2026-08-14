@@ -1,14 +1,17 @@
 import type { ContextPack } from '../context/contextPack';
-import type { GlossaAnswer } from './answer';
+import { isGlossaHistorySummary } from './historySummary';
 
-export type GlossaAction = 'explain' | 'translate' | 'relate';
-export const MAX_GLOSSA_HISTORY_TURNS = 3;
+export type GlossaAction = 'explain' | 'translate' | 'relate' | 'summarize-read-section';
 
-export type GlossaConversationTurn = {
+/**
+ * A compact conversation cue for a new request. It intentionally contains no
+ * prior answer text, source IDs, anchors, or EPUB excerpts: those must always
+ * come from the current ContextPack.
+ */
+export type GlossaHistorySummary = {
   documentId: string;
-  contextPackId: string;
-  user: { role: 'user'; text: string };
-  assistant: { role: 'assistant'; text: string; answer: GlossaAnswer };
+  text: string;
+  turnCount: number;
 };
 
 export type ProviderError = {
@@ -38,8 +41,17 @@ export type StructuralRepairReason =
   | 'duplicate-source-id'
   | 'external-basis';
 
+/** Actual token accounting returned by a provider, never locally inferred. */
+export type AIProviderUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheHitTokens: number;
+  cacheMissTokens: number;
+};
+
 export type AIProviderEvent =
   | { type: 'text-delta'; text: string }
+  | { type: 'usage'; usage: AIProviderUsage }
   | { type: 'complete'; answer: unknown }
   | { type: 'error'; error: ProviderError };
 
@@ -49,8 +61,8 @@ export type AIProviderRequest = {
   /** A plain-text question bound to the same selected evidence. */
   question?: string;
   contextPack: ContextPack;
-  /** Complete turns only; providers receive at most the last three. */
-  history?: GlossaConversationTurn[];
+  /** Bounded, document-scoped conversation metadata for follow-up questions. */
+  historySummary?: GlossaHistorySummary;
   /** A controller-only bounded repair instruction; never includes prior output. */
   repair?: { reason: StructuralRepairReason };
 };
@@ -60,23 +72,19 @@ const contextPackId = (contextPack: ContextPack): string =>
 
 export const getContextPackId = contextPackId;
 
-/**
- * Rejects another document or evidence set and trims only at whole-turn
- * boundaries. This is deliberately provider-neutral and JSON-safe.
- */
-export function getBoundedHistory(request: AIProviderRequest): GlossaConversationTurn[] {
+/** Return only a valid summary for the document currently being read. */
+export function getHistorySummary(request: AIProviderRequest): GlossaHistorySummary | null {
   const documentId = request.contextPack.segments[0]?.anchor.documentId;
-  if (!documentId) return [];
-  const expectedContextPackId = contextPackId(request.contextPack);
-  return (request.history ?? [])
-    .filter(
-      (turn) =>
-        turn.documentId === documentId &&
-        turn.contextPackId === expectedContextPackId &&
-        turn.user.role === 'user' &&
-        turn.assistant.role === 'assistant',
-    )
-    .slice(-MAX_GLOSSA_HISTORY_TURNS);
+  const summary = request.historySummary;
+  if (
+    !documentId ||
+    !isGlossaHistorySummary(summary) ||
+    summary.documentId !== documentId ||
+    !summary.text.trim()
+  ) {
+    return null;
+  }
+  return summary;
 }
 
 export const getFreeQuestion = (request: AIProviderRequest): string | null => {
@@ -86,14 +94,23 @@ export const getFreeQuestion = (request: AIProviderRequest): string | null => {
 
 /** Model-neutral, stream-first protocol. Implementations never receive DOM or reader state. */
 export interface AIProvider {
+  /** Omit this only for non-cacheable test or experimental providers. */
+  readonly modelVersion?: string;
   stream(request: AIProviderRequest, signal: AbortSignal): AsyncIterable<AIProviderEvent>;
 }
+
+/** A missing version is intentionally non-cacheable: identity must be explicit. */
+export const getAIProviderModelVersion = (provider: AIProvider): string | null => {
+  const value = typeof provider.modelVersion === 'string' ? provider.modelVersion.trim() : '';
+  return value || null;
+};
 
 export type ProviderResponse = {
   events: AIProviderEvent[];
   text: string;
   answer?: unknown;
   error?: ProviderError;
+  usage?: AIProviderUsage;
 };
 
 export async function collectProviderResponse(
@@ -105,11 +122,19 @@ export async function collectProviderResponse(
   let text = '';
   let answer: unknown;
   let error: ProviderError | undefined;
+  let usage: AIProviderUsage | undefined;
   for await (const event of provider.stream(request, signal)) {
     events.push(event);
     if (event.type === 'text-delta') text += event.text;
+    if (event.type === 'usage') usage = event.usage;
     if (event.type === 'complete') answer = event.answer;
     if (event.type === 'error') error = event.error;
   }
-  return { events, text, ...(answer === undefined ? {} : { answer }), ...(error ? { error } : {}) };
+  return {
+    events,
+    text,
+    ...(answer === undefined ? {} : { answer }),
+    ...(error ? { error } : {}),
+    ...(usage ? { usage } : {}),
+  };
 }

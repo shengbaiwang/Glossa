@@ -1,0 +1,277 @@
+{
+  "schemaVersion": 1,
+  "questionSetId": "glossa-epub-evaluation-questions",
+  "corpus": {
+    "manifestPath": "glossa-evaluation-manifest.json",
+    "manifestVersion": 1
+  },
+  "questions": [
+    {
+      "id": "i02-theory-current-paragraph",
+      "documentId": "glossa-eval-theory-of-frames",
+      "corpusType": "theory",
+      "kind": "current-paragraph",
+      "question": "Within which frame does the blue-card observation support attention?",
+      "readingBoundary": {
+        "throughChapterId": "theory-chapter-2",
+        "throughParagraphId": "theory-c2-p3"
+      },
+      "currentParagraphId": "theory-c2-p3",
+      "expected": {
+        "status": "answered",
+        "requiredEvidenceParagraphIds": ["theory-c2-p3"],
+        "prohibitedUnreadParagraphIds": ["theory-c3-p1", "theory-c3-p2", "theory-c3-p3"]
+      }
+    },
+    {
+      "id": "i02-theory-cross-chapter",
+      "documentId": "glossa-eval-theory-of-frames",
+      "corpusType": "theory",
+      "kind": "cross-chapter",
+      "question": "What does a hinge claim join, and what does comparing it across frames ask readers to identify?",
+      "readingBoundary": {
+        "throughChapterId": "theory-chapter-2",
+        "throughParagraphId": "theory-c2-p3"
+      },
+      "currentParagraphId": "theory-c2-p3",
+      "expected": {
+        "status": "answered",
+        "requiredEvidenceParagraphIds": ["theory-c1-p1", "theory-c2-p1"],
+        "prohibitedUnreadParagraphIds": ["theory-c3-p1", "theory-c3-p2", "theory-c3-p3"]
+      }
+    },
+    {
+      "id": "i02-theory-no-answer",
+      "documentId": "glossa-eval-theory-of-frames",
+      "corpusType": "theory",
+      "kind": "no-answer",
+      "question": "Which device recorded the readers' pauses during the first session?",
+      "readingBoundary": {
+        "throughChapterId": "theory-chapter-2",
+        "throughParagraphId": "theory-c2-p3"
+      },
+      "currentParagraphId": "theory-c2-p3",
+      "expected": {
+        "status": "insufficient_evidence",
+        "requiredEvidenceParagraphIds": [],
+        "prohibitedUnreadParagraphIds": ["theory-c3-p1", "theory-c3-p2", "theory-c3-p3"]
+      }
+    },
+    {
+      "id": "i02-theory-conflicting-evidence",
+      "documentId": "glossa-eval-theory-of-frames",
+      "corpusType": "theory",
+      "kind": "conflicting-evidence",
+      "question": "Should three readers pausing automatically be treated as evidence of attention in every setting?",
+      "readingBoundary": {
+        "throughChapterId": "theory-chapter-2",
+        "throughParagraphId": "theory-c2-p3"
+      },
+      "currentParagraphId": "theory-c2-p3",
+      "expected": {
+        "status": "answered",
+        "requiredEvidenceParagraphIds": ["theory-c2-p2", "theory-c2-p3"],
+        "prohibitedUnreadParagraphIds": ["theory-c3-p1", "theory-c3-p2", "theory-c3-p3"],
+        "conflictingEvidence": {
+          "supportingEvidenceParagraphIds": ["theory-c2-p2"],
+          "counterEvidenceParagraphIds": ["theory-c2-p3"]
+        }
+      }
+    },
+    {
+      "id": "i02-theory-unread-future",
+      "documentId": "glossa-eval-theory-of-frames",
+      "corpusType": "theory",
+      "kind": "unread-future",
+      "question": "What does the later counterexample show about generalizing the blue-card observation?",
+      "readingBoundary": {
+        "throughChapterId": "theory-chapter-2",
+        "throughParagraphId": "theory-c2-p3"
+      },
+      "currentParagraphId": "theory-c2-p3",
+      "expected": {
+        "status": "insufficient_evidence",
+        "requiredEvidenceParagraphIds": [],
+        "prohibitedUnreadParagraphIds": ["theory-c3-p1", "theory-c3-p2", "theory-c3-p3"]
+      }
+    },
+    {
+      "id": "i02-technical-current-paragraph",
+      "documentId": "glossa-eval-signal-ledger",
+      "corpusType": "technical",
+      "kind": "current-paragraph",
+      "question": "What checksum word belongs to the demonstration input beacon, 17?",
+      "readingBoundary": {
+        "throughChapterId": "technical-chapter-2",
+        "throughParagraphId": "technical-c2-p3"
+      },
+      "currentParagraphId": "technical-c2-p2",
+      "expected": {
+        "status": "answered",
+        "requiredEvidenceParagraphIds": ["technical-c2-p2"],
+        "prohibitedUnreadParagraphIds": ["technical-c3-p1", "technical-c3-p2", "technical-c3-p3"]
+      }
+    },
+    {
+      "id": "i02-technical-cross-chapter",
+      "documentId": "glossa-eval-signal-ledger",
+      "corpusType": "technical",
+      "kind": "cross-chapter",
+      "question": "Which fields make up a Signal Ledger line, and what condition allows a validator to accept it?",
+      "readingBoundary": {
+        "throughChapterId": "technical-chapter-2",
+        "throughParagraphId": "technical-c2-p3"
+      },
+      "currentParagraphId": "technical-c2-p3",
+      "expected": {
+        "status": "answered",
+        "requiredEvidenceParagraphIds": ["technical-c1-p1", "technical-c2-p1"],
+        "prohibitedUnreadParagraphIds": ["technical-c3-p1", "technical-c3-p2", "technical-c3-p3"]
+      }
+    },
+    {
+      "id": "i02-technical-no-answer",
+      "documentId": "glossa-eval-signal-ledger",
+      "corpusType": "technical",
+      "kind": "no-answer",
+      "question": "Which network port does the validator use?",
+      "readingBoundary": {
+        "throughChapterId": "technical-chapter-2",
+        "throughParagraphId": "technical-c2-p3"
+      },
+      "currentParagraphId": "technical-c2-p3",
+      "expected": {
+        "status": "insufficient_evidence",
+        "requiredEvidenceParagraphIds": [],
+        "prohibitedUnreadParagraphIds": ["technical-c3-p1", "technical-c3-p2", "technical-c3-p3"]
+      }
+    },
+    {
+      "id": "i02-technical-conflicting-evidence",
+      "documentId": "glossa-eval-signal-ledger",
+      "corpusType": "technical",
+      "kind": "conflicting-evidence",
+      "question": "May a line with the specified three fields be accepted without checking its checksum word?",
+      "readingBoundary": {
+        "throughChapterId": "technical-chapter-2",
+        "throughParagraphId": "technical-c2-p3"
+      },
+      "currentParagraphId": "technical-c2-p3",
+      "expected": {
+        "status": "answered",
+        "requiredEvidenceParagraphIds": ["technical-c1-p1", "technical-c2-p1"],
+        "prohibitedUnreadParagraphIds": ["technical-c3-p1", "technical-c3-p2", "technical-c3-p3"],
+        "conflictingEvidence": {
+          "supportingEvidenceParagraphIds": ["technical-c1-p1"],
+          "counterEvidenceParagraphIds": ["technical-c2-p1"]
+        }
+      }
+    },
+    {
+      "id": "i02-technical-unread-future",
+      "documentId": "glossa-eval-signal-ledger",
+      "corpusType": "technical",
+      "kind": "unread-future",
+      "question": "If a witness was copied incorrectly, what recovery step should be taken?",
+      "readingBoundary": {
+        "throughChapterId": "technical-chapter-2",
+        "throughParagraphId": "technical-c2-p3"
+      },
+      "currentParagraphId": "technical-c2-p3",
+      "expected": {
+        "status": "insufficient_evidence",
+        "requiredEvidenceParagraphIds": [],
+        "prohibitedUnreadParagraphIds": ["technical-c3-p1", "technical-c3-p2", "technical-c3-p3"]
+      }
+    },
+    {
+      "id": "i02-narrative-current-paragraph",
+      "documentId": "glossa-eval-tern-quay",
+      "corpusType": "narrative",
+      "kind": "current-paragraph",
+      "question": "Who drew the circle on the blue chart, and what had that person done during storms?",
+      "readingBoundary": {
+        "throughChapterId": "narrative-chapter-2",
+        "throughParagraphId": "narrative-c2-p3"
+      },
+      "currentParagraphId": "narrative-c2-p2",
+      "expected": {
+        "status": "answered",
+        "requiredEvidenceParagraphIds": ["narrative-c2-p2"],
+        "prohibitedUnreadParagraphIds": ["narrative-c3-p1", "narrative-c3-p2", "narrative-c3-p3"]
+      }
+    },
+    {
+      "id": "i02-narrative-cross-chapter",
+      "documentId": "glossa-eval-tern-quay",
+      "corpusType": "narrative",
+      "kind": "cross-chapter",
+      "question": "What objects do Mara and Jori carry, and how does Mara relate them?",
+      "readingBoundary": {
+        "throughChapterId": "narrative-chapter-2",
+        "throughParagraphId": "narrative-c2-p3"
+      },
+      "currentParagraphId": "narrative-c2-p3",
+      "expected": {
+        "status": "answered",
+        "requiredEvidenceParagraphIds": ["narrative-c1-p1", "narrative-c2-p1", "narrative-c2-p3"],
+        "prohibitedUnreadParagraphIds": ["narrative-c3-p1", "narrative-c3-p2", "narrative-c3-p3"]
+      }
+    },
+    {
+      "id": "i02-narrative-no-answer",
+      "documentId": "glossa-eval-tern-quay",
+      "corpusType": "narrative",
+      "kind": "no-answer",
+      "question": "From which city did Mara travel to Tern Quay?",
+      "readingBoundary": {
+        "throughChapterId": "narrative-chapter-2",
+        "throughParagraphId": "narrative-c2-p3"
+      },
+      "currentParagraphId": "narrative-c2-p3",
+      "expected": {
+        "status": "insufficient_evidence",
+        "requiredEvidenceParagraphIds": [],
+        "prohibitedUnreadParagraphIds": ["narrative-c3-p1", "narrative-c3-p2", "narrative-c3-p3"]
+      }
+    },
+    {
+      "id": "i02-narrative-conflicting-evidence",
+      "documentId": "glossa-eval-tern-quay",
+      "corpusType": "narrative",
+      "kind": "conflicting-evidence",
+      "question": "At this point, can Mara be said to have activated an opening mechanism?",
+      "readingBoundary": {
+        "throughChapterId": "narrative-chapter-2",
+        "throughParagraphId": "narrative-c2-p3"
+      },
+      "currentParagraphId": "narrative-c2-p3",
+      "expected": {
+        "status": "answered",
+        "requiredEvidenceParagraphIds": ["narrative-c1-p1", "narrative-c2-p3"],
+        "prohibitedUnreadParagraphIds": ["narrative-c3-p1", "narrative-c3-p2", "narrative-c3-p3"],
+        "conflictingEvidence": {
+          "supportingEvidenceParagraphIds": ["narrative-c1-p1"],
+          "counterEvidenceParagraphIds": ["narrative-c2-p3"]
+        }
+      }
+    },
+    {
+      "id": "i02-narrative-unread-future",
+      "documentId": "glossa-eval-tern-quay",
+      "corpusType": "narrative",
+      "kind": "unread-future",
+      "question": "What does the brass wind key open?",
+      "readingBoundary": {
+        "throughChapterId": "narrative-chapter-2",
+        "throughParagraphId": "narrative-c2-p3"
+      },
+      "currentParagraphId": "narrative-c2-p3",
+      "expected": {
+        "status": "insufficient_evidence",
+        "requiredEvidenceParagraphIds": [],
+        "prohibitedUnreadParagraphIds": ["narrative-c3-p1", "narrative-c3-p2", "narrative-c3-p3"]
+      }
+    }
+  ]
+}

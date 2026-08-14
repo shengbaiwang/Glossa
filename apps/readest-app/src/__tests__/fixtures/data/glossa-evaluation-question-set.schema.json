@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://glossa.local/schemas/evaluation-question-set-v1.json",
+  "title": "Glossa EPUB evaluation question set",
+  "description": "Version 1 stores questions, local source anchors, and expected evidence states only. It deliberately excludes generated answers, model output, scores, and API data.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "questionSetId", "corpus", "questions"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "questionSetId": { "const": "glossa-epub-evaluation-questions" },
+    "corpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifestPath", "manifestVersion"],
+      "properties": {
+        "manifestPath": { "const": "glossa-evaluation-manifest.json" },
+        "manifestVersion": { "const": 1 }
+      }
+    },
+    "questions": {
+      "type": "array",
+      "minItems": 15,
+      "items": { "$ref": "#/$defs/question" }
+    }
+  },
+  "$defs": {
+    "paragraphIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "documentId",
+        "corpusType",
+        "kind",
+        "question",
+        "readingBoundary",
+        "currentParagraphId",
+        "expected"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^i02-(theory|technical|narrative)-(current-paragraph|cross-chapter|no-answer|conflicting-evidence|unread-future)$"
+        },
+        "documentId": { "type": "string", "minLength": 1 },
+        "corpusType": { "enum": ["theory", "technical", "narrative"] },
+        "kind": {
+          "enum": [
+            "current-paragraph",
+            "cross-chapter",
+            "no-answer",
+            "conflicting-evidence",
+            "unread-future"
+          ]
+        },
+        "question": { "type": "string", "minLength": 1 },
+        "readingBoundary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["throughChapterId", "throughParagraphId"],
+          "properties": {
+            "throughChapterId": { "type": "string", "minLength": 1 },
+            "throughParagraphId": { "type": "string", "minLength": 1 }
+          }
+        },
+        "currentParagraphId": { "type": "string", "minLength": 1 },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "requiredEvidenceParagraphIds", "prohibitedUnreadParagraphIds"],
+          "properties": {
+            "status": { "enum": ["answered", "insufficient_evidence"] },
+            "requiredEvidenceParagraphIds": { "$ref": "#/$defs/paragraphIds" },
+            "prohibitedUnreadParagraphIds": { "$ref": "#/$defs/paragraphIds" },
+            "conflictingEvidence": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["supportingEvidenceParagraphIds", "counterEvidenceParagraphIds"],
+              "properties": {
+                "supportingEvidenceParagraphIds": { "$ref": "#/$defs/paragraphIds" },
+                "counterEvidenceParagraphIds": { "$ref": "#/$defs/paragraphIds" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

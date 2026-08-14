@@ -4,7 +4,9 @@ import {
   createContextPack,
   type ContextPack,
 } from '../context/contextPack';
-import type { SelectedText, SelectionChapterContext } from '../context/types';
+import type { DocumentAdapter, SelectedText, SelectionChapterContext } from '../context/types';
+import type { ChapterSummaryCache } from '../ai/chapterSummaryCache';
+import type { GlossaSourcedNoteStore } from '../notes/glossaSourcedNotes';
 import { isGlossaEnabled } from '../featureFlag';
 
 export type SelectionCapture = () => Promise<SelectedText | null>;
@@ -14,6 +16,9 @@ export type GlossaPanelOpen = (
   contextPack?: ContextPack,
   navigator?: DocumentNavigator,
   chapterContext?: { pack: ContextPack | null; unavailableReason?: string },
+  adapter?: DocumentAdapter,
+  chapterSummaryCache?: ChapterSummaryCache,
+  sourcedNoteStore?: GlossaSourcedNoteStore,
 ) => void;
 
 /** Keep the Readest toolbar configuration untouched; this is a separate opt-in entry. */
@@ -35,6 +40,9 @@ export const captureAndOpenGlossaPanel = async (
       chapter: { pack: ContextPack | null; unavailableReason?: string };
     }>;
     navigator?: DocumentNavigator;
+    adapter?: DocumentAdapter;
+    chapterSummaryCache?: ChapterSummaryCache;
+    sourcedNoteStore?: GlossaSourcedNoteStore;
   },
 ): Promise<boolean> => {
   const selection = await capture();
@@ -44,8 +52,16 @@ export const captureAndOpenGlossaPanel = async (
   // transient snapshot independent from a later reader/adapter update.
   const snapshot = JSON.parse(JSON.stringify(selection)) as SelectedText;
   const context = options?.captureContext ? await options.captureContext(snapshot) : undefined;
-  if (context || options?.navigator)
-    open(snapshot, context?.minimal, options?.navigator, context?.chapter);
+  if (context || options?.navigator || options?.adapter)
+    open(
+      snapshot,
+      context?.minimal,
+      options?.navigator,
+      context?.chapter,
+      options?.adapter,
+      options?.chapterSummaryCache,
+      options?.sourcedNoteStore,
+    );
   else open(snapshot);
   return true;
 };

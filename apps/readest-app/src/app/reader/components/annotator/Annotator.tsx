@@ -83,6 +83,8 @@ import { annotationToolButtons } from './AnnotationTools';
 import { FiMessageCircle } from 'react-icons/fi';
 import { createEpubAnchorNavigator, createEpubDocumentAdapter } from '@/glossa';
 import { useGlossaPanelStore } from '@/glossa/ui/glossaPanelStore';
+import { createBookConfigChapterSummaryCache } from '@/glossa/ui/bookConfigChapterSummaryCache';
+import { createBookConfigGlossaSourcedNoteStore } from '@/glossa/ui/bookConfigGlossaSourcedNoteStore';
 import {
   canAskGlossaForEpubSelection,
   captureAndOpenGlossaPanel,
@@ -1377,13 +1379,41 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
 
   const handleAskGlossa = async () => {
     if (!glossaAvailable || !view) return;
+    const documentHash = bookKey.split('-')[0]!;
     const adapter = createEpubDocumentAdapter({
-      documentId: bookKey.split('-')[0]!,
+      documentId: documentHash,
       getRuntime: () => ({ view, progress: getBookProgress(bookKey) }),
+      getReadCoverage: () => useBookDataStore.getState().getConfig(bookKey)?.glossaEpubReadCoverage,
     });
     const navigator = createEpubAnchorNavigator({
-      documentId: bookKey.split('-')[0]!,
+      documentId: documentHash,
       getRuntime: () => ({ view, progress: getBookProgress(bookKey) }),
+    });
+    const chapterSummaryCache = createBookConfigChapterSummaryCache({
+      documentHash,
+      getConfig: () => getConfig(bookKey),
+      writeEntries: (entries) => {
+        const latestConfig = getConfig(bookKey);
+        if (!latestConfig) return;
+        const updatedConfig = { ...latestConfig, glossaChapterSummaryCache: entries };
+        setConfig(bookKey, { glossaChapterSummaryCache: entries });
+        // This is Readest's existing per-book config.json persistence path.
+        // The cache field is explicitly absent from every cloud-sync serializer.
+        void saveConfig(envConfig, bookKey, updatedConfig, settings).catch(() => undefined);
+      },
+    });
+    const sourcedNoteStore = createBookConfigGlossaSourcedNoteStore({
+      documentId: documentHash,
+      getConfig: () => getConfig(bookKey),
+      writeEntries: async (entries) => {
+        const latestConfig = getConfig(bookKey);
+        if (!latestConfig) throw new Error('Book configuration is unavailable');
+        const updatedConfig = { ...latestConfig, glossaSourcedNotes: entries };
+        // Keep Glossa sources local: config.json is the durable store while
+        // the field remains absent from both cloud-sync serializers.
+        await saveConfig(envConfig, bookKey, updatedConfig, settings);
+        setConfig(bookKey, { glossaSourcedNotes: entries });
+      },
     });
     const opened = await captureAndOpenGlossaPanel(
       () => adapter.getSelection(),
@@ -1396,6 +1426,9 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
             () => adapter.getSelectionChapterContext(),
           ),
         navigator,
+        adapter,
+        chapterSummaryCache,
+        sourcedNoteStore,
       },
     );
     // The adapter reads the live browser Selection above. Only after it returns

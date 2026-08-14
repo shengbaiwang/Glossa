@@ -307,6 +307,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
         safeAreaInsets={safeAreaInsets}
         systemUIVisible={systemUIVisible}
         statusBarHeight={statusBarHeight}
+        appService={appService}
       />
       {showDetailsBook && (
         <BookDetailModal

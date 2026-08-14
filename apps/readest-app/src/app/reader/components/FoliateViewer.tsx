@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { convertBlobUrlToDataUrl, BookDoc, getDirection } from '@/libs/document';
+import { CFI, convertBlobUrlToDataUrl, BookDoc, getDirection } from '@/libs/document';
 import { BOOK_IDS_SEPARATOR } from '@/services/constants';
 import { BookConfig, PageInfo } from '@/types/book';
 import { FoliateView, wrappedFoliateView } from '@/types/view';
@@ -96,6 +96,9 @@ import KOSyncConflictResolver from './KOSyncResolver';
 import ImageViewer from './ImageViewer';
 import TableViewer from './TableViewer';
 import { getTTSMiniPlayerClearance } from '../utils/ttsMiniPlayerPosition';
+import { addEpubReadRange } from '@/glossa/context/readCoverage';
+import { captureEpubReadRangeFromRelocate } from '@/glossa/context/epub';
+import { isGlossaEnabled } from '@/glossa/featureFlag';
 
 declare global {
   interface Window {
@@ -550,6 +553,24 @@ const FoliateViewer: React.FC<{
     // the preview into the real reading position. Subsequent progress writes
     // can flow normally.
     setPreviewMode(bookKey, false);
+
+    // `BookProgress.fraction` is only the current position and can move to a
+    // table-of-contents or citation target. Preserve Glossa's spoiler boundary
+    // only from raw page/scroll relocations, and only for the visible range.
+    if (isGlossaEnabled() && viewRef.current) {
+      const readRange = captureEpubReadRangeFromRelocate(viewRef.current, detail);
+      const config = getBookData(bookKey)?.config;
+      if (readRange && config) {
+        try {
+          const coverage = addEpubReadRange(config.glossaEpubReadCoverage, readRange, CFI.compare);
+          if (JSON.stringify(coverage) !== JSON.stringify(config.glossaEpubReadCoverage ?? [])) {
+            useBookDataStore.getState().setConfig(bookKey, { glossaEpubReadCoverage: coverage });
+          }
+        } catch {
+          // A malformed legacy CFI must never broaden the context boundary.
+        }
+      }
+    }
 
     const parallelViews = getParallels(bookKey);
     if (parallelViews && parallelViews.size > 0) {

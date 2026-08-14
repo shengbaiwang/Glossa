@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://glossa.local/schemas/citation-support-scores-v1.json",
+  "title": "Glossa citation support human scores",
+  "description": "Version 1 is an offline, reviewer-authored record. It stores only evaluated response paragraphs and local EPUB paragraph IDs; it does not run models or call APIs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "scoreSetId",
+    "questionSet",
+    "statusAssessments",
+    "paragraphScores"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "scoreSetId": { "const": "glossa-citation-support-scores" },
+    "questionSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "schemaVersion", "questionSetId"],
+      "properties": {
+        "path": { "const": "glossa-evaluation-question-set.json" },
+        "schemaVersion": { "const": 1 },
+        "questionSetId": { "const": "glossa-epub-evaluation-questions" }
+      }
+    },
+    "statusAssessments": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/statusAssessment" }
+    },
+    "paragraphScores": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/paragraphScore" }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": { "type": "string", "minLength": 1 },
+    "shortReason": { "type": "string", "minLength": 1, "maxLength": 280 },
+    "reviewerId": {
+      "type": "string",
+      "pattern": "^reviewer-[a-z0-9][a-z0-9-]*$"
+    },
+    "statusAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "questionId",
+        "runId",
+        "modelId",
+        "promptVersion",
+        "reviewerId",
+        "actualStatus",
+        "statusCorrect"
+      ],
+      "properties": {
+        "questionId": { "$ref": "#/$defs/nonEmptyString" },
+        "runId": { "$ref": "#/$defs/nonEmptyString" },
+        "modelId": { "$ref": "#/$defs/nonEmptyString" },
+        "promptVersion": { "$ref": "#/$defs/nonEmptyString" },
+        "reviewerId": { "$ref": "#/$defs/reviewerId" },
+        "actualStatus": { "enum": ["answered", "insufficient_evidence"] },
+        "statusCorrect": { "type": "boolean" },
+        "reason": { "$ref": "#/$defs/shortReason" }
+      }
+    },
+    "paragraphScore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "questionId",
+        "runId",
+        "modelId",
+        "promptVersion",
+        "reviewerId",
+        "answerParagraph",
+        "citedParagraphIds",
+        "rating"
+      ],
+      "properties": {
+        "questionId": { "$ref": "#/$defs/nonEmptyString" },
+        "runId": { "$ref": "#/$defs/nonEmptyString" },
+        "modelId": { "$ref": "#/$defs/nonEmptyString" },
+        "promptVersion": { "$ref": "#/$defs/nonEmptyString" },
+        "reviewerId": { "$ref": "#/$defs/reviewerId" },
+        "answerParagraph": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "text"],
+          "properties": {
+            "id": { "$ref": "#/$defs/nonEmptyString" },
+            "text": { "$ref": "#/$defs/nonEmptyString" }
+          }
+        },
+        "citedParagraphIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" },
+          "uniqueItems": true
+        },
+        "rating": { "enum": ["fully_supported", "partially_supported", "unsupported"] },
+        "reason": { "$ref": "#/$defs/shortReason" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "rating": { "enum": ["partially_supported", "unsupported"] }
+            }
+          },
+          "then": { "required": ["reason"] }
+        }
+      ]
+    }
+  }
+}

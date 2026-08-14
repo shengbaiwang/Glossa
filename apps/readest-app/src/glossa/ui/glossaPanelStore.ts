@@ -2,7 +2,9 @@ import { create } from 'zustand';
 
 import type { DocumentNavigator } from '../citations/navigation';
 import type { ContextPack } from '../context/contextPack';
-import type { SelectedText } from '../context/types';
+import type { DocumentAdapter, SelectedText } from '../context/types';
+import type { ChapterSummaryCache } from '../ai/chapterSummaryCache';
+import type { GlossaSourcedNoteStore } from '../notes/glossaSourcedNotes';
 
 export type GlossaPanelState = {
   isOpen: boolean;
@@ -14,11 +16,17 @@ export type GlossaPanelState = {
   chapterContextPack: ContextPack | null;
   chapterContextUnavailableReason: string | null;
   navigator: DocumentNavigator | null;
+  adapter: DocumentAdapter | null;
+  chapterSummaryCache: ChapterSummaryCache | null;
+  sourcedNoteStore: GlossaSourcedNoteStore | null;
   open: (
     selection: SelectedText,
     contextPack?: ContextPack,
     navigator?: DocumentNavigator,
     chapterContext?: { pack: ContextPack | null; unavailableReason?: string },
+    adapter?: DocumentAdapter,
+    chapterSummaryCache?: ChapterSummaryCache,
+    sourcedNoteStore?: GlossaSourcedNoteStore,
   ) => void;
   close: () => void;
   togglePinned: () => void;
@@ -40,7 +48,18 @@ export const useGlossaPanelStore = create<GlossaPanelState>((set) => ({
   chapterContextPack: null,
   chapterContextUnavailableReason: null,
   navigator: null,
-  open: (selection, contextPack, navigator, chapterContext) =>
+  adapter: null,
+  chapterSummaryCache: null,
+  sourcedNoteStore: null,
+  open: (
+    selection,
+    contextPack,
+    navigator,
+    chapterContext,
+    adapter,
+    chapterSummaryCache,
+    sourcedNoteStore,
+  ) =>
     set((state) => {
       if (state.navigator && state.navigator !== navigator) state.navigator.dispose();
       return {
@@ -51,6 +70,9 @@ export const useGlossaPanelStore = create<GlossaPanelState>((set) => ({
         chapterContextPack: chapterContext?.pack ?? null,
         chapterContextUnavailableReason: chapterContext?.unavailableReason ?? null,
         navigator: navigator ?? null,
+        adapter: adapter ?? null,
+        chapterSummaryCache: chapterSummaryCache ?? null,
+        sourcedNoteStore: sourcedNoteStore ?? null,
       };
     }),
   close: () => set({ isOpen: false }),

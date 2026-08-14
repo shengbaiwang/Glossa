@@ -22,10 +22,14 @@ import {
   type EpubNavigationRuntime,
 } from '@/glossa';
 import { createContextPack } from '@/glossa/context/contextPack';
+import { createGlossaSourcedNoteStore } from '@/glossa/notes/glossaSourcedNotes';
 import GlossaPanel from '@/glossa/ui/GlossaPanel';
 import { useGlossaPanelStore } from '@/glossa/ui/glossaPanelStore';
 import { DocumentLoader, type BookDoc } from '@/libs/document';
+import type { DocumentAdapter } from '@/glossa/context/types';
 import type { FoliateView } from '@/types/view';
+import type { BookConfig } from '@/types/book';
+import type { AppService } from '@/types/system';
 
 // The WebDriver browser runner is a real iframe rather than jsdom, so opt it
 // into React's asynchronous act flushing for this interaction specification.
@@ -35,11 +39,6 @@ const EPUB_URL = new URL('../fixtures/data/glossa-reading-sample.epub', import.m
 const DOCUMENT_ID = 'glossa-reading-sample-tauri';
 
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-
-const setTextAreaValue = (input: HTMLTextAreaElement, value: string): void => {
-  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(input, value);
-  input.dispatchEvent(new Event('input', { bubbles: true }));
-};
 
 const loadBook = async (): Promise<BookDoc> => {
   const response = await fetch(EPUB_URL);
@@ -94,7 +93,7 @@ describe('Mock Glossa reading loop in the macOS Tauri WebView', () => {
     view?.remove();
   });
 
-  test('selects, freely asks twice, streams sourced Mock replies, jumps from history, and returns', async () => {
+  test('uses Mock for selection actions, a chapter summary, saved notes, exports, and citation return', async () => {
     await Promise.resolve(view.goTo(0));
     const chapterOne = view.renderer.getContents().find((content) => content.index === 0)!;
     const exact = 'records every amber mark';
@@ -111,11 +110,38 @@ describe('Mock Glossa reading loop in the macOS Tauri WebView', () => {
       selection: selection!,
       selectionContext: await adapter.getSelectionContext({ adjacentParagraphs: 1 }),
     });
+    const summaryAdapter: DocumentAdapter = {
+      ...adapter,
+      getCurrentReadSectionText: async () => ({
+        documentId: DOCUMENT_ID,
+        format: 'epub',
+        sectionId: selection!.anchor.sectionId!,
+        blocks: contextPack.segments.map((segment, order) => ({
+          text: segment.text,
+          anchor: segment.anchor,
+          kind: 'paragraph',
+          order,
+        })),
+      }),
+    };
     const navigator = createEpubAnchorNavigator({
       documentId: DOCUMENT_ID,
       getRuntime: () => runtime,
       highlightDurationMs: 1000,
     });
+    let config: BookConfig = { bookHash: DOCUMENT_ID, updatedAt: 1 };
+    const sourcedNoteStore = createGlossaSourcedNoteStore({
+      documentId: DOCUMENT_ID,
+      getEntries: () => config.glossaSourcedNotes,
+      writeEntries: async (entries) => {
+        config = { ...config, glossaSourcedNotes: entries };
+      },
+    });
+    const savedExports: string[] = [];
+    const saveFile: AppService['saveFile'] = async (filename, content) => {
+      savedExports.push(`${filename}:${String(content)}`);
+      return true;
+    };
     const addAnnotationSpy = vi.spyOn(view, 'addAnnotation');
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     await act(async () => {
@@ -127,12 +153,15 @@ describe('Mock Glossa reading loop in the macOS Tauri WebView', () => {
         selection,
         contextPack,
         navigator,
+        adapter: summaryAdapter,
+        sourcedNoteStore,
       });
       root.render(
         React.createElement(GlossaPanel, {
           safeAreaInsets: null,
           systemUIVisible: false,
           statusBarHeight: 0,
+          appService: { saveFile } as AppService,
         }),
       );
     });
@@ -140,37 +169,74 @@ describe('Mock Glossa reading loop in the macOS Tauri WebView', () => {
     await nextFrame();
     expect(host.textContent).toContain('选区 + 同章节前 1 段 · 未使用后文');
 
-    const input = host.querySelector('#glossa-question') as HTMLTextAreaElement;
-    const send = Array.from(host.querySelectorAll('button')).find(
-      (button) => button.textContent === 'Send',
+    await act(async () => {
+      (
+        Array.from(host.querySelectorAll('button')).find(
+          (button) => button.textContent === 'Explain',
+        ) as HTMLButtonElement
+      ).click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await nextFrame();
+    await nextFrame();
+    expect(host.textContent).toContain('解释（Mock）');
+    const saveNote = Array.from(host.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Save as note',
     ) as HTMLButtonElement;
+    await act(async () => saveNote.click());
+    expect(host.textContent).toContain('Note saved locally.');
+    expect(config.glossaSourcedNotes?.[0]?.sources).toHaveLength(1);
     await act(async () => {
-      setTextAreaValue(input, '这句话是什么意思？');
-    });
-    expect(send.disabled).toBe(false);
-    await act(async () => {
-      send.click();
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    await nextFrame();
-    await nextFrame();
-    expect(host.textContent).toContain('回答（Mock）');
-    expect(host.textContent).toContain('这句话是什么意思？');
-    await act(async () => {
-      setTextAreaValue(input, '请换一种更简单的方式说明。');
-    });
-    await act(async () => {
-      send.click();
+      (
+        Array.from(host.querySelectorAll('button')).find(
+          (button) => button.textContent === 'Translate',
+        ) as HTMLButtonElement
+      ).click();
       await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     });
     await nextFrame();
-    expect(host.textContent).toContain('请换一种更简单的方式说明。');
-    expect(host.textContent).toContain('上一问“这句话是什么意思？”');
-    const source = host.querySelector('[aria-label="Source 1-1"]') as HTMLButtonElement;
+    expect(host.textContent).toContain('翻译（Mock）');
+    await act(async () => {
+      (
+        Array.from(host.querySelectorAll('button')).find(
+          (button) => button.textContent === 'Summarize read chapter',
+        ) as HTMLButtonElement
+      ).click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await nextFrame();
+    expect(host.textContent).toContain('核心观点（Mock）');
+    config = JSON.parse(JSON.stringify(config)) as BookConfig;
+    const reloadedNoteStore = createGlossaSourcedNoteStore({
+      documentId: DOCUMENT_ID,
+      getEntries: () => config.glossaSourcedNotes,
+      writeEntries: async (entries) => {
+        config = { ...config, glossaSourcedNotes: entries };
+      },
+    });
+    await act(async () => {
+      useGlossaPanelStore.getState().close();
+      useGlossaPanelStore
+        .getState()
+        .open(
+          selection!,
+          contextPack,
+          navigator,
+          undefined,
+          summaryAdapter,
+          undefined,
+          reloadedNoteStore,
+        );
+    });
+    await nextFrame();
+    await nextFrame();
+    const source = host.querySelector('[aria-label="Saved note source 1-1"]') as HTMLButtonElement;
     expect(source.textContent).toContain(exact);
 
     await Promise.resolve(view.goTo(2));
@@ -180,11 +246,33 @@ describe('Mock Glossa reading loop in the macOS Tauri WebView', () => {
     await nextFrame();
     const overlay = chapterOne.overlayer as { element?: SVGSVGElement };
     expect(overlay.element?.querySelector('g[fill="#f0b429"]')).toBeTruthy();
-    const returnButton = host.querySelector('button.btn-ghost.btn-sm') as HTMLButtonElement;
+    const returnButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Return to reading position'),
+    ) as HTMLButtonElement;
     expect(returnButton.textContent).toContain('Return to reading position');
     await act(async () => returnButton.click());
     await nextFrame();
     expect(view.resolveCFI(view.lastLocation!.cfi!).index).toBe(originIndex);
+    await act(async () => {
+      (
+        Array.from(host.querySelectorAll('button')).find(
+          (button) => button.textContent === 'Export Markdown',
+        ) as HTMLButtonElement
+      ).click();
+      await Promise.resolve();
+    });
+    await nextFrame();
+    await act(async () => {
+      (
+        Array.from(host.querySelectorAll('button')).find(
+          (button) => button.textContent === 'Export JSON',
+        ) as HTMLButtonElement
+      ).click();
+      await Promise.resolve();
+    });
+    expect(savedExports).toHaveLength(2);
+    expect(savedExports[0]).toContain(`${DOCUMENT_ID}-glossa-notes.md:`);
+    expect(savedExports[1]).toContain(`${DOCUMENT_ID}-glossa-notes.json:`);
     expect(addAnnotationSpy).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
     addAnnotationSpy.mockRestore();

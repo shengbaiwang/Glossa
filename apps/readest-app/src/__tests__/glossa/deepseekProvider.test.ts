@@ -6,8 +6,9 @@ import {
   DeepSeekProvider,
   collectProviderResponse,
   validateGlossaAnswer,
+  validateGlossaChapterSummary,
 } from '@/glossa/ai';
-import { createContextPack } from '@/glossa/context/contextPack';
+import { createContextPack, createReadSectionContextPack } from '@/glossa/context/contextPack';
 import type { SourceSegment } from '@/glossa/context/types';
 
 const segment = (text: string, cfi: string): SourceSegment => ({
@@ -63,16 +64,11 @@ describe('DeepSeekProvider', () => {
     const result = await collectProviderResponse(provider, {
       question: 'What does this mean?',
       contextPack: pack,
-      history: Array.from({ length: 4 }, (_, index) => ({
+      historySummary: {
         documentId: 'fixture-book',
-        contextPackId: pack.segments.map(({ sourceId }) => sourceId).join('|'),
-        user: { role: 'user' as const, text: `older question ${index}` },
-        assistant: {
-          role: 'assistant' as const,
-          text: `older answer ${index}`,
-          answer: { status: 'insufficient_evidence' as const, paragraphs: [], followups: [] },
-        },
-      })),
+        text: '先前问题：What is an amber mark?（已回答）',
+        turnCount: 1,
+      },
     });
 
     expect(fetch).toHaveBeenCalledWith(`${DEEPSEEK_BASE_URL}/chat/completions`, expect.any(Object));
@@ -83,13 +79,16 @@ describe('DeepSeekProvider', () => {
     expect(body).toMatchObject({
       model: DEEPSEEK_MODEL,
       stream: true,
+      stream_options: { include_usage: true },
       thinking: { type: 'disabled' },
       response_format: { type: 'json_object' },
     });
     expect(body.tools).toBeUndefined();
-    expect(body.messages).toHaveLength(8); // system + three full history turns + current request
+    expect(body.messages).toHaveLength(2); // system + current request with compact summary
     expect(body.messages.at(-1).content).toContain(pack.segments[0]!.sourceId);
     expect(body.messages.at(-1).content).toContain('amber mark points to a passage');
+    expect(body.messages.at(-1).content).toContain('先前问题：What is an amber mark?（已回答）');
+    expect(JSON.stringify(body.messages)).not.toContain('older answer');
     expect(body.messages[0].content).toContain('JSON');
     expect(result.text).toBe('');
     expect(validateGlossaAnswer(result.answer, pack)).toMatchObject({ ok: true });
@@ -113,6 +112,68 @@ describe('DeepSeekProvider', () => {
       contextPack: contextPack(),
     });
     expect(result.events.map(({ type }) => type)).toEqual(['complete']);
+  });
+
+  test('reads actual final SSE usage, including cache hits and misses', async () => {
+    const pack = contextPack();
+    const provider = new DeepSeekProvider({
+      getApiKey: async () => 'test-only-key',
+      fetch: vi
+        .fn()
+        .mockResolvedValue(
+          response([
+            `data: ${JSON.stringify({ choices: [{ delta: { content: jsonAnswer(pack.segments[0]!.sourceId) }, finish_reason: 'stop' }], usage: null })}\n\n`,
+            `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 80, completion_tokens: 20, prompt_cache_hit_tokens: 30, prompt_cache_miss_tokens: 50, total_tokens: 100 } })}\n\n`,
+            'data: [DONE]\n\n',
+          ]),
+        ),
+    });
+
+    const result = await collectProviderResponse(provider, {
+      action: 'explain',
+      contextPack: pack,
+    });
+
+    expect(result.events.map(({ type }) => type)).toEqual(['usage', 'complete']);
+    expect(result.usage).toEqual({
+      inputTokens: 80,
+      outputTokens: 20,
+      cacheHitTokens: 30,
+      cacheMissTokens: 50,
+    });
+  });
+
+  test('uses the F02 schema and only the provided read-section source IDs', async () => {
+    const source = segment('Verified read chapter text.', 'epubcfi(/6/2!/4/1:0)');
+    const pack = createReadSectionContextPack({
+      section: [{ ...source, kind: 'paragraph', order: 0 }],
+    });
+    if (!pack) throw new Error('Fixture must have read evidence');
+    const sourceId = pack.segments[0]!.sourceId;
+    const summary = JSON.stringify({
+      status: 'summarized',
+      corePoints: [{ text: 'A verified point.', sourceIds: [sourceId] }],
+      evidence: [{ text: 'A verified fact.', sourceIds: [sourceId] }],
+      concepts: [],
+      openQuestions: [],
+    });
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(
+        response([
+          `data: ${JSON.stringify({ choices: [{ delta: { content: summary }, finish_reason: 'stop' }] })}\n\n`,
+          'data: [DONE]\n\n',
+        ]),
+      );
+    const result = await collectProviderResponse(
+      new DeepSeekProvider({ fetch, getApiKey: async () => 'test-only-key' }),
+      { action: 'summarize-read-section', contextPack: pack },
+    );
+
+    const body = JSON.parse(String((fetch.mock.calls[0]![1] as RequestInit).body));
+    expect(body.messages.at(-1).content).toContain('corePoints');
+    expect(body.messages.at(-1).content).toContain('Verified read chapter text.');
+    expect(validateGlossaChapterSummary(result.answer, pack)).toMatchObject({ ok: true });
   });
 
   test.each([

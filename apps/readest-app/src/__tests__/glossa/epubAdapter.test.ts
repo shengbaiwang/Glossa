@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 
 import { createEpubDocumentAdapter, parseSourceAnchor } from '@/glossa';
 import type { EpubRuntime } from '@/glossa/context/epub';
+import { CFI } from '@/libs/document';
 
 const chapter = `
   <section id="chapter-1">
@@ -32,7 +33,12 @@ const selectText = (doc: Document, elementId: string, start: number, end: number
 
 const makeRuntime = (
   doc: Document,
-  options: { cfiFails?: boolean; index?: number; href?: string } = {},
+  options: {
+    cfiFails?: boolean;
+    index?: number;
+    href?: string;
+    getCFI?: (sectionIndex: number, range: Range) => string;
+  } = {},
 ): EpubRuntime => {
   const visibleRange = doc.createRange();
   visibleRange.selectNodeContents(doc.body);
@@ -42,6 +48,7 @@ const makeRuntime = (
       renderer: { getContents: () => [{ doc, index }] },
       getCFI: (sectionIndex, range) => {
         if (options.cfiFails) throw new Error('CFI unavailable during reflow');
+        if (options.getCFI) return options.getCFI(sectionIndex, range);
         return `epubcfi(/6/${sectionIndex + 2}!/${range.toString().length})`;
       },
       lastLocation: {
@@ -61,6 +68,13 @@ const makeRuntime = (
       index,
     },
   };
+};
+
+const createPositionAwareCfi = (doc: Document) => (sectionIndex: number, range: Range) => {
+  const precedingText = doc.createRange();
+  precedingText.setStart(doc.body, 0);
+  precedingText.setEnd(range.startContainer, range.startOffset);
+  return `epubcfi(/6/${sectionIndex + 2}!/4/1:${precedingText.toString().length})`;
 };
 
 describe('EpubDocumentAdapter', () => {
@@ -149,6 +163,7 @@ describe('EpubDocumentAdapter', () => {
     expect(await adapter.getCurrentLocation()).toBeNull();
     expect(await adapter.getVisibleText()).toEqual([]);
     expect(await adapter.getSelectionContext()).toEqual([]);
+    expect(await adapter.searchReadText('amber mark')).toEqual([]);
 
     const doc = makeDocument();
     selectText(doc, 'c1-p3', 0, 3);
@@ -206,5 +221,48 @@ describe('EpubDocumentAdapter', () => {
     ]);
     expect(JSON.stringify(bounded)).not.toContain('selection 后文不得进入');
     expect(JSON.stringify(bounded)).not.toContain('下一章节外的后文');
+  });
+
+  test('returns only complete blocks inside explicit read coverage for a chapter summary', async () => {
+    const doc = makeDocument();
+    const getCFI = createPositionAwareCfi(doc);
+    const heading = doc.querySelector('h1')!;
+    const firstParagraphText = doc.getElementById('c1-p1')!.firstChild!;
+    const headingRange = doc.createRange();
+    headingRange.selectNodeContents(heading);
+    const partialParagraphRange = doc.createRange();
+    partialParagraphRange.setStart(firstParagraphText, 0);
+    partialParagraphRange.setEnd(firstParagraphText, 12);
+    const coverageStart = getCFI(0, headingRange);
+    const partialParagraphEnd = partialParagraphRange.cloneRange();
+    partialParagraphEnd.collapse(false);
+    const coverageEnd = getCFI(0, partialParagraphEnd);
+    const headingEnd = headingRange.cloneRange();
+    headingEnd.collapse(false);
+    const paragraphStart = partialParagraphRange.cloneRange();
+    paragraphStart.collapse(true);
+    const paragraphEnd = doc.createRange();
+    paragraphEnd.selectNodeContents(firstParagraphText);
+    paragraphEnd.collapse(false);
+
+    expect(CFI.compare(getCFI(0, headingEnd), coverageEnd)).toBeLessThanOrEqual(0);
+    expect(CFI.compare(getCFI(0, paragraphStart), coverageEnd)).toBeLessThan(0);
+    expect(CFI.compare(coverageEnd, getCFI(0, paragraphEnd))).toBeLessThan(0);
+
+    const adapter = createEpubDocumentAdapter({
+      documentId: 'fixture-book',
+      getRuntime: () => makeRuntime(doc, { getCFI }),
+      getReadCoverage: () => [
+        {
+          version: 1,
+          sectionIndex: 0,
+          startCfi: coverageStart,
+          endCfi: coverageEnd,
+        },
+      ],
+    });
+
+    const section = await adapter.getCurrentReadSectionText();
+    expect(section?.blocks.map(({ text }) => text)).toEqual(['The Aster Index / 星标索引']);
   });
 });

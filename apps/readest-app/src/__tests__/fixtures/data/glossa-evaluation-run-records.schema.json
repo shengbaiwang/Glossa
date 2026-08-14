@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://glossa.local/schemas/evaluation-run-records-v1.json",
+  "title": "Glossa offline evaluation run records",
+  "description": "Version 1 stores only fixture IDs, version identifiers, and numeric measurements. It excludes document text, questions, answers, API keys, and user data, and never starts a model request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "recordSetId", "runs", "questionRecords"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "recordSetId": { "const": "glossa-evaluation-run-records" },
+    "runs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/run" }
+    },
+    "questionRecords": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/questionRecord" }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "maxLength": 160
+    },
+    "nonNegativeInteger": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "questionSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "schemaVersion", "questionSetId"],
+      "properties": {
+        "path": { "const": "glossa-evaluation-question-set.json" },
+        "schemaVersion": { "const": 1 },
+        "questionSetId": { "const": "glossa-epub-evaluation-questions" }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "questionSet", "codeVersion", "modelId", "promptVersion"],
+      "properties": {
+        "runId": { "$ref": "#/$defs/identifier" },
+        "questionSet": { "$ref": "#/$defs/questionSet" },
+        "codeVersion": { "$ref": "#/$defs/identifier" },
+        "modelId": { "$ref": "#/$defs/identifier" },
+        "promptVersion": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "actualUsage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inputTokens", "outputTokens", "cacheHitTokens", "cacheMissTokens"],
+      "properties": {
+        "inputTokens": { "$ref": "#/$defs/nonNegativeInteger" },
+        "outputTokens": { "$ref": "#/$defs/nonNegativeInteger" },
+        "cacheHitTokens": { "$ref": "#/$defs/nonNegativeInteger" },
+        "cacheMissTokens": { "$ref": "#/$defs/nonNegativeInteger" }
+      }
+    },
+    "d08CostEstimate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["costUsd", "rateVersion", "ratePeriod"],
+      "properties": {
+        "costUsd": { "type": "number", "minimum": 0 },
+        "rateVersion": { "$ref": "#/$defs/identifier" },
+        "ratePeriod": { "enum": ["standard", "peak", "off-peak"] }
+      }
+    },
+    "questionRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "questionId",
+        "retrievalDurationMs",
+        "top10ParagraphIds",
+        "firstDisplayableAnswerDurationMs",
+        "citationNavigation",
+        "actualUsage",
+        "d08CostEstimate"
+      ],
+      "properties": {
+        "runId": { "$ref": "#/$defs/identifier" },
+        "questionId": { "$ref": "#/$defs/identifier" },
+        "retrievalDurationMs": { "$ref": "#/$defs/nonNegativeInteger" },
+        "top10ParagraphIds": {
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "firstDisplayableAnswerDurationMs": { "$ref": "#/$defs/nonNegativeInteger" },
+        "citationNavigation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["attempts", "successes"],
+          "properties": {
+            "attempts": { "$ref": "#/$defs/nonNegativeInteger" },
+            "successes": { "$ref": "#/$defs/nonNegativeInteger" }
+          }
+        },
+        "actualUsage": { "$ref": "#/$defs/actualUsage" },
+        "d08CostEstimate": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/d08CostEstimate" }]
+        }
+      }
+    }
+  }
+}

@@ -6,7 +6,11 @@ import {
   type EpubNavigationRuntime,
   type SourceAnchor,
 } from '@/glossa';
+import { validateGlossaAnswer } from '@/glossa/ai';
+import { createContextPack } from '@/glossa/context/contextPack';
+import { createGlossaSourcedNoteStore } from '@/glossa/notes/glossaSourcedNotes';
 import { DocumentLoader, type BookDoc } from '@/libs/document';
+import type { BookConfig } from '@/types/book';
 import type { FoliateView } from '@/types/view';
 
 const EPUB_URL = new URL('../fixtures/data/glossa-reading-sample.epub', import.meta.url).href;
@@ -327,6 +331,67 @@ describe('EPUB anchor recovery under real foliate reflow (browser)', () => {
     const returned = view.resolveCFI(view.lastLocation!.cfi!);
     const origin = view.resolveCFI(originCfi!);
     expect(returned.index).toBe(origin.index);
+    navigator.dispose();
+  });
+
+  test('restores a config-round-tripped sourced note into a real highlighted citation and return session', async () => {
+    const source = anchors[1]!;
+    const selection = { text: source.anchor.quote.exact, anchor: source.anchor };
+    const contextPack = createContextPack({ selection, selectionContext: [selection] });
+    const validated = validateGlossaAnswer(
+      {
+        status: 'answered',
+        paragraphs: [
+          {
+            text: 'A saved answer bound to this source.',
+            sourceIds: [contextPack.segments[0]!.sourceId],
+            basis: 'document',
+          },
+        ],
+        followups: [],
+      },
+      contextPack,
+    );
+    if (!validated.ok) throw new Error('Fixture answer must validate');
+    let config: BookConfig = { bookHash: DOCUMENT_ID, updatedAt: 1 };
+    const noteStore = createGlossaSourcedNoteStore({
+      documentId: DOCUMENT_ID,
+      getEntries: () => config.glossaSourcedNotes,
+      writeEntries: async (entries) => {
+        config = { ...config, glossaSourcedNotes: entries };
+      },
+    });
+    await expect(
+      noteStore.save({
+        contextPack,
+        answer: validated.answer,
+        paragraphIndex: 0,
+        request: { action: 'explain' },
+      }),
+    ).resolves.toMatchObject({ status: 'saved' });
+    config = JSON.parse(JSON.stringify(config)) as BookConfig;
+
+    await Promise.resolve(view.goTo(2));
+    const originCfi = view.lastLocation?.cfi;
+    const navigator = createEpubAnchorNavigator({
+      documentId: DOCUMENT_ID,
+      getRuntime: () => runtime,
+      highlightDurationMs: 0,
+      highlightColor: '#f0b429',
+    });
+    const restored = createGlossaSourcedNoteStore({
+      documentId: DOCUMENT_ID,
+      getEntries: () => config.glossaSourcedNotes,
+      writeEntries: async () => undefined,
+    }).list()[0];
+    if (!restored) throw new Error('Fixture note must survive config reload');
+    const session = await navigator.navigate(restored.sources[0]!.anchor);
+    const overlay = (rendered(view, source.index).overlayer as { element?: SVGSVGElement }).element;
+
+    expect(session.result).toMatchObject({ status: 'resolved', exact: true, canReturn: true });
+    expect(overlay?.querySelector('g[fill="#f0b429"]')).toBeTruthy();
+    await expect(session.returnToOrigin()).resolves.toBe(true);
+    expect(view.resolveCFI(view.lastLocation!.cfi!).index).toBe(view.resolveCFI(originCfi!).index);
     navigator.dispose();
   });
 

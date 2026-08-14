@@ -30,8 +30,14 @@ import { useGlossaPanelStore } from '@/glossa/ui/glossaPanelStore';
 import {
   createChapterToSelectionContextPack,
   createContextPack,
+  createReadSectionContextPack,
 } from '@/glossa/context/contextPack';
-import type { AIProvider } from '@/glossa/ai';
+import {
+  validateGlossaChapterSummary,
+  type AIProvider,
+  type AIProviderRequest,
+  type ChapterSummaryCache,
+} from '@/glossa/ai';
 import {
   clearDeepSeekApiKey,
   getDeepSeekApiKey,
@@ -43,7 +49,10 @@ import {
   canAskGlossaForEpubSelection,
   captureAndOpenGlossaPanel,
 } from '@/glossa/ui/selectionAction';
-import type { SelectedText } from '@/glossa/context/types';
+import type { DocumentAdapter, SelectedText } from '@/glossa/context/types';
+import { createGlossaSourcedNoteStore } from '@/glossa/notes/glossaSourcedNotes';
+import type { BookConfig } from '@/types/book';
+import type { AppService } from '@/types/system';
 
 const env = process.env as Record<string, string | undefined>;
 const flagName = 'NEXT_PUBLIC_GLOSSA_ENABLED';
@@ -61,13 +70,14 @@ const selected = (text: string): SelectedText => ({
   },
 });
 
-const renderPanel = (provider?: AIProvider) =>
+const renderPanel = (provider?: AIProvider, appService?: { saveFile: AppService['saveFile'] }) =>
   render(
     <GlossaPanel
       safeAreaInsets={null}
       systemUIVisible={false}
       statusBarHeight={0}
       provider={provider}
+      appService={appService}
     />,
   );
 
@@ -86,6 +96,9 @@ beforeEach(() => {
     chapterContextPack: null,
     chapterContextUnavailableReason: null,
     navigator: null,
+    adapter: null,
+    chapterSummaryCache: null,
+    sourcedNoteStore: null,
   });
   vi.mocked(getDeepSeekKeychainStatus).mockResolvedValue({ available: false, configured: false });
   vi.mocked(getDeepSeekApiKey).mockResolvedValue(null);
@@ -304,7 +317,719 @@ describe('Glossa panel', () => {
     expect(screen.getByText(/Evidence insufficient/u)).toBeTruthy();
   });
 
-  test('sends free questions with Enter, keeps Shift+Enter as a newline, and uses the prior turn', async () => {
+  test('shows actual token usage and a labelled local USD estimate after a response', async () => {
+    const selection = selected('amber mark');
+    const provider: AIProvider = {
+      modelVersion: 'deepseek-v4-flash',
+      async *stream(request) {
+        yield {
+          type: 'usage',
+          usage: { inputTokens: 100, outputTokens: 50, cacheHitTokens: 20, cacheMissTokens: 80 },
+        };
+        yield {
+          type: 'complete',
+          answer: {
+            status: 'answered',
+            paragraphs: [
+              {
+                text: 'Answer with measured usage.',
+                sourceIds: [request.contextPack.selectionSourceId],
+                basis: 'document',
+              },
+            ],
+            followups: [],
+          },
+        };
+      },
+    };
+    useGlossaPanelStore.getState().open(selection, contextFor(selection));
+    renderPanel(provider);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Explain'));
+      await Promise.resolve();
+    });
+
+    const usage = screen.getByLabelText('Usage and estimated cost');
+    expect(usage.textContent).toContain('Input 100');
+    expect(usage.textContent).toContain('Output 50');
+    expect(usage.textContent).toContain('Cache hit 20');
+    expect(usage.textContent).toContain('Cache miss 80');
+    expect(usage.textContent).toContain('Estimated cost:');
+    expect(usage.textContent).toContain('USD');
+    expect(usage.textContent).toContain('Rate deepseek-v4-flash');
+  });
+
+  test('keeps the EPUB selection in explain and translate requests, excludes later text, and navigates through local citations', async () => {
+    const selection = {
+      ...selected('selected EPUB passage'),
+      anchor: { ...selected('selected EPUB passage').anchor, cfi: 'epubcfi(/6/2!/4/3:0)' },
+    };
+    const previous = {
+      ...selected('preceding EPUB passage'),
+      anchor: { ...selected('preceding EPUB passage').anchor, cfi: 'epubcfi(/6/2!/4/1:0)' },
+    };
+    const later = {
+      ...selected('unread later EPUB passage'),
+      anchor: { ...selected('unread later EPUB passage').anchor, cfi: 'epubcfi(/6/2!/4/5:0)' },
+    };
+    const contextPack = createContextPack({
+      selection,
+      selectionContext: [previous, selection, later],
+    });
+    const requests: AIProviderRequest[] = [];
+    const navigate = vi.fn(async (anchor: SelectedText['anchor']) => ({
+      result: {
+        status: 'resolved' as const,
+        method: 'cfi' as const,
+        exact: true,
+        anchor,
+        canReturn: true,
+      },
+      returnToOrigin: vi.fn(async () => true),
+      dispose: vi.fn(),
+    }));
+    const provider: AIProvider = {
+      async *stream(request) {
+        requests.push(request);
+        yield {
+          type: 'complete',
+          answer: {
+            status: 'answered',
+            paragraphs: [
+              {
+                text: `${request.action} result`,
+                sourceIds: [request.contextPack.selectionSourceId],
+                basis: 'document',
+              },
+            ],
+            followups: [],
+          },
+        };
+      },
+    };
+    useGlossaPanelStore.getState().open(selection, contextPack, { navigate, dispose: vi.fn() });
+    renderPanel(provider);
+
+    for (const action of ['Explain', 'Translate']) {
+      await act(async () => {
+        fireEvent.click(screen.getByText(action));
+        await Promise.resolve();
+      });
+    }
+
+    expect(requests.map(({ action }) => action)).toEqual(['explain', 'translate']);
+    for (const request of requests) {
+      expect(request.contextPack.segments.filter(({ role }) => role === 'selection')).toEqual([
+        expect.objectContaining({ text: selection.text }),
+      ]);
+      expect(request.contextPack.segments.map(({ text }) => text)).not.toContain(later.text);
+    }
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Source 2-1'));
+      await Promise.resolve();
+    });
+    expect(navigate).toHaveBeenCalledWith(selection.anchor);
+  });
+
+  test('saves only a completed answer, reports duplicates, and restores every saved source after config reload', async () => {
+    const selection = selected('amber mark');
+    const navigate = vi.fn(async (anchor: SelectedText['anchor']) => ({
+      result: {
+        status: 'resolved' as const,
+        method: 'cfi' as const,
+        exact: true,
+        anchor,
+        canReturn: true,
+      },
+      returnToOrigin: vi.fn(async () => true),
+      dispose: vi.fn(),
+    }));
+    let config: BookConfig = { bookHash: 'fixture-book', updatedAt: 1 };
+    const noteStore = createGlossaSourcedNoteStore({
+      documentId: 'fixture-book',
+      getEntries: () => config.glossaSourcedNotes,
+      writeEntries: async (entries) => {
+        config = { ...config, glossaSourcedNotes: entries };
+      },
+    });
+    const localProvider: AIProvider = {
+      async *stream(request) {
+        yield {
+          type: 'complete',
+          answer: {
+            status: 'answered',
+            paragraphs: [
+              {
+                text: 'A saved verified answer.',
+                sourceIds: [request.contextPack.segments[0]!.sourceId],
+                basis: 'document',
+              },
+            ],
+            followups: [],
+          },
+        };
+      },
+    };
+    useGlossaPanelStore
+      .getState()
+      .open(
+        selection,
+        contextFor(selection),
+        { navigate, dispose: vi.fn() },
+        undefined,
+        undefined,
+        undefined,
+        noteStore,
+      );
+    renderPanel(localProvider);
+    await act(async () => {
+      fireEvent.click(screen.getByText('Explain'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByText('Save as note'));
+    await act(async () => await Promise.resolve());
+    expect(screen.getByText('Note saved locally.')).toBeTruthy();
+    expect(config.glossaSourcedNotes?.[0]).toMatchObject({
+      version: 3,
+      original: {
+        version: 2,
+        answer: { text: 'A saved verified answer.', basis: 'document' },
+        context: {
+          request: { action: 'explain' },
+          selection: { text: 'amber mark' },
+        },
+      },
+    });
+    expect(config.glossaSourcedNotes?.[0]?.sources).toHaveLength(1);
+
+    fireEvent.click(screen.getByText('Save as note'));
+    await act(async () => await Promise.resolve());
+    expect(screen.getByText('This note is already saved.')).toBeTruthy();
+
+    cleanup();
+    config = JSON.parse(JSON.stringify(config)) as BookConfig;
+    const reloadedStore = createGlossaSourcedNoteStore({
+      documentId: 'fixture-book',
+      getEntries: () => config.glossaSourcedNotes,
+      writeEntries: async (entries) => {
+        config = { ...config, glossaSourcedNotes: entries };
+      },
+    });
+    useGlossaPanelStore
+      .getState()
+      .open(
+        selection,
+        contextFor(selection),
+        { navigate, dispose: vi.fn() },
+        undefined,
+        undefined,
+        undefined,
+        reloadedStore,
+      );
+    renderPanel();
+    expect(screen.getByLabelText('Saved Glossa notes')).toBeTruthy();
+    expect(screen.getByLabelText('Saved note context').textContent).toContain(
+      'Explain selected text',
+    );
+    expect(screen.getByLabelText('Saved note context').textContent).toContain('amber mark');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit note' }));
+    fireEvent.change(screen.getByLabelText('Your note'), {
+      target: { value: 'My own reading reminder.' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save note changes' }));
+      await Promise.resolve();
+    });
+    expect(screen.getByText('Note updated locally.')).toBeTruthy();
+    expect(config.glossaSourcedNotes?.[0]).toMatchObject({
+      version: 3,
+      userNote: 'My own reading reminder.',
+      original: {
+        version: 2,
+        answer: { text: 'A saved verified answer.', basis: 'document' },
+        context: { selection: { text: 'amber mark' }, request: { action: 'explain' } },
+      },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Saved note source 1-1'));
+      await Promise.resolve();
+    });
+    expect(navigate).toHaveBeenLastCalledWith(selection.anchor);
+    expect(screen.getByText('Return to reading position')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete note' }));
+    expect(screen.getByText('Delete this saved note?')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep note' }));
+    expect(config.glossaSourcedNotes).toHaveLength(1);
+    expect(screen.getByText('My own reading reminder.')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete note' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Delete permanently' }));
+      await Promise.resolve();
+    });
+    expect(config.glossaSourcedNotes).toEqual([]);
+    expect(
+      screen.getByText('No saved notes are available to export for this document.'),
+    ).toBeTruthy();
+  });
+
+  test('exports saved notes as Markdown or JSON and reports cancellation and save failure', async () => {
+    const selection = selected('amber mark');
+    const savedNote = {
+      version: 1 as const,
+      id: 'legacy-note',
+      documentId: 'fixture-book',
+      answer: 'Legacy verified answer.',
+      sources: [
+        {
+          sourceId: 'source_legacy',
+          text: 'amber mark',
+          anchor: selection.anchor,
+        },
+      ],
+      createdAt: 1,
+    };
+    const noteStore = createGlossaSourcedNoteStore({
+      documentId: 'fixture-book',
+      getEntries: () => [savedNote],
+      writeEntries: async () => {},
+    });
+    const saveFile = vi
+      .fn<AppService['saveFile']>()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockRejectedValueOnce(new Error('disk unavailable'));
+    useGlossaPanelStore
+      .getState()
+      .open(
+        selection,
+        contextFor(selection),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        noteStore,
+      );
+    renderPanel(undefined, { saveFile });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export Markdown' }));
+      await Promise.resolve();
+    });
+    expect(saveFile).toHaveBeenLastCalledWith(
+      'fixture-book-glossa-notes.md',
+      expect.stringContaining('Legacy verified answer.'),
+      { mimeType: 'text/markdown' },
+    );
+    expect(screen.getByText('Markdown export saved.')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export JSON' }));
+      await Promise.resolve();
+    });
+    expect(saveFile).toHaveBeenLastCalledWith(
+      'fixture-book-glossa-notes.json',
+      expect.stringContaining('"version": 1'),
+      { mimeType: 'application/json' },
+    );
+    expect(screen.getByText('Export cancelled.')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export JSON' }));
+      await Promise.resolve();
+    });
+    expect(screen.getByText('Could not export notes. Please try again.')).toBeTruthy();
+  });
+
+  test('keeps export controls disabled with an explicit current-document empty state', () => {
+    const selection = selected('amber mark');
+    const noteStore = createGlossaSourcedNoteStore({
+      documentId: 'fixture-book',
+      getEntries: () => [],
+      writeEntries: async () => {},
+    });
+    useGlossaPanelStore
+      .getState()
+      .open(
+        selection,
+        contextFor(selection),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        noteStore,
+      );
+    renderPanel(undefined, { saveFile: vi.fn() });
+
+    expect(
+      screen.getByText('No saved notes are available to export for this document.'),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Export Markdown' }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    expect(screen.getByRole('button', { name: 'Export JSON' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  test('keeps the saved-note card after a failed confirmed deletion', async () => {
+    const selection = selected('amber mark');
+    const savedNote = {
+      version: 1 as const,
+      id: 'legacy-note',
+      documentId: 'fixture-book',
+      answer: 'Legacy verified answer.',
+      sources: [
+        {
+          sourceId: 'source_legacy',
+          text: 'amber mark',
+          anchor: selection.anchor,
+        },
+      ],
+      createdAt: 1,
+    };
+    const noteStore = createGlossaSourcedNoteStore({
+      documentId: 'fixture-book',
+      getEntries: () => [savedNote],
+      writeEntries: async () => {
+        throw new Error('disk unavailable');
+      },
+    });
+    useGlossaPanelStore
+      .getState()
+      .open(
+        selection,
+        contextFor(selection),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        noteStore,
+      );
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete note' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Delete permanently' }));
+      await Promise.resolve();
+    });
+    expect(screen.getByText('Could not delete note. Please try again.')).toBeTruthy();
+    expect(screen.getByText('Legacy verified answer.')).toBeTruthy();
+    expect(screen.queryByText('Delete this saved note?')).toBeNull();
+  });
+
+  test('never offers a save action while a result is loading, cancelled, errored, or insufficient', async () => {
+    const selection = selected('amber mark');
+    const provider: AIProvider = {
+      async *stream(request, signal) {
+        if (request.action === 'relate') {
+          yield {
+            type: 'complete',
+            answer: { status: 'insufficient_evidence', paragraphs: [], followups: [] },
+          };
+          return;
+        }
+        if (request.action === 'translate') {
+          yield { type: 'error', error: { code: 'provider-error', message: 'test failure' } };
+          return;
+        }
+        await new Promise<void>((_resolve, reject) =>
+          signal.addEventListener(
+            'abort',
+            () => reject(new DOMException('aborted', 'AbortError')),
+            { once: true },
+          ),
+        );
+      },
+    };
+    useGlossaPanelStore.getState().open(selection, contextFor(selection));
+    renderPanel(provider);
+    fireEvent.click(screen.getByText('Explain'));
+    await act(async () => await Promise.resolve());
+    expect(screen.queryByText('Save as note')).toBeNull();
+    fireEvent.click(screen.getByText('Cancel'));
+    await act(async () => await Promise.resolve());
+    expect(screen.queryByText('Save as note')).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Translate'));
+      await Promise.resolve();
+    });
+    expect(screen.getByText('test failure')).toBeTruthy();
+    expect(screen.queryByText('Save as note')).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Connect to previous'));
+      await Promise.resolve();
+    });
+    expect(
+      screen.getByText(
+        'Evidence insufficient: the current context does not support this question.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Save as note')).toBeNull();
+  });
+
+  test('summarizes only adapter-proved read chapter blocks with a structured local result', async () => {
+    const selection = selected('amber mark');
+    const readBlock = {
+      ...selected('A verified read chapter claim.'),
+      kind: 'paragraph' as const,
+      order: 0,
+    };
+    const secondReadBlock = {
+      ...selected('A separate verified chapter claim.'),
+      kind: 'paragraph' as const,
+      order: 1,
+    };
+    secondReadBlock.anchor.cfi = 'epubcfi(/6/2!/4/3:0)';
+    const unreadBlock = {
+      ...selected('Unread later chapter text.'),
+      kind: 'paragraph' as const,
+      order: 1,
+    };
+    const getCurrentReadSectionText = vi.fn(async () => ({
+      documentId: 'fixture-book',
+      format: 'epub' as const,
+      sectionId: 'chapter-1.xhtml',
+      blocks: [readBlock, secondReadBlock],
+    }));
+    const adapter = { getCurrentReadSectionText } as unknown as DocumentAdapter;
+    const seenPacks: string[][] = [];
+    const returned = vi.fn(async () => true);
+    const navigate = vi.fn(async (anchor: SelectedText['anchor']) => ({
+      result: {
+        status: 'resolved' as const,
+        method: 'cfi' as const,
+        exact: true,
+        anchor,
+        canReturn: true,
+      },
+      returnToOrigin: returned,
+      dispose: vi.fn(),
+    }));
+    const localProvider: AIProvider = {
+      async *stream(request) {
+        seenPacks.push(request.contextPack.segments.map(({ text }) => text));
+        const [firstSourceId, secondSourceId] = request.contextPack.segments.map(
+          ({ sourceId }) => sourceId,
+        );
+        yield {
+          type: 'complete',
+          answer: {
+            status: 'summarized',
+            corePoints: [
+              { text: 'First verified core point.', sourceIds: [firstSourceId!] },
+              { text: 'Second verified core point.', sourceIds: [secondSourceId!] },
+            ],
+            evidence: [{ text: 'Verified evidence.', sourceIds: [secondSourceId!] }],
+            concepts: [
+              { term: 'claim', explanation: 'A read statement.', sourceIds: [firstSourceId!] },
+            ],
+            openQuestions: [{ text: 'What follows from it?', sourceIds: [secondSourceId!] }],
+          },
+        };
+      },
+    };
+    useGlossaPanelStore
+      .getState()
+      .open(selection, contextFor(selection), { navigate, dispose: vi.fn() }, undefined, adapter);
+    renderPanel(localProvider);
+    await act(async () => {
+      fireEvent.click(screen.getByText('Summarize read chapter'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(getCurrentReadSectionText).toHaveBeenCalledOnce();
+    expect(seenPacks).toEqual([[readBlock.text, secondReadBlock.text]]);
+    expect(JSON.stringify(seenPacks)).not.toContain(unreadBlock.text);
+    expect(screen.getByText('Core points')).toBeTruthy();
+    expect(screen.getByText('First verified core point.')).toBeTruthy();
+    expect(screen.getByText('Second verified core point.')).toBeTruthy();
+    expect(screen.getByLabelText('Core point sources 1-1').textContent).toContain(readBlock.text);
+    expect(screen.getByLabelText('Core point sources 1-1').textContent).not.toContain(
+      secondReadBlock.text,
+    );
+    expect(screen.getByLabelText('Core point sources 1-2').textContent).toContain(
+      secondReadBlock.text,
+    );
+    expect(screen.getByLabelText('Core point sources 1-2').textContent).not.toContain(
+      readBlock.text,
+    );
+    expect(screen.queryByLabelText('Sources')).toBeNull();
+    expect(screen.getByText('Verified evidence.')).toBeTruthy();
+    expect(screen.getByText('Open questions')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Core point source 1-2-1'));
+      await Promise.resolve();
+    });
+    expect(navigate).toHaveBeenCalledWith(secondReadBlock.anchor);
+    await act(async () => {
+      fireEvent.click(screen.getByText('Return to reading position'));
+      await Promise.resolve();
+    });
+    expect(returned).toHaveBeenCalledOnce();
+  });
+
+  test('uses a valid local chapter-summary cache before calling the provider', async () => {
+    const selection = selected('amber mark');
+    const readBlock = {
+      ...selected('A verified read chapter claim.'),
+      kind: 'paragraph' as const,
+      order: 0,
+    };
+    const secondReadBlock = {
+      ...selected('A separate verified chapter claim.'),
+      kind: 'paragraph' as const,
+      order: 1,
+    };
+    secondReadBlock.anchor.cfi = 'epubcfi(/6/2!/4/3:0)';
+    const readPack = createReadSectionContextPack({ section: [readBlock, secondReadBlock] });
+    if (!readPack) throw new Error('Fixture cache must have read evidence');
+    const getCurrentReadSectionText = vi.fn(async () => ({
+      documentId: 'fixture-book',
+      format: 'epub' as const,
+      sectionId: 'chapter-1.xhtml',
+      blocks: [readBlock, secondReadBlock],
+    }));
+    const adapter = { getCurrentReadSectionText } as unknown as DocumentAdapter;
+    const [firstSourceId, secondSourceId] = readPack.segments.map(({ sourceId }) => sourceId);
+    const cached = validateGlossaChapterSummary(
+      {
+        status: 'summarized',
+        corePoints: [
+          { text: 'Cached first core point.', sourceIds: [firstSourceId!] },
+          { text: 'Cached second core point.', sourceIds: [secondSourceId!] },
+        ],
+        evidence: [{ text: 'Cached evidence.', sourceIds: [secondSourceId!] }],
+        concepts: [],
+        openQuestions: [],
+      },
+      readPack,
+    );
+    if (!cached.ok) throw new Error('Fixture cache must validate');
+    const chapterSummaryCache: ChapterSummaryCache = {
+      read: vi.fn(() => cached),
+      write: vi.fn(),
+    };
+    const stream = vi.fn();
+    const localProvider: AIProvider = { modelVersion: 'test-model-v1', stream };
+    const navigate = vi.fn(async (anchor: SelectedText['anchor']) => ({
+      result: {
+        status: 'resolved' as const,
+        method: 'cfi' as const,
+        exact: true,
+        anchor,
+        canReturn: true,
+      },
+      returnToOrigin: vi.fn(async () => true),
+      dispose: vi.fn(),
+    }));
+    useGlossaPanelStore
+      .getState()
+      .open(
+        selection,
+        contextFor(selection),
+        { navigate, dispose: vi.fn() },
+        undefined,
+        adapter,
+        chapterSummaryCache,
+      );
+    renderPanel(localProvider);
+    await act(async () => {
+      fireEvent.click(screen.getByText('Summarize read chapter'));
+      await Promise.resolve();
+    });
+    expect(chapterSummaryCache.read).toHaveBeenCalledOnce();
+    expect(stream).not.toHaveBeenCalled();
+    expect(chapterSummaryCache.write).not.toHaveBeenCalled();
+    expect(screen.getByText('Cached first core point.')).toBeTruthy();
+    expect(screen.getByText('Cached second core point.')).toBeTruthy();
+    expect(screen.getByLabelText('Core point sources 1-1').textContent).toContain(readBlock.text);
+    expect(screen.getByLabelText('Core point sources 1-1').textContent).not.toContain(
+      secondReadBlock.text,
+    );
+    expect(screen.getByLabelText('Core point sources 1-2').textContent).toContain(
+      secondReadBlock.text,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Core point source 1-2-1'));
+      await Promise.resolve();
+    });
+    expect(navigate).toHaveBeenCalledWith(secondReadBlock.anchor);
+  });
+
+  test('writes only a completed, validated chapter summary and never on cancellation', async () => {
+    const selection = selected('amber mark');
+    const readBlock = {
+      ...selected('A verified read chapter claim.'),
+      kind: 'paragraph' as const,
+      order: 0,
+    };
+    const adapter = {
+      getCurrentReadSectionText: vi.fn(async () => ({
+        documentId: 'fixture-book',
+        format: 'epub' as const,
+        sectionId: 'chapter-1.xhtml',
+        blocks: [readBlock],
+      })),
+    } as unknown as DocumentAdapter;
+    const chapterSummaryCache: ChapterSummaryCache = { read: vi.fn(() => null), write: vi.fn() };
+    const blockingProvider: AIProvider = {
+      modelVersion: 'test-model-v1',
+      async *stream(_request, signal) {
+        await new Promise<void>((_resolve, reject) =>
+          signal.addEventListener(
+            'abort',
+            () => reject(new DOMException('aborted', 'AbortError')),
+            { once: true },
+          ),
+        );
+      },
+    };
+    useGlossaPanelStore
+      .getState()
+      .open(selection, contextFor(selection), undefined, undefined, adapter, chapterSummaryCache);
+    renderPanel(blockingProvider);
+    await act(async () => {
+      fireEvent.click(screen.getByText('Summarize read chapter'));
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByText('Cancel'));
+    await act(async () => await Promise.resolve());
+    expect(chapterSummaryCache.write).not.toHaveBeenCalled();
+  });
+
+  test('reports insufficient evidence without calling a provider when the chapter has no verified read blocks', async () => {
+    const selection = selected('amber mark');
+    const stream = vi.fn();
+    const adapter = {
+      getCurrentReadSectionText: vi.fn(async () => ({
+        documentId: 'fixture-book',
+        format: 'epub' as const,
+        sectionId: 'chapter-1.xhtml',
+        blocks: [],
+      })),
+    } as unknown as DocumentAdapter;
+    const localProvider: AIProvider = { stream };
+    useGlossaPanelStore
+      .getState()
+      .open(selection, contextFor(selection), undefined, undefined, adapter);
+    renderPanel(localProvider);
+    await act(async () => {
+      fireEvent.click(screen.getByText('Summarize read chapter'));
+      await Promise.resolve();
+    });
+    expect(stream).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(
+        'Evidence insufficient: no verified read text is available in this chapter.',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('sends free questions with Enter, keeps Shift+Enter as a newline, and uses a bounded history summary', async () => {
     const selection = selected('amber mark');
     useGlossaPanelStore.getState().open(selection, contextFor(selection));
     renderPanel();
@@ -331,7 +1056,50 @@ describe('Glossa panel', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(screen.getByText(/上一问“这句话是什么意思？”/u)).toBeTruthy();
+    expect(screen.getByText(/这次追问保留了同一文档中先前问题的摘要/u)).toBeTruthy();
+  });
+
+  test('adds only adapter-filtered read-keyword evidence before a free-question request', async () => {
+    const selection = selected('amber mark');
+    const retrieved = selected('A prior amber mark explains the term.');
+    retrieved.anchor.cfi = 'epubcfi(/6/2!/4/3:0)';
+    const searchReadText = vi.fn(async () => [retrieved]);
+    const adapter = { searchReadText } as unknown as DocumentAdapter;
+    const seenPacks: string[][] = [];
+    const localProvider: AIProvider = {
+      async *stream(request) {
+        seenPacks.push(request.contextPack.segments.map(({ text }) => text));
+        yield {
+          type: 'complete',
+          answer: {
+            status: 'answered',
+            paragraphs: [
+              {
+                text: 'Retrieved evidence answer.',
+                sourceIds: [request.contextPack.segments.at(-1)!.sourceId],
+                basis: 'document',
+              },
+            ],
+            followups: [],
+          },
+        };
+      },
+    };
+    useGlossaPanelStore
+      .getState()
+      .open(selection, contextFor(selection), undefined, undefined, adapter);
+    renderPanel(localProvider);
+    const input = screen.getByPlaceholderText('Ask about the selected text');
+    fireEvent.change(input, { target: { value: 'What is an amber mark?' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(searchReadText).toHaveBeenCalledWith('amber mark', expect.any(Object));
+    expect(seenPacks).toEqual([['amber mark', 'A prior amber mark explains the term.']]);
+    expect(screen.getByText('Retrieved evidence answer.')).toBeTruthy();
   });
 
   test('does not send blank or overlong Unicode questions and shows a limit message', () => {
@@ -415,6 +1183,7 @@ describe('Glossa panel', () => {
       await Promise.resolve();
     });
     expect(screen.getByRole('alert').textContent).toContain('Mock provider failed');
+    expect(screen.getByText('Usage and estimated cost unavailable.')).toBeTruthy();
   });
 
   test('labels each local-answer paragraph as document or inference in text and aria metadata', async () => {

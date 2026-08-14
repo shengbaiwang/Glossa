@@ -1,4 +1,6 @@
 import { isGlossaEnabled } from '../featureFlag';
+import { shouldRecordEpubReadingEvent, type EpubReadRange } from './readCoverage';
+import type { EpubSearchView } from '../retrieval/epubKeywordSearch';
 import type { StructuredTextBlockKind } from './types';
 
 export type EpubTextSegment = {
@@ -68,7 +70,10 @@ type EpubView = {
   lastLocation?: unknown;
   addEventListener?: (type: string, listener: EventListener) => void;
   removeEventListener?: (type: string, listener: EventListener) => void;
+  book?: EpubSearchView['book'];
 };
+
+type EpubReadCoverageView = Pick<EpubView, 'getCFI'>;
 
 /**
  * Readest/foliate runtime inputs. This is intentionally local to the EPUB
@@ -165,6 +170,37 @@ const isRange = (value: unknown): value is Range => {
     typeof record['intersectsNode'] === 'function' &&
     'startContainer' in record
   );
+};
+
+const isNonNegativeInteger = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0;
+
+/**
+ * Convert foliate's raw renderer relocate payload into a JSON-safe range of
+ * text the user has actually seen. Navigation, anchors, selections and layout
+ * stabilization are intentionally ignored because they are not reading proof.
+ */
+export const captureEpubReadRangeFromRelocate = (
+  view: EpubReadCoverageView,
+  detail: unknown,
+): EpubReadRange | null => {
+  const record = asRecord(detail);
+  if (!record || !shouldRecordEpubReadingEvent(record['reason'])) return null;
+  const index = record['index'];
+  const range = record['range'];
+  if (!isNonNegativeInteger(index) || !isRange(range)) return null;
+  try {
+    const start = range.cloneRange();
+    start.collapse(true);
+    const end = range.cloneRange();
+    end.collapse(false);
+    const startCfi = view.getCFI(index, start);
+    const endCfi = view.getCFI(index, end);
+    if (!startCfi.trim() || !endCfi.trim()) return null;
+    return { version: 1, sectionIndex: index, startCfi, endCfi };
+  } catch {
+    return null;
+  }
 };
 
 const asViewLocation = (value: unknown): ViewLocation | null => {
@@ -550,6 +586,42 @@ export const getEpubStructuredSectionText = (
   const content = getContents(runtime.view).find((entry) => entry.index === sectionIndex);
   if (!content) return null;
   return structuredSectionForDocument(runtime.view, content.doc, sectionIndex, location);
+};
+
+/**
+ * Read only semantic blocks whose entire native range was actually displayed.
+ * The caller supplies coverage evaluation so this EPUB boundary remains
+ * independent from persistence and CFI-comparison implementations.
+ */
+export const getEpubStructuredReadSectionText = (
+  runtime: EpubRuntime,
+  isRangeRead: (range: { sectionIndex: number; startCfi: string; endCfi: string }) => boolean,
+): EpubStructuredSectionText | null => {
+  const location = getLocation(runtime);
+  const sectionIndex = location?.sectionIndex;
+  if (typeof sectionIndex !== 'number') return null;
+  const content = getContents(runtime.view).find((entry) => entry.index === sectionIndex);
+  if (!content) return null;
+  const blocks: EpubStructuredTextBlock[] = [];
+  for (const { element, kind } of structuredElementsForDocument(content.doc)) {
+    const range = content.doc.createRange();
+    range.selectNodeContents(element);
+    const start = range.cloneRange();
+    start.collapse(true);
+    const end = range.cloneRange();
+    end.collapse(false);
+    const startCfi = getCfi(runtime.view, sectionIndex, start);
+    const endCfi = getCfi(runtime.view, sectionIndex, end);
+    if (!startCfi || !endCfi || !isRangeRead({ sectionIndex, startCfi, endCfi })) continue;
+    const block = structuredAnchorBlock(runtime.view, sectionIndex, range, kind, blocks.length);
+    if (block) blocks.push(block);
+  }
+  return {
+    sectionIndex,
+    ...(location?.sectionHref ? { sectionHref: location.sectionHref } : {}),
+    ...(location?.sectionLabel ? { sectionLabel: location.sectionLabel } : {}),
+    blocks,
+  };
 };
 
 /**

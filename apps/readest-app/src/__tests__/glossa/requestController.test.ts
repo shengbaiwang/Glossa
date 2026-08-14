@@ -167,6 +167,57 @@ describe('GlossaRequestController', () => {
     expect(errors).toEqual(['Glossa could not verify the repaired answer.']);
   });
 
+  test('accumulates actual usage from the failed structure and its one repair', async () => {
+    const pack = makePack('repair usage');
+    let calls = 0;
+    const provider: AIProvider = {
+      async *stream() {
+        calls++;
+        yield {
+          type: 'usage',
+          usage: {
+            inputTokens: 10,
+            outputTokens: calls === 1 ? 3 : 4,
+            cacheHitTokens: 2,
+            cacheMissTokens: 8,
+          },
+        };
+        yield {
+          type: 'complete',
+          answer:
+            calls === 1
+              ? { status: 'answered', paragraphs: [], followups: [] }
+              : {
+                  status: 'answered',
+                  paragraphs: [
+                    {
+                      text: 'repaired',
+                      sourceIds: [pack.segments[0]!.sourceId],
+                      basis: 'document',
+                    },
+                  ],
+                  followups: [],
+                },
+        };
+      },
+    };
+    const completedUsage: unknown[] = [];
+    await new GlossaRequestController(provider).run(
+      { action: 'explain', contextPack: pack },
+      {
+        onText: () => {},
+        onRepairing: () => {},
+        onComplete: (_result, usage) => completedUsage.push(usage),
+        onCancelled: () => {},
+        onError: () => {},
+      },
+    );
+
+    expect(completedUsage).toEqual([
+      { inputTokens: 20, outputTokens: 7, cacheHitTokens: 4, cacheMissTokens: 16 },
+    ]);
+  });
+
   test('does not automatically retry transport, authentication, cancellation, or request errors', async () => {
     const nonStructural = [
       'invalid-auth',

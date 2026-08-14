@@ -1,7 +1,12 @@
-import { validateGlossaAnswer, type ValidatedGlossaAnswer } from './answer';
+import {
+  validateGlossaAnswer,
+  validateGlossaChapterSummary,
+  type ValidatedGlossaResult,
+} from './answer';
 import type {
   AIProvider,
   AIProviderRequest,
+  AIProviderUsage,
   ProviderError,
   StructuralRepairReason,
 } from './provider';
@@ -9,7 +14,7 @@ import type {
 export type GlossaRequestHandlers = {
   onText(text: string): void;
   onRepairing(): void;
-  onComplete(result: ValidatedGlossaAnswer): void;
+  onComplete(result: ValidatedGlossaResult, usage: AIProviderUsage | null): void;
   onCancelled(): void;
   onError(error: ProviderError): void;
 };
@@ -22,6 +27,18 @@ type ActiveRequest = {
   handlers: GlossaRequestHandlers;
   settled: boolean;
 };
+
+type AttemptOutcome =
+  | { type: 'complete'; result: ValidatedGlossaResult; usage: AIProviderUsage | null }
+  | { type: 'repair'; reason: StructuralRepairReason; usage: AIProviderUsage | null }
+  | { type: 'error'; error: ProviderError };
+
+const addUsage = (left: AIProviderUsage, right: AIProviderUsage): AIProviderUsage => ({
+  inputTokens: left.inputTokens + right.inputTokens,
+  outputTokens: left.outputTokens + right.outputTokens,
+  cacheHitTokens: left.cacheHitTokens + right.cacheHitTokens,
+  cacheMissTokens: left.cacheMissTokens + right.cacheMissTokens,
+});
 
 const isAbortError = (error: unknown): boolean =>
   error instanceof DOMException && error.name === 'AbortError';
@@ -48,52 +65,80 @@ export class GlossaRequestController {
     this.cancel();
     const active: ActiveRequest = { controller: new AbortController(), handlers, settled: false };
     this.active = active;
-    const runAttempt = async (
-      attempt: AIProviderRequest,
-    ): Promise<StructuralRepairReason | null> => {
+    const runAttempt = async (attempt: AIProviderRequest): Promise<AttemptOutcome | null> => {
+      let usage: AIProviderUsage | null = null;
       for await (const event of this.provider.stream(attempt, active.controller.signal)) {
         if (this.active !== active || active.settled) return null;
         if (event.type === 'text-delta') {
           handlers.onText(event.text);
           continue;
         }
+        if (event.type === 'usage') {
+          usage = event.usage;
+          continue;
+        }
         if (event.type === 'error') {
           const repairReason = repairReasonForError(event.error);
-          if (repairReason) return repairReason;
-          active.settled = true;
-          this.active = null;
-          handlers.onError(event.error);
-          return null;
+          return repairReason
+            ? { type: 'repair', reason: repairReason, usage }
+            : { type: 'error', error: event.error };
         }
-        const validation = validateGlossaAnswer(event.answer, request.contextPack);
-        if (!validation.ok) return validation.reason;
-        active.settled = true;
-        this.active = null;
-        handlers.onComplete(validation);
-        return null;
+        const validation =
+          request.action === 'summarize-read-section'
+            ? validateGlossaChapterSummary(event.answer, request.contextPack)
+            : validateGlossaAnswer(event.answer, request.contextPack);
+        return validation.ok
+          ? { type: 'complete', result: validation, usage }
+          : { type: 'repair', reason: validation.reason, usage };
       }
-      if (this.active !== active || active.settled) return null;
-      active.settled = true;
-      this.active = null;
-      handlers.onError({
-        code: 'invalid-response',
-        message: 'Glossa provider ended without a completion result',
-      });
-      return null;
+      return this.active !== active || active.settled
+        ? null
+        : {
+            type: 'error',
+            error: {
+              code: 'invalid-response',
+              message: 'Glossa provider ended without a completion result',
+            },
+          };
     };
     try {
-      const repairReason = await runAttempt(request);
-      if (this.active !== active || active.settled || !repairReason) return;
+      const first = await runAttempt(request);
+      if (this.active !== active || active.settled || !first) return;
+      if (first.type === 'error') {
+        active.settled = true;
+        this.active = null;
+        handlers.onError(first.error);
+        return;
+      }
+      if (first.type === 'complete') {
+        active.settled = true;
+        this.active = null;
+        handlers.onComplete(first.result, first.usage);
+        return;
+      }
       handlers.onRepairing();
-      const retryReason = await runAttempt({ ...request, repair: { reason: repairReason } });
-      if (this.active !== active || active.settled || !retryReason) return;
+      const retry = await runAttempt({ ...request, repair: { reason: first.reason } });
+      if (this.active !== active || active.settled || !retry) return;
+      if (retry.type === 'complete') {
+        active.settled = true;
+        this.active = null;
+        handlers.onComplete(
+          retry.result,
+          first.usage && retry.usage ? addUsage(first.usage, retry.usage) : null,
+        );
+        return;
+      }
       active.settled = true;
       this.active = null;
-      handlers.onError({
-        code: 'invalid-response',
-        message: 'Glossa could not verify the repaired answer.',
-        repairReason: retryReason,
-      });
+      handlers.onError(
+        retry.type === 'error'
+          ? retry.error
+          : {
+              code: 'invalid-response',
+              message: 'Glossa could not verify the repaired answer.',
+              repairReason: retry.reason,
+            },
+      );
     } catch (error) {
       if (this.active !== active || active.settled) return;
       active.settled = true;

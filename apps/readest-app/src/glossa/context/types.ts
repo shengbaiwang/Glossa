@@ -62,8 +62,12 @@ export interface DocumentAdapter {
   getSelection(): Promise<SelectedText | null>;
   getCurrentLocation(): Promise<DocumentLocation | null>;
   getVisibleText(): Promise<SourceSegment[]>;
+  /** Search only text proved by the format adapter to be within read coverage. */
+  searchReadText(query: string, options?: { signal?: AbortSignal }): Promise<SourceSegment[]>;
   getSelectionContext(options?: { adjacentParagraphs?: number }): Promise<SourceSegment[]>;
   getCurrentSectionText(): Promise<StructuredSectionText | null>;
+  /** Only complete blocks proved to be inside the persisted read coverage. */
+  getCurrentReadSectionText(): Promise<StructuredSectionText | null>;
   /**
    * Snapshot only blocks provably before the live selection. Call this before
    * the reader clears its native Selection; it never uses reading progress.

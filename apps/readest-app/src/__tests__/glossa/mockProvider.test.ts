@@ -4,7 +4,6 @@ import {
   type GlossaAnswer,
   MockProvider,
   collectProviderResponse,
-  getContextPackId,
   validateGlossaAnswer,
 } from '@/glossa/ai';
 import { createContextPack } from '@/glossa/context/contextPack';
@@ -89,33 +88,20 @@ describe('MockProvider and answer validation', () => {
     fetchSpy.mockRestore();
   });
 
-  test('references the immediately preceding complete turn for a follow-up', async () => {
+  test('uses a bounded history summary for a follow-up without prior answer prose', async () => {
     const contextPack = pack();
-    const first = await collectProviderResponse(new MockProvider(), {
-      question: '这句话是什么意思？',
-      contextPack,
-    });
-    const firstAnswer = validateGlossaAnswer(first.answer, contextPack);
-    expect(firstAnswer.ok).toBe(true);
-    if (!firstAnswer.ok) return;
     const second = await collectProviderResponse(new MockProvider(), {
       question: '请换一种更简单的方式说明。',
       contextPack,
-      history: [
-        {
-          documentId: 'fixture-book',
-          contextPackId: getContextPackId(contextPack),
-          user: { role: 'user', text: '这句话是什么意思？' },
-          assistant: {
-            role: 'assistant',
-            text: first.text,
-            answer: firstAnswer.answer,
-          },
-        },
-      ],
+      historySummary: {
+        documentId: 'fixture-book',
+        text: '先前问题：这句话是什么意思？（已回答）',
+        turnCount: 1,
+      },
     });
 
-    expect(second.text).toContain('上一问“这句话是什么意思？”');
+    expect(second.text).toContain('这次追问保留了同一文档中先前问题的摘要。');
+    expect(second.text).not.toContain('上一问');
   });
 
   test('returns insufficient evidence for a question outside the current ContextPack', async () => {
@@ -157,12 +143,12 @@ describe('MockProvider and answer validation', () => {
         contextPack,
       ),
     ).toMatchObject({ ok: false, reason: 'duplicate-source-id' });
-    expect(validateGlossaAnswer({ status: 'answered', paragraphs: [] }, contextPack)).toMatchObject(
-      {
-        ok: false,
-        reason: 'invalid-schema',
-      },
-    );
+    expect(
+      validateGlossaAnswer({ status: 'answered', paragraphs: [], followups: [] }, contextPack),
+    ).toMatchObject({
+      ok: false,
+      reason: 'invalid-schema',
+    });
     const valid = validateGlossaAnswer(
       {
         status: 'answered',

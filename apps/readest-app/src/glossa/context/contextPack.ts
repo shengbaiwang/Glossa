@@ -3,6 +3,8 @@ import type { SelectedText, SourceSegment, StructuredTextBlock } from './types';
 
 export const MAX_CHAPTER_CONTEXT_SEGMENTS = 32;
 export const MAX_CHAPTER_CONTEXT_CHARACTERS = 12_000;
+export const MAX_REQUEST_CONTEXT_SEGMENTS = 40;
+export const MAX_REQUEST_CONTEXT_CHARACTERS = 16_000;
 
 export type ContextScope =
   | { kind: 'minimal'; excludesSelectionAfter: true }
@@ -11,13 +13,21 @@ export type ContextScope =
       excludesSelectionAfter: true;
       chapterSegmentCount: number;
       truncated: boolean;
+    }
+  | {
+      kind: 'read-section';
+      excludesUnreadSectionText: true;
+      chapterSegmentCount: number;
+      truncated: boolean;
+      /** Fingerprint of every locally proved read block, before the request budget. */
+      evidenceFingerprint: string;
     };
 
 export type ContextSegment = {
   sourceId: string;
   text: string;
   anchor: SourceAnchor;
-  role: 'previous' | 'selection' | 'chapter';
+  role: 'previous' | 'selection' | 'chapter' | 'retrieval';
 };
 
 /** The complete, bounded evidence set supplied to one Glossa request. */
@@ -27,6 +37,7 @@ export type ContextPack = {
   hasPreviousContext: boolean;
   scope: ContextScope;
   scopeLabel: string;
+  retrieval: { segmentCount: number; truncated: boolean } | null;
 };
 
 const anchorKey = (anchor: SourceAnchor): string =>
@@ -52,6 +63,17 @@ const stableHash = (value: string): string => {
     hash = Math.imul(hash, 0x01000193);
   }
   return (hash >>> 0).toString(36);
+};
+
+const stableEvidenceFingerprint = (blocks: Pick<StructuredTextBlock, 'anchor'>[]): string => {
+  let hash = 0xcbf29ce484222325n;
+  for (const block of blocks) {
+    for (const character of anchorKey(block.anchor)) {
+      hash ^= BigInt(character.codePointAt(0) ?? 0);
+      hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+    }
+  }
+  return hash.toString(16).padStart(16, '0');
 };
 
 const sourceIdFor = (segment: SourceSegment, taken: Set<string>): string => {
@@ -108,6 +130,7 @@ export function createContextPack(options: {
     hasPreviousContext,
     scope: { kind: 'minimal', excludesSelectionAfter: true },
     scopeLabel: hasPreviousContext ? '选区 + 同章节前 1 段 · 未使用后文' : '仅选区 · 未使用后文',
+    retrieval: null,
   };
 }
 
@@ -184,5 +207,135 @@ export function createChapterToSelectionContextPack(options: {
     scopeLabel: truncated
       ? `本章开头至选区 · 最近 ${chapterSegmentCount} 段（已截断）· 未使用后文`
       : `本章开头至选区 · ${chapterSegmentCount} 段 · 未使用后文`,
+    retrieval: null,
   };
 }
+
+/**
+ * Build a summary evidence pack from blocks that the adapter has already
+ * proved fully read. It deliberately has no synthetic selection: F02 is about
+ * the current chapter's read portion, not the current cursor position.
+ */
+export function createReadSectionContextPack(options: {
+  section: Pick<StructuredTextBlock, 'text' | 'anchor' | 'kind' | 'order'>[];
+}): ContextPack | null {
+  const blocks = options.section.filter(
+    (block, index, all) =>
+      block.text.trim() && !all.slice(0, index).some((earlier) => sameEvidence(earlier, block)),
+  );
+  if (blocks.length === 0) return null;
+  const included = new Set<(typeof blocks)[number]>();
+  let usedCharacters = 0;
+  const heading = blocks.find((block) => block.kind === 'heading');
+  if (heading && Array.from(heading.text).length <= MAX_CHAPTER_CONTEXT_CHARACTERS) {
+    included.add(heading);
+    usedCharacters += Array.from(heading.text).length;
+  }
+  for (const block of [...blocks].reverse()) {
+    if (included.has(block) || included.size >= MAX_CHAPTER_CONTEXT_SEGMENTS) continue;
+    const length = Array.from(block.text).length;
+    if (usedCharacters + length > MAX_CHAPTER_CONTEXT_CHARACTERS) continue;
+    included.add(block);
+    usedCharacters += length;
+  }
+  const selectedBlocks = blocks.filter((block) => included.has(block));
+  const taken = new Set<string>();
+  const segments: ContextSegment[] = selectedBlocks.map((block) => ({
+    sourceId: sourceIdFor(block, taken),
+    text: block.text,
+    anchor: block.anchor,
+    role: 'chapter',
+  }));
+  const truncated = selectedBlocks.length !== blocks.length;
+  return {
+    // Preserved for shared ContextPack compatibility; F02 never treats this as
+    // a selected range and validates every summary source independently.
+    selectionSourceId: segments[0]!.sourceId,
+    segments,
+    hasPreviousContext: false,
+    scope: {
+      kind: 'read-section',
+      excludesUnreadSectionText: true,
+      chapterSegmentCount: segments.length,
+      truncated,
+      evidenceFingerprint: stableEvidenceFingerprint(blocks),
+    },
+    scopeLabel: truncated
+      ? `本章已读部分 · 最近 ${segments.length} 段（已截断）· 未使用后文`
+      : `本章已读部分 · ${segments.length} 段 · 未使用后文`,
+    retrieval: null,
+  };
+}
+
+const keywordScore = (text: string, query: string): number => {
+  const words = query.toLocaleLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? [];
+  const normalized = normalizedText(text).toLocaleLowerCase();
+  return words.reduce((score, word) => score + (normalized.includes(word) ? 1 : 0), 0);
+};
+
+/**
+ * Keep selection-time evidence intact, then add only compact, local keyword
+ * matches from E06. Candidate order is deterministic and no text is sliced:
+ * when the budget is exhausted the candidate is simply not sent.
+ */
+export const addReadKeywordCandidates = (options: {
+  contextPack: ContextPack;
+  query: string;
+  candidates: SourceSegment[];
+  maximumCharacters?: number;
+  maximumSegments?: number;
+}): ContextPack => {
+  const {
+    contextPack,
+    query,
+    candidates,
+    maximumCharacters = MAX_REQUEST_CONTEXT_CHARACTERS,
+    maximumSegments = MAX_REQUEST_CONTEXT_SEGMENTS,
+  } = options;
+  const existingKeys = new Set(contextPack.segments.map(({ anchor }) => anchorKey(anchor)));
+  const seenCandidateKeys = new Set<string>();
+  const uniqueCandidates = candidates
+    .filter((candidate) => {
+      const key = anchorKey(candidate.anchor);
+      if (!candidate.text.trim() || existingKeys.has(key) || seenCandidateKeys.has(key))
+        return false;
+      seenCandidateKeys.add(key);
+      return true;
+    })
+    .sort(
+      (left, right) =>
+        keywordScore(right.text, query) - keywordScore(left.text, query) ||
+        anchorKey(left.anchor).localeCompare(anchorKey(right.anchor)),
+    );
+  const selected = [...contextPack.segments];
+  const taken = new Set(selected.map(({ sourceId }) => sourceId));
+  let usedCharacters = selected.reduce(
+    (total, segment) => total + Array.from(segment.text).length,
+    0,
+  );
+  let truncated = false;
+  for (const candidate of uniqueCandidates) {
+    const length = Array.from(candidate.text).length;
+    if (selected.length >= maximumSegments || usedCharacters + length > maximumCharacters) {
+      truncated = true;
+      continue;
+    }
+    selected.push({
+      sourceId: sourceIdFor(candidate, taken),
+      text: candidate.text,
+      anchor: candidate.anchor,
+      role: 'retrieval',
+    });
+    usedCharacters += length;
+  }
+  const segmentCount = selected.filter(({ role }) => role === 'retrieval').length;
+  return {
+    ...contextPack,
+    segments: selected,
+    scopeLabel:
+      segmentCount > 0
+        ? `${contextPack.scopeLabel} + 已读范围关键词检索 ${segmentCount} 段${truncated ? '（已截断）' : ''}`
+        : contextPack.scopeLabel,
+    retrieval: { segmentCount, truncated },
+  };
+};
