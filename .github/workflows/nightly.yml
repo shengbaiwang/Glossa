@@ -9,8 +9,6 @@
 name: Nightly Readest
 
 on:
-  schedule:
-    - cron: '0 22 * * *' # 22:00 UTC = 06:00 GMT+8
   workflow_dispatch:
 
 permissions:

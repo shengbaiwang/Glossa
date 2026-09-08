@@ -1,8 +1,6 @@
-name: Deploy to vercel on merge
+name: Deploy to Vercel manually
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:

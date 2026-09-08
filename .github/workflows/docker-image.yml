@@ -2,12 +2,6 @@ name: Publish Docker image
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-  release:
-    types:
-      - published
 
 concurrency:
   group: publish-docker-image-${{ github.event.release.tag_name || github.ref }}

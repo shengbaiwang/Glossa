@@ -2,8 +2,6 @@ name: Release Readest
 
 on:
   workflow_dispatch:
-  release:
-    types: [published]
 
 permissions: read-all
 

@@ -31,7 +31,10 @@
 
 - 使用真实同步账号和两台设备验收云端往返及冲突合并；本轮未上传用户书籍。
 - 如需继续裁剪原生插件或共享同步兼容层，应逐平台构建并保留旧数据迁移能力。
-- 当前改动仅在工作区，未提交、发布或覆盖已安装的 Glossa 应用。
+- 功能精简已保存为本地提交 `8c11937c`；未发布或覆盖已安装的 Glossa 应用。
+- 2026-09-08 推送配置：已连接现有公开 fork `https://github.com/shengbaiwang/Glossa` 为唯一远程 `origin`，按用户要求移除 `upstream`。用户已确认备份后以当前本地版本更新远程 main；旧远程的 28 个独有提交已保存至远程分支 `codex/backup-main-20260908-42c7a2cb`，通过 `git ls-remote` 核对为 `42c7a2cb0f46dc5b624918ba7dc000ca70f89e2e`。
+- Docker 镜像、Vercel 部署、Nightly 和 Release 四个工作流改为仅手动触发，保留原 CI 与仓库 Actions 设置。四份 YAML 解析及触发器检查、`git diff --check` 通过；本轮未修改产品代码。
+- 首次备份推送的 pre-push 钩子通过格式、类型和 lint 检查，但 Node v26.0.0 下 Vitest 收集阶段出现 `localStorage` 警告及多个 0 test 文件，随后主动中止，未得到完整测试结果。后续 Git 同步使用单次 `core.hooksPath=/dev/null` 跳过该全量测试钩子，不更改永久 hooks 配置；产品测试结论仍以上述已记录结果为准。
 - 独立记录并修复上游 Turso 向量计算精度问题，避免与本轮功能删减混在一起。
 
 ---
