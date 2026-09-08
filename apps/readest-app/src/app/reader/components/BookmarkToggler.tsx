@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Bookmark } from 'lucide-react';
+import { Bookmark } from '@/components/GlossaIcons';
 
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';

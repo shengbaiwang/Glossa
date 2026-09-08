@@ -1,0 +1,219 @@
+/* Page turns and position form one sentence; history and section jumps are aside. */
+.glossa-reader-navigation {
+  container: glossa-navigation / inline-size;
+  justify-content: center;
+  gap: 16px;
+}
+
+.glossa-navigation-primary {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex: 1 1 680px;
+  max-width: 680px;
+  min-width: 0;
+}
+
+.glossa-page-navigation,
+.glossa-navigation-secondary {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.glossa-navigation-secondary,
+.glossa-navigation-spacer {
+  flex: 0 0 72px;
+}
+
+.glossa-navigation-secondary .glossa-icon-button {
+  color: var(--glossa-muted);
+}
+
+.glossa-page-navigation .glossa-reader-page-input {
+  min-width: 64px;
+  font-size: 12px;
+}
+
+.glossa-progress-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.glossa-progress-slider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 40px;
+  height: 32px;
+}
+
+.glossa-progress-track {
+  position: absolute;
+  inset-inline: 10px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--glossa-border);
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.glossa-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--glossa-ink);
+  opacity: 0.6;
+}
+
+.glossa-progress-slider .glossa-reader-range {
+  appearance: none;
+  position: relative;
+  margin: 0;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  background: transparent;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.glossa-progress-slider .glossa-reader-range::-webkit-slider-runnable-track {
+  height: 3px;
+  background: transparent;
+}
+
+.glossa-progress-slider .glossa-reader-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 22px;
+  height: 9px;
+  margin-top: -3px;
+  border: 1px solid var(--glossa-ink);
+  border-radius: 8px;
+  background: var(--glossa-ink);
+}
+
+.glossa-progress-slider .glossa-reader-range::-moz-range-track {
+  height: 3px;
+  background: transparent;
+}
+
+.glossa-progress-slider .glossa-reader-range::-moz-range-thumb {
+  width: 20px;
+  height: 7px;
+  border: 1px solid var(--glossa-ink);
+  border-radius: 8px;
+  background: var(--glossa-ink);
+}
+
+.glossa-progress-slider .glossa-reader-range:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.glossa-progress-value {
+  width: 4ch;
+  flex-shrink: 0;
+  color: var(--glossa-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+.glossa-progress-control[data-scrubbing='true'] .glossa-progress-value {
+  color: var(--glossa-ink);
+}
+
+.glossa-mobile-navigation > .glossa-progress-control {
+  width: 100%;
+  max-width: 520px;
+}
+
+.glossa-mobile-navigation .glossa-page-navigation {
+  gap: 24px;
+}
+
+.glossa-mobile-navigation .glossa-progress-slider,
+.glossa-mobile-navigation .glossa-reader-range {
+  height: 44px;
+}
+
+.glossa-mobile-navigation-secondary {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 520px;
+  border-top: 1px solid var(--glossa-border);
+  padding-top: 12px;
+}
+
+[data-eink='true'] .glossa-navigation-secondary .glossa-icon-button,
+[data-eink='true'] .glossa-progress-value {
+  color: var(--glossa-ink);
+}
+
+[data-eink='true'] .glossa-progress-track {
+  border: 1px solid var(--glossa-ink);
+  height: 4px;
+}
+
+[data-eink='true'] .glossa-progress-track span {
+  opacity: 1;
+}
+
+[data-eink='true'] .glossa-mobile-navigation {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glossa-mobile-navigation {
+    transition: none;
+  }
+}
+
+@media (max-width: 899px) {
+  .glossa-navigation-primary {
+    gap: 8px;
+  }
+}
+
+/* A pinned sidebar or split reading view can be much narrower than the window. */
+@container glossa-navigation (max-width: 520px) {
+  .glossa-navigation-primary {
+    gap: 4px;
+  }
+
+  .glossa-page-navigation,
+  .glossa-navigation-secondary {
+    gap: 0;
+  }
+
+  .glossa-navigation-secondary,
+  .glossa-navigation-spacer {
+    flex-basis: 64px;
+  }
+
+  .glossa-page-navigation .glossa-reader-page-input {
+    min-width: 48px;
+  }
+
+  .glossa-navigation-primary .glossa-progress-value {
+    display: none;
+  }
+}
+
+@container glossa-navigation (max-width: 360px) {
+  /* Page entry retains precise jumping when there is no useful room to scrub. */
+  .glossa-navigation-primary .glossa-progress-control {
+    display: none;
+  }
+
+  .glossa-navigation-primary {
+    justify-content: center;
+  }
+}

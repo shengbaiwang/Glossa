@@ -1,4 +1,4 @@
-import { Search, ChevronDown, X, Trash2 } from 'lucide-react';
+import { Search, ChevronDown, X, Trash2 } from '@/components/GlossaIcons';
 import clsx from 'clsx';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 

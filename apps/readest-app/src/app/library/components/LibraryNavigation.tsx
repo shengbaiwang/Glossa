@@ -1,4 +1,4 @@
-import { BookOpen, Folder, LibraryBig, Tags, Users, Layers } from 'lucide-react';
+import { BookOpen, Folder, LibraryBig, Tags, Users, Layers } from '@/components/GlossaIcons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';

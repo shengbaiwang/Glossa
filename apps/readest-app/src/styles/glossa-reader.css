@@ -150,3 +150,60 @@
 [data-eink='true'] .glossa-reader-tab {
   transition: none;
 }
+
+/* Navigation at the start; reading tools at the end. The 44px inset contract
+   is unchanged, while the controls share the mark's rounded, open shapes. */
+.glossa-reader-header .header-tools-start,
+.glossa-reader-header .header-tools-end,
+.glossa-reader-header .header-tools-start > .no-scrollbar {
+  gap: 12px;
+}
+
+.glossa-reader-header .glossa-icon-button,
+.glossa-reader-panel-header .glossa-icon-button {
+  border-radius: 9px;
+}
+
+.glossa-reader-header .glossa-reader-library-button {
+  width: auto;
+  gap: 7px;
+  padding-inline: 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.glossa-reader-book-title {
+  font-weight: 500;
+}
+
+.glossa-reader-header .header-tools-end {
+  padding-inline-start: 14px;
+}
+
+.glossa-reader-inline-menu {
+  padding-inline-start: 16px;
+  background: transparent;
+}
+
+.glossa-reader-header .glossa-icon,
+.glossa-reader-panel-header .glossa-icon {
+  width: 20px;
+  height: 20px;
+}
+
+@media (min-width: 900px) {
+  .glossa-reader-header .header-tools-end {
+    gap: 12px;
+  }
+}
+
+@media (max-width: 899px) {
+  .glossa-reader-header .glossa-reader-library-button {
+    width: 32px;
+    padding: 0;
+  }
+
+  .glossa-reader-library-button span {
+    display: none;
+  }
+}

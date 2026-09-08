@@ -5,11 +5,8 @@ import {
   SunMoon,
   ZoomOut,
   ZoomIn,
-  Check,
-  Info,
   Radio,
   Minus,
-  Plus,
   Contrast,
   CloudOff,
   RefreshCw,
@@ -50,6 +47,9 @@ import { nextThemeMode } from '@/utils/ambientLight';
 import dayjs from 'dayjs';
 import { saveViewSettings } from '@/helpers/settings';
 import { tauriHandleToggleFullScreen } from '@/utils/window';
+import { Check, Info, Plus, Highlight, X } from '@/components/GlossaIcons';
+import { getReadingQuickAction } from '@/utils/annotationToolbar';
+import QuickActionMenu from './annotator/QuickActionMenu';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';
 
@@ -57,12 +57,14 @@ interface ViewMenuProps {
   bookKey: string;
   setIsDropdownOpen?: (open: boolean) => void;
   onShowMetaHashDialog?: () => void;
+  onCloseBook?: () => void;
 }
 
 const ViewMenu: React.FC<ViewMenuProps> = ({
   bookKey,
   setIsDropdownOpen,
   onShowMetaHashDialog,
+  onCloseBook,
 }) => {
   const _ = useTranslation();
   const iconSize = useResponsiveSize(16);
@@ -422,6 +424,33 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
 
       <MenuItem label={_('Font & Layout')} shortcut='Shift+F' onClick={openFontLayoutMenu} />
 
+      {viewSettings.enableAnnotationQuickActions && (
+        <MenuItem
+          label={_('Selection Actions')}
+          Icon={<Highlight size={iconSize} aria-hidden='true' />}
+        >
+          <QuickActionMenu
+            menuClassName='glossa-reader-inline-menu !relative !m-0 !w-full !border-0 !shadow-none'
+            selectedAction={getReadingQuickAction(viewSettings.annotationQuickAction)}
+            onActionSelect={(action) => {
+              const nextAction =
+                getReadingQuickAction(viewSettings.annotationQuickAction) === action
+                  ? null
+                  : action;
+              saveViewSettings(
+                envConfig,
+                bookKey,
+                'annotationQuickAction',
+                nextAction,
+                false,
+                true,
+              );
+            }}
+            setIsDropdownOpen={setIsDropdownOpen}
+          />
+        </MenuItem>
+      )}
+
       {!bookData.isFixedLayout && (
         <MenuItem
           label={_('Scrolled Mode')}
@@ -440,8 +469,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
         onClick={toggleAutoScroll}
         disabled={!isScrolledMode}
       />
-
-      <hr aria-hidden='true' className='border-base-300 my-1' />
 
       <hr aria-hidden='true' className='border-base-300 my-1' />
 
@@ -522,7 +549,19 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
         onClick={() => setInvertImgColorInDark(!invertImgColorInDark)}
       />
 
-      <hr aria-hidden='true' className='border-base-300 my-1' />
+      {onCloseBook && (
+        <>
+          <hr aria-hidden='true' className='border-base-300 my-1' />
+          <MenuItem
+            label={_('Close Book')}
+            Icon={<X size={iconSize} aria-hidden='true' />}
+            onClick={() => {
+              setIsDropdownOpen?.(false);
+              onCloseBook();
+            }}
+          />
+        </>
+      )}
     </Menu>
   );
 };

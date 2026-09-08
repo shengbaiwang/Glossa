@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import React, { useCallback } from 'react';
-import { BookOpen, ChevronRight } from 'lucide-react';
+import { BookOpen, ChevronRight } from '@/components/GlossaIcons';
 import { TOCItem } from '@/libs/document';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getContentMd5 } from '@/utils/misc';

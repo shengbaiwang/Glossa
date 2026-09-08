@@ -1,6 +1,6 @@
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import React from 'react';
-import { PanelLeft } from 'lucide-react';
+import { PanelLeft } from '@/components/GlossaIcons';
 
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useTranslation } from '@/hooks/useTranslation';

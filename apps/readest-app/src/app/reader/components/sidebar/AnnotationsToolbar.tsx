@@ -1,7 +1,6 @@
 import clsx from 'clsx';
 import React, { useEffect, useRef } from 'react';
-import { FaSearch, FaTimes } from 'react-icons/fa';
-import { MdFilterList } from 'react-icons/md';
+import { Search, X, SlidersHorizontal } from '@/components/GlossaIcons';
 
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
@@ -253,7 +252,7 @@ const AnnotationsToolbar: React.FC<AnnotationsToolbarProps> = ({
       {isSearchVisible && (
         <div className='eink-bordered bg-base-100 flex h-8 min-w-0 flex-1 items-center rounded-lg'>
           <div className='ps-3'>
-            <FaSearch size={iconSize14} className='text-base-content/50' />
+            <Search size={iconSize14} className='text-base-content/50' />
           </div>
           <input
             ref={searchInputRef}
@@ -273,7 +272,7 @@ const AnnotationsToolbar: React.FC<AnnotationsToolbarProps> = ({
             aria-label={_('Clear')}
             className='btn btn-ghost h-8 min-h-8 w-8 rounded-e-lg rounded-s-none p-0'
           >
-            <FaTimes size={iconSize12} className='text-base-content/50' />
+            <X size={iconSize12} className='text-base-content/50' />
           </button>
         </div>
       )}
@@ -289,7 +288,7 @@ const AnnotationsToolbar: React.FC<AnnotationsToolbarProps> = ({
         containerClassName='h-8 pt-1'
         toggleButton={
           <span className='relative inline-flex'>
-            <MdFilterList className='fill-base-content' />
+            <SlidersHorizontal size={18} />
           </span>
         }
       >

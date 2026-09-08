@@ -17,7 +17,6 @@ const MobileFooterBar: React.FC<FooterBarChildProps> = ({
   onSetActionTab,
 }) => {
   const isMobile = forceMobileLayout || window.innerWidth < 640 || window.innerHeight < 640;
-  const sliderHeight = useResponsiveSize(28);
   const marginIconSize = useResponsiveSize(20);
   const bottomOffset = isMobile ? `${gridInsets.bottom * 0.33 + 64}px` : '64px';
 
@@ -35,7 +34,6 @@ const MobileFooterBar: React.FC<FooterBarChildProps> = ({
         progressValid={progressValid}
         navigationHandlers={navigationHandlers}
         bottomOffset={bottomOffset}
-        sliderHeight={sliderHeight}
         forceMobileLayout={forceMobileLayout}
       />
       <FontLayoutPanel

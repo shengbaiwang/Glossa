@@ -1,4 +1,4 @@
-import { List, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { List, X, ChevronLeft, ChevronRight } from '@/components/GlossaIcons';
 import clsx from 'clsx';
 import React from 'react';
 

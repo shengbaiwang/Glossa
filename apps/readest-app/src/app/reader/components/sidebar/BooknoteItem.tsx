@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import dayjs from 'dayjs';
 import React, { useMemo, useRef, useState } from 'react';
-import { MdEdit, MdDelete, MdContentCopy } from 'react-icons/md';
+import { Pencil, Trash2, Copy } from '@/components/GlossaIcons';
 
 import { Marked } from 'marked';
 import markedKatex from 'marked-katex-extension';
@@ -349,7 +349,7 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({
               className='btn btn-ghost btn-xs text-base-content p-0 opacity-0 transition duration-300 ease-in-out hover:bg-transparent group-focus-within:opacity-100 group-hover:opacity-100'
               aria-label={_('Copy')}
             >
-              <MdContentCopy size={size18} />
+              <Copy size={size18} />
             </button>
 
             <button
@@ -357,7 +357,7 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({
               className='btn btn-ghost btn-xs p-0 text-red-500 opacity-0 transition duration-300 ease-in-out hover:bg-transparent group-focus-within:opacity-100 group-hover:opacity-100'
               aria-label={_('Delete')}
             >
-              <MdDelete size={size18} />
+              <Trash2 size={size18} />
             </button>
 
             {isEditable && (
@@ -372,7 +372,7 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({
                 className='btn btn-ghost btn-xs p-0 text-blue-500 opacity-0 transition duration-300 ease-in-out hover:bg-transparent group-focus-within:opacity-100 group-hover:opacity-100'
                 aria-label={item.note || item.type === 'bookmark' ? _('Edit') : _('Add Note')}
               >
-                <MdEdit size={size18} />
+                <Pencil size={size18} />
               </button>
             )}
           </div>

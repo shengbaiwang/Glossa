@@ -5,7 +5,7 @@ import {
   SlidersHorizontal as SliderIcon,
   Type as FontIcon,
   Sun as ColorIcon,
-} from 'lucide-react';
+} from '@/components/GlossaIcons';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSidebarStore } from '@/store/sidebarStore';

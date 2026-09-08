@@ -1,8 +1,7 @@
 import clsx from 'clsx';
-import React, { useEffect, useState } from 'react';
+import React, { useId } from 'react';
 
 import { BookDoc } from '@/libs/document';
-import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 
@@ -17,62 +16,36 @@ const SidebarContent: React.FC<{
   bookDoc: BookDoc;
   sideBarBookKey: string;
 }> = ({ bookDoc, sideBarBookKey }) => {
-  const { setHoveredBookKey } = useReaderStore();
-  const { setSideBarVisible, setSearchBarVisible } = useSidebarStore();
+  const { setSearchBarVisible } = useSidebarStore();
   const { getConfig, setConfig } = useBookDataStore();
   const config = getConfig(sideBarBookKey);
-  const [activeTab, setActiveTab] = useState(config?.viewSettings?.sideBarTab || 'toc');
-  const [fade, setFade] = useState(false);
-  const [targetTab, setTargetTab] = useState(activeTab);
-  const isMobile = window.innerWidth < 640 || window.innerHeight < 640;
-
-  useEffect(() => {
-    if (!sideBarBookKey) return;
-    const config = getConfig(sideBarBookKey!)!;
-    setActiveTab(config.viewSettings!.sideBarTab!);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sideBarBookKey]);
-
-  // Restore the table of contents when an old config selected chat history.
-  useEffect(() => {
-    if (activeTab === 'history' || targetTab === 'history') {
-      setActiveTab('toc');
-      setTargetTab('toc');
-    }
-  }, [activeTab, targetTab]);
+  const storedTab = config?.viewSettings?.sideBarTab;
+  const activeTab = storedTab === 'annotations' || storedTab === 'bookmarks' ? storedTab : 'toc';
+  const tabId = useId();
 
   const handleTabChange = (tab: string) => {
-    if (activeTab === tab) {
-      if (isMobile) {
-        setHoveredBookKey(sideBarBookKey);
-        setSideBarVisible(false);
-      }
-      return;
-    }
+    if (activeTab === tab || !config?.viewSettings) return;
 
     // The header search icon is contextual (annotation search vs in-book
     // search), so an open search bar never survives a tab switch.
     setSearchBarVisible(false);
-    setFade(true);
-    const timeout = setTimeout(() => {
-      setTargetTab(tab);
-      setFade(false);
-      setConfig(sideBarBookKey!, config);
-      clearTimeout(timeout);
-    }, 300);
-
-    setActiveTab(tab);
-    const config = getConfig(sideBarBookKey!)!;
-    config.viewSettings!.sideBarTab = tab;
+    setConfig(sideBarBookKey, {
+      viewSettings: { ...config.viewSettings, sideBarTab: tab },
+    });
   };
 
   return (
     <>
+      <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} idPrefix={tabId} />
       <div
         className={clsx(
           'sidebar-content glossa-reader-sidebar-content flex h-full min-h-0 flex-grow flex-col',
           'font-sans text-base font-normal sm:text-sm',
         )}
+        role='tabpanel'
+        id={`${tabId}-panel`}
+        aria-labelledby={`${tabId}-tab-${activeTab}`}
+        tabIndex={0}
       >
         <OverlayScrollbarsComponent
           className='min-h-0 flex-1'
@@ -86,33 +59,18 @@ const SidebarContent: React.FC<{
           }}
           defer
         >
-          <div
-            className={clsx('scroll-container h-full transition-opacity duration-300 ease-in-out', {
-              'opacity-0': fade,
-              'opacity-100': !fade,
-            })}
-          >
-            {targetTab === 'toc' && bookDoc.toc && (
+          <div className='scroll-container h-full'>
+            {activeTab === 'toc' && bookDoc.toc && (
               <TOCView toc={bookDoc.toc} bookKey={sideBarBookKey} />
             )}
-            {targetTab === 'annotations' && (
+            {activeTab === 'annotations' && (
               <BooknoteView type='annotation' toc={bookDoc.toc ?? []} bookKey={sideBarBookKey} />
             )}
-            {targetTab === 'bookmarks' && (
+            {activeTab === 'bookmarks' && (
               <BooknoteView type='bookmark' toc={bookDoc.toc ?? []} bookKey={sideBarBookKey} />
             )}
           </div>
         </OverlayScrollbarsComponent>
-      </div>
-      <div
-        className='flex-shrink-0'
-        style={
-          {
-            // paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) / 2)',
-          }
-        }
-      >
-        <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} />
       </div>
     </>
   );

@@ -3,8 +3,7 @@ import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { useOverlayScrollbars } from 'overlayscrollbars-react';
 import 'overlayscrollbars/overlayscrollbars.css';
 import * as CFI from 'foliate-js/epubcfi.js';
-import { PiMagnifyingGlass, PiNotePencil } from 'react-icons/pi';
-import { RiBookmark3Line, RiBookmarkLine } from 'react-icons/ri';
+import { Search, NotebookPen, Bookmark, Plus } from '@/components/GlossaIcons';
 
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
@@ -395,29 +394,23 @@ const BooknoteView: React.FC<{
       )}
       <div ref={listHostRef}>
         {isEmpty && isFiltering ? (
-          <div
-            className='flex items-center justify-center overflow-hidden'
-            style={{ height: containerHeight }}
-          >
-            <EmptyState Icon={PiMagnifyingGlass} label={_('No Matching Annotations')} />
+          <div className='glossa-reader-empty-region'>
+            <EmptyState Icon={Search} label={_('No Matching Annotations')} />
           </div>
         ) : isEmpty ? (
-          <div
-            className='flex items-center justify-center overflow-hidden'
-            style={{ height: containerHeight }}
-          >
+          <div className='glossa-reader-empty-region'>
             <EmptyState
-              Icon={type === 'annotation' ? PiNotePencil : RiBookmark3Line}
+              Icon={type === 'annotation' ? NotebookPen : Bookmark}
               label={type === 'annotation' ? _('No Annotations') : _('No Bookmarks')}
               hint={type === 'annotation' ? _('Select some text to highlight') : undefined}
               action={
                 type === 'bookmark' ? (
                   <button
                     type='button'
-                    className='btn btn-contrast h-9 min-h-0 max-w-full flex-nowrap gap-1.5 rounded-lg px-4 text-sm font-medium'
+                    className='glossa-button glossa-reader-empty-action max-w-full flex-nowrap'
                     onClick={() => eventDispatcher.dispatch('toggle-bookmark', { bookKey })}
                   >
-                    <RiBookmarkLine className='shrink-0 text-base' />
+                    <Plus size={16} className='shrink-0' aria-hidden='true' />
                     <span className='min-w-0 truncate'>{_('Bookmark This Page')}</span>
                   </button>
                 ) : undefined

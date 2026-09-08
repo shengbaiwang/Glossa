@@ -23,6 +23,12 @@ test.describe('Reading', () => {
 
   test('jumps to an entered page number', async ({ openBook }) => {
     const reader = await openBook();
+    const initialProgress = await reader.readingProgress();
+    // Verify page entry on a settled text layout. The cover does not trigger
+    // the book's prose font; its first load can reflow the newly opened chapter.
+    await reader.openTocChapter(6);
+    await expect.poll(() => reader.readingProgress()).toBeGreaterThan(initialProgress);
+    await reader.waitForFonts();
     const startProgress = await reader.readingProgress();
     const total = Number((await reader.pageJumpInput.inputValue()).split('/')[1]);
     const target = Math.max(2, Math.round(total / 2));

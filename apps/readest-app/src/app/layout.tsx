@@ -10,6 +10,8 @@ import '../styles/glossa.css';
 import '../styles/glossa-library.css';
 import '../styles/glossa-reader.css';
 import '../styles/glossa-desktop.css';
+import '../styles/glossa-reader-sidebar.css';
+import '../styles/glossa-reader-navigation.css';
 
 const title = 'Glossa — A quiet place to read';
 const description =

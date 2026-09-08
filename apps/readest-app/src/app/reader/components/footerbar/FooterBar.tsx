@@ -10,7 +10,6 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useDeviceControlStore } from '@/store/deviceStore';
 import { eventDispatcher } from '@/utils/event';
 import type { FooterBarProps, NavigationHandlers, FooterBarChildProps } from './types';
-import { debounce } from '@/utils/debounce';
 
 import MobileFooterBar from './MobileFooterBar';
 import DesktopFooterBar from './DesktopFooterBar';
@@ -57,11 +56,10 @@ const FooterBar: React.FC<FooterBarProps> = ({
     return 0;
   }, [progressValid, progressInfo]);
 
-  const handleProgressChange = useMemo(
-    () =>
-      debounce((value: number) => {
-        view?.goToFraction(value / 100.0);
-      }, 100),
+  const handleProgressChange = useCallback(
+    (value: number) => {
+      view?.goToFraction(value / 100.0);
+    },
     [view],
   );
 
@@ -245,7 +243,11 @@ const FooterBar: React.FC<FooterBarProps> = ({
         className={containerClasses}
         dir={viewSettings?.rtl ? 'rtl' : 'ltr'}
         onFocus={() => !appService?.isMobile && setHoveredBookKey(bookKey)}
-        onMouseLeave={() => window.innerWidth >= 640 && setHoveredBookKey('')}
+        onMouseLeave={() => {
+          // Keep the captured slider alive when a drag moves outside the bar.
+          if (footerBarRef.current?.querySelector('[data-scrubbing="true"]')) return;
+          if (window.innerWidth >= 640) setHoveredBookKey('');
+        }}
       >
         <MobileFooterBar {...commonProps} />
         <DesktopFooterBar {...commonProps} />

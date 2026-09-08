@@ -2,14 +2,13 @@ import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import clsx from 'clsx';
 import React from 'react';
 
-import { Check } from 'lucide-react';
+import { Check, Pin, PinOff } from '@/components/GlossaIcons';
 import { useEnv } from '@/context/EnvContext';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useSettingsStore } from '@/store/settingsStore';
 import { useParallelViewStore } from '@/store/parallelViewStore';
 import { isWebAppPlatform } from '@/services/environment';
 import { eventDispatcher } from '@/utils/event';
@@ -25,13 +24,19 @@ import Menu from '@/components/Menu';
 interface BookMenuProps {
   menuClassName?: string;
   setIsDropdownOpen?: (isOpen: boolean) => void;
+  isPinned?: boolean;
+  onTogglePin?: () => void;
 }
 
-const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen }) => {
+const BookMenu: React.FC<BookMenuProps> = ({
+  menuClassName,
+  setIsDropdownOpen,
+  isPinned,
+  onTogglePin,
+}) => {
   const _ = useTranslation();
   const iconSize = useResponsiveSize(16);
   const { envConfig } = useEnv();
-  const { settings } = useSettingsStore();
   const { bookKeys, recreateViewer, getViewSettings } = useReaderStore();
   const { getVisibleLibrary } = useLibraryStore();
   const { openParallelView } = useBooksManager();
@@ -109,6 +114,23 @@ const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen })
       className={clsx('book-menu dropdown-content z-20 shadow-2xl', menuClassName)}
       onCancel={() => setIsDropdownOpen?.(false)}
     >
+      {onTogglePin && (
+        <MenuItem
+          label={isPinned ? _('Unpin Sidebar') : _('Pin Sidebar')}
+          buttonClass='hidden sm:flex'
+          Icon={
+            isPinned ? (
+              <PinOff size={iconSize} aria-hidden='true' />
+            ) : (
+              <Pin size={iconSize} aria-hidden='true' />
+            )
+          }
+          onClick={() => {
+            onTogglePin();
+            setIsDropdownOpen?.(false);
+          }}
+        />
+      )}
       <MenuItem
         label={_('Parallel Read')}
         buttonClass={bookKeys.length > 1 ? 'lg:tooltip lg:tooltip-bottom' : ''}
@@ -152,12 +174,6 @@ const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen })
         ) : (
           <MenuItem label={_('Enter Parallel Read')} onClick={handleSetParallel} />
         ))}
-      {(settings.kosync.enabled || settings.readwise.enabled || settings.hardcover.enabled) && (
-        <hr aria-hidden='true' className='border-base-200 my-1' />
-      )}
-
-      <hr aria-hidden='true' className='border-base-200 my-1' />
-
       <hr aria-hidden='true' className='border-base-200 my-1' />
       <MenuItem label={_('Export Annotations')} onClick={handleExportAnnotations} />
       <MenuItem label={_('Import Annotations')} onClick={handleImportAnnotations} />

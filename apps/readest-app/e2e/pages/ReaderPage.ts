@@ -58,6 +58,29 @@ export class ReaderPage extends BasePage {
     await this.foliateView.waitFor({ state: 'attached' });
   }
 
+  /** Wait for the currently rendered book frames, as well as the app's UI fonts. */
+  async waitForFonts(): Promise<void> {
+    await Promise.all(
+      this.page.frames().map(async (frame) => {
+        if (frame.isDetached()) return;
+        try {
+          await frame.evaluate(async () => {
+            await document.fonts.ready;
+          });
+        } catch (error) {
+          if (!frame.isDetached()) throw error;
+        }
+      }),
+    );
+    // Font readiness can enqueue the reader's resize observer and React update.
+    await this.page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+  }
+
   // --- chrome (auto-hidden header / footer bars) ---
 
   /** Reveal the header bar by clicking its top hover strip. */
@@ -137,7 +160,7 @@ export class ReaderPage extends BasePage {
   /** Open the sidebar and navigate to the TOC chapter at the given index. */
   async openTocChapter(index: number): Promise<void> {
     await this.openSidebar();
-    await this.sidebar.locator('[aria-label="TOC"]').click();
+    await this.sidebar.getByRole('tab', { name: 'Contents', exact: true }).click();
     await this.tocItems.nth(index).click();
   }
 
@@ -430,17 +453,17 @@ export class ReaderPage extends BasePage {
   }
 
   /**
-   * Open the sidebar's "Annotate" tab, which lists the book's annotations
+   * Open the sidebar's "Notes" tab, which lists the book's annotations
    * (assert against {@link annotationItems} afterwards).
    */
   async openAnnotationsTab(): Promise<void> {
     await this.dismissPopup();
     await this.closeNotebook();
     await this.openSidebar();
-    await this.sidebar.locator('[aria-label="Annotate"]').click();
+    await this.sidebar.getByRole('tab', { name: 'Notes', exact: true }).click();
   }
 
-  /** Delete the first annotation from the sidebar's "Annotate" tab. */
+  /** Delete the first annotation from the sidebar's "Notes" tab. */
   async deleteFirstAnnotation(): Promise<void> {
     await this.openAnnotationsTab();
     const item = this.annotationItems.first();

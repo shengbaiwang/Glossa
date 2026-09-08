@@ -137,7 +137,7 @@ const PageJumpInput: React.FC<PageJumpInputProps> = ({ bookKey, showFraction, cl
         }}
         onBlur={() => setEditing(false)}
         onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
+        onKeyDownCapture={(e) => {
           // Keep keystrokes away from the reader's page-turn shortcuts and
           // the footer bar's spatial navigation.
           e.stopPropagation();

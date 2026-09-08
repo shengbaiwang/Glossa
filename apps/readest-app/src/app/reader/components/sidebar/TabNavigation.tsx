@@ -1,43 +1,72 @@
-import clsx from 'clsx';
-import React from 'react';
-import { Bookmark, List, Highlighter } from 'lucide-react';
-
-import { useEnv } from '@/context/EnvContext';
+import React, { useId, useRef } from 'react';
 import { useTranslation } from '@/hooks/useTranslation';
 
 const TabNavigation: React.FC<{
   activeTab: string;
   onTabChange: (tab: string) => void;
-}> = ({ activeTab, onTabChange }) => {
+  idPrefix?: string;
+}> = ({ activeTab, onTabChange, idPrefix }) => {
   const _ = useTranslation();
-  const { appService } = useEnv();
+  const localId = useId();
+  const prefix = idPrefix ?? localId;
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const tabs = [
-    { id: 'toc', label: _('TOC'), Icon: List },
-    { id: 'annotations', label: _('Annotate'), Icon: Highlighter },
-    { id: 'bookmarks', label: _('Bookmark'), Icon: Bookmark },
+    { id: 'toc', label: _('Contents') },
+    { id: 'annotations', label: _('Notes') },
+    { id: 'bookmarks', label: _('Bookmarks') },
   ];
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const isRTL = event.currentTarget.closest('[dir]')?.getAttribute('dir') === 'rtl';
+    let nextIndex: number;
+    switch (event.key) {
+      case 'ArrowRight':
+        nextIndex = (index + (isRTL ? -1 : 1) + tabs.length) % tabs.length;
+        break;
+      case 'ArrowLeft':
+        nextIndex = (index + (isRTL ? 1 : -1) + tabs.length) % tabs.length;
+        break;
+      case 'Home':
+        nextIndex = 0;
+        break;
+      case 'End':
+        nextIndex = tabs.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    tabRefs.current[nextIndex]?.focus();
+    onTabChange(tabs[nextIndex]!.id);
+  };
 
   return (
     <div
-      className={clsx(
-        'bottom-tab glossa-reader-tabs flex w-full gap-1 border-t p-2',
-        appService?.hasRoundedWindow && 'rounded-window-bottom-left',
-      )}
-      role='group'
+      className='glossa-reader-tabs flex w-full shrink-0 gap-1 px-3 pb-2'
+      role='tablist'
       aria-label={_('Sidebar')}
+      aria-orientation='horizontal'
     >
-      {tabs.map(({ id, label, Icon }) => (
+      {tabs.map(({ id, label }, index) => (
         <button
           key={id}
+          ref={(element) => {
+            tabRefs.current[index] = element;
+          }}
+          id={`${prefix}-tab-${id}`}
           type='button'
-          className='glossa-reader-tab flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg px-1 py-1.5'
+          role='tab'
+          className='glossa-reader-tab flex min-h-9 min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-2'
           onClick={() => onTabChange(id)}
+          onKeyDown={(event) => handleKeyDown(event, index)}
           title={label}
           aria-label={label}
-          aria-pressed={activeTab === id}
+          aria-selected={activeTab === id}
+          aria-controls={idPrefix ? `${prefix}-panel` : undefined}
+          tabIndex={activeTab === id ? 0 : -1}
         >
-          <Icon size={18} aria-hidden='true' />
-          <span className='max-w-full truncate text-[11px] font-medium leading-4'>{label}</span>
+          <span className='max-w-full truncate text-xs font-medium leading-4'>{label}</span>
         </button>
       ))}
     </div>

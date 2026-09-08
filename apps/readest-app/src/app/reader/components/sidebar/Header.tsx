@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import React, { useRef } from 'react';
-import { Search, Ellipsis, Pin, ChevronLeft } from 'lucide-react';
+import { Search, Ellipsis, ChevronLeft } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useTrafficLight } from '@/hooks/useTrafficLight';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
@@ -44,7 +44,7 @@ const SidebarHeader: React.FC<{
           <SidebarToggler bookKey={bookKey} />
         </div>
       </div>
-      <div className='flex min-w-24 max-w-32 items-center justify-between sm:size-[70%]'>
+      <div className='flex items-center gap-2'>
         <button
           type='button'
           title={isSearchBarVisible ? _('Hide Search Bar') : _('Show Search Bar')}
@@ -71,23 +71,8 @@ const SidebarHeader: React.FC<{
           containerClassName='h-8'
           toggleButton={<Ellipsis size={iconSize18} aria-hidden='true' />}
         >
-          <BookMenu />
+          <BookMenu isPinned={isPinned} onTogglePin={onTogglePin} />
         </Dropdown>
-        <div className='right-0 hidden h-8 w-8 items-center justify-center sm:flex'>
-          <button
-            type='button'
-            title={isPinned ? _('Unpin Sidebar') : _('Pin Sidebar')}
-            aria-label={isPinned ? _('Unpin Sidebar') : _('Pin Sidebar')}
-            aria-pressed={isPinned}
-            onClick={onTogglePin}
-            className={clsx(
-              'sidebar-pin-btn glossa-icon-button touch-target btn btn-ghost hidden h-8 min-h-8 w-8 p-0 sm:flex',
-              isPinned && 'bg-base-300',
-            )}
-          >
-            <Pin size={iconSize18} fill={isPinned ? 'currentColor' : 'none'} aria-hidden='true' />
-          </button>
-        </div>
       </div>
     </div>
   );

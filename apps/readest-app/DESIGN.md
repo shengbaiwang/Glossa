@@ -7,8 +7,9 @@ short interlinear gloss, expressed as ink on paper. This user-requested identity
 precedence over the upstream Adwaita identity and radius choices below; the existing
 interaction, safe-area, RTL, theme and e-ink rules still apply.
 
-- Use the existing Glossa mark (`GlossaMark`) and Lucide rounded line icons in the
-  library header, reader chrome and settings navigation. Book cover artwork supplies
+- Use the existing Glossa mark (`GlossaMark`) and the shared `GlossaIcons` family in
+  the library header, category navigation and reader chrome. Other settings icons
+  retain Lucide until their surfaces are revised. Book cover artwork supplies
   the main color; interface chrome stays neutral.
 - Use `glossa.css` theme-derived tokens for ink, muted text, surfaces, borders, focus
   and elevation. The default palette is paper/ink in light mode and charcoal/paper in
@@ -47,6 +48,31 @@ properties support RTL; e-ink retains explicit selection borders and no shadows.
 
 Implementation: `src/styles/glossa.css`, `glossa-library.css`, `glossa-reader.css`,
 `glossa-desktop.css`.
+
+### Glossa reading interactions — 2026-09-09
+
+- Draw core icons on a 24-unit grid with consistent 1.8-unit rounded ink strokes.
+  Use open silhouettes and the mark's interlinear rhythm; avoid decorated notebooks,
+  starred bookmarks or pictorial empty-state badges. Reuse `GlossaIcons` across
+  library, reader, selection tools and sidebars rather than mixing icon libraries.
+- Keep return/navigation controls at the toolbar start and typography, bookmark and
+  notebook controls at the end. Show a text label with the library action on desktop.
+  Inactive selection automation lives under the named Selection Actions menu; an
+  enabled action stays visible so the reader can see and disable the current mode.
+  Single-book close is available in View Options; preserve native window controls.
+- Place Contents / Notes / Bookmarks directly below the compact book identity.
+  Use a quiet ink underline for the active tab, proper tab/panel semantics and
+  arrow/Home/End navigation. Switching is immediate; selecting the current tab
+  leaves the panel open. Pinning is a named menu option, not a permanent toolbar icon.
+- Empty sidebars use a small open icon, short guidance and a secondary action close
+  to the content start, without a large centered call to action.
+- Group previous/page/next navigation around the progress control. Keep history and
+  section jumps secondary. Dragging previews progress locally and release commits
+  once; Escape and pointer cancellation restore the original position. Use the same
+  behavior on desktop and touch controls, without stealing reader keyboard events.
+- Preserve the existing measured header/footer insets and 44px touch regions. User
+  fonts, margins, reading position, synchronization and book data remain authoritative.
+  Use theme-derived colors, logical directions, visible focus and crisp e-ink states.
 
 Readest's UI is **Adwaita-aligned**, **e-ink-first**, **cross-platform-aware**. This doc is the
 reference for that language: principles, vocabulary, anti-patterns. New work should read it

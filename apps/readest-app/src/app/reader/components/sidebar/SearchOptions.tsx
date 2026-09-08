@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import React from 'react';
-import { MdCheck } from 'react-icons/md';
+import { Check } from '@/components/GlossaIcons';
 import { BookSearchConfig, SearchMode } from '@/types/book';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useDefaultIconSize } from '@/hooks/useResponsiveSize';
@@ -33,7 +33,7 @@ const Option: React.FC<OptionProps> = ({ label, isActive, onClick, disabled, cap
   >
     <div className='flex items-center'>
       <span style={{ minWidth: `${useDefaultIconSize()}px` }}>
-        {isActive && <MdCheck className='text-base-content' />}
+        {isActive && <Check size={16} className='text-base-content' />}
       </span>
       <span className='ml-2 whitespace-nowrap'>{label}</span>
     </div>

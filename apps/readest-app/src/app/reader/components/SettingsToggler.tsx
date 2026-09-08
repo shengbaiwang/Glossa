@@ -1,6 +1,6 @@
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import React from 'react';
-import { Type } from 'lucide-react';
+import { Type } from '@/components/GlossaIcons';
 
 import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';

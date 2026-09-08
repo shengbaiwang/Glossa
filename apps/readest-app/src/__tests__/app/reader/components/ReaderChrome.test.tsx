@@ -26,19 +26,19 @@ describe('reader navigation controls', () => {
   it('names every sidebar destination visibly and exposes the selected destination', () => {
     const onTabChange = vi.fn();
     const { rerender } = render(<TabNavigation activeTab='toc' onTabChange={onTabChange} />);
-    const contents = screen.getByRole('button', { name: 'TOC' });
-    const annotations = screen.getByRole('button', { name: 'Annotate' });
+    const contents = screen.getByRole('tab', { name: 'Contents' });
+    const annotations = screen.getByRole('tab', { name: 'Notes' });
     expect(contents.tagName).toBe('BUTTON');
-    expect(contents.textContent).toContain('TOC');
-    expect(contents.getAttribute('aria-pressed')).toBe('true');
-    expect(annotations.getAttribute('aria-pressed')).toBe('false');
+    expect(contents.textContent).toContain('Contents');
+    expect(contents.getAttribute('aria-selected')).toBe('true');
+    expect(annotations.getAttribute('aria-selected')).toBe('false');
     fireEvent.click(annotations);
     expect(onTabChange).toHaveBeenCalledWith('annotations');
     rerender(<TabNavigation activeTab='annotations' onTabChange={onTabChange} />);
-    expect(screen.getByRole('button', { name: 'Annotate' }).getAttribute('aria-pressed')).toBe(
-      'true',
+    expect(screen.getByRole('tab', { name: 'Notes' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tab', { name: 'Contents' }).getAttribute('aria-selected')).toBe(
+      'false',
     );
-    expect(screen.getByRole('button', { name: 'TOC' }).getAttribute('aria-pressed')).toBe('false');
   });
 
   it('exposes notebook pin and search state, and keeps a directly operable close control', () => {

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FaSearch, FaTimes } from 'react-icons/fa';
+import { Search as FaSearch, X as FaTimes } from '@/components/GlossaIcons';
 
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useTranslation } from '@/hooks/useTranslation';

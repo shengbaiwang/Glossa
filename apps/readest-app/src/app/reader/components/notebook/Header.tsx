@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, NotebookPen, Pin, X } from 'lucide-react';
+import { Search, NotebookPen, Pin, X } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 

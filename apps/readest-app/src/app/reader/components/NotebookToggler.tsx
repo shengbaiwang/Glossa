@@ -1,5 +1,5 @@
 import React from 'react';
-import { NotebookPen } from 'lucide-react';
+import { NotebookPen } from '@/components/GlossaIcons';
 
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';

@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { useRef } from 'react';
-import { Info } from 'lucide-react';
+import { Info } from '@/components/GlossaIcons';
 import { Book } from '@/types/book';
 import { useThemeStore } from '@/store/themeStore';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -30,11 +30,11 @@ const BookCard = ({ book }: { book: Book }) => {
   };
 
   return (
-    <div className='glossa-reader-book-card flex min-h-24 w-full items-center gap-3 py-4'>
+    <div className='glossa-reader-book-card flex w-full items-center gap-3 py-3'>
       <div
         ref={bookCoverRef}
         className={clsx(
-          'aspect-[28/41] max-h-16 w-[15%] max-w-12 shrink-0 overflow-hidden rounded-sm shadow-sm',
+          'aspect-[28/41] w-8 shrink-0 overflow-hidden rounded-sm',
           isDarkMode ? 'mix-blend-screen' : 'mix-blend-multiply',
         )}
       >
@@ -48,7 +48,6 @@ const BookCard = ({ book }: { book: Book }) => {
         />
       </div>
       <div className='min-w-0 flex-1'>
-        <p className='glossa-eyebrow mb-1'>{_('Reading')}</p>
         <h4 className='line-clamp-2 text-sm font-semibold leading-snug'>
           {formatTitle(title).replace(/\u00A0/g, ' ')}
         </h4>

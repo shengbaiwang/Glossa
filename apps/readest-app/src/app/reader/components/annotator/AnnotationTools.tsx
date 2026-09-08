@@ -1,4 +1,10 @@
-import { Search, Copy, Link, Highlighter, SquarePen } from 'lucide-react';
+import {
+  Copy,
+  Link,
+  Search,
+  Highlight as Highlighter,
+  NotebookPen as SquarePen,
+} from '@/components/GlossaIcons';
 import { IconType } from 'react-icons';
 import { AnnotationToolType } from '@/types/annotator';
 import { stubTranslation as _ } from '@/utils/misc';

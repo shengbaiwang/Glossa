@@ -10,7 +10,7 @@ import {
   SearchCheck,
   SlidersHorizontal,
   X,
-} from 'lucide-react';
+} from '@/components/GlossaIcons';
 import GlossaMark from '@/components/GlossaMark';
 
 import { useEnv } from '@/context/EnvContext';

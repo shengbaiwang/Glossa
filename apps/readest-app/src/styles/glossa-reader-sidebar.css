@@ -1,0 +1,111 @@
+/* A book identity, one line of destinations, then the selected reading tool. */
+.glossa-reader-sidebar .glossa-reader-tabs {
+  gap: 4px;
+  padding: 0 8px 8px;
+  border-bottom: 1px solid var(--glossa-border);
+}
+
+.glossa-reader-sidebar .glossa-reader-tab {
+  position: relative;
+  min-height: 36px;
+  padding-block: 8px;
+  padding-inline: 2px;
+  border-color: transparent;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.glossa-reader-sidebar .glossa-reader-tab[aria-selected='true'] {
+  color: var(--glossa-ink);
+  background: transparent;
+  font-weight: 600;
+}
+
+.glossa-reader-sidebar .glossa-reader-tab[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  inset-inline-start: calc(50% - 8px);
+  width: 16px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.glossa-reader-sidebar-content:focus-visible {
+  outline: 2px solid var(--glossa-focus);
+  outline-offset: -2px;
+}
+
+.glossa-reader-sidebar .glossa-reader-book-card h4 {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.glossa-reader-empty-region {
+  padding: 28px 20px;
+}
+
+.glossa-reader-sidebar .glossa-reader-empty {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: start;
+  justify-content: initial;
+  gap: 6px 12px;
+  padding: 0;
+  text-align: start;
+}
+
+.glossa-reader-sidebar .glossa-reader-empty > :not(.glossa-reader-empty-icon) {
+  grid-column: 2;
+}
+
+.glossa-reader-sidebar .glossa-reader-empty-icon {
+  grid-row: 1 / 4;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  border: 0;
+  background: transparent;
+}
+
+.glossa-reader-sidebar .glossa-reader-empty-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.glossa-reader-sidebar .glossa-reader-empty > p {
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.glossa-reader-sidebar .glossa-reader-empty > div:last-child:not(.glossa-reader-empty-icon) {
+  margin-top: 2px;
+  margin-inline-start: -8px;
+}
+
+.glossa-reader-sidebar .glossa-reader-empty-action {
+  min-height: 36px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+@media (pointer: coarse) {
+  .glossa-reader-sidebar .glossa-reader-tab,
+  .glossa-reader-sidebar .glossa-reader-empty-action {
+    min-height: 44px;
+  }
+}
+
+[data-eink='true'] .glossa-reader-sidebar .glossa-reader-tab,
+[data-eink='true'] .glossa-reader-sidebar .glossa-reader-muted {
+  color: var(--glossa-ink);
+}
+
+[data-eink='true'] .glossa-reader-sidebar .glossa-reader-tab[aria-selected='true'] {
+  font-weight: 700;
+}
+
+[data-eink='true'] .glossa-reader-sidebar .glossa-reader-empty-action {
+  border-color: var(--glossa-ink);
+}
