@@ -1,8 +1,6 @@
+import { Search, ChevronDown, X, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FaSearch, FaChevronDown } from 'react-icons/fa';
-import { IoMdCloseCircle } from 'react-icons/io';
-import { MdDeleteOutline } from 'react-icons/md';
 
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -336,7 +334,7 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
     <div className='relative flex flex-col gap-3 p-2'>
       <div className='bg-base-100 flex h-8 items-center rounded-lg'>
         <div className='absolute ps-3'>
-          <FaSearch size={iconSize16} className='text-base-content/50' />
+          <Search size={iconSize16} className='text-base-content/50' />
         </div>
 
         <input
@@ -361,7 +359,7 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
             className='absolute end-10 flex h-8 w-8 items-center justify-center bg-transparent'
             aria-label={_('Clear search')}
           >
-            <IoMdCloseCircle size={iconSize16} className='text-base-content/75' />
+            <X size={iconSize16} className='text-base-content/75' />
           </button>
         )}
 
@@ -382,7 +380,7 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
               'btn btn-ghost h-8 min-h-8 w-8 p-0 rounded-none rounded-r-lg',
               viewSettings?.isEink ? '!bg-transparent hover:!bg-transparent' : '',
             )}
-            toggleButton={<FaChevronDown size={iconSize12} className='text-base-content/50' />}
+            toggleButton={<ChevronDown size={iconSize12} className='text-base-content/50' />}
           >
             <SearchOptions
               isEink={!!viewSettings?.isEink}
@@ -434,7 +432,7 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
             title={_('Clear search history')}
             aria-label={_('Clear search history')}
           >
-            <MdDeleteOutline size={iconSize16} />
+            <Trash2 size={iconSize16} />
           </button>
         </div>
       )}

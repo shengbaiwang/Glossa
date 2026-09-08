@@ -70,7 +70,7 @@ const SidebarContent: React.FC<{
     <>
       <div
         className={clsx(
-          'sidebar-content flex h-full min-h-0 flex-grow flex-col shadow-inner',
+          'sidebar-content glossa-reader-sidebar-content flex h-full min-h-0 flex-grow flex-col',
           'font-sans text-base font-normal sm:text-sm',
         )}
       >

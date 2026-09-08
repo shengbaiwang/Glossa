@@ -203,7 +203,7 @@ const FooterBar: React.FC<FooterBarProps> = ({
     (bookData?.isFixedLayout && viewSettings?.zoomLevel && viewSettings.zoomLevel > 100);
 
   const containerClasses = clsx(
-    'footer-bar shadow-xs bottom-0 left-0 z-10 flex w-full flex-col',
+    'footer-bar glossa-reader-footer bottom-0 left-0 z-10 flex w-full flex-col',
     !forceMobileLayout && 'sm:h-[52px] sm:bg-base-100 sm:border-none',
     'not-eink:border-base-300/50 eink:border-base-content border-t',
     'transition-[opacity,transform] duration-300',

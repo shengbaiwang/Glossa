@@ -1,9 +1,8 @@
 import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
-import { MdCheckCircle, MdCheckCircleOutline, MdChevronRight, MdChevronLeft } from 'react-icons/md';
+import { Check, Circle, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { BooksGroup } from '@/types/book';
 import { LibraryViewModeType } from '@/types/settings';
 import BookCover from '@/components/BookCover';
@@ -20,7 +19,6 @@ const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupS
   const _ = useTranslation();
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
-  const iconSize15 = useResponsiveSize(15);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
@@ -104,7 +102,8 @@ const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupS
       <div
         className={clsx(
           'groupitem-main relative flex overflow-hidden rounded',
-          mode === 'grid' && 'bg-base-100 aspect-[28/41] items-center justify-center shadow-md',
+          mode === 'grid' &&
+            'glossa-group-cover eink-bordered aspect-[28/41] items-center justify-center',
           mode === 'list' && 'items-center justify-start gap-4 py-2',
         )}
       >
@@ -154,7 +153,6 @@ const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupS
           </div>
           {mode === 'list' && showLeftArrow && (
             <div className='absolute left-[-0.5px] top-0 h-full w-12'>
-              <div className='from-base-200/85 via-base-200/20 absolute inset-0 bg-gradient-to-r to-transparent'></div>
               <button
                 aria-label={_('Scroll left')}
                 onClick={handleLeftArrowClick}
@@ -163,10 +161,10 @@ const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupS
                 onPointerMove={(e) => stopEvent(e)}
                 onPointerCancel={(e) => stopEvent(e)}
                 onPointerLeave={(e) => stopEvent(e)}
-                className='absolute left-2 top-1/2 -translate-y-1/2 transition-all duration-200 hover:scale-110'
+                className='absolute left-2 top-1/2 -translate-y-1/2'
               >
                 <div className='bg-base-100 border-base-content/10 hover:border-base-content/30 rounded-full border p-1 shadow-sm transition-colors duration-200'>
-                  <MdChevronLeft
+                  <ChevronLeft
                     size={16}
                     className='text-base-content/50 hover:text-base-content/70'
                   />
@@ -176,7 +174,6 @@ const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupS
           )}
           {mode === 'list' && showRightArrow && (
             <div className='absolute right-[-0.5px] top-0 h-full w-12'>
-              <div className='from-base-200/85 via-base-200/20 absolute inset-0 bg-gradient-to-l to-transparent'></div>
               <button
                 aria-label={_('Scroll right')}
                 onClick={handleRightArrowClick}
@@ -185,10 +182,10 @@ const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupS
                 onPointerMove={(e) => stopEvent(e)}
                 onPointerCancel={(e) => stopEvent(e)}
                 onPointerLeave={(e) => stopEvent(e)}
-                className='absolute right-2 top-1/2 -translate-y-1/2 transition-all duration-200 hover:scale-110'
+                className='absolute right-2 top-1/2 -translate-y-1/2'
               >
                 <div className='bg-base-100 border-base-content/10 hover:border-base-content/30 rounded-full border p-1 shadow-sm transition-colors duration-200'>
-                  <MdChevronRight
+                  <ChevronRight
                     size={16}
                     className='text-base-content/50 hover:text-base-content/70'
                   />
@@ -202,27 +199,33 @@ const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupS
             {group.displayName}
           </div>
         )}
-        {groupSelected && (
-          <div className='absolute inset-0 bg-black opacity-30 transition-opacity duration-300'></div>
-        )}
+        {groupSelected && <div className='glossa-book-selection-overlay absolute inset-0'></div>}
         {isSelectMode && (
-          <div className='absolute bottom-1 right-1'>
+          <div
+            className={clsx(
+              'glossa-book-selection absolute bottom-2 end-2',
+              groupSelected && 'glossa-book-selection-checked',
+            )}
+          >
             {groupSelected ? (
-              <MdCheckCircle className='fill-blue-500' />
+              <Check size={16} aria-hidden='true' />
             ) : (
-              <MdCheckCircleOutline className='fill-gray-300 drop-shadow-sm' />
+              <Circle size={18} aria-hidden='true' />
             )}
           </div>
         )}
       </div>
       {mode === 'grid' && (
-        <div className={clsx('flex w-full flex-col pt-2')}>
+        <div className='glossa-book-metadata flex w-full flex-col pt-3'>
           <div className='min-w-0 flex-1'>
-            <h4 className='block overflow-hidden text-ellipsis whitespace-nowrap text-xs font-semibold'>
+            <h4 className='glossa-book-title line-clamp-2 min-h-[2.9em] font-medium'>
               {group.displayName}
             </h4>
           </div>
-          <div className='placeholder' style={{ height: `${iconSize15}px` }}></div>
+          <p className='glossa-book-author'>
+            {_('{{count}} books', { count: group.books.length })}
+          </p>
+          <div className='h-6' aria-hidden='true' />
         </div>
       )}
     </div>

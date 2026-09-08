@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { RiQuillPenLine } from 'react-icons/ri';
+import { NotebookPen } from 'lucide-react';
 
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
@@ -325,7 +325,7 @@ const Notebook: React.FC = ({}) => {
       <div
         ref={notebookRef}
         className={clsx(
-          'notebook-container right-0 flex min-w-60 select-none flex-col',
+          'notebook-container glossa-reader-notebook right-0 flex min-w-60 select-none flex-col',
           'full-height font-sans text-base font-normal transition-[padding-top] duration-300 sm:text-sm',
           viewSettings?.isEink ? 'bg-base-100' : 'bg-base-200',
           appService?.hasRoundedWindow && 'rounded-window-top-right rounded-window-bottom-right',
@@ -412,7 +412,7 @@ const Notebook: React.FC = ({}) => {
         {isNotesTabEmpty ? (
           <div className='flex flex-grow items-center justify-center overflow-y-auto px-3'>
             <EmptyState
-              Icon={RiQuillPenLine}
+              Icon={NotebookPen}
               label={_('No Notes')}
               hint={_('Capture an idea as you read')}
             />
@@ -426,7 +426,7 @@ const Notebook: React.FC = ({}) => {
             )}
             <div dir='ltr'>
               {filteredExcerptNotes.length > 0 && (
-                <p className='content font-size-base'>
+                <p className='glossa-eyebrow my-4'>
                   {_('Excerpts')}
                   {isSearchBarVisible && searchResults && (
                     <span className='font-size-xs ml-2 text-gray-500'>
@@ -447,7 +447,7 @@ const Notebook: React.FC = ({}) => {
                         handleEditNote(item, true);
                       }
                     }}
-                    className='booknote-item collapse-arrow border-base-300 bg-base-100 collapse border'
+                    className='booknote-item glossa-reader-excerpt collapse-arrow border-base-300 bg-base-100 collapse border'
                   >
                     <div
                       className={clsx(
@@ -482,7 +482,7 @@ const Notebook: React.FC = ({}) => {
             </ul>
             <div dir='ltr'>
               {(notebookNewAnnotation || notebookEditAnnotation) && !isSearchBarVisible && (
-                <p className='content font-size-base'>{_('Notes')}</p>
+                <p className='glossa-eyebrow my-4'>{_('Notes')}</p>
               )}
             </div>
             {(notebookNewAnnotation || notebookEditAnnotation) && !isSearchBarVisible && (

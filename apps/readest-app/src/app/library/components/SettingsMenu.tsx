@@ -1,10 +1,18 @@
 import clsx from 'clsx';
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { PiUserCircle, PiUserCircleCheck, PiGear } from 'react-icons/pi';
-import { PiSun, PiMoon } from 'react-icons/pi';
-import { TbSunMoon } from 'react-icons/tb';
-import { MdCloudSync, MdSync, MdSyncProblem, MdOutlineSensors } from 'react-icons/md';
+import {
+  CircleUserRound,
+  Settings2,
+  Sun,
+  Moon,
+  SunMoon,
+  CloudSync,
+  RefreshCw,
+  CloudAlert,
+  Radio,
+} from 'lucide-react';
+import type { IconType } from 'react-icons';
 
 import { isTauriAppPlatform, isWebAppPlatform } from '@/services/environment';
 import { DOWNLOAD_READEST_URL } from '@/services/constants';
@@ -46,6 +54,8 @@ import MenuItem from '@/components/MenuItem';
 import Quota from '@/components/Quota';
 import Menu from '@/components/Menu';
 import { type AppLockDialogMode, useAppLockStore } from '@/store/appLockStore';
+
+const AccountIcon: IconType = (props) => <CircleUserRound {...props} />;
 
 interface SettingsMenuProps {
   onPullLibrary: (fullRefresh?: boolean, verbose?: boolean) => void;
@@ -326,16 +336,16 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
           aria-label={_('View account details and quota')}
           Icon={
             avatarUrl ? (
-              <UserAvatar url={avatarUrl} size={iconSize} DefaultIcon={PiUserCircleCheck} />
+              <UserAvatar url={avatarUrl} size={iconSize} DefaultIcon={AccountIcon} />
             ) : (
-              PiUserCircleCheck
+              <CircleUserRound size={iconSize} aria-hidden='true' />
             )
           }
         >
           <ul className='ms-0 flex flex-col ps-0 before:hidden'>
             <MenuItem
               label={_('Cloud File Transfers')}
-              Icon={MdCloudSync}
+              Icon={<CloudSync size={iconSize} aria-hidden='true' />}
               description={
                 hasActiveTransfers
                   ? _('{{activeCount}} active, {{pendingCount}} pending', {
@@ -350,9 +360,22 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
             />
             <MenuItem
               label={syncRowLabel}
-              Icon={user ? MdSync : MdSyncProblem}
+              Icon={
+                user ? (
+                  <RefreshCw
+                    size={iconSize}
+                    className={isSyncing || providerSyncing ? 'animate-reverse-spin' : ''}
+                    aria-hidden='true'
+                  />
+                ) : (
+                  <CloudAlert
+                    size={iconSize}
+                    className={providerSyncing ? 'animate-reverse-spin' : ''}
+                    aria-hidden='true'
+                  />
+                )
+              }
               labelClass='ps-2 pe-1 !mx-0'
-              iconClassName={(user && isSyncing) || providerSyncing ? 'animate-reverse-spin' : ''}
               onClick={handleSyncLibrary}
               description={
                 backends.length === 0
@@ -381,7 +404,11 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
           </ul>
         </MenuItem>
       ) : (
-        <MenuItem label={_('Sign In')} Icon={PiUserCircle} onClick={handleUserLogin}></MenuItem>
+        <MenuItem
+          label={_('Sign In')}
+          Icon={<CircleUserRound size={iconSize} aria-hidden='true' />}
+          onClick={handleUserLogin}
+        ></MenuItem>
       )}
 
       {isTauriAppPlatform() && (
@@ -420,17 +447,23 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
       <MenuItem
         label={themeModeLabel}
         Icon={
-          themeMode === 'dark'
-            ? PiMoon
-            : themeMode === 'light'
-              ? PiSun
-              : themeMode === 'ambient'
-                ? MdOutlineSensors
-                : TbSunMoon
+          themeMode === 'dark' ? (
+            <Moon size={iconSize} aria-hidden='true' />
+          ) : themeMode === 'light' ? (
+            <Sun size={iconSize} aria-hidden='true' />
+          ) : themeMode === 'ambient' ? (
+            <Radio size={iconSize} aria-hidden='true' />
+          ) : (
+            <SunMoon size={iconSize} aria-hidden='true' />
+          )
         }
         onClick={cycleThemeMode}
       />
-      <MenuItem label={_('Settings')} Icon={PiGear} onClick={openSettingsDialog} />
+      <MenuItem
+        label={_('Settings')}
+        Icon={<Settings2 size={iconSize} aria-hidden='true' />}
+        onClick={openSettingsDialog}
+      />
       <hr aria-hidden='true' className='border-base-200 my-1' />
       <MenuItem label={_('Advanced Settings')}>
         <ul className='ms-0 flex flex-col ps-0 before:hidden'>

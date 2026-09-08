@@ -1,9 +1,11 @@
 import clsx from 'clsx';
 import React from 'react';
-import { IoIosList as TOCIcon } from 'react-icons/io';
-import { RxSlider as SliderIcon } from 'react-icons/rx';
-import { RiFontFamily as FontIcon } from 'react-icons/ri';
-import { PiSun as ColorIcon } from 'react-icons/pi';
+import {
+  List as TOCIcon,
+  SlidersHorizontal as SliderIcon,
+  Type as FontIcon,
+  Sun as ColorIcon,
+} from 'lucide-react';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSidebarStore } from '@/store/sidebarStore';
@@ -31,7 +33,7 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
 
   const { isSideBarVisible, isSideBarPinned } = useSidebarStore();
 
-  const tocIconSize = useResponsiveSize(23);
+  const tocIconSize = useResponsiveSize(18);
   const fontIconSize = useResponsiveSize(18);
   const navPadding = isMobile ? `${gridInsets.bottom * 0.33 + 16}px` : '0px';
 
@@ -50,26 +52,34 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
     >
       {isSideBarVisible && isSideBarPinned ? null : (
         <Button
+          className='glossa-icon-button'
           label={_('Table of Contents')}
           icon={<TOCIcon size={tocIconSize} />}
           onClick={() => onSetActionTab('toc')}
         />
       )}
       <Button
+        className='glossa-icon-button'
         label={_('Color')}
-        icon={<ColorIcon className={clsx(actionTab === 'color' && 'text-blue-500')} />}
+        aria-pressed={actionTab === 'color'}
+        aria-expanded={actionTab === 'color'}
+        icon={<ColorIcon size={18} aria-hidden='true' />}
         onClick={() => onSetActionTab('color')}
       />
       <Button
+        className='glossa-icon-button'
         label={_('Reading Progress')}
-        icon={<SliderIcon className={clsx(actionTab === 'progress' && 'text-blue-500')} />}
+        aria-pressed={actionTab === 'progress'}
+        aria-expanded={actionTab === 'progress'}
+        icon={<SliderIcon size={18} aria-hidden='true' />}
         onClick={() => onSetActionTab('progress')}
       />
       <Button
+        className='glossa-icon-button'
         label={_('Font & Layout')}
-        icon={
-          <FontIcon size={fontIconSize} className={clsx(actionTab === 'font' && 'text-blue-500')} />
-        }
+        aria-pressed={actionTab === 'font'}
+        aria-expanded={actionTab === 'font'}
+        icon={<FontIcon size={fontIconSize} aria-hidden='true' />}
         onClick={() => onSetActionTab('font')}
       />
     </div>

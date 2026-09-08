@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import React from 'react';
 import { IconType } from 'react-icons';
-import { MdCheck } from 'react-icons/md';
+import { Check } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 
@@ -47,7 +47,13 @@ const MenuItem: React.FC<MenuItemProps> = ({
   const _ = useTranslation();
   const iconSize = useResponsiveSize(16);
   const [isDetailsOpen, setIsDetailsOpen] = React.useState(detailsOpen);
-  const IconType = Icon || (toggled !== undefined ? (toggled ? MdCheck : undefined) : undefined);
+  const IconType =
+    Icon ||
+    (toggled !== undefined ? (
+      toggled ? (
+        <Check size={iconSize} aria-hidden='true' />
+      ) : undefined
+    ) : undefined);
 
   const handleClick = () => {
     onClick?.();
@@ -117,7 +123,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
               tabIndex={0}
               aria-expanded={isDetailsOpen}
               className={clsx(
-                'hover:bg-base-300 text-base-content cursor-pointer rounded-md p-1 py-[10px] pr-3',
+                'glossa-menu-item hover:bg-base-300 text-base-content cursor-pointer rounded-md p-1 py-[10px] pr-3',
                 disabled && 'btn-disabled cursor-not-allowed text-gray-400',
                 buttonClass,
               )}
@@ -142,7 +148,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
         aria-live={toggled === undefined ? 'polite' : 'off'}
         tabIndex={disabled ? -1 : 0}
         className={clsx(
-          'hover:bg-base-300 text-base-content flex w-full flex-col items-center justify-center rounded-md p-1 py-[10px]',
+          'glossa-menu-item hover:bg-base-300 text-base-content flex w-full flex-col items-center justify-center rounded-md p-1 py-[10px]',
           disabled && 'btn-disabled text-gray-400',
           buttonClass,
         )}

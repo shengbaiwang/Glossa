@@ -122,8 +122,30 @@ export const themes = [
     name: 'default',
     label: _('Default'),
     colors: {
-      light: generateLightPalette({ fg: '#171717', bg: '#ffffff', primary: '#0066cc' }),
-      dark: generateDarkPalette({ fg: '#e0e0e0', bg: '#222222', primary: '#77bbee' }),
+      // Paper and ink from Glossa's monochrome mark. Explicit surface steps
+      // keep the library, reading canvas and menus close in tone.
+      light: {
+        'base-100': '#faf9f6',
+        'base-200': '#f0efeb',
+        'base-300': '#e3e2dd',
+        'base-content': '#242521',
+        neutral: '#d8d7d1',
+        'neutral-content': '#686963',
+        primary: '#343630',
+        secondary: '#70726b',
+        accent: '#50534b',
+      },
+      dark: {
+        'base-100': '#20211f',
+        'base-200': '#282926',
+        'base-300': '#383a35',
+        'base-content': '#edeee8',
+        neutral: '#454740',
+        'neutral-content': '#b0b3a9',
+        primary: '#e1e3d9',
+        secondary: '#b6baac',
+        accent: '#c5c9bc',
+      },
     },
   },
   {

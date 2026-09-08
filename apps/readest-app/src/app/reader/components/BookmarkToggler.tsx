@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { RiBookmarkLine, RiBookmarkFill } from 'react-icons/ri';
+import { Bookmark } from 'lucide-react';
 
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
@@ -111,12 +111,14 @@ const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey }) => {
   return (
     <Button
       icon={
-        isBookmarked ? (
-          <RiBookmarkFill className='text-base-content' size={iconSize18} />
-        ) : (
-          <RiBookmarkLine className='text-base-content' size={iconSize18} />
-        )
+        <Bookmark
+          size={iconSize18}
+          fill={isBookmarked ? 'currentColor' : 'none'}
+          aria-hidden='true'
+        />
       }
+      className='glossa-icon-button'
+      aria-pressed={isBookmarked}
       onClick={toggleBookmark}
       label={isBookmarked ? _('Remove Bookmark') : _('Add Bookmark')}
     ></Button>

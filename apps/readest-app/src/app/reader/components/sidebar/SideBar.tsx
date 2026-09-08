@@ -188,7 +188,7 @@ const SideBar = ({}) => {
       <div
         ref={sidebarRef}
         className={clsx(
-          'sidebar-container flex min-w-60 select-none flex-col',
+          'sidebar-container glossa-reader-sidebar flex min-w-60 select-none flex-col',
           'full-height transition-[padding-top] duration-300',
           viewSettings?.isEink ? 'bg-base-100' : 'bg-base-200',
           appService?.hasRoundedWindow && 'rounded-window-top-left rounded-window-bottom-left',

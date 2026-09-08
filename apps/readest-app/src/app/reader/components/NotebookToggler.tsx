@@ -1,5 +1,5 @@
 import React from 'react';
-import { RiQuillPenLine } from 'react-icons/ri';
+import { NotebookPen } from 'lucide-react';
 
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
@@ -34,13 +34,10 @@ const NotebookToggler: React.FC<NotebookTogglerProps> = ({ bookKey }) => {
   };
   return (
     <Button
-      icon={
-        sideBarBookKey == bookKey && isNotebookVisible ? (
-          <RiQuillPenLine size={iconSize18} className='text-base-content' />
-        ) : (
-          <RiQuillPenLine size={iconSize18} className='text-base-content' />
-        )
-      }
+      icon={<NotebookPen size={iconSize18} aria-hidden='true' />}
+      className='glossa-icon-button'
+      aria-pressed={sideBarBookKey === bookKey && isNotebookVisible}
+      aria-expanded={sideBarBookKey === bookKey && isNotebookVisible}
       onClick={handleToggleSidebar}
       label={_('Notebook')}
     ></Button>

@@ -6,21 +6,22 @@ import { EnvProvider } from '@/context/EnvContext';
 import Providers from '@/components/Providers';
 
 import '../styles/globals.css';
+import '../styles/glossa.css';
+import '../styles/glossa-library.css';
+import '../styles/glossa-reader.css';
 
 const url = 'https://web.readest.com/';
-const title = 'Readest — Where You Read, Digest and Get Insight';
+const title = 'Glossa — A quiet place to read';
 const description =
-  'Discover Readest, the ultimate online ebook reader for immersive and organized reading. ' +
-  'Enjoy seamless access to your digital library, powerful tools for highlighting, bookmarking, ' +
-  'and note-taking, and support for multiple book views. ' +
-  'Perfect for deep reading, analysis, and understanding. Explore now!';
+  'Your books, a thoughtful reading space, and notes alongside the original text. ' +
+  'Read locally and keep your library in sync across devices.';
 const previewImage = 'https://cdn.readest.com/images/open_graph_preview_read_now.png';
 
 export const metadata: Metadata = {
   metadataBase: new URL(url),
   title: {
     default: title,
-    template: '%s | Readest',
+    template: '%s | Glossa',
   },
   description,
   generator: 'Next.js',
@@ -33,12 +34,12 @@ export const metadata: Metadata = {
     },
   ],
   icons: {
-    icon: [{ url: '/icon.png' }, { url: '/favicon.ico' }],
-    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180' }],
+    icon: [{ url: '/glossa-icon.png' }],
+    apple: [{ url: '/glossa-icon.png' }],
   },
   appleWebApp: {
     capable: true,
-    title: 'Readest',
+    title: 'Glossa',
     statusBarStyle: 'default',
   },
   openGraph: {

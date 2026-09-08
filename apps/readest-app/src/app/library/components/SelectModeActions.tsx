@@ -1,15 +1,15 @@
 import clsx from 'clsx';
 import { useEffect, useRef } from 'react';
 import {
-  MdDelete,
-  MdOpenInNew,
-  MdOutlineCancel,
-  MdInfoOutline,
-  MdCheckCircleOutline,
-  MdOutlineCloudDownload,
-} from 'react-icons/md';
-import { IoShareSocialOutline } from 'react-icons/io5';
-import { LuFolderPlus } from 'react-icons/lu';
+  Trash2,
+  BookOpen,
+  X,
+  Info,
+  CircleCheck,
+  CloudDownload,
+  Send,
+  FolderPlus,
+} from 'lucide-react';
 import { useKeyDownActions } from '@/hooks/useKeyDownActions';
 import { useTranslation } from '@/hooks/useTranslation';
 import { isMd5 } from '@/utils/md5';
@@ -88,15 +88,15 @@ const SelectModeActions: React.FC<SelectModeActionsProps> = ({
   return (
     <div
       ref={rootRef}
-      className='fixed bottom-0 left-0 right-0 z-40'
+      className='glossa-selection-actions fixed bottom-0 start-0 end-0 z-40'
       style={{
         paddingBottom: `${safeAreaBottom + 16}px`,
       }}
     >
       <div
         className={clsx(
-          'text-base-content text-xs shadow-lg',
-          'not-eink:bg-base-300 eink:bg-base-100 eink:border eink:border-base-content',
+          'glossa-selection-action-bar text-base-content text-xs',
+          'eink-bordered',
           'mx-auto w-fit max-w-[calc(100vw-1rem)] rounded-lg p-4',
           'flex items-center justify-center gap-x-6',
           'max-[500px]:grid max-[500px]:grid-cols-4 max-[500px]:gap-x-6 max-[500px]:gap-y-3',
@@ -109,7 +109,7 @@ const SelectModeActions: React.FC<SelectModeActionsProps> = ({
             (!hasSelection || !hasValidBooks) && 'btn-disabled opacity-50',
           )}
         >
-          <MdOpenInNew />
+          <BookOpen />
           <div>{_('Open')}</div>
         </button>
         <button
@@ -119,7 +119,7 @@ const SelectModeActions: React.FC<SelectModeActionsProps> = ({
             !hasSelection && 'btn-disabled opacity-50',
           )}
         >
-          <LuFolderPlus />
+          <FolderPlus />
           <div>{_('Group')}</div>
         </button>
         <button
@@ -129,7 +129,7 @@ const SelectModeActions: React.FC<SelectModeActionsProps> = ({
             (!hasSelection || !hasValidBooks) && 'btn-disabled opacity-50',
           )}
         >
-          <MdCheckCircleOutline />
+          <CircleCheck />
           <div>{_('Status')}</div>
         </button>
         <button
@@ -139,7 +139,7 @@ const SelectModeActions: React.FC<SelectModeActionsProps> = ({
             (!hasSingleSelection || !hasValidBooks) && 'btn-disabled opacity-50',
           )}
         >
-          <MdInfoOutline />
+          <Info />
           <div>{_('Details')}</div>
         </button>
         <button
@@ -152,7 +152,7 @@ const SelectModeActions: React.FC<SelectModeActionsProps> = ({
             !canDownload && 'btn-disabled opacity-50',
           )}
         >
-          <MdOutlineCloudDownload />
+          <CloudDownload />
           <div>{_('Download')}</div>
         </button>
         {sendEnabled && (
@@ -163,7 +163,7 @@ const SelectModeActions: React.FC<SelectModeActionsProps> = ({
               (!hasSingleSelection || !hasValidBooks) && 'btn-disabled opacity-50',
             )}
           >
-            <IoShareSocialOutline />
+            <Send />
             <div>{_('Send')}</div>
           </button>
         )}
@@ -174,11 +174,11 @@ const SelectModeActions: React.FC<SelectModeActionsProps> = ({
             !hasSelection && 'btn-disabled opacity-50',
           )}
         >
-          <MdDelete className='text-red-500' />
+          <Trash2 className='text-red-500' />
           <div className='text-red-500'>{_('Delete')}</div>
         </button>
         <button onClick={onCancel} className='flex flex-col items-center justify-center gap-1'>
-          <MdOutlineCancel />
+          <X />
           <div>{_('Cancel')}</div>
         </button>
       </div>

@@ -1,7 +1,6 @@
+import { List, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import React from 'react';
-import { IoIosList, IoMdCloseCircle } from 'react-icons/io';
-import { MdChevronLeft, MdChevronRight } from 'react-icons/md';
 
 import { Insets } from '@/types/misc';
 import { useEnv } from '@/context/EnvContext';
@@ -76,18 +75,18 @@ const ContentNavBar: React.FC<ContentNavBarProps> = ({
             onClick={onPrevious}
             disabled={!hasPrevious}
             className={clsx(
-              'flex h-10 w-10 items-center justify-center rounded-full shadow-lg transition-all disabled:opacity-40',
+              'flex h-10 w-10 items-center justify-center rounded-xl border border-base-content/15 shadow-sm transition-colors disabled:opacity-40',
               'bg-base-200 hover:bg-base-300 hover:disabled:bg-base-200',
             )}
           >
-            <MdChevronLeft
+            <ChevronLeft
               size={iconSize20}
               className={clsx('text-base-content', !hasPrevious && 'opacity-40')}
             />
           </button>
 
           {/* Info bar */}
-          <div className='bg-base-100 relative flex flex-1 items-center justify-between overflow-hidden rounded-xl px-2 py-1 shadow-lg sm:gap-6'>
+          <div className='bg-base-100 relative flex flex-1 items-center justify-between overflow-hidden rounded-xl border border-base-content/15 px-2 py-1 shadow-sm sm:gap-6'>
             {progress !== undefined && progress < 1 && (
               <div
                 className='bg-base-200 absolute inset-y-0 left-0 transition-all duration-300'
@@ -99,9 +98,9 @@ const ContentNavBar: React.FC<ContentNavBarProps> = ({
               <button
                 title={showResultsTitle || _('Show Results')}
                 onClick={onShowResults}
-                className='btn btn-ghost relative z-10 h-8 min-h-8 w-8 p-0 hover:bg-transparent'
+                className='glossa-icon-button btn btn-ghost relative z-10 h-8 min-h-8 w-8 p-0 hover:bg-transparent'
               >
-                <IoIosList size={iconSize20} className='text-base-content' />
+                <List size={iconSize20} className='text-base-content' />
               </button>
             ) : (
               <div className='relative z-10 w-8' />
@@ -117,9 +116,9 @@ const ContentNavBar: React.FC<ContentNavBarProps> = ({
             <button
               title={closeTitle || _('Close')}
               onClick={onClose}
-              className='btn btn-ghost relative z-10 h-8 min-h-8 w-8 p-0 hover:bg-transparent'
+              className='glossa-icon-button btn btn-ghost relative z-10 h-8 min-h-8 w-8 p-0 hover:bg-transparent'
             >
-              <IoMdCloseCircle size={iconSize16} />
+              <X size={iconSize16} />
             </button>
           </div>
 
@@ -129,11 +128,11 @@ const ContentNavBar: React.FC<ContentNavBarProps> = ({
             onClick={onNext}
             disabled={!hasNext}
             className={clsx(
-              'flex h-10 w-10 items-center justify-center rounded-full shadow-lg transition-all',
+              'flex h-10 w-10 items-center justify-center rounded-xl border border-base-content/15 shadow-sm transition-colors',
               'bg-base-200 hover:bg-base-300 hover:disabled:bg-base-200',
             )}
           >
-            <MdChevronRight
+            <ChevronRight
               size={iconSize20}
               className={clsx('text-base-content', !hasNext && 'opacity-40')}
             />

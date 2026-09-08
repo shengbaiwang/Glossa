@@ -1,6 +1,5 @@
 import clsx from 'clsx';
-import { MdLink } from 'react-icons/md';
-import { IoFileTray } from 'react-icons/io5';
+import { FilePlus2, FolderOpen, Link } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';
@@ -47,20 +46,20 @@ const ImportMenu: React.FC<ImportMenuProps> = ({
     >
       <MenuItem
         label={_('From Local File')}
-        Icon={<IoFileTray className='h-5 w-5' />}
+        Icon={<FilePlus2 className='h-5 w-5' aria-hidden='true' />}
         onClick={handleImportFromFiles}
       />
       {onImportBooksFromDirectory && (
         <MenuItem
           label={_('From Directory')}
-          Icon={<IoFileTray className='h-5 w-5' />}
+          Icon={<FolderOpen className='h-5 w-5' aria-hidden='true' />}
           onClick={handleImportFromDirectory}
         />
       )}
       {onImportBookFromUrl && (
         <MenuItem
           label={_('From Web URL')}
-          Icon={<MdLink className='h-5 w-5' />}
+          Icon={<Link className='h-5 w-5' aria-hidden='true' />}
           onClick={handleImportFromUrl}
         />
       )}

@@ -1,7 +1,8 @@
+import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import clsx from 'clsx';
 import React from 'react';
 
-import { MdCheck } from 'react-icons/md';
+import { Check } from 'lucide-react';
 import { useEnv } from '@/context/EnvContext';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
@@ -28,6 +29,7 @@ interface BookMenuProps {
 
 const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen }) => {
   const _ = useTranslation();
+  const iconSize = useResponsiveSize(16);
   const { envConfig } = useEnv();
   const { settings } = useSettingsStore();
   const { bookKeys, recreateViewer, getViewSettings } = useReaderStore();
@@ -111,7 +113,11 @@ const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen })
         label={_('Parallel Read')}
         buttonClass={bookKeys.length > 1 ? 'lg:tooltip lg:tooltip-bottom' : ''}
         tooltip={parallelViews.length > 0 ? _('Disable') : _('Enable')}
-        Icon={parallelViews.length > 0 && bookKeys.length > 1 ? MdCheck : undefined}
+        Icon={
+          parallelViews.length > 0 && bookKeys.length > 1 ? (
+            <Check size={iconSize} aria-hidden='true' />
+          ) : undefined
+        }
       >
         <ul className='max-h-60 overflow-y-auto'>
           {getVisibleLibrary()
@@ -162,7 +168,7 @@ const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen })
       />
       <MenuItem
         label={_('Sort TOC by Page')}
-        Icon={isSortedTOC ? MdCheck : undefined}
+        Icon={isSortedTOC ? <Check size={iconSize} aria-hidden='true' /> : undefined}
         onClick={handleToggleSortTOC}
       />
       <MenuItem label={_('Reload Page')} shortcut='Shift+R' onClick={handleReloadPage} />

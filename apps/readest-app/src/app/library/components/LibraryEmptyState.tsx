@@ -1,6 +1,7 @@
 import * as React from 'react';
 import clsx from 'clsx';
-import { PiBooks } from 'react-icons/pi';
+import { Plus } from 'lucide-react';
+import GlossaMark from '@/components/GlossaMark';
 
 import { useEnv } from '@/context/EnvContext';
 import { useAuth } from '@/context/AuthContext';
@@ -20,9 +21,9 @@ const LibraryEmptyState: React.FC<LibraryEmptyStateProps> = ({ onImport }) => {
   const isMobile = appService?.isMobile ?? false;
 
   return (
-    <div className='hero-content text-neutral-content text-center'>
+    <div className='glossa-library-empty hero-content text-center'>
       <div className='flex max-w-md flex-col items-center'>
-        <PiBooks aria-hidden className='text-base-content/60 mb-10 size-16' />
+        <GlossaMark className='glossa-empty-mark' />
         <h1 className='mb-5 text-balance text-4xl font-semibold leading-tight tracking-tight'>
           {_('Start your library')}
         </h1>
@@ -35,13 +36,12 @@ const LibraryEmptyState: React.FC<LibraryEmptyStateProps> = ({ onImport }) => {
           <button
             type='button'
             aria-haspopup='menu'
-            className='btn btn-primary h-11 min-h-11 rounded-lg'
+            className='glossa-button glossa-button-primary justify-center'
             onClick={(event) => onImport(event.currentTarget)}
           >
+            <Plus size={18} aria-hidden='true' />
             {_('Import Books')}
           </button>
-          {/* TODO: add a 'Browse free catalogs' secondary action that opens the
-              OPDS dialog (handleShowOPDSDialog) once we settle on placement. */}
           {!user && (
             <button
               type='button'

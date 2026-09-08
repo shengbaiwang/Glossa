@@ -1,12 +1,6 @@
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
-import { MdCheckCircle, MdCheckCircleOutline } from 'react-icons/md';
-import {
-  LiaCloudUploadAltSolid,
-  LiaCloudDownloadAltSolid,
-  LiaHeadphonesSolid,
-  LiaInfoCircleSolid,
-} from 'react-icons/lia';
+import { Check, Circle, CloudUpload, CloudDownload, Headphones, Info } from 'lucide-react';
 
 import { Book } from '@/types/book';
 import { useEnv } from '@/context/EnvContext';
@@ -88,7 +82,7 @@ const BookItem: React.FC<BookItemProps> = ({
         className={clsx(
           'bookitem-main relative flex justify-center overflow-hidden rounded',
           !fitCoverInGrid && 'aspect-[28/41]',
-          coverFit === 'crop' && 'shadow-md',
+          coverFit === 'crop' && 'glossa-cover-shadow',
           mode === 'grid' && 'items-end',
           mode === 'list' && 'min-w-20 items-center',
         )}
@@ -100,27 +94,30 @@ const BookItem: React.FC<BookItemProps> = ({
           coverFit={coverFit}
           showSpine={settings.librarySkeuomorphicCovers}
           imageClassName={clsx(
-            'shadow-md',
+            'glossa-cover-shadow',
             settings.librarySkeuomorphicCovers ? 'rounded-none' : 'rounded',
           )}
           onAspectRatioChange={setCoverAspect}
         />
-        {bookSelected && (
-          <div className='absolute inset-0 bg-black opacity-30 transition-opacity duration-300'></div>
-        )}
+        {bookSelected && <div className='glossa-book-selection-overlay absolute inset-0'></div>}
         {isSelectMode && (
-          <div className='absolute bottom-1 right-1'>
+          <div
+            className={clsx(
+              'glossa-book-selection absolute bottom-2 end-2',
+              bookSelected && 'glossa-book-selection-checked',
+            )}
+          >
             {bookSelected ? (
-              <MdCheckCircle className='fill-blue-500' />
+              <Check size={16} aria-hidden='true' />
             ) : (
-              <MdCheckCircleOutline className='fill-gray-300 drop-shadow-sm' />
+              <Circle size={18} aria-hidden='true' />
             )}
           </div>
         )}
       </div>
       <div
         className={clsx(
-          'flex w-full flex-col p-0',
+          'glossa-book-metadata flex min-w-0 w-full flex-col p-0',
           mode === 'grid' && 'pt-2',
           mode === 'list' && 'gap-1 py-0',
         )}
@@ -128,30 +125,28 @@ const BookItem: React.FC<BookItemProps> = ({
         <div className={clsx('min-w-0 flex-1', mode === 'list' && 'flex flex-col gap-1')}>
           <h4
             className={clsx(
-              'overflow-hidden text-ellipsis font-semibold',
-              mode === 'grid' && 'block whitespace-nowrap text-[0.6em] text-xs',
-              mode === 'list' && 'line-clamp-1 text-base',
+              'glossa-book-title font-medium',
+              mode === 'grid' && 'line-clamp-2',
+              mode === 'list' && 'line-clamp-2 text-base',
             )}
           >
             {book.title}
           </h4>
-          {mode === 'list' && (
-            <p className='text-neutral-content line-clamp-1 text-sm'>
-              {formatAuthors(book.author, book.primaryLanguage) || ''}
-            </p>
-          )}
+          <p className='glossa-book-author line-clamp-1'>
+            {formatAuthors(book.author, book.primaryLanguage) || '\u00a0'}
+          </p>
         </div>
         {mode === 'list' && seriesText && (
           <p className='text-neutral-content line-clamp-1 text-sm'>{seriesText}</p>
         )}
         {mode === 'list' && (
-          <h4 className='text-neutral-content line-clamp-1 text-sm'>
+          <p className='glossa-book-description text-neutral-content line-clamp-1 text-sm'>
             {formatDescription(book.metadata?.description)}
-          </h4>
+          </p>
         )}
         <div
           className={clsx(
-            'flex items-center',
+            'glossa-book-status flex items-center',
             book.progress || book.readingStatus ? 'justify-between' : 'justify-end',
           )}
           style={{
@@ -162,18 +157,18 @@ const BookItem: React.FC<BookItemProps> = ({
           {(book.progress || book.readingStatus) && (
             <ReadingProgress book={book} showTimeRemaining={showTimeRemaining} />
           )}
-          <div className='flex shrink-0 items-center justify-center gap-x-2'>
+          <div className='flex shrink-0 items-center justify-center gap-x-3'>
             {!appService?.isMobile && (
               <button
                 aria-label={_('Show Book Details')}
-                className='show-detail-button -m-2 p-2 sm:opacity-0 sm:group-hover:opacity-100'
+                className='show-detail-button glossa-book-detail-button'
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => {
                   showBookDetailsModal(book);
                 }}
               >
                 <div className='pt-[2px] sm:pt-[1px]'>
-                  <LiaInfoCircleSolid size={iconSize15} />
+                  <Info size={iconSize15} />
                 </div>
               </button>
             )}
@@ -183,7 +178,7 @@ const BookItem: React.FC<BookItemProps> = ({
                 title={_('Includes narration')}
                 aria-label={_('Includes narration')}
               >
-                <LiaHeadphonesSolid size={iconSize15} />
+                <Headphones size={iconSize15} />
               </div>
             )}
             {transferProgress !== null ? (
@@ -207,7 +202,7 @@ const BookItem: React.FC<BookItemProps> = ({
               (!book.uploadedAt || (book.uploadedAt && !book.downloadedAt)) && (
                 <button
                   aria-label={!book.uploadedAt ? _('Upload Book') : _('Download Book')}
-                  className='show-cloud-button -m-2 p-2'
+                  className='show-cloud-button glossa-book-cloud-button'
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => {
                     if (!user) {
@@ -222,11 +217,9 @@ const BookItem: React.FC<BookItemProps> = ({
                   }}
                 >
                   {!book.uploadedAt && isReadestCloudStorageActive(settings) && (
-                    <LiaCloudUploadAltSolid size={iconSize15} />
+                    <CloudUpload size={iconSize15} />
                   )}
-                  {book.uploadedAt && !book.downloadedAt && (
-                    <LiaCloudDownloadAltSolid size={iconSize15} />
-                  )}
+                  {book.uploadedAt && !book.downloadedAt && <CloudDownload size={iconSize15} />}
                 </button>
               )
             )}

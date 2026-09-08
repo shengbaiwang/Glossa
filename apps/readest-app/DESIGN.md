@@ -1,5 +1,35 @@
 ## Readest Design Language
 
+### Glossa visual identity — 2026-09-08
+
+Glossa's library and reader now follow the app icon: two rounded text strokes with a
+short interlinear gloss, expressed as ink on paper. This user-requested identity takes
+precedence over the upstream Adwaita identity and radius choices below; the existing
+interaction, safe-area, RTL, theme and e-ink rules still apply.
+
+- Use the existing Glossa mark (`GlossaMark`) and Lucide rounded line icons in the
+  library header, reader chrome and settings navigation. Book cover artwork supplies
+  the main color; interface chrome stays neutral.
+- Use `glossa.css` theme-derived tokens for ink, muted text, surfaces, borders, focus
+  and elevation. The default palette is paper/ink in light mode and charcoal/paper in
+  dark mode. Other built-in and custom palettes keep their identity.
+- Controls use 9px radii for compact icons, 12px for standard controls/popovers and
+  20px for larger surfaces. Library headings establish hierarchy with type and space;
+  book titles and authors remain distinct from reading progress.
+- `glossa-icon-button` has a 32px visual size; keep `touch-target` for its existing
+  44px hit area. `glossa-button` is the text action; `glossa-button-primary` is the
+  monochrome solid action. Use native disabled and pressed/expanded semantics.
+- Continue reading is a separate keyboard-navigation region above the main collection.
+  Search and card child actions keep their native keyboard behavior. Existing explicit
+  recent-shelf preferences remain authoritative; new profiles enable it by default.
+- Reader chrome retains its existing dimensions and show/hide behavior, so it does
+  not steal space from text or intercept first-line selection. Sidebars use visible
+  labels and clear active states. User font, pagination and margin settings are not reset.
+- Hover uses short color/border transitions. Reduced-motion and e-ink modes suppress
+  decoration; e-ink uses crisp borders and full-contrast text.
+
+Implementation: `src/styles/glossa.css`, `glossa-library.css`, `glossa-reader.css`.
+
 Readest's UI is **Adwaita-aligned**, **e-ink-first**, **cross-platform-aware**. This doc is the
 reference for that language: principles, vocabulary, anti-patterns. New work should read it
 before reaching for daisyui defaults; existing work is gradually migrating toward it.

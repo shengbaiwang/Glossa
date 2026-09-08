@@ -5,20 +5,20 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useCommandPalette } from '@/components/command-palette';
-import { RiFontSize, RiShareLine } from 'react-icons/ri';
-import { RiDashboardLine, RiTranslate } from 'react-icons/ri';
-import { VscSymbolColor } from 'react-icons/vsc';
-import { PiDotsThreeVerticalBold } from 'react-icons/pi';
-import { LiaHandPointerSolid } from 'react-icons/lia';
-import { IoAccessibilityOutline } from 'react-icons/io5';
 import {
-  MdArrowBackIosNew,
-  MdArrowForwardIos,
-  MdChevronLeft,
-  MdChevronRight,
-  MdClose,
-} from 'react-icons/md';
-import { FiSearch } from 'react-icons/fi';
+  Type,
+  PanelsTopLeft,
+  Palette,
+  Hand,
+  Languages,
+  Cloud,
+  Accessibility,
+  Ellipsis,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  Search,
+} from 'lucide-react';
 import { getDirFromUILanguage } from '@/utils/rtl';
 import { getCommandPaletteShortcut } from '@/services/environment';
 import FontPanel from './FontPanel';
@@ -79,37 +79,37 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const tabConfig = [
     {
       tab: 'Font',
-      icon: RiFontSize,
+      icon: Type,
       label: _('Font'),
     },
     {
       tab: 'Layout',
-      icon: RiDashboardLine,
+      icon: PanelsTopLeft,
       label: _('Layout'),
     },
     {
       tab: 'Theme',
-      icon: VscSymbolColor,
+      icon: Palette,
       label: _('Theme'),
     },
     {
       tab: 'Control',
-      icon: LiaHandPointerSolid,
+      icon: Hand,
       label: _('Behavior'),
     },
     {
       tab: 'Language',
-      icon: RiTranslate,
+      icon: Languages,
       label: _('Language'),
     },
     {
       tab: 'Integrations',
-      icon: RiShareLine,
+      icon: Cloud,
       label: _('Cloud Sync'),
     },
     {
       tab: 'Custom',
-      icon: IoAccessibilityOutline,
+      icon: Accessibility,
       label: _('Custom'),
     },
   ] as TabConfig[];
@@ -295,15 +295,15 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         onClick={handleOpenCommandPalette}
         aria-label={_('Search Settings')}
         title={`${_('Search Settings')} (${getCommandPaletteShortcut()})`}
-        className='btn btn-ghost flex h-8 min-h-8 w-8 items-center justify-center p-0'
+        className='touch-target glossa-icon-button'
       >
-        <FiSearch />
+        <Search size={18} />
       </button>
       <Dropdown
         label={_('Settings Menu')}
         className='dropdown-bottom dropdown-end'
-        buttonClassName='btn btn-ghost h-8 min-h-8 w-8 p-0 flex items-center justify-center'
-        toggleButton={<PiDotsThreeVerticalBold />}
+        buttonClassName='touch-target glossa-icon-button'
+        toggleButton={<Ellipsis size={18} />}
       >
         <DialogMenu
           bookKey={bookKey}
@@ -317,9 +317,9 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       <button
         onClick={handleClose}
         aria-label={_('Close')}
-        className={'bg-base-300/65 btn btn-ghost btn-circle hidden h-6 min-h-6 w-6 p-0 sm:flex'}
+        className={'touch-target glossa-icon-button hidden sm:flex'}
       >
-        <MdClose size={closeIconSize} />
+        <X size={closeIconSize} />
       </button>
     </div>
   );
@@ -333,7 +333,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       // inside RSVP shows on top instead of behind it (#3235), and below the
       // modal layer (z-120) so a modal opened from inside Settings (e.g. Add
       // OPDS Catalog) renders on top. !important beats the Dialog's hardcoded z-50.
-      className='modal-open !z-[110]'
+      className='glossa-settings modal-open !z-[110]'
       bgClassName={bookKey ? 'sm:!bg-black/20' : 'sm:!bg-black/50'}
       boxClassName={clsx(
         'sm:min-w-[520px] overflow-hidden not-eink:bg-base-200',
@@ -355,7 +355,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
                 'btn btn-ghost btn-circle absolute left-3 flex h-8 min-h-8 w-8 hover:bg-transparent focus:outline-none'
               }
             >
-              {isRtl ? <MdArrowForwardIos /> : <MdArrowBackIosNew />}
+              {isRtl ? <ChevronRight /> : <ChevronLeft />}
             </button>
             <div className='tab-title flex text-base font-semibold'>
               {currentPanel?.label || ''}
@@ -378,6 +378,8 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
                   <button
                     key={tab}
                     data-tab={tab}
+                    aria-label={label}
+                    aria-pressed={activePanel === tab}
                     tabIndex={0}
                     title={label}
                     className={clsx(
@@ -386,7 +388,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
                     )}
                     onClick={() => handleSetActivePanel(tab)}
                   >
-                    <Icon className='mr-0' />
+                    <Icon aria-hidden='true' />
                     <span
                       className={clsx(
                         window.innerWidth < 640 && 'hidden',
@@ -407,7 +409,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
                 tabIndex={-1}
                 className='btn btn-ghost btn-circle flex h-8 min-h-8 w-8 shrink-0 items-center justify-center p-0'
               >
-                {isRtl ? <MdChevronLeft /> : <MdChevronRight />}
+                {isRtl ? <ChevronLeft /> : <ChevronRight />}
               </button>
             )}
             <div className='hidden sm:flex'>{windowControls}</div>

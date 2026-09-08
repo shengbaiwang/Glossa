@@ -24,7 +24,17 @@ export function useSpatialNavigation(containerRef: React.RefObject<HTMLElement |
       const container = containerRef.current;
       if (!container) return;
 
-      const items = getGridItems(container);
+      const active = document.activeElement as HTMLElement | null;
+      // Nested book actions and text fields own their keyboard behavior.
+      if (active && active !== container && !active.matches('[role="button"][tabindex="0"]'))
+        return;
+      const scope = active?.closest<HTMLElement>('[data-spatial-navigation]') ?? container;
+      if (
+        scope.dataset['spatialNavigation'] === 'recent' &&
+        (e.key === 'ArrowUp' || e.key === 'ArrowDown')
+      )
+        return;
+      const items = getGridItems(scope);
       if (items.length === 0) return;
 
       const currentIndex = items.indexOf(document.activeElement as HTMLElement);
@@ -35,14 +45,15 @@ export function useSpatialNavigation(containerRef: React.RefObject<HTMLElement |
       }
 
       const cols = getGridColumnCount(items);
+      const rtl = getComputedStyle(scope).direction === 'rtl';
       let targetIndex = currentIndex;
 
       switch (e.key) {
         case 'ArrowRight':
-          targetIndex = currentIndex + 1;
+          targetIndex = currentIndex + (rtl ? -1 : 1);
           break;
         case 'ArrowLeft':
-          targetIndex = currentIndex - 1;
+          targetIndex = currentIndex + (rtl ? 1 : -1);
           break;
         case 'ArrowDown':
           targetIndex = currentIndex + cols;
@@ -54,7 +65,7 @@ export function useSpatialNavigation(containerRef: React.RefObject<HTMLElement |
 
       if (targetIndex >= 0 && targetIndex < items.length && targetIndex !== currentIndex) {
         items[targetIndex]?.focus();
-        items[targetIndex]?.scrollIntoView({ block: 'nearest' });
+        items[targetIndex]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
         e.preventDefault();
       }
     },
@@ -64,7 +75,14 @@ export function useSpatialNavigation(containerRef: React.RefObject<HTMLElement |
   // Handle focus transition from outside the bookshelf (e.g. header) into the grid
   const handleWindowKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key !== 'ArrowDown') return;
+      if (e.key !== 'ArrowDown' || e.defaultPrevented) return;
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        (active.matches('input, textarea, select, [contenteditable="true"]') ||
+          active.closest('[role="menu"], [role="dialog"]'))
+      )
+        return;
 
       const container = containerRef.current;
       if (!container) return;
@@ -76,7 +94,7 @@ export function useSpatialNavigation(containerRef: React.RefObject<HTMLElement |
       if (items.length === 0) return;
 
       items[0]?.focus();
-      items[0]?.scrollIntoView({ block: 'nearest' });
+      items[0]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       e.preventDefault();
     },
     [containerRef],

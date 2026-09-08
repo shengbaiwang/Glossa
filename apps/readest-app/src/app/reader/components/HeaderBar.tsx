@@ -1,8 +1,7 @@
 import { getReadingQuickAction } from '@/utils/annotationToolbar';
 import clsx from 'clsx';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { VscLibrary } from 'react-icons/vsc';
-import { MdOutlineMenu } from 'react-icons/md';
+import { LibraryBig, Ellipsis } from 'lucide-react';
 
 import { Insets } from '@/types/misc';
 import { useEnv } from '@/context/EnvContext';
@@ -204,8 +203,8 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
         role='banner'
         aria-label={_('Header Bar')}
         className={clsx(
-          `header-bar bg-base-100 absolute top-0 z-10 flex h-11 w-full items-center pr-4`,
-          `shadow-xs transition-[opacity,margin-top] duration-300`,
+          `header-bar glossa-reader-header bg-base-100 absolute top-0 z-10 flex h-11 w-full items-center pr-4`,
+          `transition-[opacity,margin-top] duration-300`,
           trafficLightInHeader ? 'pl-20' : isSideBarVisible ? 'ps-4' : 'ps-4 sm:ps-1.5',
           appService?.hasRoundedWindow && 'rounded-window-top-right',
           !isSideBarVisible && appService?.hasRoundedWindow && 'rounded-window-top-left',
@@ -225,7 +224,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
           }
         }}
       >
-        <div className='header-tools-start bg-base-100 sidebar-bookmark-toggler z-20 flex h-full min-w-0 items-center gap-x-4 pe-2 max-[350px]:gap-x-2'>
+        <div className='header-tools-start bg-base-100 sidebar-bookmark-toggler z-20 flex h-full min-w-0 items-center gap-x-3 pe-2 max-[350px]:gap-x-2'>
           {/* h-full so this scroller spans the whole bar: `overflow-x-auto`
               also clips vertically, and shrink-wrapped to the 32px icons it
               cut the buttons' touch halos back down to 32px (#5401). */}
@@ -233,7 +232,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
               hit-test strip at the scroller's bottom edge on Android, which
               cut the touch halos short of the 44px target (#5401) —
               `scrollbar-width: none` alone does not remove that strip. */}
-          <div className='no-scrollbar flex h-full min-w-0 items-center gap-x-4 overflow-x-auto max-[350px]:gap-x-2'>
+          <div className='no-scrollbar flex h-full min-w-0 items-center gap-x-3 overflow-x-auto max-[350px]:gap-x-2'>
             {!isSideBarVisible && (
               <div className='hidden sm:flex'>
                 <SidebarToggler bookKey={bookKey} />
@@ -241,10 +240,12 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
             )}
             <button
               title={_('Go to Library')}
-              className='btn btn-ghost hidden h-8 min-h-8 w-8 p-0 sm:flex'
+              aria-label={_('Go to Library')}
+              type='button'
+              className='glossa-icon-button touch-target btn btn-ghost hidden h-8 min-h-8 w-8 p-0 sm:flex'
               onClick={onGoToLibrary}
             >
-              <VscLibrary size={iconSize18} className='fill-base-content' />
+              <LibraryBig size={iconSize18} aria-hidden='true' />
             </button>
             <BookmarkToggler bookKey={bookKey} />
           </div>
@@ -258,7 +259,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
               className='exclude-title-bar-mousedown dropdown-bottom dropdown-center'
               menuClassName='!relative'
               buttonClassName={clsx(
-                'btn btn-ghost h-8 min-h-8 w-8 p-0',
+                'glossa-icon-button btn btn-ghost h-8 min-h-8 w-8 p-0',
                 viewSettings?.annotationQuickAction && 'bg-base-300/50',
               )}
               toggleButton={
@@ -297,7 +298,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
           <div
             aria-hidden='true'
             className={clsx(
-              'line-clamp-1 text-center text-xs font-semibold',
+              'glossa-reader-book-title line-clamp-1 text-center text-xs font-medium',
               !windowButtonVisible && 'max-w-[50%]',
             )}
           >
@@ -305,15 +306,15 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
           </div>
         </div>
 
-        <div className='header-tools-end bg-base-100 z-20 ms-auto flex h-full min-w-max items-center gap-x-4 ps-2 max-[350px]:gap-x-2'>
+        <div className='header-tools-end bg-base-100 z-20 ms-auto flex h-full min-w-max items-center gap-x-3 ps-2 max-[350px]:gap-x-2'>
           {!isHeaderCompact && <SettingsToggler bookKey={bookKey} />}
           <NotebookToggler bookKey={bookKey} />
           <Dropdown
             label={_('View Options')}
             containerClassName='h-8'
             className='exclude-title-bar-mousedown dropdown-bottom dropdown-end'
-            buttonClassName='btn btn-ghost h-8 min-h-8 w-8 p-0 mt-0'
-            toggleButton={<MdOutlineMenu />}
+            buttonClassName='glossa-icon-button btn btn-ghost h-8 min-h-8 w-8 p-0 mt-0'
+            toggleButton={<Ellipsis size={iconSize18} aria-hidden='true' />}
             onToggle={handleToggleDropdown}
           >
             <ViewMenu

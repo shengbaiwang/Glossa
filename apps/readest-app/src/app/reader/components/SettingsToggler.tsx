@@ -1,5 +1,6 @@
+import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import React from 'react';
-import { RiFontSize } from 'react-icons/ri';
+import { Type } from 'lucide-react';
 
 import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -12,6 +13,7 @@ interface SettingsTogglerProps {
 
 const SettingsToggler: React.FC<SettingsTogglerProps> = ({ bookKey }) => {
   const _ = useTranslation();
+  const iconSize = useResponsiveSize(18);
   const { setHoveredBookKey } = useReaderStore();
   const { isSettingsDialogOpen, setSettingsDialogOpen } = useSettingsStore();
   const { setSettingsDialogBookKey } = useSettingsStore();
@@ -22,7 +24,9 @@ const SettingsToggler: React.FC<SettingsTogglerProps> = ({ bookKey }) => {
   };
   return (
     <Button
-      icon={<RiFontSize className='text-base-content' />}
+      icon={<Type size={iconSize} aria-hidden='true' />}
+      className='glossa-icon-button'
+      aria-expanded={isSettingsDialogOpen}
       onClick={handleToggleSettings}
       label={_('Font & Layout')}
     ></Button>

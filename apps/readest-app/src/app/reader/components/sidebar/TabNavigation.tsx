@@ -1,9 +1,6 @@
 import clsx from 'clsx';
 import React from 'react';
-import { MdBookmarkBorder } from 'react-icons/md';
-import { IoIosList } from 'react-icons/io';
-import { PiNotePencil } from 'react-icons/pi';
-import { LuMessageSquare } from 'react-icons/lu';
+import { Bookmark, List, Highlighter } from 'lucide-react';
 
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -14,68 +11,34 @@ const TabNavigation: React.FC<{
 }> = ({ activeTab, onTabChange }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
-
-  const forceMobileLayout =
-    !!appService?.isMobile && window.innerWidth >= 640 && window.innerWidth <= window.innerHeight;
-  const isMobile = forceMobileLayout || window.innerWidth < 640 || window.innerHeight < 640;
-  const tabs = ['toc', 'annotations', 'bookmarks'];
-
-  const getTabLabel = (tab: string) => {
-    switch (tab) {
-      case 'toc':
-        return _('TOC');
-      case 'annotations':
-        return _('Annotate');
-      case 'bookmarks':
-        return _('Bookmark');
-      case 'history':
-        return _('Chat');
-      default:
-        return '';
-    }
-  };
+  const tabs = [
+    { id: 'toc', label: _('TOC'), Icon: List },
+    { id: 'annotations', label: _('Annotate'), Icon: Highlighter },
+    { id: 'bookmarks', label: _('Bookmark'), Icon: Bookmark },
+  ];
 
   return (
     <div
       className={clsx(
-        'bottom-tab border-base-300/50 bg-base-200 flex w-full border-t',
+        'bottom-tab glossa-reader-tabs flex w-full gap-1 border-t p-2',
         appService?.hasRoundedWindow && 'rounded-window-bottom-left',
-        isMobile && 'h-[65px]',
       )}
-      dir='ltr'
+      role='group'
+      aria-label={_('Sidebar')}
     >
-      {tabs.map((tab) => (
-        <div
-          key={tab}
-          tabIndex={0}
-          role='button'
-          className={clsx(
-            'flex-1 m-1.5 cursor-pointer rounded-lg transition-colors duration-200',
-            activeTab === tab && 'bg-base-300/85',
-            isMobile ? 'p-3' : 'p-2',
-          )}
-          onClick={() => onTabChange(tab)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              onTabChange(tab);
-            }
-          }}
-          title={getTabLabel(tab)}
-          aria-label={getTabLabel(tab)}
+      {tabs.map(({ id, label, Icon }) => (
+        <button
+          key={id}
+          type='button'
+          className='glossa-reader-tab flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg px-1 py-1.5'
+          onClick={() => onTabChange(id)}
+          title={label}
+          aria-label={label}
+          aria-pressed={activeTab === id}
         >
-          <div className={clsx('flex h-6 items-center p-0', isMobile ? 'm-0.5' : 'm-0')}>
-            {tab === 'toc' ? (
-              <IoIosList className='mx-auto' />
-            ) : tab === 'annotations' ? (
-              <PiNotePencil className='mx-auto' />
-            ) : tab === 'bookmarks' ? (
-              <MdBookmarkBorder className='mx-auto' />
-            ) : (
-              <LuMessageSquare className='mx-auto' />
-            )}
-          </div>
-        </div>
+          <Icon size={18} aria-hidden='true' />
+          <span className='max-w-full truncate text-[11px] font-medium leading-4'>{label}</span>
+        </button>
       ))}
     </div>
   );

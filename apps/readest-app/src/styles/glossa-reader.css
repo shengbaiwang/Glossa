@@ -1,0 +1,152 @@
+/* Reader chrome follows the mark's soft, precise strokes. Dimensions remain
+   aligned with the reader's existing content insets and mobile touch halos. */
+.glossa-reader-header {
+  border-bottom: 1px solid var(--glossa-border);
+}
+
+.glossa-reader-book-title {
+  color: var(--glossa-ink);
+  letter-spacing: 0.01em;
+}
+
+.glossa-reader-footer {
+  border-top: 1px solid var(--glossa-border) !important;
+  box-shadow: none;
+}
+
+.glossa-reader-sidebar,
+.glossa-reader-notebook {
+  background: var(--glossa-wash);
+}
+
+.glossa-reader-sidebar {
+  border-inline-end: 1px solid var(--glossa-border);
+}
+
+.glossa-reader-notebook {
+  border-inline-start: 1px solid var(--glossa-border);
+}
+
+.glossa-reader-panel-header {
+  color: var(--glossa-ink);
+}
+
+.glossa-reader-book-card {
+  color: var(--glossa-ink);
+}
+
+.glossa-reader-muted {
+  color: var(--glossa-muted);
+}
+
+.glossa-reader-sidebar-content {
+  padding-block: 8px;
+}
+
+.glossa-reader-toc-item {
+  border-inline-start: 2px solid transparent;
+  transition:
+    background-color 150ms,
+    border-color 150ms;
+}
+
+.glossa-reader-toc-item:hover {
+  background: var(--glossa-surface);
+}
+
+.glossa-reader-toc-item[aria-current='page'] {
+  border-inline-start-color: var(--glossa-ink);
+  background: var(--glossa-surface);
+  font-weight: 600;
+}
+
+.glossa-reader-toc-item:focus-visible,
+.glossa-reader-position:focus-visible,
+.glossa-reader-tab:focus-visible {
+  outline: 2px solid var(--glossa-focus);
+  outline-offset: -2px;
+}
+
+.glossa-reader-position {
+  color: var(--glossa-ink);
+  font-size: 12px;
+}
+
+.glossa-reader-tabs {
+  background: var(--glossa-wash);
+  border-color: var(--glossa-border);
+}
+
+.glossa-reader-tab {
+  color: var(--glossa-muted);
+  border: 1px solid transparent;
+  transition:
+    background-color 150ms,
+    border-color 150ms;
+}
+
+.glossa-reader-tab:hover {
+  background: var(--glossa-surface);
+}
+
+.glossa-reader-tab[aria-pressed='true'] {
+  color: var(--glossa-ink);
+  background: var(--glossa-surface);
+  border-color: var(--glossa-border);
+}
+
+.glossa-reader-page-input {
+  min-height: 30px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--glossa-ink);
+}
+
+.glossa-reader-page-input:focus-within {
+  outline: 2px solid var(--glossa-focus);
+  outline-offset: 1px;
+}
+
+.glossa-reader-range {
+  accent-color: var(--glossa-ink);
+}
+
+.glossa-reader-range:focus-visible {
+  outline: 2px solid var(--glossa-focus);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.glossa-reader-empty-icon {
+  color: var(--glossa-ink);
+  background: var(--glossa-surface);
+  border: 1px solid var(--glossa-border);
+}
+
+.glossa-reader-excerpt,
+.glossa-reader-note-editor,
+.glossa-reader-note-source {
+  border-color: var(--glossa-border);
+}
+
+.glossa-reader-excerpt {
+  border-radius: var(--glossa-radius);
+}
+
+[data-eink='true'] .glossa-reader-tab[aria-pressed='true'],
+[data-eink='true'] .glossa-reader-toc-item[aria-current='page'] {
+  border-color: var(--glossa-ink);
+  font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glossa-reader-toc-item,
+  .glossa-reader-tab {
+    transition: none;
+  }
+}
+
+[data-eink='true'] .glossa-reader-toc-item,
+[data-eink='true'] .glossa-reader-tab {
+  transition: none;
+}

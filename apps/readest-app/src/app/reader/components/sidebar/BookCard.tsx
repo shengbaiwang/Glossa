@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { useRef } from 'react';
-import { MdInfoOutline } from 'react-icons/md';
+import { Info } from 'lucide-react';
 import { Book } from '@/types/book';
 import { useThemeStore } from '@/store/themeStore';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -30,11 +30,11 @@ const BookCard = ({ book }: { book: Book }) => {
   };
 
   return (
-    <div className='flex h-20 w-full items-center'>
+    <div className='glossa-reader-book-card flex min-h-24 w-full items-center gap-3 py-4'>
       <div
         ref={bookCoverRef}
         className={clsx(
-          'me-4 aspect-[28/41] max-h-16 w-[15%] max-w-12 overflow-hidden rounded-sm shadow-md',
+          'aspect-[28/41] max-h-16 w-[15%] max-w-12 shrink-0 overflow-hidden rounded-sm shadow-sm',
           isDarkMode ? 'mix-blend-screen' : 'mix-blend-multiply',
         )}
       >
@@ -48,17 +48,19 @@ const BookCard = ({ book }: { book: Book }) => {
         />
       </div>
       <div className='min-w-0 flex-1'>
-        <h4 className='line-clamp-2 w-[90%] text-sm font-semibold'>
+        <p className='glossa-eyebrow mb-1'>{_('Reading')}</p>
+        <h4 className='line-clamp-2 text-sm font-semibold leading-snug'>
           {formatTitle(title).replace(/\u00A0/g, ' ')}
         </h4>
-        <p className='truncate text-xs opacity-75'>{formatAuthors(author)}</p>
+        <p className='glossa-reader-muted mt-1 truncate text-xs'>{formatAuthors(author)}</p>
       </div>
       <button
-        className='btn btn-ghost hover:bg-base-300 h-6 min-h-6 w-6 rounded-full p-0 transition-colors'
+        type='button'
+        className='glossa-icon-button touch-target btn btn-ghost h-8 min-h-8 w-8 shrink-0 p-0'
         aria-label={_('More Info')}
         onClick={showBookDetails}
       >
-        <MdInfoOutline size={iconSize18} className='fill-base-content' />
+        <Info size={iconSize18} aria-hidden='true' />
       </button>
     </div>
   );

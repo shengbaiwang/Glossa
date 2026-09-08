@@ -1,7 +1,6 @@
 import clsx from 'clsx';
 import React, { useCallback } from 'react';
-import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
-import { RiArrowLeftDoubleLine, RiArrowRightDoubleLine } from 'react-icons/ri';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useBookProgress } from '@/store/readerProgressStore';
@@ -112,7 +111,7 @@ const PageNavigationButtons: React.FC<PageNavigationButtonsProps> = ({
               'transition-transform active:scale-95',
             )}
           >
-            <RiArrowLeftDoubleLine size={24} />
+            <ChevronsLeft size={24} />
           </span>
         </button>
         <button
@@ -133,7 +132,7 @@ const PageNavigationButtons: React.FC<PageNavigationButtonsProps> = ({
               'transition-transform active:scale-95',
             )}
           >
-            <IoChevronBack size={24} />
+            <ChevronLeft size={24} />
           </span>
         </button>
       </div>
@@ -164,7 +163,7 @@ const PageNavigationButtons: React.FC<PageNavigationButtonsProps> = ({
               'transition-transform active:scale-95',
             )}
           >
-            <IoChevronForward size={24} />
+            <ChevronRight size={24} />
           </span>
         </button>
         <button
@@ -185,7 +184,7 @@ const PageNavigationButtons: React.FC<PageNavigationButtonsProps> = ({
               'transition-transform active:scale-95',
             )}
           >
-            <RiArrowRightDoubleLine size={24} />
+            <ChevronsRight size={24} />
           </span>
         </button>
       </div>

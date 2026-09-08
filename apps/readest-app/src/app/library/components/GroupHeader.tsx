@@ -1,6 +1,6 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { MdArrowBack } from 'react-icons/md';
+import { ArrowLeft } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { navigateToLibrary } from '@/utils/nav';
@@ -55,10 +55,10 @@ const GroupHeader: React.FC<GroupHeaderProps> = ({ groupBy, groupName }) => {
     <div className='flex items-center gap-2 px-4 py-2'>
       <button
         onClick={handleBack}
-        className='btn btn-ghost btn-sm h-8 min-h-8 px-2'
+        className='touch-target glossa-icon-button'
         aria-label={_('Back to library')}
       >
-        <MdArrowBack size={iconSize} />
+        <ArrowLeft size={iconSize} className='rtl:rotate-180' aria-hidden='true' />
       </button>
       <div className='flex items-center gap-2 overflow-hidden'>
         <span className='text-neutral-content text-sm'>{getGroupTypeLabel()}:</span>

@@ -1,8 +1,6 @@
 import clsx from 'clsx';
 import React, { useCallback, useEffect, useRef } from 'react';
-import { RiArrowLeftSLine, RiArrowRightSLine } from 'react-icons/ri';
-import { RiArrowGoBackLine, RiArrowGoForwardLine } from 'react-icons/ri';
-import { RiArrowLeftDoubleLine, RiArrowRightDoubleLine } from 'react-icons/ri';
+import { ChevronLeft, ChevronRight, Undo2, Redo2, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import type { FooterBarChildProps } from './types';
@@ -58,7 +56,7 @@ const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
   return (
     <div
       className={clsx(
-        'hidden h-8 w-full items-center gap-x-4 overflow-x-auto px-4',
+        'glossa-reader-navigation hidden h-8 w-full items-center gap-x-2 overflow-x-auto px-4',
         !forceMobileLayout && 'sm:flex',
       )}
       style={{
@@ -69,10 +67,11 @@ const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
     >
       {!viewSettings?.showPaginationButtons && (
         <Button
+          className='glossa-icon-button'
           icon={getNavigationIcon(
             viewSettings?.rtl,
-            <RiArrowLeftDoubleLine />,
-            <RiArrowRightDoubleLine />,
+            <ChevronsLeft size={18} aria-hidden='true' />,
+            <ChevronsRight size={18} aria-hidden='true' />,
           )}
           onClick={navigationHandlers.onPrevSection}
           label={_('Previous Section')}
@@ -80,19 +79,34 @@ const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
       )}
       {!viewSettings?.showPaginationButtons && (
         <Button
-          icon={getNavigationIcon(viewSettings?.rtl, <RiArrowLeftSLine />, <RiArrowRightSLine />)}
+          className='glossa-icon-button'
+          icon={getNavigationIcon(
+            viewSettings?.rtl,
+            <ChevronLeft size={18} aria-hidden='true' />,
+            <ChevronRight size={18} aria-hidden='true' />,
+          )}
           onClick={navigationHandlers.onPrevPage}
           label={_('Previous Page')}
         />
       )}
       <Button
-        icon={getNavigationIcon(viewSettings?.rtl, <RiArrowGoBackLine />, <RiArrowGoForwardLine />)}
+        className='glossa-icon-button'
+        icon={getNavigationIcon(
+          viewSettings?.rtl,
+          <Undo2 size={18} aria-hidden='true' />,
+          <Redo2 size={18} aria-hidden='true' />,
+        )}
         onClick={navigationHandlers.onGoBack}
         label={_('Go Back')}
         disabled={!view?.history.canGoBack}
       />
       <Button
-        icon={getNavigationIcon(viewSettings?.rtl, <RiArrowGoForwardLine />, <RiArrowGoBackLine />)}
+        className='glossa-icon-button'
+        icon={getNavigationIcon(
+          viewSettings?.rtl,
+          <Redo2 size={18} aria-hidden='true' />,
+          <Undo2 size={18} aria-hidden='true' />,
+        )}
         onClick={navigationHandlers.onGoForward}
         label={_('Go Forward')}
         disabled={!view?.history.canGoForward}
@@ -101,27 +115,34 @@ const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
       <input
         ref={rangeInputRef}
         type='range'
-        className='text-base-content mx-2 min-w-0 flex-1'
+        className='glossa-reader-range text-base-content mx-3 min-w-0 flex-1'
         min={0}
         max={100}
         aria-label={_('Jump to Location')}
+        aria-valuetext={`${Math.round(progressValue)}%`}
         value={progressValue}
         onChange={(e) => handleProgressChange(parseInt(e.target.value, 10))}
       />
 
       {!viewSettings?.showPaginationButtons && (
         <Button
-          icon={getNavigationIcon(viewSettings?.rtl, <RiArrowRightSLine />, <RiArrowLeftSLine />)}
+          className='glossa-icon-button'
+          icon={getNavigationIcon(
+            viewSettings?.rtl,
+            <ChevronRight size={18} aria-hidden='true' />,
+            <ChevronLeft size={18} aria-hidden='true' />,
+          )}
           onClick={navigationHandlers.onNextPage}
           label={_('Next Page')}
         />
       )}
       {!viewSettings?.showPaginationButtons && (
         <Button
+          className='glossa-icon-button'
           icon={getNavigationIcon(
             viewSettings?.rtl,
-            <RiArrowRightDoubleLine />,
-            <RiArrowLeftDoubleLine />,
+            <ChevronsRight size={18} aria-hidden='true' />,
+            <ChevronsLeft size={18} aria-hidden='true' />,
           )}
           onClick={navigationHandlers.onNextSection}
           label={_('Next Section')}

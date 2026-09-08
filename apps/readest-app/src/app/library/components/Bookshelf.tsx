@@ -1,9 +1,8 @@
 import clsx from 'clsx';
-import { MdManageSearch } from 'react-icons/md';
+import { Plus, SearchCheck, SearchX } from 'lucide-react';
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PiPlus } from 'react-icons/pi';
 import { useOverlayScrollbars } from 'overlayscrollbars-react';
 import 'overlayscrollbars/overlayscrollbars.css';
 import {
@@ -27,7 +26,6 @@ import { useAutoFocus } from '@/hooks/useAutoFocus';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { navigateToLibrary, navigateToReader, showReaderWindow } from '@/utils/nav';
 import {
   createBookFilter,
@@ -111,6 +109,9 @@ type BookshelfListContext = {
    * identity stable and does not reset its scroller on every Bookshelf render.
    */
   recentShelfHeader: React.ReactNode;
+  collectionTitle: string;
+  collectionCount: string;
+  libraryTitle: string | null;
   /**
    * Height (px) of the trailing Footer spacer. Defaults to the baseline
    * breathing room, but grows to clear the fixed select-mode action bar so the
@@ -126,10 +127,11 @@ const BookshelfFooter = ({ context }: { context?: BookshelfListContext }) => (
 );
 
 const BOOKSHELF_GRID_CLASSES =
-  'bookshelf-items transform-wrapper grid gap-x-4 px-4 sm:gap-x-0 sm:px-2 ' +
-  'grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-12';
+  'bookshelf-items glossa-collection-grid transform-wrapper grid ' +
+  'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8';
 
-const BOOKSHELF_LIST_CLASSES = 'bookshelf-items transform-wrapper flex flex-col';
+const BOOKSHELF_LIST_CLASSES =
+  'bookshelf-items glossa-collection-list transform-wrapper flex flex-col';
 
 const BookshelfGridList: GridComponents<BookshelfListContext>['List'] = React.forwardRef<
   HTMLDivElement,
@@ -138,6 +140,7 @@ const BookshelfGridList: GridComponents<BookshelfListContext>['List'] = React.fo
   <div
     ref={ref}
     data-testid={testId}
+    data-spatial-navigation='collection'
     className={clsx(BOOKSHELF_GRID_CLASSES, className)}
     style={{
       ...style,
@@ -156,14 +159,31 @@ const BookshelfLinearList: Components<unknown, BookshelfListContext>['List'] = R
   HTMLDivElement,
   ListProps
 >(({ children, style, 'data-testid': testId }, ref) => (
-  <div ref={ref} data-testid={testId} className={BOOKSHELF_LIST_CLASSES} style={style}>
+  <div
+    ref={ref}
+    data-testid={testId}
+    data-spatial-navigation='collection'
+    className={BOOKSHELF_LIST_CLASSES}
+    style={style}
+  >
     {children}
   </div>
 ));
 BookshelfLinearList.displayName = 'BookshelfLinearList';
 
 const BookshelfHeader = ({ context }: { context?: BookshelfListContext }) => (
-  <>{context?.recentShelfHeader ?? null}</>
+  <div className='transform-wrapper'>
+    {context?.libraryTitle && (
+      <div className='glossa-library-heading'>
+        <h1>{context.libraryTitle}</h1>
+      </div>
+    )}
+    {context?.recentShelfHeader ?? null}
+    <div className='glossa-collection-heading'>
+      <h2>{context?.collectionTitle}</h2>
+      <span>{context?.collectionCount}</span>
+    </div>
+  </div>
 );
 
 const GRID_VIRTUOSO_COMPONENTS: GridComponents<BookshelfListContext> = {
@@ -235,7 +255,6 @@ const Bookshelf: React.FC<BookshelfProps> = ({
 
   const abortDeletionRef = useRef(false);
   const isImportingBook = useRef(false);
-  const iconSize15 = useResponsiveSize(15);
   const autofocusRef = useAutoFocus<HTMLDivElement>();
   useSpatialNavigation(autofocusRef);
 
@@ -786,8 +805,6 @@ const Bookshelf: React.FC<BookshelfProps> = ({
         <RecentShelf
           books={recentBooks}
           coverFit={coverFit as LibraryCoverFitType}
-          autoColumns={settings.libraryAutoColumns}
-          fixedColumns={settings.libraryColumns}
           isSelectMode={isSelectMode}
           selectedBooks={selectedBookSet}
           onOpenBook={openRecentBook}
@@ -803,8 +820,6 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       showRecentShelf,
       recentBooks,
       coverFit,
-      settings.libraryAutoColumns,
-      settings.libraryColumns,
       isSelectMode,
       selectedBookSet,
       openRecentBook,
@@ -831,14 +846,19 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       autoColumns: settings.libraryAutoColumns,
       fixedColumns: settings.libraryColumns,
       recentShelfHeader,
-      showTimeRemaining,
+      collectionTitle: queryTerm ? _('Search Results') : groupId ? _('Books') : _('All books'),
+      collectionCount: _('{{count}} books', { count: currentShelfBooks.length }),
+      libraryTitle: !groupId && !queryTerm ? _('Your Library') : null,
       footerHeight,
     }),
     [
       settings.libraryAutoColumns,
       settings.libraryColumns,
       recentShelfHeader,
-      showTimeRemaining,
+      queryTerm,
+      groupId,
+      currentShelfBooks.length,
+      _,
       footerHeight,
     ],
   );
@@ -847,26 +867,20 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     (index: number) => {
       if (isGridMode && index === sortedBookshelfItems.length) {
         return (
-          <div
-            className={clsx('bookshelf-import-item mx-0 my-2 sm:mx-4 sm:my-4')}
-            style={
-              coverFit === 'fit'
-                ? { display: 'flex', paddingBottom: `${iconSize15 + 24}px` }
-                : undefined
-            }
-          >
+          <div className='bookshelf-import-item'>
             <button
               aria-label={_('Import Books')}
               aria-haspopup='menu'
               className={clsx(
-                'bookitem-main bg-base-100 hover:bg-base-300/50',
+                'bookitem-main glossa-import-tile eink-bordered',
                 'flex items-center justify-center',
                 'aspect-[28/41] w-full',
               )}
               onClick={(event) => handleImportBooks(event.currentTarget)}
             >
-              <div className='flex items-center justify-center'>
-                <PiPlus className='size-10' color='gray' />
+              <div className='flex flex-col items-center justify-center gap-3'>
+                <Plus className='size-6' aria-hidden='true' />
+                <span className='text-sm font-medium'>{_('Import Books')}</span>
               </div>
             </button>
           </div>
@@ -909,7 +923,6 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       coverFit,
       isSelectMode,
       booksTransferProgress,
-      iconSize15,
       handleImportBooks,
       toggleSelection,
       handleBookUpload,
@@ -941,7 +954,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       tabIndex={-1}
       role='main'
       aria-label={_('Bookshelf')}
-      className='bookshelf flex min-h-0 flex-grow flex-col focus:outline-none'
+      className='bookshelf glossa-bookshelf flex min-h-0 flex-grow flex-col focus:outline-none'
     >
       {!contentSearch?.query.trim() && queryTerm && (
         <div className='flex shrink-0 justify-center px-4 pb-2'>
@@ -955,7 +968,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
               'focus-visible:ring-base-content/15 focus-visible:outline-none focus-visible:ring-2',
             )}
           >
-            <MdManageSearch aria-hidden='true' className='h-5 w-5' />
+            <SearchCheck aria-hidden='true' className='h-5 w-5' />
             {_('Search in book contents')}
           </button>
         </div>
@@ -975,6 +988,13 @@ const Bookshelf: React.FC<BookshelfProps> = ({
         // React swap children inside it caused NotFoundError crashes on
         // WebKit when a search was cleared.
         <div ref={osRootRef} data-overlayscrollbars-initialize='' className='min-h-0 flex-1'>
+          {!hasItems && (
+            <div className='glossa-library-no-results' role='status'>
+              <SearchX size={28} aria-hidden='true' />
+              <h2>{_('No books found')}</h2>
+              <p>{_('Try another title or author.')}</p>
+            </div>
+          )}
           {!contentSearch?.query.trim() && hasItems && isGridMode && (
             <VirtuosoGrid<unknown, BookshelfListContext>
               overscan={200}

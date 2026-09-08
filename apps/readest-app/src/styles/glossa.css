@@ -1,0 +1,166 @@
+/* Glossa: the icon's rounded ink strokes, carried through the application.
+   All surfaces derive from the selected theme, including custom palettes. */
+:root {
+  --glossa-ink: theme('colors.base-content');
+  --glossa-muted: theme('colors.neutral-content');
+  --glossa-border: theme('colors.base-content / 0.13');
+  --glossa-surface: theme('colors.base-100');
+  --glossa-wash: theme('colors.base-200');
+  --glossa-focus: theme('colors.base-content / 0.65');
+  --glossa-radius: 12px;
+  --glossa-radius-lg: 20px;
+  --glossa-shadow: 0 8px 32px rgb(0 0 0 / 0.08), 0 1px 4px rgb(0 0 0 / 0.04);
+}
+
+[data-theme$='-dark'] {
+  --glossa-shadow: 0 8px 32px rgb(0 0 0 / 0.2), 0 1px 4px rgb(0 0 0 / 0.12);
+}
+
+:where(.glossa-icon-button, .glossa-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.glossa-icon-button,
+.glossa-button {
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: var(--glossa-radius);
+  background: transparent;
+  color: var(--glossa-ink);
+  font-weight: 500;
+  line-height: 1.25;
+  box-shadow: none;
+  transition:
+    background-color 150ms ease-out,
+    border-color 150ms ease-out,
+    color 150ms ease-out;
+}
+
+.glossa-icon-button {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 9px;
+}
+
+.glossa-button {
+  min-height: 40px;
+  padding: 9px 16px;
+  font-size: 0.875rem;
+}
+
+.glossa-button-primary {
+  border-color: var(--glossa-ink);
+  background: var(--glossa-ink);
+  color: var(--glossa-surface);
+}
+
+@media (hover: hover) {
+  .glossa-icon-button:not(:disabled):hover,
+  .glossa-button:not(:disabled):not(.glossa-button-primary):hover {
+    background: var(--glossa-wash);
+    border-color: var(--glossa-border);
+  }
+
+  .glossa-button-primary:not(:disabled):hover {
+    background: var(--glossa-muted);
+    border-color: var(--glossa-muted);
+  }
+}
+
+.glossa-icon-button[aria-pressed='true'],
+.glossa-icon-button[aria-expanded='true'],
+.glossa-button[aria-pressed='true'] {
+  border-color: var(--glossa-border);
+  background: var(--glossa-wash);
+}
+
+.glossa-icon-button:disabled,
+.glossa-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.glossa-eyebrow {
+  color: var(--glossa-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+}
+
+/* Keyboard focus has the same quiet, high-contrast outline everywhere. */
+html[data-page='library'] :is(button, [role='button'], a, input, summary):focus-visible,
+html[data-page='reader'] :is(button, [role='button'], a, input, summary):focus-visible,
+.glossa-icon-button:focus-visible,
+.glossa-button:focus-visible {
+  outline: 2px solid var(--glossa-focus);
+  outline-offset: 3px;
+}
+
+html:is([data-page='library'], [data-page='reader']) .dropdown-content,
+html:is([data-page='library'], [data-page='reader']) .menu-container {
+  border: 1px solid var(--glossa-border);
+  border-radius: var(--glossa-radius);
+  box-shadow: var(--glossa-shadow);
+}
+
+html:is([data-page='library'], [data-page='reader']) .menu-container .dropdown-content,
+html:is([data-page='library'], [data-page='reader']) .dropdown-content .menu-container {
+  border: 0;
+  box-shadow: none;
+}
+
+html:is([data-page='library'], [data-page='reader']) .modal-box {
+  border-radius: var(--glossa-radius-lg);
+}
+
+.glossa-menu-item {
+  border-radius: 8px;
+}
+
+.glossa-settings .dialog-tabs .btn {
+  border-radius: 9px;
+  font-weight: 500;
+}
+
+.glossa-settings .dialog-tabs .btn[aria-pressed='true'] {
+  background: var(--glossa-surface);
+  border-color: var(--glossa-border);
+}
+
+.glossa-settings .dialog-tabs .lucide {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.75;
+}
+
+[data-eink='true'] {
+  --glossa-muted: theme('colors.base-content');
+  --glossa-border: theme('colors.base-content');
+  --glossa-shadow: none;
+  --glossa-focus: theme('colors.base-content');
+}
+
+[data-eink='true'] :is(.glossa-icon-button, .glossa-button) {
+  transition: none;
+}
+
+[data-eink='true'] .glossa-button-primary:not(.dropdown-toggle) {
+  background: var(--glossa-ink) !important;
+  color: var(--glossa-surface) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:is([data-page='library'], [data-page='reader']) *,
+  html:is([data-page='library'], [data-page='reader']) *::before,
+  html:is([data-page='library'], [data-page='reader']) *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

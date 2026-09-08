@@ -427,6 +427,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.target !== e.currentTarget) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       handleOpenItem();
@@ -447,22 +448,20 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
     'format' in item ? { 'data-book-hash': item.hash } : { 'data-group-name': item.name };
 
   return (
-    <div className={clsx(mode === 'grid' ? 'h-full' : 'sm:hover:bg-base-300/50 px-4 sm:px-6')}>
+    <div className={clsx(mode === 'grid' ? 'h-full' : 'glossa-library-list-row')}>
       <div
         className={clsx(
-          'visible-focus-inset-2 group',
-          mode === 'grid' &&
-            'sm:hover:bg-base-300/50 flex h-full flex-col px-0 py-2 sm:rounded-md sm:px-4 sm:py-4',
-          mode === 'list' && 'border-base-300 flex flex-col border-b py-2',
+          'glossa-book-card group',
+          mode === 'grid' && 'glossa-book-card-grid flex h-full flex-col',
+          mode === 'list' && 'glossa-book-card-list flex flex-col',
           appService?.isMobileApp && 'no-context-menu',
-          pressing && mode === 'grid' ? 'not-eink:scale-95' : 'scale-100',
+          pressing && 'glossa-book-card-pressing',
+          itemSelected && 'glossa-book-card-selected',
         )}
         role='button'
         tabIndex={0}
         aria-label={'format' in item ? item.title : item.name}
-        style={{
-          transition: 'transform 0.2s',
-        }}
+        aria-pressed={isSelectMode ? itemSelected : undefined}
         onKeyDown={handleKeyDown}
         onPointerEnter={() => {
           if (appService?.hasContextMenu && !appService.isLinuxApp) void ensureMenu();

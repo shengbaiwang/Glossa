@@ -248,7 +248,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
       {/* Recently read shelf */}
       <hr aria-hidden='true' className='border-base-200 my-1' />
       <MenuItem
-        label={_('Show recently read')}
+        label={_('Continue reading')}
         buttonClass='min-h-8 !py-1'
         toggled={settings.libraryRecentShelfEnabled}
         onClick={handleToggleRecentShelf}

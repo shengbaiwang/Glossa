@@ -107,7 +107,7 @@ const PageJumpInput: React.FC<PageJumpInputProps> = ({ bookKey, showFraction, cl
   return (
     <div
       className={clsx(
-        'relative flex items-center rounded-md text-nowrap transition-colors',
+        'glossa-reader-page-input relative flex items-center rounded-md text-nowrap transition-colors',
         editing
           ? 'eink-bordered bg-base-content/10'
           : 'hover:bg-base-content/10 cursor-pointer bg-transparent',

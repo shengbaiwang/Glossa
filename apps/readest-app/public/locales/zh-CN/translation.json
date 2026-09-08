@@ -1996,5 +1996,12 @@
   "Danger Zone": "危险区域",
   "Delete All Books": "删除所有图书",
   "All books deleted.": "已删除所有图书。",
-  "Failed to delete books. Please try again later.": "删除图书失败。请稍后重试。"
+  "Failed to delete books. Please try again later.": "删除图书失败。请稍后重试。",
+  "Continue reading": "继续阅读",
+  "All books": "全部书籍",
+  "{{count}} books": "{{count}} 本书",
+  "No books found": "未找到书籍",
+  "Try another title or author.": "试试其他书名或作者。",
+  "Reading": "阅读中",
+  "Excerpt": "原文摘录"
 }

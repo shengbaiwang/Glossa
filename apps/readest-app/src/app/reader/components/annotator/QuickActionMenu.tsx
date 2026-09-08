@@ -1,3 +1,4 @@
+import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import clsx from 'clsx';
 import React from 'react';
 
@@ -22,6 +23,7 @@ const QuickActionMenu: React.FC<QuickActionMenuProps> = ({
   setIsDropdownOpen,
 }) => {
   const _ = useTranslation();
+  const iconSize = useResponsiveSize(16);
 
   const handleActionClick = (action: AnnotationToolType) => {
     onActionSelect(action);
@@ -60,7 +62,7 @@ const QuickActionMenu: React.FC<QuickActionMenuProps> = ({
           label={_('Instant {{action}}', { action: _(button.label) })}
           tooltip={_(button.tooltip)}
           buttonClass={selectedAction === button.type ? 'bg-base-300/85' : ''}
-          Icon={button.Icon}
+          Icon={<button.Icon size={iconSize} aria-hidden='true' />}
           onClick={() => handleActionClick(button.type)}
         />
       ))}

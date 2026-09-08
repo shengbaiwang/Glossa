@@ -1,5 +1,6 @@
+import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import React from 'react';
-import { TbLayoutSidebar, TbLayoutSidebarFilled } from 'react-icons/tb';
+import { PanelLeft } from 'lucide-react';
 
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -11,6 +12,7 @@ interface SidebarTogglerProps {
 
 const SidebarToggler: React.FC<SidebarTogglerProps> = ({ bookKey }) => {
   const _ = useTranslation();
+  const iconSize = useResponsiveSize(18);
   const { sideBarBookKey, isSideBarVisible, setSideBarBookKey, toggleSideBar } = useSidebarStore();
   const handleToggleSidebar = () => {
     if (sideBarBookKey === bookKey) {
@@ -22,13 +24,10 @@ const SidebarToggler: React.FC<SidebarTogglerProps> = ({ bookKey }) => {
   };
   return (
     <Button
-      icon={
-        sideBarBookKey === bookKey && isSideBarVisible ? (
-          <TbLayoutSidebarFilled className='text-base-content' />
-        ) : (
-          <TbLayoutSidebar className='text-base-content' />
-        )
-      }
+      icon={<PanelLeft size={iconSize} aria-hidden='true' />}
+      className='glossa-icon-button'
+      aria-pressed={sideBarBookKey === bookKey && isSideBarVisible}
+      aria-expanded={sideBarBookKey === bookKey && isSideBarVisible}
       onClick={handleToggleSidebar}
       label={_('Toggle Sidebar')}
     />

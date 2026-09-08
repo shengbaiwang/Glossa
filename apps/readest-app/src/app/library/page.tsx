@@ -2,7 +2,7 @@
 
 import clsx from 'clsx';
 import * as React from 'react';
-import { MdChevronRight, MdClose } from 'react-icons/md';
+import { ChevronRight, X } from 'lucide-react';
 import { useState, useRef, useEffect, Suspense, useCallback } from 'react';
 import { ReadonlyURLSearchParams, useSearchParams } from 'next/navigation';
 
@@ -1819,7 +1819,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
               aria-label={_('Clear search history')}
               className='text-base-content/50 hover:text-base-content/80 flex h-6 w-8 shrink-0 items-center justify-center'
             >
-              <MdClose className='h-4 w-4' />
+              <X className='h-4 w-4' />
             </button>
           </div>
         )}
@@ -1840,7 +1840,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
               const isLast = index === array.length - 1;
               return (
                 <React.Fragment key={index}>
-                  <MdChevronRight size={iconSize} className='text-neutral-content' />
+                  <ChevronRight size={iconSize} className='text-neutral-content rtl:rotate-180' />
                   {isLast ? (
                     <span className='truncate rounded px-2 py-1'>{crumb.name}</span>
                   ) : (

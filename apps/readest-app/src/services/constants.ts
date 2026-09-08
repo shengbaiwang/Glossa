@@ -205,7 +205,7 @@ export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
   libraryAutoColumns: true,
   libraryColumns: 6,
   librarySkeuomorphicCovers: false,
-  libraryRecentShelfEnabled: false,
+  libraryRecentShelfEnabled: true,
 
   metadataSeriesCollapsed: false,
   metadataOthersCollapsed: false,

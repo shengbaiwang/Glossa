@@ -18,13 +18,15 @@ interface EmptyStateProps {
 const EmptyState: React.FC<EmptyStateProps> = ({ Icon, label, hint, action, className }) => (
   <div
     className={clsx(
-      'flex select-none flex-col items-center justify-center gap-2 px-6 text-center',
+      'glossa-reader-empty flex select-none flex-col items-center justify-center gap-2 px-6 text-center',
       className,
     )}
   >
-    <Icon className='text-base-content/55 mb-3' aria-hidden='true' size='8rem' />
+    <div className='glossa-reader-empty-icon eink-bordered mb-3 flex h-16 w-16 items-center justify-center rounded-2xl'>
+      <Icon aria-hidden='true' size={28} />
+    </div>
     <p className='text-base-content text-sm font-semibold'>{label}</p>
-    {hint && <p className='text-base-content/45 text-sm'>{hint}</p>}
+    {hint && <p className='glossa-reader-muted max-w-56 text-sm leading-relaxed'>{hint}</p>}
     {action && <div className='mt-2'>{action}</div>}
   </div>
 );

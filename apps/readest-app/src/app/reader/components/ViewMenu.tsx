@@ -1,16 +1,29 @@
+import { useResponsiveSize } from '@/hooks/useResponsiveSize';
+import {
+  Moon,
+  Sun,
+  SunMoon,
+  ZoomOut,
+  ZoomIn,
+  Check,
+  Info,
+  Radio,
+  Minus,
+  Plus,
+  Contrast,
+  CloudOff,
+  RefreshCw,
+  Expand,
+  MoveHorizontal,
+  RectangleVertical,
+  Columns2,
+  GalleryVertical,
+  GalleryHorizontal,
+} from 'lucide-react';
 import clsx from 'clsx';
 import React, { useEffect } from 'react';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { BiMoon, BiSun } from 'react-icons/bi';
-import { TbSunMoon } from 'react-icons/tb';
-import { MdZoomOut, MdZoomIn, MdCheck, MdInfoOutline, MdOutlineSensors } from 'react-icons/md';
-import { MdRemove, MdAdd, MdContrast } from 'react-icons/md';
-import { MdSync, MdSyncProblem } from 'react-icons/md';
-import { IoMdExpand } from 'react-icons/io';
-import { TbArrowAutofitWidth } from 'react-icons/tb';
-import { TbColumns1, TbColumns2 } from 'react-icons/tb';
-import { TbCarouselVertical, TbCarouselHorizontal } from 'react-icons/tb';
 
 import {
   MAX_ZOOM_LEVEL,
@@ -52,6 +65,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
   onShowMetaHashDialog,
 }) => {
   const _ = useTranslation();
+  const iconSize = useResponsiveSize(16);
   const router = useRouter();
   const { user } = useAuth();
   const { envConfig, appService } = useEnv();
@@ -254,7 +268,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
                 zoomLevel <= MIN_ZOOM_LEVEL && 'btn-disabled text-gray-400',
               )}
             >
-              <MdZoomOut />
+              <ZoomOut />
             </button>
             <button
               title={_('Reset Zoom')}
@@ -273,7 +287,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
                 zoomLevel >= MAX_ZOOM_LEVEL && 'btn-disabled text-gray-400',
               )}
             >
-              <MdZoomIn />
+              <ZoomIn />
             </button>
           </div>
 
@@ -289,7 +303,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
                 contrast <= MIN_CONTRAST && 'btn-disabled text-gray-400',
               )}
             >
-              <MdRemove />
+              <Minus />
             </button>
             <button
               title={_('Reset Contrast')}
@@ -298,7 +312,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
               )}
               onClick={resetContrast}
             >
-              <MdContrast size={16} />
+              <Contrast size={16} />
               {Math.round(contrast)}%
             </button>
             <button
@@ -309,7 +323,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
                 contrast >= MAX_CONTRAST && 'btn-disabled text-gray-400',
               )}
             >
-              <MdAdd />
+              <Plus />
             </button>
           </div>
 
@@ -329,7 +343,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
                   !isScrolledMode && spreadMode === 'none' && 'bg-base-300/75',
                 )}
               >
-                <TbColumns1 />
+                <RectangleVertical />
               </button>
               <button
                 title={_('Auto Spread')}
@@ -342,7 +356,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
                   !isScrolledMode && spreadMode === 'auto' && 'bg-base-300/75',
                 )}
               >
-                <TbColumns2 />
+                <Columns2 />
               </button>
               <button
                 title={_('Vertical Scrolling')}
@@ -355,7 +369,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
                   isScrolledMode && scrolledDirection === 'vertical' && 'bg-base-300/75',
                 )}
               >
-                <TbCarouselVertical />
+                <GalleryVertical />
               </button>
               <button
                 title={_('Horizontal Scrolling')}
@@ -369,7 +383,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
                   isScrolledMode && scrolledDirection === 'horizontal' && 'bg-base-300/75',
                 )}
               >
-                <TbCarouselHorizontal />
+                <GalleryHorizontal />
               </button>
               <div className='bg-base-300 mx-2 h-6 w-[1px]' />
               <button
@@ -380,7 +394,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
                   zoomMode === 'fit-page' && 'bg-base-300/75',
                 )}
               >
-                <IoMdExpand />
+                <Expand />
               </button>
               <button
                 title={_('Fit Width')}
@@ -390,13 +404,13 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
                   zoomMode === 'fit-width' && 'bg-base-300/75',
                 )}
               >
-                <TbArrowAutofitWidth />
+                <MoveHorizontal />
               </button>
             </div>
 
             <MenuItem
               label={_('Separate Cover Page')}
-              Icon={keepCoverSpread ? MdCheck : undefined}
+              Icon={keepCoverSpread ? <Check size={iconSize} aria-hidden='true' /> : undefined}
               onClick={() => setKeepCoverSpread(!keepCoverSpread)}
               disabled={spreadMode === 'none'}
             />
@@ -412,7 +426,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
         <MenuItem
           label={_('Scrolled Mode')}
           shortcut='Shift+J'
-          Icon={isScrolledMode ? MdCheck : undefined}
+          Icon={isScrolledMode ? <Check size={iconSize} aria-hidden='true' /> : undefined}
           onClick={toggleScrolledMode}
         />
       )}
@@ -420,7 +434,9 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
       <MenuItem
         label={_('Auto Scroll')}
         shortcut='Shift+A'
-        Icon={viewState?.autoScrollEnabled ? MdCheck : undefined}
+        Icon={
+          viewState?.autoScrollEnabled ? <Check size={iconSize} aria-hidden='true' /> : undefined
+        }
         onClick={toggleAutoScroll}
         disabled={!isScrolledMode}
       />
@@ -439,8 +455,17 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
                 })
               : _('Never synced')
         }
-        Icon={user ? MdSync : MdSyncProblem}
-        iconClassName={user && viewState?.syncing ? 'animate-reverse-spin' : ''}
+        Icon={
+          user ? (
+            <RefreshCw
+              size={iconSize}
+              className={viewState?.syncing ? 'animate-reverse-spin' : ''}
+              aria-hidden='true'
+            />
+          ) : (
+            <CloudOff size={iconSize} aria-hidden='true' />
+          )
+        }
         onClick={handleSync}
         siblings={
           <button
@@ -452,7 +477,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
               onShowMetaHashDialog?.();
             }}
           >
-            <MdInfoOutline size={16} />
+            <Info size={16} />
           </button>
         }
       />
@@ -471,27 +496,29 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
                 : _('Auto Mode')
         }
         Icon={
-          themeMode === 'dark'
-            ? BiMoon
-            : themeMode === 'light'
-              ? BiSun
-              : themeMode === 'ambient'
-                ? MdOutlineSensors
-                : TbSunMoon
+          themeMode === 'dark' ? (
+            <Moon size={iconSize} aria-hidden='true' />
+          ) : themeMode === 'light' ? (
+            <Sun size={iconSize} aria-hidden='true' />
+          ) : themeMode === 'ambient' ? (
+            <Radio size={iconSize} aria-hidden='true' />
+          ) : (
+            <SunMoon size={iconSize} aria-hidden='true' />
+          )
         }
         onClick={cycleThemeMode}
       />
       {bookData.book?.format === 'PDF' && appService?.supportsCanvasContext2DFilter && (
         <MenuItem
           label={_('Apply Theme Colors to PDF')}
-          Icon={applyThemeToPDF ? MdCheck : undefined}
+          Icon={applyThemeToPDF ? <Check size={iconSize} aria-hidden='true' /> : undefined}
           onClick={() => setApplyThemeToPDF(!applyThemeToPDF)}
         />
       )}
       <MenuItem
         label={_('Invert Image In Dark Mode')}
         disabled={!isDarkMode}
-        Icon={invertImgColorInDark ? MdCheck : undefined}
+        Icon={invertImgColorInDark ? <Check size={iconSize} aria-hidden='true' /> : undefined}
         onClick={() => setInvertImgColorInDark(!invertImgColorInDark)}
       />
 

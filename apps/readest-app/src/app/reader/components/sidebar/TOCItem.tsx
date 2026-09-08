@@ -1,29 +1,17 @@
 import clsx from 'clsx';
 import React, { useCallback } from 'react';
-import { FiBookOpen } from 'react-icons/fi';
+import { BookOpen, ChevronRight } from 'lucide-react';
 import { TOCItem } from '@/libs/document';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getContentMd5 } from '@/utils/misc';
 
-const createExpanderIcon = (isExpanded: boolean) => {
-  return (
-    <svg
-      viewBox='0 0 8 10'
-      width='8'
-      height='10'
-      className={clsx(
-        'text-base-content transform transition-transform',
-        isExpanded ? 'rotate-90' : 'rotate-0',
-      )}
-      style={{ transformOrigin: 'center' }}
-      fill='currentColor'
-      aria-hidden='true'
-      focusable='false'
-    >
-      <polygon points='0 0, 8 5, 0 10' />
-    </svg>
-  );
-};
+const createExpanderIcon = (isExpanded: boolean) => (
+  <ChevronRight
+    size={14}
+    className={clsx('shrink-0 transition-transform', isExpanded && 'rotate-90')}
+    aria-hidden='true'
+  />
+);
 
 export interface FlatTOCItem {
   item: TOCItem;
@@ -118,7 +106,7 @@ const TOCItemView = React.memo<{
       aria-selected={isActive ? 'true' : 'false'}
       data-href={item.href ? getContentMd5(item.href) : undefined}
       className={clsx(
-        'flex w-full cursor-pointer items-center rounded-md py-4 sm:py-2 sm:hover:bg-base-300/75',
+        'glossa-reader-toc-item flex w-full cursor-pointer items-center rounded-lg py-4 sm:py-2',
       )}
       style={{
         height: itemSize ? `${itemSize}px` : 'auto',
@@ -152,7 +140,10 @@ const TOCItemView = React.memo<{
         {item.label}
       </div>
       {(item.location || item.index !== undefined) && (
-        <div aria-hidden='true' className='text-base-content/50 ms-auto ps-1 text-xs sm:pe-1'>
+        <div
+          aria-hidden='true'
+          className='glossa-reader-muted ms-auto ps-2 text-xs tabular-nums sm:pe-2'
+        >
           {item.location ? item.location.current + 1 : item.index + 1}
         </div>
       )}
@@ -234,19 +225,22 @@ export const CurrentPositionRow: React.FC<{
         onKeyDown={onClick ? (e) => e.key === 'Enter' && handleClick(e) : undefined}
         className={clsx(
           'flex w-full items-center rounded-md py-4 sm:py-2',
-          'text-bold-in-eink sm:bg-base-300/65 sm:text-base-content text-blue-500',
+          'glossa-reader-position text-bold-in-eink',
           onClick && 'cursor-pointer sm:hover:bg-base-300/75',
         )}
         style={{ paddingInlineStart: `${depth * 12 + 8}px` }}
       >
-        <FiBookOpen className='h-4 w-4 shrink-0' aria-hidden='true' />
+        <BookOpen className='h-4 w-4 shrink-0' aria-hidden='true' />
         <div
           className='ms-2 truncate text-ellipsis'
           style={{ whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}
         >
           {label}
         </div>
-        <div aria-hidden='true' className='text-base-content/50 ms-auto ps-1 text-xs sm:pe-1'>
+        <div
+          aria-hidden='true'
+          className='glossa-reader-muted ms-auto ps-2 text-xs tabular-nums sm:pe-2'
+        >
           {page}
         </div>
       </div>
