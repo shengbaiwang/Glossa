@@ -26,7 +26,6 @@ describe('getBookContextMenuItemIds', () => {
       'showInFinder',
       'searchGoodreads',
       'upload',
-      'share',
       'delete',
     ]);
   });
@@ -43,7 +42,6 @@ describe('getBookContextMenuItemIds', () => {
       'showInFinder',
       'searchGoodreads',
       'upload',
-      'share',
       'delete',
     ]);
   });
@@ -60,7 +58,6 @@ describe('getBookContextMenuItemIds', () => {
       'showInFinder',
       'searchGoodreads',
       'upload',
-      'share',
       'delete',
     ]);
   });
@@ -76,7 +73,6 @@ describe('getBookContextMenuItemIds', () => {
       'showInFinder',
       'searchGoodreads',
       'upload',
-      'share',
       'delete',
     ]);
   });
@@ -92,7 +88,6 @@ describe('getBookContextMenuItemIds', () => {
       'showInFinder',
       'searchGoodreads',
       'download',
-      'share',
       'delete',
     ]);
   });

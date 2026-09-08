@@ -26,7 +26,7 @@ import { getSysFontsList, setSystemUIVisibility } from '@/utils/bridge';
 import { AboutWindow } from '@/components/AboutWindow';
 import { KeyboardShortcutsHelp } from '@/components/KeyboardShortcutsHelp';
 import { UpdaterWindow } from '@/components/UpdaterWindow';
-import { ProofreadRulesManager } from './ProofreadRules';
+
 import { Toast } from '@/components/Toast';
 import { getLocale } from '@/utils/misc';
 import { initDayjs } from '@/utils/time';
@@ -160,7 +160,7 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
         <AboutWindow />
         <KeyboardShortcutsHelp />
         <UpdaterWindow />
-        <ProofreadRulesManager />
+
         <Toast />
       </Suspense>
     </div>

@@ -41,6 +41,7 @@ next-env.d.ts
 # Rust build
 target
 .glossa-dev/
+.glossa-build/
 
 fastlane/report.xml
 fastlane/metadata/android/en-US/changelogs

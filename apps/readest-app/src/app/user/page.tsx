@@ -41,7 +41,7 @@ import UsageStats from './components/UsageStats';
 import PlansComparison from './components/PlansComparison';
 import AccountActions from './components/AccountActions';
 import StorageManager from './components/StorageManager';
-import SharedLinksSection from './components/SharedLinksSection';
+
 import { SyncPassphraseSection } from './components/SyncPassphraseSection';
 import { SyncCategoriesSection } from './components/SyncCategoriesSection';
 import Checkout from './components/Checkout';
@@ -344,9 +344,7 @@ const ProfilePage = () => {
                     <StorageManager />
                   </div>
                 ) : showSharedLinksManager ? (
-                  <div className='flex flex-col gap-y-8 px-6'>
-                    <SharedLinksSection />
-                  </div>
+                  <div className='flex flex-col gap-y-8 px-6'></div>
                 ) : showSyncManager ? (
                   <div className='flex flex-col gap-y-8 px-6'>
                     <SyncCategoriesSection />

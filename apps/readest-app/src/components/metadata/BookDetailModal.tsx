@@ -193,14 +193,6 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
   const handleDeleteCloudBackup = () => handleDeleteAction('cloud');
   const handleDeleteLocalCopy = () => handleDeleteAction('local');
 
-  const handleShare = () => {
-    // Close this modal first, then hand off to the share dialog hosted by
-    // Bookshelf (it owns the login gate + ShareBookDialog). Mirrors how the
-    // bookshelf context menu dispatches the same event.
-    handleClose();
-    eventDispatcher.dispatch('show-share-dialog', { book });
-  };
-
   const handleBookExport = async () => {
     setIsLoading(true);
     setTimeout(async () => {
@@ -282,7 +274,6 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
                 onDeleteLocalCopy={handleBookDeleteLocalCopy ? handleDeleteLocalCopy : undefined}
                 onDownload={handleBookDownload ? handleRedownload : undefined}
                 onUpload={handleBookUpload ? handleReupload : undefined}
-                onShare={handleShare}
                 onExport={handleBookExport}
                 onMetadataValueClick={onMetadataValueClick}
               />

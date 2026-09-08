@@ -1,3 +1,4 @@
+import { getReadingQuickAction } from '@/utils/annotationToolbar';
 import clsx from 'clsx';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { VscLibrary } from 'react-icons/vsc';
@@ -29,7 +30,7 @@ import SidebarToggler from './SidebarToggler';
 import BookmarkToggler from './BookmarkToggler';
 import NotebookToggler from './NotebookToggler';
 import SettingsToggler from './SettingsToggler';
-import TranslationToggler from './TranslationToggler';
+
 import ViewMenu from './ViewMenu';
 import SyncInfoDialog from './SyncInfoDialog';
 
@@ -87,7 +88,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
     annotationToolQuickActions.find(
       (button) => button.type === viewSettings?.annotationQuickAction,
     ) || annotationToolQuickActions[0]!;
-  const annotationQuickAction = viewSettings?.annotationQuickAction;
+  const annotationQuickAction = getReadingQuickAction(viewSettings?.annotationQuickAction);
   const AnnotationToolQuickActionIcon = annotationQuickActionButton.Icon;
   const highlightStyle = settings.globalReadSettings.highlightStyle;
   const highlightColor = settings.globalReadSettings.highlightStyles[highlightStyle];
@@ -246,7 +247,6 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
               <VscLibrary size={iconSize18} className='fill-base-content' />
             </button>
             <BookmarkToggler bookKey={bookKey} />
-            <TranslationToggler bookKey={bookKey} />
           </div>
           {enableAnnotationQuickActions && (
             <Dropdown

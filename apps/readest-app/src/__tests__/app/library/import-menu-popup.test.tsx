@@ -21,8 +21,6 @@ const renderPopup = (props: Partial<React.ComponentProps<typeof ImportMenuPopup>
       anchor={anchor}
       onClose={onClose}
       onImportBooksFromFiles={vi.fn()}
-      onOpenCatalogManager={vi.fn()}
-      onOpenFeeds={vi.fn()}
       {...props}
     />,
   );
@@ -44,8 +42,8 @@ describe('ImportMenuPopup', () => {
     renderPopup();
 
     expect(screen.getByRole('menuitem', { name: 'From Local File' })).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: 'From Feed URL' })).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: 'Online Library' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'From Feed URL' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Online Library' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'From Directory' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'From Web URL' })).toBeNull();
   });
@@ -67,7 +65,7 @@ describe('ImportMenuPopup', () => {
     useEnvMock.mockReturnValue({ appService: { isOnlineCatalogsAccessible: false } });
     renderPopup();
 
-    expect(screen.getByRole('menuitem', { name: 'OPDS Catalogs' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'OPDS Catalogs' })).toBeNull();
   });
 
   it('runs the selected action and dismisses the popup', () => {

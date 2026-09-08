@@ -50,8 +50,7 @@ import { useBooksSync } from './hooks/useBooksSync';
 import { useLibraryFileSync } from './hooks/useLibraryFileSync';
 import { useBookTransferActions } from './hooks/useBookTransferActions';
 import { useAutoImportFolders } from './hooks/useAutoImportFolders';
-import { useInboxDrainer } from '@/hooks/useInboxDrainer';
-import { useOPDSSubscriptions } from '@/hooks/useOPDSSubscriptions';
+
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useTransferStore } from '@/store/transferStore';
 import { useBackgroundTexture } from '@/hooks/useBackgroundTexture';
@@ -60,9 +59,7 @@ import { useAppUrlIngress } from '@/hooks/useAppUrlIngress';
 import { useOpenWithBooks } from '@/hooks/useOpenWithBooks';
 import { useOpenAnnotationLink } from '@/hooks/useOpenAnnotationLink';
 import { useOpenBookLink } from '@/hooks/useOpenBookLink';
-import { useReadingWidget } from '@/hooks/useReadingWidget';
-import { useOpenShareLink } from '@/hooks/useOpenShareLink';
-import { useClipUrlIngress } from '@/hooks/useClipUrlIngress';
+
 import { useKeyDownActions } from '@/hooks/useKeyDownActions';
 import { SelectedFile, useFileSelector } from '@/hooks/useFileSelector';
 import { lockScreenOrientation, selectDirectory, showFilePicker } from '@/utils/bridge';
@@ -83,11 +80,7 @@ import { AboutWindow } from '@/components/AboutWindow';
 import { KeyboardShortcutsHelp } from '@/components/KeyboardShortcutsHelp';
 import { BookDetailModal } from '@/components/metadata';
 import { UpdaterWindow } from '@/components/UpdaterWindow';
-import { CatalogDialog } from './components/OPDSDialog';
-import { FeedsView } from './components/feeds/FeedsView';
-import AddFeedModal from './components/feeds/AddFeedModal';
-import { fetchAndParseFeed } from '@/services/rss/feedClient';
-import { createFeedBook, ensureFeedBookCover } from '@/services/rss/feedBook';
+
 import { MigrateDataWindow } from './components/MigrateDataWindow';
 import { BackupWindow } from './components/BackupWindow';
 import { CacheManagerWindow } from './components/CacheManagerWindow';
@@ -112,9 +105,7 @@ import ImportFromFolderDialog, {
   ImportFromFolderResult,
 } from './components/ImportFromFolderDialog';
 import ImportFromUrlDialog from './components/ImportFromUrlDialog';
-import ImportNovelDialog from './components/ImportNovelDialog';
-import NowPlayingBar from './components/NowPlayingBar';
-import { ttsSessionManager } from '@/services/tts';
+
 import { clipPageWithSignInFallback } from '@/services/send/clipSignIn';
 import ClipSignInAlert from '@/components/ClipSignInAlert';
 import useShortcuts from '@/hooks/useShortcuts';
@@ -231,13 +222,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // library — the replica pull above is auth-gated and the reader's
   // FoliateViewer hydration never runs without a book open.
   useCustomFonts();
-  const [showCatalogManager, setShowCatalogManager] = useState(
-    searchParams?.get('opds') === 'true',
-  );
-  const [showFeeds, setShowFeeds] = useState(false);
-  const [showAddFeed, setShowAddFeed] = useState(false);
+
   const [showImportFromUrl, setShowImportFromUrl] = useState(false);
-  const [showImportNovel, setShowImportNovel] = useState(false);
+
   const [importMenuAnchor, setImportMenuAnchor] = useState<HTMLElement | null>(null);
   const [loading, setLoading] = useState(false);
   // Seed from the library store: if we already have books in memory (the
@@ -353,9 +340,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   useOpenWithBooks();
   useOpenAnnotationLink();
   useOpenBookLink();
-  useReadingWidget();
-  useOpenShareLink();
-  useClipUrlIngress();
+
   useTransferQueue(libraryLoaded);
 
   const { pullLibrary, pushLibrary } = useBooksSync();
@@ -363,8 +348,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // Google Drive): keeps library.json current on import / delete / book-close,
   // parity with useBooksSync. No-op when no provider is enabled.
   useLibraryFileSync();
-  const { checkOPDSSubscriptions } = useOPDSSubscriptions();
-  useInboxDrainer();
+
   const { isDragging } = useDragDropImport();
 
   usePullToRefresh(
@@ -375,7 +359,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         return;
       }
       await pullLibrary(false, true);
-      checkOPDSSubscriptions(true);
     },
     async () => {
       if (!user) {
@@ -383,7 +366,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         return;
       }
       await pullLibrary(true, true);
-      checkOPDSSubscriptions(true);
     },
   );
   useShortcuts({
@@ -627,35 +609,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       return true;
     }
     return false;
-  };
-
-  const handleShowFeeds = () => {
-    setShowAddFeed(true);
-  };
-
-  const handleAddFeedSubmit = async (url: string) => {
-    const parsed = await fetchAndParseFeed(url);
-    const book = createFeedBook(url, parsed);
-    if (appService) {
-      book.coverImageUrl = await ensureFeedBookCover(appService, book);
-    }
-    await useLibraryStore.getState().updateBooks(envConfig, [book]);
-    eventDispatcher.dispatch('toast', {
-      type: 'success',
-      message: _('Subscribed to "{{title}}"', { title: book.title }),
-      timeout: 3000,
-    });
-  };
-
-  const handleShowOPDSDialog = () => {
-    setShowCatalogManager(true);
-  };
-
-  const handleDismissOPDSDialog = () => {
-    setShowCatalogManager(false);
-    const params = new URLSearchParams(window.location.search);
-    params.delete('opds');
-    navigateToLibrary(router, `${params.toString()}`);
   };
 
   const libraryInitKey = (() => {
@@ -1103,9 +1056,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
             book.coverDownloadedAt = null;
           }
           await updateBook(envConfig, book);
-          if (ttsSessionManager.getSessionByHash(book.hash)) {
-            await ttsSessionManager.stopActive('deleted');
-          }
+
           clearBookData(book.hash);
           if (syncBooks) pushLibrary();
         }
@@ -1270,11 +1221,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // The dialog fetches the chapter list and assembles the EPUB itself
   // (with its own progress/cancel UI) — from here on the built file takes
   // exactly the local-file import path, same as a clipped page.
-  const handleImportNovelFile = async (file: File) => {
-    setIsSelectMode(false);
-    const groupId = searchParams?.get('group') || '';
-    await importBooks([{ file }], groupId);
-  };
 
   const handleImportBooksFromDirectory = async (dirPath?: string) => {
     if (!appService || !isTauriAppPlatform()) return;
@@ -1811,11 +1757,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
             appService?.canReadExternalDir ? handleImportBooksFromDirectory : undefined
           }
           onImportBookFromUrl={isTauriAppPlatform() ? () => setShowImportFromUrl(true) : undefined}
-          onImportBookFromNovelUrl={
-            isTauriAppPlatform() ? () => setShowImportNovel(true) : undefined
-          }
-          onOpenCatalogManager={handleShowOPDSDialog}
-          onOpenFeeds={handleShowFeeds}
           onToggleSelectMode={() => handleSetSelectMode(!isSelectMode)}
           onSelectAll={handleSelectAll}
           onDeselectAll={handleDeselectAll}
@@ -1978,14 +1919,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
             appService?.canReadExternalDir ? handleImportBooksFromDirectory : undefined
           }
           onImportBookFromUrl={isTauriAppPlatform() ? () => setShowImportFromUrl(true) : undefined}
-          onImportBookFromNovelUrl={
-            isTauriAppPlatform() ? () => setShowImportNovel(true) : undefined
-          }
-          onOpenCatalogManager={handleShowOPDSDialog}
-          onOpenFeeds={handleShowFeeds}
         />
       )}
-      <NowPlayingBar isSelectMode={isSelectMode} />
+
       {showDetailsBook && (
         <BookDetailModal
           isOpen={!!showDetailsBook}
@@ -2018,13 +1954,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       <BackupWindow onPullLibrary={pullLibrary} />
       <CacheManagerWindow />
       {isSettingsDialogOpen && <SettingsDialog bookKey={''} />}
-      {showCatalogManager && <CatalogDialog onClose={handleDismissOPDSDialog} />}
-      {showFeeds && <FeedsView onClose={() => setShowFeeds(false)} />}
-      <AddFeedModal
-        isOpen={showAddFeed}
-        onClose={() => setShowAddFeed(false)}
-        onSubmit={handleAddFeedSubmit}
-      />
+
       {failedImportsModal && (
         <FailedImportsDialog
           failedImports={failedImportsModal}
@@ -2085,11 +2015,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         onClose={() => setShowImportFromUrl(false)}
         onSubmit={handleImportBookFromUrl}
       />
-      <ImportNovelDialog
-        isOpen={showImportNovel}
-        onClose={() => setShowImportNovel(false)}
-        onImport={handleImportNovelFile}
-      />
+
       <ClipSignInAlert />
       <Toast />
     </div>

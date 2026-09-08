@@ -967,7 +967,7 @@ describe('availableTransformers', () => {
     expect(names).toContain('sanitizer');
     expect(names).toContain('language');
     expect(names).toContain('simplecc');
-    expect(names).toContain('proofread');
+    expect(names).not.toContain('proofread');
     expect(names).toContain('nbsp');
   });
 

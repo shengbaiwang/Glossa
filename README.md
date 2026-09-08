@@ -1,3 +1,11 @@
+# Glossa：阅读与云同步
+
+本分支已按个人使用需求精简为基础阅读器，保留书库、EPUB/PDF 阅读、目录搜索、书签批注和云端同步。AI、翻译词典、朗读速读、订阅与公开分享等附加功能已从应用界面及专用代码中移除。
+
+当前范围见 [PLAN.md](PLAN.md)，验证状态见 [PROGRESS.md](PROGRESS.md)，独立 Glossa 应用的启动与构建见 [开发说明](apps/readest-app/docs/glossa-development.md)。下方保留上游 Readest 项目说明和许可证信息，其中部分功能不适用于这个精简分支。
+
+---
+
 <div align="center">
   <a href="https://readest.com?utm_source=github&utm_medium=referral&utm_campaign=readme" target="_blank">
     <img src="https://github.com/readest/readest/blob/main/apps/readest-app/src-tauri/icons/icon.png?raw=true" alt="Readest Logo" width="20%" />

@@ -56,12 +56,12 @@ const useCategoryCopy = (): Record<SyncCategory, CategoryCopy> => {
       // Dictionary preferences ride this row too, but they're gated by the
       // Dictionaries toggle above, so they're deliberately not listed here.
       title: _('App settings'),
-      description: _('Theme, highlight colours, and integrations (KOSync, Readwise, Hardcover)'),
+      description: _('Theme, highlight colours, and reading preferences'),
     },
     credentials: {
       title: _('Credentials'),
       description: _(
-        'Tokens, usernames, and passwords for OPDS, KOReader, Hardcover, Readwise, and WebDAV. When disabled, credentials remain on this device only and are never uploaded.',
+        'Cloud sync credentials. When disabled, credentials remain on this device only and are never uploaded.',
       ),
     },
     stats: {
@@ -114,7 +114,9 @@ export function SyncCategoriesSection() {
         </p>
       </div>
       <ul className='border-base-300 divide-base-300 divide-y rounded-lg border'>
-        {SYNC_CATEGORIES.map((category) => {
+        {SYNC_CATEGORIES.filter(
+          (category) => !['dictionary', 'opds_catalog', 'stats'].includes(category),
+        ).map((category) => {
           const c = copy[category];
           const on = enabled(category);
           const locked = isSyncCategoryLocked(category);

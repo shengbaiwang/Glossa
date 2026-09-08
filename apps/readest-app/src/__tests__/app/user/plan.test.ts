@@ -45,7 +45,7 @@ describe('getPlanDetails', () => {
       expect(result.features.length).toBeGreaterThan(0);
       const labels = result.features.map((f) => f.label);
       expect(labels).toContain('Cross-Platform Sync');
-      expect(labels).toContain('AI Read Aloud');
+      expect(labels).not.toContain('AI Read Aloud');
     });
 
     it('should include limits', () => {
@@ -90,16 +90,16 @@ describe('getPlanDetails', () => {
       const result = getPlanDetails('plus', []);
       const labels = result.features.map((f) => f.label);
       expect(labels).toContain('Includes All Free Plan Benefits');
-      expect(labels).toContain('Unlimited AI Read Aloud Hours');
+      expect(labels).not.toContain('Unlimited AI Read Aloud Hours');
       expect(labels).toContain('Priority Support');
     });
 
-    it('should include limits with storage and translation', () => {
+    it('should show storage limits without removed translation quotas', () => {
       const result = getPlanDetails('plus', []);
       expect(result.limits).toBeDefined();
       const limitKeys = Object.keys(result.limits!);
       expect(limitKeys.some((k) => k.includes('Storage'))).toBe(true);
-      expect(limitKeys.some((k) => k.includes('Translation'))).toBe(true);
+      expect(limitKeys.some((k) => k.includes('Translation'))).toBe(false);
     });
 
     it('should match correct plan by interval', () => {
@@ -135,7 +135,7 @@ describe('getPlanDetails', () => {
       const labels = result.features.map((f) => f.label);
       expect(labels).toContain('Includes All Plus Plan Benefits');
       expect(labels).toContain('Early Feature Access');
-      expect(labels).toContain('Advanced AI Tools');
+      expect(labels).not.toContain('Advanced AI Tools');
     });
 
     it('should have higher storage limit than plus', () => {

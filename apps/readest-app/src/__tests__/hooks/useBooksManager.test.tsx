@@ -84,7 +84,7 @@ describe('useBooksManager open-failure handling', () => {
   // open-book-in-reader dispatch then hits the "existing" branch, which only
   // focuses the book — bookKeys never changes, so without consuming there the
   // pending autoplay is dropped and read-aloud never starts.
-  it('starts TTS for an autoplay deep link when the book is already open', async () => {
+  it('ignores legacy TTS autoplay while opening the book', async () => {
     h.bookKeys = ['hash1-abc'];
     h.viewStates = { 'hash1-abc': { inited: true, view: {} } };
     const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
@@ -98,7 +98,7 @@ describe('useBooksManager open-failure handling', () => {
       await Promise.resolve();
     });
 
-    expect(dispatchSpy).toHaveBeenCalledWith('tts-speak', { bookKey: 'hash1-abc' });
+    expect(dispatchSpy).not.toHaveBeenCalledWith('tts-speak', { bookKey: 'hash1-abc' });
     dispatchSpy.mockRestore();
   });
 });

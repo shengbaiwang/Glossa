@@ -3,7 +3,7 @@ import { CustomFont } from '@/styles/fonts';
 import { CustomTexture } from '@/styles/textures';
 import { HighlightColor, HighlightStyle, UserHighlightColor, ViewSettings } from './book';
 import { OPDSCatalog } from './opds';
-import type { AISettings } from '@/services/ai/types';
+
 import type { NotebookTab } from '@/store/notebookStore';
 import type { DictionarySettings, ImportedDictionary } from '@/services/dictionaries/types';
 
@@ -481,7 +481,7 @@ export interface SystemSettings {
   onedrive: OneDriveSettings;
   icloud: ICloudSettings;
 
-  aiSettings: AISettings;
+  aiSettings: unknown;
   /**
    * Per-device id used as the deviceId portion of every HLC this device
    * mints. Lazy-generated on first sync init via uuidv4 (mirrors

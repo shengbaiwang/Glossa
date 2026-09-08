@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { CFI, convertBlobUrlToDataUrl, BookDoc, getDirection } from '@/libs/document';
+import { convertBlobUrlToDataUrl, BookDoc, getDirection } from '@/libs/document';
 import { BOOK_IDS_SEPARATOR } from '@/services/constants';
 import { BookConfig, PageInfo } from '@/types/book';
 import { FoliateView, wrappedFoliateView } from '@/types/view';
@@ -26,8 +26,7 @@ import { useBackgroundTexture } from '@/hooks/useBackgroundTexture';
 import { useAutoFocus } from '@/hooks/useAutoFocus';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useEinkMode } from '@/hooks/useEinkMode';
-import { bookOrbitProgressProvider } from '../hooks/bookOrbitProgressProvider';
-import { useKOSync } from '../hooks/useKOSync';
+
 import { useFileSync } from '../hooks/useFileSync';
 import {
   applyFixedlayoutStyles,
@@ -35,7 +34,6 @@ import {
   applyScrollbarStyle,
   applyScrollModeClass,
   applyThemeModeClass,
-  applyTranslationStyle,
   getStyles,
   getThemeCode,
   keepTextAlignment,
@@ -44,7 +42,7 @@ import {
 import { applyScrollableStyle, applyTableTouchScroll } from '@/utils/scrollable';
 import { mountAdditionalFonts, mountCustomFont } from '@/styles/fonts';
 import { layoutWarichu, relayoutWarichu } from '@/utils/warichu';
-import { refreshSectionGlosses } from '@/app/reader/utils/wordlensSection';
+
 import { getBookDirFromLanguage, getBookDirFromWritingMode } from '@/utils/book';
 import { getIndexFromCfi } from '@/utils/cfi';
 import { useUICSS } from '@/hooks/useUICSS';
@@ -69,9 +67,9 @@ import { isTauriAppPlatform } from '@/services/environment';
 import { TransformContext } from '@/services/transformers/types';
 import { transformContent } from '@/services/transformService';
 import { lockScreenOrientation, setSelectionSuppressed } from '@/utils/bridge';
-import { useTextTranslation } from '../hooks/useTextTranslation';
+
 import { useBookCoverAutoSave } from '../hooks/useAutoSaveBookCover';
-import { useDiscordPresence } from '@/hooks/useDiscordPresence';
+
 import { manageSyntaxHighlighting } from '@/utils/highlightjs';
 import { getViewInsets } from '@/utils/insets';
 import { collectDocumentImages, DocumentImage } from '../utils/documentImages';
@@ -80,25 +78,19 @@ import { showTransientSearchHighlight } from '../utils/searchHighlight';
 import { handleA11yNavigation } from '@/utils/a11y';
 import { isCJKLang } from '@/utils/lang';
 import { getLocale } from '@/utils/misc';
-import { isMetered } from '@/utils/network';
-import { eventDispatcher } from '@/utils/event';
 import { isFontType } from '@/utils/font';
 import { getScrollGapAttr } from '@/utils/webtoon';
 import { useMiddleClickAutoscroll } from '../hooks/useMiddleClickAutoscroll';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useAutoScrollSpeedGesture } from '../hooks/useAutoScrollSpeedGesture';
-import { ParagraphControl } from './paragraph';
+
 import AutoscrollIndicator from './AutoscrollIndicator';
 import AutoScrollControl from './AutoScrollControl';
 import AutoScrollSpeedOverlay from './AutoScrollSpeedOverlay';
 import Spinner from '@/components/Spinner';
-import KOSyncConflictResolver from './KOSyncResolver';
+
 import ImageViewer from './ImageViewer';
 import TableViewer from './TableViewer';
-import { getTTSMiniPlayerClearance } from '../utils/ttsMiniPlayerPosition';
-import { addEpubReadRange } from '@/glossa/context/readCoverage';
-import { captureEpubReadRangeFromRelocate } from '@/glossa/context/epub';
-import { isGlossaEnabled } from '@/glossa/featureFlag';
 
 declare global {
   interface Window {
@@ -138,6 +130,7 @@ const FoliateViewer: React.FC<{
     useBrightnessGesture(bookKey);
   const bookData = getBookData(bookKey);
   const viewState = getViewState(bookKey);
+
   const viewSettings = getViewSettings(bookKey);
 
   const viewRef = useRef<FoliateView | null>(null);
@@ -168,12 +161,6 @@ const FoliateViewer: React.FC<{
 
   useAutoFocus<HTMLDivElement>({ ref: containerRef });
 
-  useDiscordPresence(
-    bookData?.book || null,
-    !!viewState?.isPrimary,
-    settings.discordRichPresenceEnabled,
-  );
-
   useEffect(() => {
     const timer = setTimeout(() => setToastMessage(''), 2000);
     return () => clearTimeout(timer);
@@ -183,10 +170,8 @@ const FoliateViewer: React.FC<{
   useProgressSync(bookKey);
   useProgressAutoSave(bookKey);
   useBookCoverAutoSave(bookKey);
-  const { syncState, conflictDetails, resolveWithLocal, resolveWithRemote } = useKOSync(bookKey);
-  const bookOrbitSync = useKOSync(bookKey, bookOrbitProgressProvider);
+
   useFileSync(bookKey);
-  useTextTranslation(bookKey, viewRef.current);
 
   // Coalesce setProgress writes within a single animation frame.
   //
@@ -481,29 +466,6 @@ const FoliateViewer: React.FC<{
   // "Downloading…" toast on the first progress tick (the per-percent progress
   // lives in the Word Lens settings panel). `wordLensToastShownRef` de-dupes the
   // toast across the multiple section docs a refresh pass touches.
-  const wordLensToastShownRef = useRef(false);
-  const buildWordLensCtx = (bookLang?: string | null) => {
-    // Read the live setting (not the first-render `settings` snapshot closed over
-    // by the empty-deps `stabilizedHandler`) so toggling Auto-download mid-session
-    // takes effect on the next section refresh.
-    const liveSettings = useSettingsStore.getState().settings;
-    const allowDownload =
-      (liveSettings.globalReadSettings.wordLensAutoDownload ?? true) && !isMetered();
-    return {
-      appService: appService!,
-      bookLang,
-      appLang: getLocale().split('-')[0] || 'en',
-      allowDownload,
-      onProgress: () => {
-        if (wordLensToastShownRef.current) return;
-        wordLensToastShownRef.current = true;
-        eventDispatcher.dispatch('toast', {
-          type: 'info',
-          message: _('Downloading Word Lens data…'),
-        });
-      },
-    };
-  };
 
   const navigateStartHandler = useCallback(() => {
     if (navSpinnerTimerRef.current) clearTimeout(navSpinnerTimerRef.current);
@@ -523,11 +485,10 @@ const FoliateViewer: React.FC<{
     setLoading(false);
     // Layout/relayout warichu after paginator has set column-width via columnize()
     const contents = viewRef.current?.renderer?.getContents?.() || [];
-    const vs = getViewSettings(bookKey);
-    const bookLang = getBookData(bookKey)?.book?.primaryLanguage;
+
     // Fixed-layout (pre-paginated) books have no reflow room; injecting ruby
     // would overflow their fixed boxes, so skip Word Lens glosses there.
-    const isFixedLayout = bookDoc.rendition?.layout === 'pre-paginated';
+
     for (const { doc } of contents) {
       if (doc) {
         const hasPending = doc.querySelectorAll('.warichu-pending').length > 0;
@@ -536,9 +497,6 @@ const FoliateViewer: React.FC<{
           layoutWarichu(doc);
         } else if (hasExisting) {
           relayoutWarichu(doc);
-        }
-        if (vs && appService && !isFixedLayout) {
-          void refreshSectionGlosses(doc, vs, buildWordLensCtx(bookLang));
         }
       }
     }
@@ -553,24 +511,6 @@ const FoliateViewer: React.FC<{
     // the preview into the real reading position. Subsequent progress writes
     // can flow normally.
     setPreviewMode(bookKey, false);
-
-    // `BookProgress.fraction` is only the current position and can move to a
-    // table-of-contents or citation target. Preserve Glossa's spoiler boundary
-    // only from raw page/scroll relocations, and only for the visible range.
-    if (isGlossaEnabled() && viewRef.current) {
-      const readRange = captureEpubReadRangeFromRelocate(viewRef.current, detail);
-      const config = getBookData(bookKey)?.config;
-      if (readRange && config) {
-        try {
-          const coverage = addEpubReadRange(config.glossaEpubReadCoverage, readRange, CFI.compare);
-          if (JSON.stringify(coverage) !== JSON.stringify(config.glossaEpubReadCoverage ?? [])) {
-            useBookDataStore.getState().setConfig(bookKey, { glossaEpubReadCoverage: coverage });
-          }
-        } catch {
-          // A malformed legacy CFI must never broaden the context boundary.
-        }
-      }
-    }
 
     const parallelViews = getParallels(bookKey);
     if (parallelViews && parallelViews.size > 0) {
@@ -751,7 +691,6 @@ const FoliateViewer: React.FC<{
       const height = viewHeight - insets.top - insets.bottom;
       book.transformTarget?.addEventListener('data', getDocTransformHandler({ width, height }));
       view.renderer.setStyles?.(getStyles(viewSettings, undefined, getLoadedFonts()));
-      applyTranslationStyle(viewSettings);
 
       doubleClickDisabled.current = viewSettings.disableDoubleClick!;
       const animated = viewSettings.animated!;
@@ -850,7 +789,7 @@ const FoliateViewer: React.FC<{
     // (READEST-2V). Bail: there is no view left to lay out.
     const viewSettings = getViewSettings(bookKey);
     if (!viewSettings) return;
-    const viewState = getViewState(bookKey);
+
     const bookData = getBookData(bookKey);
     const viewInsets = getViewInsets(viewSettings);
     const showDoubleBorder = viewSettings.vertical && viewSettings.doubleBorder;
@@ -865,9 +804,7 @@ const FoliateViewer: React.FC<{
     const moreTopInset = showTopHeader ? Math.max(0, 16 - insets.top) : 0;
     // Only the persistent 'minimal' card reserves a band; the 'full' one
     // auto-hides with the toolbar and overlaps instead (#5310).
-    const miniPlayerClearance = viewState?.ttsEnabled
-      ? getTTSMiniPlayerClearance(viewSettings, gridInsets.bottom * 0.33)
-      : 0;
+    const miniPlayerClearance = 0;
     const moreBottomInset = showBottomFooter
       ? Math.max(0, Math.max(miniPlayerClearance, 16) - insets.bottom)
       : Math.max(0, miniPlayerClearance);
@@ -984,22 +921,6 @@ const FoliateViewer: React.FC<{
   ]);
 
   useEffect(() => {
-    const contents = viewRef.current?.renderer?.getContents?.() || [];
-    const vs = getViewSettings(bookKey);
-    if (!vs || !appService) return;
-    const bookLang = getBookData(bookKey)?.book?.primaryLanguage;
-    const isFixedLayout = bookDoc.rendition?.layout === 'pre-paginated';
-    if (isFixedLayout) return;
-    // A settings change is the moment a fresh download may start; let the
-    // one-time "Downloading…" toast fire again for it.
-    wordLensToastShownRef.current = false;
-    for (const { doc } of contents) {
-      if (doc) void refreshSectionGlosses(doc, vs, buildWordLensCtx(bookLang));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewSettings?.wordLensEnabled, viewSettings?.wordLensLevel, viewSettings?.wordLensHintLang]);
-
-  useEffect(() => {
     const mountCustomFonts = async () => {
       await loadCustomFonts(envConfig);
       getLoadedFonts().forEach((font) => {
@@ -1046,9 +967,6 @@ const FoliateViewer: React.FC<{
     viewSettings?.showFooter,
     viewSettings?.scrolled,
     viewSettings?.noContinuousScroll,
-    viewState?.ttsEnabled,
-    // Switching Player Style changes whether a band is reserved at all.
-    viewSettings?.ttsPlayerStyle,
     // footerReservesBand inputs: the band must collapse/return live when the
     // user flips these settings.
     viewSettings?.showStickyProgressBar,
@@ -1110,27 +1028,11 @@ const FoliateViewer: React.FC<{
       {autoScroll.active && (
         <AutoScrollSpeedOverlay visible={speedOverlayVisible} speed={autoScroll.speed} />
       )}
-      <ParagraphControl bookKey={bookKey} viewRef={viewRef} gridInsets={gridInsets} />
+
       {((!docLoaded.current && loading) || navigating || viewState?.loading) && (
         <div className='absolute left-0 top-0 z-10 flex h-full w-full items-center justify-center'>
           <Spinner loading={true} />
         </div>
-      )}
-      {syncState === 'conflict' && conflictDetails && (
-        <KOSyncConflictResolver
-          details={conflictDetails}
-          onResolveWithLocal={resolveWithLocal}
-          onResolveWithRemote={resolveWithRemote}
-          onClose={resolveWithLocal}
-        />
-      )}
-      {bookOrbitSync.syncState === 'conflict' && bookOrbitSync.conflictDetails && (
-        <KOSyncConflictResolver
-          details={bookOrbitSync.conflictDetails}
-          onResolveWithLocal={bookOrbitSync.resolveWithLocal}
-          onResolveWithRemote={bookOrbitSync.resolveWithRemote}
-          onClose={bookOrbitSync.resolveWithLocal}
-        />
       )}
     </>
   );

@@ -1,5 +1,4 @@
 import { BookMetadata } from '@/libs/document';
-import type { GlossaSourcedNote } from '@/glossa/notes/glossaSourcedNotes';
 import { TTSHighlightOptions } from '@/services/tts/types';
 import { TTSHighlightGranularity } from '@/services/tts/types';
 import { TTSMediaMetadataMode } from '@/services/tts/types';
@@ -553,46 +552,10 @@ export interface BookConfig {
   xpointer?: string; // XPointer of the current location (for Koreader interoperability)
   booknotes?: BookNote[];
   rsvpPosition?: { cfi: string; wordText: string };
-  /**
-   * Local Glossa evidence only: explicit EPUB ranges displayed after a user
-   * page turn or continuous scroll. It is not a reading-progress substitute.
-   */
-  glossaEpubReadCoverage?: Array<{
-    version: 1;
-    sectionIndex: number;
-    startCfi: string;
-    endCfi: string;
-  }>;
-  /**
-   * Device-local Glossa chapter summaries. They use the normal per-book
-   * config.json persistence path but are deliberately absent from all sync
-   * serializers; entries never contain EPUB source text or source anchors.
-   */
-  glossaChapterSummaryCache?: Array<{
-    version: 1;
-    key: {
-      documentHash: string;
-      sectionId: string;
-      modelVersion: string;
-      promptVersion: string;
-      evidenceFingerprint: string;
-    };
-    createdAt: number;
-    expiresAt: number;
-    summary: {
-      status: 'summarized' | 'insufficient_evidence';
-      corePoints: Array<{ text: string; sourceIds: string[] }>;
-      evidence: Array<{ text: string; sourceIds: string[] }>;
-      concepts: Array<{ term: string; explanation: string; sourceIds: string[] }>;
-      openQuestions: Array<{ text: string; sourceIds: string[] }>;
-    };
-  }>;
-  /**
-   * Device-local Glossa answer notes. This is a versioned protocol rather
-   * than a BookNote because one answer paragraph can require several source
-   * anchors; it is deliberately absent from every cloud-sync serializer.
-   */
-  glossaSourcedNotes?: GlossaSourcedNote[];
+  // Opaque legacy fields survive config round-trips without loading the removed AI module.
+  glossaEpubReadCoverage?: unknown;
+  glossaChapterSummaryCache?: unknown;
+  glossaSourcedNotes?: unknown;
   searchConfig?: Partial<BookSearchConfig>;
   viewSettings?: Partial<ViewSettings>;
 

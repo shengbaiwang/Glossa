@@ -36,8 +36,8 @@ pnpm clippy:check          # Lint Rust code (src-tauri)
 | Directory         | Purpose                                                       |
 | ----------------- | ------------------------------------------------------------- |
 | `src/app/`        | Next.js App Router pages and API routes                       |
-| `src/components/` | React components (reader, settings, library, assistant, etc.) |
-| `src/services/`   | Business logic: TTS, translators, OPDS, sync, AI, metadata    |
+| `src/components/` | React components (reader, settings, library) |
+| `src/services/`   | Business logic: reading, sync, metadata    |
 | `src/store/`      | Zustand state stores                                          |
 | `src/hooks/`      | Custom React hooks                                            |
 | `src/libs/`       | Document loaders, payment, storage, sync                      |
@@ -95,10 +95,6 @@ See [docs/i18n.md](docs/i18n.md) for the key-as-content translation approach, `s
 ### Safe Area Insets
 
 See [docs/safe-area-insets.md](docs/safe-area-insets.md) for rules on handling top/bottom insets for UI elements near screen edges.
-
-### Read Aloud
-
-Four engines sit behind `TTSClient`, including recorded-narration playback from EPUB 3 Media Overlays (a Kindle Immersion Reading equivalent). Gate behaviour on `TTSCapabilities`, never on client identity. See [docs/read-along-narration.md](docs/read-along-narration.md).
 
 ### Design System
 

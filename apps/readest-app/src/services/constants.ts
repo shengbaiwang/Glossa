@@ -35,10 +35,8 @@ import {
 import { UserStorageQuota, UserDailyTranslationQuota } from '@/types/quota';
 import { getDefaultMaxBlockSize, getDefaultMaxInlineSize } from '@/utils/config';
 import { stubTranslation as _ } from '@/utils/misc';
-import { DEFAULT_AI_SETTINGS } from './ai/constants';
+
 import { DEFAULT_ANNOTATION_TOOLBAR_ITEMS } from '@/utils/annotationToolbar';
-import { DEFAULT_SENTENCE_GAP_SEC } from './tts/EdgeTTSClient';
-import { DEFAULT_PARAGRAPH_GAP_SEC } from './tts/TTSController';
 
 export const DATA_SUBDIR = 'Readest';
 export const LOCAL_BOOKS_SUBDIR = `${DATA_SUBDIR}/Books`;
@@ -194,7 +192,7 @@ export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
   openLastBooks: false,
   lastOpenBooks: [],
   autoImportBooksOnOpen: false,
-  telemetryEnabled: true,
+  telemetryEnabled: false,
   discordRichPresenceEnabled: false,
   libraryViewMode: 'grid',
   librarySortBy: LibrarySortByType.Updated,
@@ -233,7 +231,7 @@ export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
   s3: DEFAULT_S3_SETTINGS,
   onedrive: DEFAULT_ONEDRIVE_SETTINGS,
   icloud: DEFAULT_ICLOUD_SETTINGS,
-  aiSettings: DEFAULT_AI_SETTINGS,
+  aiSettings: undefined,
 
   lastSyncedAtBooks: 0,
   lastSyncedAtConfigs: 0,
@@ -449,8 +447,8 @@ export const DEFAULT_VIEW_CONFIG: ViewConfig = {
 
 export const DEFAULT_TTS_CONFIG: TTSConfig = {
   ttsRate: 1.3,
-  ttsSentenceGap: DEFAULT_SENTENCE_GAP_SEC,
-  ttsParagraphGap: DEFAULT_PARAGRAPH_GAP_SEC,
+  ttsSentenceGap: 0.15,
+  ttsParagraphGap: 0.3,
   ttsVoice: '',
   ttsUseNarration: true,
   ttsLocation: '',

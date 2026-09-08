@@ -8,7 +8,7 @@ import { useCommandPalette } from '@/components/command-palette';
 import { RiFontSize, RiShareLine } from 'react-icons/ri';
 import { RiDashboardLine, RiTranslate } from 'react-icons/ri';
 import { VscSymbolColor } from 'react-icons/vsc';
-import { PiDotsThreeVerticalBold, PiRobot, PiSpeakerHigh } from 'react-icons/pi';
+import { PiDotsThreeVerticalBold } from 'react-icons/pi';
 import { LiaHandPointerSolid } from 'react-icons/lia';
 import { IoAccessibilityOutline } from 'react-icons/io5';
 import {
@@ -31,17 +31,13 @@ import DialogMenu from './DialogMenu';
 import ControlPanel from './ControlPanel';
 import LangPanel from './LangPanel';
 import MiscPanel from './MiscPanel';
-import AIPanel from './AIPanel';
-import TTSPanel from './TTSPanel';
 
 export type SettingsPanelType =
   | 'Font'
   | 'Layout'
   | 'Theme'
   | 'Control'
-  | 'TTS'
   | 'Language'
-  | 'AI'
   | 'Integrations'
   | 'Custom';
 export type SettingsPanelPanelProp = {
@@ -109,18 +105,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     {
       tab: 'Integrations',
       icon: RiShareLine,
-      label: _('Integrations'),
-    },
-    {
-      tab: 'AI',
-      icon: PiRobot,
-      label: _('AI Assistant'),
-      disabled: process.env.NODE_ENV === 'production',
-    },
-    {
-      tab: 'TTS',
-      icon: PiSpeakerHigh,
-      label: _('TTS'),
+      label: _('Cloud Sync'),
     },
     {
       tab: 'Custom',
@@ -176,9 +161,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     Layout: null,
     Theme: null,
     Control: null,
-    TTS: null,
     Language: null,
-    AI: null,
     Integrations: null,
     Custom: null,
   });
@@ -210,9 +193,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         layout: 'Layout',
         theme: 'Theme',
         control: 'Control',
-        tts: 'TTS',
         language: 'Language',
-        ai: 'AI',
         integrations: 'Integrations',
         custom: 'Custom',
       };
@@ -463,16 +444,14 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
             onRegisterReset={(fn) => registerResetFunction('Control', fn)}
           />
         )}
-        {activePanel === 'TTS' && (
-          <TTSPanel bookKey={bookKey} onRegisterReset={(fn) => registerResetFunction('TTS', fn)} />
-        )}
+
         {activePanel === 'Language' && (
           <LangPanel
             bookKey={bookKey}
             onRegisterReset={(fn) => registerResetFunction('Language', fn)}
           />
         )}
-        {activePanel === 'AI' && <AIPanel />}
+
         {activePanel === 'Integrations' && <IntegrationsPanel />}
         {activePanel === 'Custom' && (
           <MiscPanel

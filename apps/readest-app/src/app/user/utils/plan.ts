@@ -91,7 +91,7 @@ export function getPlanDetails(
           {
             label: _('Unlock All Customization Options'),
             description: _(
-              'Unlock additional themes, fonts, layout options and read aloud, translators, cloud storage services.',
+              'Unlock additional themes, fonts, layout options and cloud storage services.',
             ),
           },
         ],
@@ -122,18 +122,7 @@ export function getPlanDetails(
               'Personalize every detail with adjustable fonts, layouts, themes, and advanced display settings for the perfect reading experience.',
             ),
           },
-          {
-            label: _('AI Read Aloud'),
-            description: _(
-              'Enjoy hands-free reading with natural-sounding AI voices that bring your books to life.',
-            ),
-          },
-          {
-            label: _('AI Translations'),
-            description: _(
-              'Translate any text instantly with the power of Google, Azure, or DeepL—understand content in any language.',
-            ),
-          },
+
           {
             label: _('Community Support'),
             description: _(
@@ -143,7 +132,6 @@ export function getPlanDetails(
         ],
         limits: {
           [_('Cloud Sync Storage')]: '500 MB',
-          [_('AI Translations (per day)')]: '10K',
         },
       };
     case 'plus':
@@ -161,24 +149,7 @@ export function getPlanDetails(
           {
             label: _('Includes All Free Plan Benefits'),
           },
-          {
-            label: _('Unlimited AI Read Aloud Hours'),
-            description: _(
-              'Listen without limits—convert as much text as you like into immersive audio.',
-            ),
-          },
-          {
-            label: _('More AI Translations'),
-            description: _(
-              'Unlock enhanced translation capabilities with more daily usage and advanced options.',
-            ),
-          },
-          {
-            label: _('DeepL Pro Access'),
-            description: _(
-              'Translate up to 100,000 characters daily with the most accurate translation engine available.',
-            ),
-          },
+
           {
             label: _('Cloud Sync Storage'),
             description: _(
@@ -194,7 +165,6 @@ export function getPlanDetails(
         ],
         limits: {
           [_('Cloud Sync Storage')]: '5 GB',
-          [_('AI Translations (per day)')]: '100K',
         },
       };
     case 'pro':
@@ -218,18 +188,7 @@ export function getPlanDetails(
               'Be the first to explore new features, updates, and innovations before anyone else.',
             ),
           },
-          {
-            label: _('Advanced AI Tools'),
-            description: _(
-              'Harness powerful AI tools for smarter reading, translation, and content discovery.',
-            ),
-          },
-          {
-            label: _('DeepL Pro Access'),
-            description: _(
-              'Translate up to 500,000 characters daily with the most accurate translation engine available.',
-            ),
-          },
+
           {
             label: _('Cloud Sync Storage'),
             description: _(
@@ -239,7 +198,6 @@ export function getPlanDetails(
         ],
         limits: {
           [_('Cloud Sync Storage')]: '20 GB',
-          [_('AI Translations (per day)')]: '500K',
         },
       };
     default:

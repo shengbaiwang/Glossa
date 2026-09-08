@@ -1,5 +1,44 @@
 # Glossa 项目进度
 
+最后更新：2026-09-08
+
+## 当前状态：基础阅读与云同步精简
+
+本轮按用户要求调整产品范围，以 `PLAN.md` 为准。此前 AI MVP 规划与下方历史记录不再作为当前执行任务。
+
+### 已完成
+
+- 删除 Glossa AI 模块、上游聊天/模型配置、翻译、词典查询、Word Lens、朗读与速读 UI/服务、校对、统计采集、RSS/OPDS/网文入口、公开分享、PostHog 及非云同步第三方集成。
+- 删除约 555 个文件，净减少约 12.1 万行（包括实现、测试、评测数据与文档）。删除相应 API、专用测试、评测数据与文档；移除 AI/朗读/遥测直接依赖及 215 个不可达依赖快照，保留其余依赖版本与完整性信息。
+- 保留书库导入、现有阅读格式、翻页、目录、全文搜索、字体排版、书签、高亮、笔记及原文跳转。
+- 保留现有云同步服务商、账号、加密、上传下载与冲突合并；设置界面将入口命名为“Cloud Sync”，不再展示已移除功能的同步类别。
+- 旧选区工具栏过滤移除项；旧快速操作回退到工具栏；历史聊天页签回到目录。旧 AI 本地笔记字段保留为不透明数据，不删除用户存量配置。
+- 保留独立 Glossa 运行身份、图标、构建入口与数据目录保护。原生平台插件、共享同步协议和数据库兼容层本轮未裁剪。
+- `PLAN.md`、`AGENTS.md`、应用工程说明和 README 已同步范围。任务开始前未提交内容已备份于 `/tmp/glossa-simplify-original`；原生 `lib.rs` 与初始备份逐字节相同。
+
+### 验证
+
+- TypeScript：`tsgo --noEmit` 通过。
+- Biome lint、修改文件格式化和 `git diff --check` 通过。
+- 前端生产构建：Node 24 + `.env.tauri` + `next build --webpack` 成功，19 个静态页面生成完成。
+- 依赖锁文件：`pnpm --pm-on-fail=ignore install --frozen-lockfile --lockfile-only --offline --ignore-scripts --trust-lockfile` 通过。仅裁剪当前已安装依赖图，不下载或升级包；普通离线安装因本机 pnpm 缺少元数据而无法重新解析。
+- 完整 Vitest：538 个测试文件通过，6,698 项通过，7 项跳过；1 个测试文件中的 3 项向量距离精度断言失败（期望 5，当前 Turso 返回约 4.997041）。相关数据库源码和测试均未修改，未放宽断言。
+- 旧快捷键、旧菜单与基础工具栏专项复测：20 项通过。
+- Playwright：8 项浏览器检查全部得到通过结果，覆盖 TXT/EPUB 导入、翻页、目录、页码跳转、全文搜索、字体字号和书签。首轮 7 项通过，TXT 导入因开发服务器首次冷编译超过 120 秒而超时；预热后单独复测通过（14.1 秒）。临时开发服务器已关闭。
+- 账号套餐页移除过期 AI/朗读/翻译功能介绍和翻译额度；对应 27 项单元测试通过，最终类型检查与 lint 通过。
+
+### 下一步与边界
+
+- 使用真实同步账号和两台设备验收云端往返及冲突合并；本轮未上传用户书籍。
+- 如需继续裁剪原生插件或共享同步兼容层，应逐平台构建并保留旧数据迁移能力。
+- 当前改动仅在工作区，未提交、发布或覆盖已安装的 Glossa 应用。
+- 独立记录并修复上游 Turso 向量计算精度问题，避免与本轮功能删减混在一起。
+
+---
+
+## 历史记录（原 AI MVP，保留原有工作区内容）
+
+
 最后更新：2026-08-15
 
 ## 1. 当前状态
@@ -7,7 +46,7 @@
 - 当前阶段：M2 EPUB MVP 已完成。
 - 当前里程碑：M2（C08、D08、E05–E09、F01–F06、I01–I04 已完成；本地集成收口已验证）。
 - 仓库状态：已导入 Readest v0.12.1；`main` 指向上游 release commit `f3e1df7e0572c0119cbb420e1e27ca9af859f91c`，并保留完整上游 Git 历史及 `upstream` remote（`https://github.com/readest/readest.git`）。
-- 可运行版本：Readest 桌面开发版已在本机实际启动并显示 EPUB 阅读窗口；开发进程已优雅退出，没有遗留本轮启动的后台服务。
+- 可运行版本：独立 `Glossa.app` 已使用用户提供的矢量标志完成 arm64 macOS Release 构建、ad-hoc 签名、桌面安装和系统 `open` 启动；当前进程使用 `app.glossa.reader` 身份与独立 Application Support 目录，不依赖开发服务器或终端。
 - 总体状态：A01–A06、B01–B08、C01–C08、D01–D08、E01–E09、F01–F06、I01–I04 已完成。F01 只从有效 EPUB 选区打开；ContextPack 始终包含选区，默认不含选区后文。解释和翻译共用 Provider、结构和 sourceId 白名单校验，模型 sourceId 只会在本地解析为真实文本与锚点，再由既有 EPUB navigator 跳转、临时高亮和返回。`answered` 空段落现在视为无效结构，不会显示为空白完成结果；取消、Provider 错误、结构修复失败和 `insufficient_evidence` 均保持独立状态。`glossaSourcedNotes` V3 把不可变 V1/V2 原始溯源载荷（选区、问题/快捷动作、AI 段落和全部已验证来源）与单独的 `userNote`/`updatedAt` 分离；编辑绝不修改原始模型结果，旧 V1/V2 首次编辑时保持 ID 不变地升级。删除逐条要求明确确认，只有 config.json 写入成功才移除 UI；取消或写入失败会保留原有数据、来源按钮与界面。每书继续经本地 `config.json` 持久化，但该字段明确不进入数据库或文件云同步；重开后显示真实持久化状态，并可逐一经现有 EPUB 跳转、临时高亮和返回会话恢复来源。F06 只从当前文档通过 V1–V3 校验的记录生成 Markdown 或版本化 JSON；JSON 保留完整来源锚点和顺序，且不含对话历史、未引用正文或隐私配置。D08 仅请求并读取终止 SSE 的实际 token usage（输入、输出、缓存命中/未命中）；模型无关 usage 事件不改变回答 schema 或本地来源验证。一次结构修复只有两次调用都返回完整实际 usage 才会累计；缺失 usage、取消或失败一律显示不可用。费用使用不联网的本地 USD 费率表，显示“Estimated”、币种、费率版本与 UTC 峰谷期；当前 `deepseek-v4-flash` 在 2026-08-16 16:00 UTC 后按官方公布的峰谷价格切换。I01 评测语料、I02 离线问题集、I03 离线人工评分流程与 I04 本地运行记录/汇总均已就绪；运行记录只允许 fixture ID、版本 ID 和数值指标，校验会拒绝未知/越界候选、超过 10 个候选、负耗时、重复记录与 usage/费用不一致。模板为空，模型评测、真实人工评分和真实 API 请求均未开始。DeepSeek V4 Flash 仅在用户选择、钥匙串已配置且首次发送范围确认后启用；本轮没有真实 API 请求。
 
 ## 2. 已完成
@@ -170,6 +209,12 @@
 - [x] **隔离说明与验证。** `apps/readest-app/docs/glossa-development.md` 记录启动方式、数据/构建边界及禁止事项。`runtime.test.ts` 覆盖关闭、缺少身份、portable、Readest 身份错配和 Glossa Dev 身份成功共 5 个场景；目标 TypeScript 检查、Biome lint、`cargo check -p Readest` 与配置 JSON 校验通过。Rust 检查中有锁定上游依赖警告，无新增失败。
 - [x] **隔离 IPC 权限。** `get_app_identifier` 已列入 Tauri app manifest，并仅授予 default / WebDriver 测试 capability；新增 Tauri smoke test 确认该命令可调用。重新生成 permission manifest 后，`cargo check -p Readest` 通过。完整 WebView smoke test 本轮未重跑：已有用户启动的 Next 开发进程占用项目 `.next` 锁，未强制停止该用户进程。
 
+### macOS 桌面应用
+
+- [x] **独立 Glossa Release 配置。** 新增 `tauri.glossa.conf.json` 与根命令 `pnpm build:glossa:macos`：固定产品名 `Glossa`、可执行文件 `glossa`、identifier `app.glossa.reader`、`glossa://` 深链、独立 `.glossa-build/target` 和 8 GB Node 构建堆；使用 Webpack 完成当前 reader 静态导出，不上传 source map、不生成 updater artifact，并在打包后执行可验证的本地 ad-hoc 签名。构建仅执行已安装的 pnpm 依赖；当包管理器远程签名查询不可用时，不会下载或切换包管理器。
+- [x] **Logo 与桌面安装。** 原始 `glossa-mark (1).svg` 作为仓库内矢量源保存。传统 ICNS 先按 Apple 官方 1024 px App Icon Template 的八等分（128 px）网格构图，再针对实际 Dock 截图围绕中心作 15/16 光学校正：白色圆角底板为 720×720 px、原创黑色标记约 480 px 宽、四角透明。Tauri 生成独立 PNG/ICNS/ICO 图标集且不覆盖 Readest 资源。Release 包内 `icon.icns` 与生成资源逐字节一致；`/Users/nidao./Desktop/Glossa.app` 已用该平衡尺寸版本替换、严格 codesign 校验通过并重新启动，独立 `~/Library/Application Support/app.glossa.reader` 数据不受影响。
+- [x] **生产导出 SSR 修复。** Glossa EPUB 关键词搜索不再在模块顶层加载会读取 `NodeFilter` 的 foliate text walker，改为实际浏览器检索时动态加载；新增 Node 环境导入回归，保持既有只读检索、已读范围过滤与取消语义。
+
 ## 3. 正在进行
 
 M2 EPUB MVP 已收口。三本最小 EPUB 评测语料可确定性再生；三类语料各有五类可机器校验问题，评分与运行记录流程会拒绝越界/不存在来源、重复记录、非法候选和 usage/费用不一致。模型评测、真实人工评分和真实 API 请求仍未开始。
@@ -183,7 +228,7 @@ M2 EPUB MVP 已收口。三本最小 EPUB 评测语料可确定性再生；三�
 - **Tauri 测试工具链：** Rust stable 位于 `/Users/nidao./.cargo/bin`，不在默认 shell PATH；测试命令以 `PATH="/Users/nidao./.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/nidao./.cargo/bin:…"` 临时启用 Node 24.19.0 与 Cargo 1.97.1，未修改 shell 或全局安装。
 - **默认 Node.js：** 全局默认仍为 Node.js 26.0.0，上游要求 Node.js 24；本轮从 Node.js 官方归档临时下载并 SHA-256 校验 Node.js 24.11.1，仅用于命令级 PATH，不修改全局默认版本。
 - **Xcode：** `pnpm tauri info` 仍报告完整 Xcode 未安装，但 Xcode Command Line Tools 已安装且已成功完成本轮 macOS 桌面编译、链接和启动，因此不是 A03/A04 的硬阻塞。
-- **上游测试基线：** 使用已安装的 Node 24/Vitest 跑完整应用套件为 731 文件、9,129 通过、3 个既有 Turso `vector_distance_l2` 精度失败；完整 Glossa 范围为 21 文件 / 180 测试全部通过。I04 未触及 Turso 或数据库代码。
+- **上游测试基线：** 使用已安装的 Node 24/Vitest 跑完整应用套件为 731 文件、9,129 通过、3 个既有 Turso `vector_distance_l2` 精度失败；完整 Glossa 范围为 22 文件 / 181 测试全部通过。I04 未触及 Turso 或数据库代码。
 
 ## 6. 已知风险
 
@@ -200,6 +245,12 @@ M2 EPUB MVP 已收口。三本最小 EPUB 评测语料可确定性再生；三�
 - 如果未来公开分发或闭源商业化，需要重新评估 AGPL-3.0。
 
 ## 7. 最近验证
+
+- [x] macOS Dock 图标光学校正：根据用户 308×88 px Dock 截图，12.5% 缩小版约为 45 px、低于相邻图标约 47–48 px；改为围绕 1024 px 画布中心等比缩小 6.25%，令白色轮廓为 720 px。已重新生成 ICNS、完成 Next/TypeScript/Rust Release 构建和 ad-hoc 签名；包内 ICNS 与生成资源一致，桌面包再次通过 `codesign --verify --deep --strict` 并由系统 `open -n` 启动。
+
+- [x] macOS 桌面应用：`pnpm build:glossa:macos` 使用 Node 24.19.0、Next 16.2.11 Webpack 静态导出与 Rust 1.97.1 Release 冷编译成功，生成 arm64 `Glossa.app`（约 85 MB）；Info.plist 为 `Glossa` / `app.glossa.reader` / `glossa`，包内 ICNS 与生成图标一致。重新 ad-hoc 签名后 `codesign --verify --deep --strict` 通过；复制到 `/Users/nidao./Desktop/Glossa.app` 后再次校验通过，系统 `open -n` 成功且完整路径进程仍在运行，独立 Application Support 目录已创建。完整 Glossa 回归为 22 文件 / 181 测试通过；`tsgo --noEmit`、全仓 Biome lint（2,062 文件）、全仓 format check（2,096 文件）、Rust 92 个 lib 测试、Rust format、构建脚本语法与 `git diff --check` 通过。首次直接 Vitest 调用因绕过项目 dotenv 包装导致 13 个收集期 Supabase 环境失败；按规定的 `pnpm … test --run` 入口重跑全部通过。没有真实 API 请求或 source map 上传。
+
+- [ ] **可选：升级到 Icon Composer 分层图标。** 当前桌面包按用户选择保留传统预合成 PNG/ICNS，以兼容现有 Tauri 打包链；它不提供 macOS 新版 Icon Composer `.icon` 的系统动态材质和外观模式。本机未安装该工具，且此项不阻塞桌面启动或传统 ICNS 交付。
 
 - [x] M2 集成收口：使用 Node 24.19.0 / pnpm 11.19.0 重新运行 I01–I04 的四个只读离线校验，确认 3 本 CC0 fixture、15 题问题集及空白评分/运行记录模板均有效；完整 Glossa 回归为 21 文件 / 180 测试通过，`tsgo --noEmit` 与 Biome lint（2,061 文件）、全仓 Biome format（2,094 文件）和 `git diff --check` 通过。隔离 macOS Tauri WebView 在原创 EPUB fixture 中以默认 MockProvider 完成选区解释、翻译、章节摘要、来源跳转/返回、笔记 config JSON 重开和 Markdown/JSON 内存导出；断言没有 `fetch` 或 `addAnnotation()`。完整应用单元套件仅复现上游 `src/__tests__/database/turso-node.test.ts` 的 3 个 `vector_distance_l2` 精度失败，未见其他失败。未调用 DeepSeek、未保存真实问题/回答/笔记或导出文件。
 

@@ -4,7 +4,7 @@ import { RiFontSize, RiDashboardLine, RiTranslate, RiShareLine } from 'react-ico
 import { VscSymbolColor } from 'react-icons/vsc';
 import { LiaHandPointerSolid } from 'react-icons/lia';
 import { IoAccessibilityOutline } from 'react-icons/io5';
-import { PiRobot, PiSpeakerHigh, PiSun, PiMoon } from 'react-icons/pi';
+import { PiSun, PiMoon } from 'react-icons/pi';
 import { TbSunMoon } from 'react-icons/tb';
 import { MdRefresh } from 'react-icons/md';
 import { IconType } from 'react-icons';
@@ -151,9 +151,9 @@ const panelIcons: Record<SettingsPanelType, IconType> = {
   Layout: RiDashboardLine,
   Theme: VscSymbolColor,
   Control: LiaHandPointerSolid,
-  TTS: PiSpeakerHigh,
+
   Language: RiTranslate,
-  AI: PiRobot,
+
   Integrations: RiShareLine,
   Custom: IoAccessibilityOutline,
 };
@@ -372,24 +372,7 @@ const colorPanelItems = [
     keywords: ['highlight', 'color', 'annotation', 'marker'],
     section: 'Highlight',
   },
-  {
-    id: 'settings.tts.ttsHighlightStyle',
-    labelKey: _('TTS Highlighting'),
-    keywords: ['tts', 'highlight', 'style', 'speech', 'read', 'aloud'],
-    section: 'Highlight',
-  },
-  {
-    id: 'settings.tts.mediaMetadata',
-    labelKey: _('TTS Media Info Update Frequency'),
-    keywords: ['tts', 'media', 'metadata', 'bluetooth', 'notification', 'chapter', 'paragraph'],
-    section: 'TTS',
-  },
-  {
-    id: 'settings.tts.playerStyle',
-    labelKey: _('TTS Player Style'),
-    keywords: ['tts', 'player', 'mini', 'style', 'cover', 'full', 'minimal'],
-    section: 'TTS',
-  },
+
   {
     id: 'settings.color.readingRuler',
     labelKey: _('Reading Ruler'),
@@ -518,101 +501,9 @@ const languagePanelItems = [
     keywords: ['interface', 'language', 'locale', 'ui', 'translation'],
     section: 'Language',
   },
-  {
-    id: 'settings.language.translationEnabled',
-    labelKey: _('Enable Translation'),
-    keywords: ['translation', 'translate', 'enable', 'language'],
-    section: 'Translation',
-  },
-  {
-    id: 'settings.language.translationProvider',
-    labelKey: _('Translation Service'),
-    keywords: ['translation', 'provider', 'google', 'deepl', 'service'],
-    section: 'Translation',
-  },
-  {
-    id: 'settings.language.targetLanguage',
-    labelKey: _('Translate To'),
-    keywords: ['target', 'language', 'translation', 'destination'],
-    section: 'Translation',
-  },
-  {
-    id: 'settings.language.ttsTextTranslation',
-    labelKey: _('TTS Text'),
-    keywords: ['tts', 'text', 'translation', 'speech', 'read'],
-    section: 'Translation',
-  },
-  {
-    id: 'settings.language.quotationMarks',
-    labelKey: _('Replace Quotation Marks'),
-    keywords: ['quotation', 'marks', 'quotes', 'punctuation', 'cjk'],
-    section: 'Punctuation',
-  },
-  {
-    id: 'settings.language.chineseConversion',
-    labelKey: _('Convert Simplified and Traditional Chinese'),
-    keywords: ['chinese', 'conversion', 'simplified', 'traditional', 'cjk'],
-    section: 'Chinese',
-  },
 ];
 
 // ai panel items
-const aiPanelItems = [
-  {
-    id: 'settings.ai.enableAssistant',
-    labelKey: _('Enable AI Assistant'),
-    keywords: ['ai', 'assistant', 'enable', 'chatbot', 'llm'],
-    section: 'AI',
-  },
-  {
-    id: 'settings.ai.provider',
-    labelKey: _('AI Provider'),
-    keywords: ['ai', 'provider', 'ollama', 'gateway', 'service'],
-    section: 'AI',
-  },
-  {
-    id: 'settings.ai.ollamaUrl',
-    labelKey: _('Ollama URL'),
-    keywords: ['ollama', 'url', 'server', 'endpoint', 'api'],
-    section: 'Ollama',
-  },
-  {
-    id: 'settings.ai.ollamaModel',
-    labelKey: _('Ollama Model'),
-    keywords: ['ollama', 'model', 'llama', 'mistral', 'gemma'],
-    section: 'Ollama',
-  },
-  {
-    id: 'settings.ai.gatewayApiKey',
-    labelKey: _('API Key'),
-    keywords: ['api', 'key', 'gateway', 'token', 'secret'],
-    section: 'AI Gateway',
-  },
-  {
-    id: 'settings.ai.gatewayModel',
-    labelKey: _('AI Gateway Model'),
-    keywords: ['gateway', 'model', 'openai', 'gpt', 'claude'],
-    section: 'AI Gateway',
-  },
-  {
-    id: 'settings.ai.openrouterApiKey',
-    labelKey: _('OpenRouter API Key'),
-    keywords: ['openrouter', 'api', 'key', 'token', 'secret'],
-    section: 'OpenRouter',
-  },
-  {
-    id: 'settings.ai.openrouterBaseUrl',
-    labelKey: _('OpenRouter Base URL'),
-    keywords: ['openrouter', 'base', 'url', 'endpoint', 'openai', 'compatible'],
-    section: 'OpenRouter',
-  },
-  {
-    id: 'settings.ai.openrouterModel',
-    labelKey: _('OpenRouter Model'),
-    keywords: ['openrouter', 'model', 'claude', 'gpt', 'llama', 'deepseek'],
-    section: 'OpenRouter',
-  },
-];
 
 // custom panel items
 const customPanelItems = [
@@ -666,11 +557,6 @@ const actionItems = [
     labelKey: _('About Readest'),
     keywords: ['about', 'readest', 'version', 'info'],
   },
-  {
-    id: 'action.telemetry',
-    labelKey: _('Help improve Readest'),
-    keywords: ['telemetry', 'analytics', 'improve', 'statistics'],
-  },
 ];
 
 export interface CommandRegistryOptions {
@@ -683,7 +569,6 @@ export interface CommandRegistryOptions {
   reloadPage: () => void;
   toggleOpenLastBooks: () => void;
   showAbout: () => void;
-  toggleTelemetry: () => void;
   isDesktop: boolean;
   // TODO: add reader-specific actions when reader is open (tts, bookmark, etc.)
 }
@@ -736,11 +621,6 @@ export const buildCommandRegistry = (options: CommandRegistryOptions): CommandIt
   }
 
   // add ai panel items (only in dev, as of now atleast)
-  if (process.env.NODE_ENV !== 'production') {
-    for (const def of aiPanelItems) {
-      items.push(createSettingsItem(def, 'AI'));
-    }
-  }
 
   // add custom panel items
   for (const def of customPanelItems) {
@@ -824,13 +704,6 @@ export const buildCommandRegistry = (options: CommandRegistryOptions): CommandIt
     createActionItem({
       id: 'action.about',
       action: options.showAbout,
-    }),
-  );
-
-  items.push(
-    createActionItem({
-      id: 'action.telemetry',
-      action: options.toggleTelemetry,
     }),
   );
 

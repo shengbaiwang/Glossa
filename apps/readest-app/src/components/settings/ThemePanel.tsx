@@ -27,7 +27,7 @@ import { manageSyntaxHighlighting } from '@/utils/highlightjs';
 import { SettingsPanelPanelProp } from './SettingsDialog';
 import { useFileSelector } from '@/hooks/useFileSelector';
 import { PREDEFINED_TEXTURES } from '@/styles/textures';
-import { useAtmosphereStore } from '@/store/atmosphereStore';
+
 import { DefaultHighlightColor, HighlightColor, UserHighlightColor } from '@/types/book';
 import clsx from 'clsx';
 import { SettingLabel } from './primitives';
@@ -109,7 +109,6 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
   const resetToDefaults = useResetViewSettings();
   const { selectFiles } = useFileSelector(appService, _);
   const { applyBackgroundTexture } = useBackgroundTexture();
-  const { activate: activateAtmosphere, deactivate: deactivateAtmosphere } = useAtmosphereStore();
 
   const handleReset = () => {
     resetToDefaults({
@@ -130,16 +129,13 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
     setCustomHighlightColors(HIGHLIGHT_COLOR_HEX);
     setUserHighlightColors([]);
     setDefaultHighlightLabels({});
-    deactivateAtmosphere();
   };
 
   const handleTextureSelect = (id: string) => {
     setSelectedTextureId(id);
     const isAnimated = PREDEFINED_TEXTURES.some((t) => t.id === id && t.animated);
     if (isAnimated) {
-      activateAtmosphere();
     } else {
-      deactivateAtmosphere();
     }
   };
 

@@ -6,7 +6,7 @@ import { whitespaceTransformer } from './whitespace';
 import { sanitizerTransformer } from './sanitizer';
 import { simpleccTransformer } from './simplecc';
 import { styleTransformer } from './style';
-import { proofreadTransformer } from './proofread';
+
 import { warichuTransformer } from './warichu';
 import { nbspTransformer } from './nbsp';
 
@@ -19,7 +19,6 @@ export const availableTransformers: Transformer[] = [
   sanitizerTransformer,
   simpleccTransformer,
   nbspTransformer,
-  proofreadTransformer,
   warichuTransformer,
   // Add more transformers here
 ];

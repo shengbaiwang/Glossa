@@ -3,7 +3,7 @@ import React from 'react';
 import { MdOutlineLightMode, MdOutlineDarkMode, MdOutlineSensors } from 'react-icons/md';
 import { TbSunMoon } from 'react-icons/tb';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useAtmosphereStore } from '@/store/atmosphereStore';
+
 import { ThemeMode } from '@/styles/themes';
 import { SettingLabel } from '../primitives';
 
@@ -20,33 +20,16 @@ const ThemeModeSelector: React.FC<ThemeModeSelectorProps> = ({
   hasAmbientLightSensor = false,
 }) => {
   const _ = useTranslation();
-  const { spinDirection, shaking, toggle, toggleWithShake, deactivate } = useAtmosphereStore();
 
   const handleAutoClick = () => {
-    deactivate();
     onThemeModeChange('auto');
   };
 
-  const handleLightClick = () => {
-    if (themeMode === 'light') {
-      toggle();
-    } else {
-      deactivate();
-      onThemeModeChange('light');
-    }
-  };
+  const handleLightClick = () => onThemeModeChange('light');
 
-  const handleDarkClick = () => {
-    if (themeMode === 'dark') {
-      toggleWithShake();
-    } else {
-      deactivate();
-      onThemeModeChange('dark');
-    }
-  };
+  const handleDarkClick = () => onThemeModeChange('dark');
 
   const handleAmbientClick = () => {
-    deactivate();
     onThemeModeChange('ambient');
   };
 
@@ -61,29 +44,13 @@ const ThemeModeSelector: React.FC<ThemeModeSelectorProps> = ({
       mode: 'light',
       title: _('Light Mode'),
       onClick: handleLightClick,
-      icon: (
-        <span
-          className={
-            spinDirection === 'cw'
-              ? 'animate-spin-cw'
-              : spinDirection === 'ccw'
-                ? 'animate-spin-ccw'
-                : ''
-          }
-        >
-          <MdOutlineLightMode />
-        </span>
-      ),
+      icon: <MdOutlineLightMode />,
     },
     {
       mode: 'dark',
       title: _('Dark Mode'),
       onClick: handleDarkClick,
-      icon: (
-        <span className={shaking ? 'animate-shake' : ''}>
-          <MdOutlineDarkMode />
-        </span>
-      ),
+      icon: <MdOutlineDarkMode />,
     },
   ];
 

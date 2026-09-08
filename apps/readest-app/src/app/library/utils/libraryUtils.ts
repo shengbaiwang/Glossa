@@ -848,7 +848,6 @@ export type BookContextMenuItemId =
   | 'searchGoodreads'
   | 'download'
   | 'upload'
-  | 'share'
   | 'delete';
 
 /**
@@ -978,9 +977,6 @@ export const getBookContextMenuItemIds = (book: Book): BookContextMenuItemId[] =
   if (!isFeedBook(book)) {
     if (book.uploadedAt && !book.downloadedAt) ids.push('download');
     if (!book.uploadedAt && book.downloadedAt) ids.push('upload');
-    // Share is offered for any local-or-uploaded book; the dialog uploads first
-    // if the book hasn't been pushed yet.
-    if (book.downloadedAt || book.uploadedAt) ids.push('share');
   }
   ids.push('delete');
   return ids;

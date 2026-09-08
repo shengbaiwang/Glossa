@@ -259,22 +259,26 @@ fn get_app_identifier(app: AppHandle) -> String {
 // dependency-free so it can be unit tested for every platform combination.
 //
 // - `env_disable`: READEST_DISABLE_UPDATER is set (explicit opt-out).
+// - `is_official_readest`: only the upstream Readest identity may use the
+//   upstream Readest update feed. Local branded builds must stay isolated.
 // - Linux only: Tauri's updater can self-update AppImage bundles *only*, so
 //   deb/rpm/pacman (`!is_appimage`) and Flatpak installs are updated by the
 //   system package manager and must not show the in-app updater.
 #[cfg(desktop)]
 fn compute_updater_disabled(
     env_disable: bool,
+    is_official_readest: bool,
     is_linux: bool,
     is_flatpak: bool,
     is_appimage: bool,
 ) -> bool {
-    env_disable || (is_linux && (is_flatpak || !is_appimage))
+    env_disable || !is_official_readest || (is_linux && (is_flatpak || !is_appimage))
 }
 
 #[cfg(desktop)]
-fn updater_disabled() -> bool {
+fn updater_disabled(app_identifier: &str) -> bool {
     let env_disable = std::env::var("READEST_DISABLE_UPDATER").is_ok();
+    let is_official_readest = app_identifier == "com.bilingify.readest";
     #[cfg(target_os = "linux")]
     {
         let is_flatpak =
@@ -283,11 +287,17 @@ fn updater_disabled() -> bool {
             || std::env::current_exe()
                 .map(|path| path.to_string_lossy().contains("/tmp/.mount_"))
                 .unwrap_or(false);
-        compute_updater_disabled(env_disable, true, is_flatpak, is_appimage)
+        compute_updater_disabled(
+            env_disable,
+            is_official_readest,
+            true,
+            is_flatpak,
+            is_appimage,
+        )
     }
     #[cfg(not(target_os = "linux"))]
     {
-        compute_updater_disabled(env_disable, false, false, false)
+        compute_updater_disabled(env_disable, is_official_readest, false, false, false)
     }
 }
 
@@ -297,8 +307,8 @@ fn updater_disabled() -> bool {
 // scripts on every Linux/WebKitGTK setup (see issue #4874).
 #[cfg(desktop)]
 #[tauri::command]
-fn is_updater_disabled() -> bool {
-    updater_disabled()
+fn is_updater_disabled(app: AppHandle) -> bool {
+    updater_disabled(&app.config().identifier)
 }
 
 // Record the WebView engine/version (parsed from the app's User-Agent) so Sentry
@@ -598,7 +608,7 @@ pub fn run() {
             // `NativeAppService.init()` reads authoritatively; the injected global
             // below is only a best-effort fast path.
             #[cfg(desktop)]
-            let updater_disabled = updater_disabled();
+            let updater_disabled = updater_disabled(&app.config().identifier);
             #[cfg(not(desktop))]
             let updater_disabled = false;
 
@@ -813,32 +823,37 @@ mod tests {
     #[test]
     fn env_opt_out_disables_on_any_desktop() {
         // READEST_DISABLE_UPDATER is an explicit opt-out on every desktop OS.
-        assert!(compute_updater_disabled(true, false, false, false));
-        assert!(compute_updater_disabled(true, true, false, true));
+        assert!(compute_updater_disabled(true, true, false, false, false));
+        assert!(compute_updater_disabled(true, true, true, false, true));
+    }
+
+    #[test]
+    fn non_readest_identity_cannot_use_the_readest_update_feed() {
+        assert!(compute_updater_disabled(false, false, false, false, false));
     }
 
     #[test]
     fn linux_system_package_install_is_disabled() {
         // deb/rpm/pacman installs are not AppImage and not Flatpak. Tauri's
         // Linux updater can't self-update them, so the in-app updater is hidden.
-        assert!(compute_updater_disabled(false, true, false, false));
+        assert!(compute_updater_disabled(false, true, true, false, false));
     }
 
     #[test]
     fn linux_flatpak_is_disabled() {
-        assert!(compute_updater_disabled(false, true, true, false));
+        assert!(compute_updater_disabled(false, true, true, true, false));
     }
 
     #[test]
     fn linux_appimage_keeps_updater() {
         // AppImage is the one Linux bundle Tauri can self-update.
-        assert!(!compute_updater_disabled(false, true, false, true));
+        assert!(!compute_updater_disabled(false, true, true, false, true));
     }
 
     #[test]
     fn non_linux_desktop_keeps_updater_without_opt_out() {
         // macOS / Windows: the flatpak/appimage clause must not apply, so the
         // updater stays enabled unless the env opt-out is set.
-        assert!(!compute_updater_disabled(false, false, false, false));
+        assert!(!compute_updater_disabled(false, true, false, false, false));
     }
 }

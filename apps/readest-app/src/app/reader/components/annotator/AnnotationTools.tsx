@@ -2,13 +2,8 @@ import { IconType } from 'react-icons';
 import { FiSearch } from 'react-icons/fi';
 import { FiCopy } from 'react-icons/fi';
 import { FiLink } from 'react-icons/fi';
-import { FiShare } from 'react-icons/fi';
 import { PiHighlighterFill } from 'react-icons/pi';
-import { LuBookA } from 'react-icons/lu';
 import { BsPencilSquare } from 'react-icons/bs';
-import { BsTranslate } from 'react-icons/bs';
-import { FaHeadphones } from 'react-icons/fa6';
-import { IoIosBuild } from 'react-icons/io';
 import { AnnotationToolType } from '@/types/annotator';
 import { stubTranslation as _ } from '@/utils/misc';
 
@@ -20,23 +15,7 @@ type AnnotationToolButton = {
   quickAction?: boolean;
 };
 
-function createAnnotationToolButtons<T extends AnnotationToolType>(
-  buttons: AnnotationToolType extends T
-    ? {
-        [K in T]: {
-          type: K;
-          label: string;
-          tooltip: string;
-          Icon: IconType;
-          quickAction?: boolean;
-        };
-      }[T][]
-    : never,
-): AnnotationToolButton[] {
-  return buttons;
-}
-
-export const annotationToolButtons = createAnnotationToolButtons([
+export const annotationToolButtons: AnnotationToolButton[] = [
   {
     type: 'copy',
     label: _('Copy'),
@@ -70,41 +49,7 @@ export const annotationToolButtons = createAnnotationToolButtons([
     Icon: FiSearch,
     quickAction: true,
   },
-  {
-    type: 'dictionary',
-    label: _('Dictionary'),
-    tooltip: _('Look up text in dictionary after selection'),
-    Icon: LuBookA,
-    quickAction: true,
-  },
-  {
-    type: 'translate',
-    label: _('Translate'),
-    tooltip: _('Translate text after selection'),
-    Icon: BsTranslate,
-    quickAction: true,
-  },
-  {
-    type: 'tts',
-    label: _('Speak'),
-    tooltip: _('Read text aloud after selection'),
-    Icon: FaHeadphones,
-    quickAction: true,
-  },
-  {
-    type: 'proofread',
-    label: _('Proofread'),
-    tooltip: _('Proofread text after selection'),
-    Icon: IoIosBuild,
-  },
-  {
-    type: 'share',
-    label: _('Share'),
-    tooltip: _('Share text after selection'),
-    Icon: FiShare,
-    quickAction: true,
-  },
-]);
+];
 
 export const annotationToolQuickActions = annotationToolButtons.filter(
   (button) => button.quickAction,

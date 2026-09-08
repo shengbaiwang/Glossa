@@ -23,8 +23,6 @@ import { describe, it, expect } from 'vitest';
  * from inside Settings rendered behind it.
  */
 
-const PAGE_FRAME = 99; // .window-border in src/styles/globals.css
-
 const read = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
 const firstZ = (src: string, re: RegExp): number => {
   const m = src.match(re);
@@ -34,14 +32,7 @@ const firstZ = (src: string, re: RegExp): number => {
 
 const MODAL = firstZ(read('src/components/ModalPortal.tsx'), /z-\[(\d+)\]/);
 const SETTINGS = firstZ(read('src/components/settings/SettingsDialog.tsx'), /!z-\[(\d+)\]/);
-const RSVP_OVERLAY = firstZ(
-  read('src/app/reader/components/rsvp/RSVPOverlay.tsx'),
-  /fixed inset-0 z-\[(\d+)\] flex select-none/,
-);
-const RSVP_CONTROLS = firstZ(
-  read('src/app/reader/components/rsvp/RSVPStartDialog.tsx'),
-  /z-\[(\d+)\]/,
-);
+
 const TOAST = firstZ(read('src/components/Toast.tsx'), /toast z-\[(\d+)\]/);
 const APP_LOCK = firstZ(read('src/components/AppLockScreen.tsx'), /z-\[(\d+)\]/);
 
@@ -49,18 +40,6 @@ describe('overlay z-index scale', () => {
   it('renders a modal (e.g. Add OPDS Catalog) above the Settings dialog', () => {
     // Regression: ModalPortal opened from inside Settings was buried (#add-catalog).
     expect(MODAL).toBeGreaterThan(SETTINGS);
-  });
-
-  it('raises the Settings dialog above the RSVP immersive overlay', () => {
-    expect(SETTINGS).toBeGreaterThan(RSVP_OVERLAY);
-  });
-
-  it('keeps RSVP controls above the RSVP overlay', () => {
-    expect(RSVP_CONTROLS).toBeGreaterThan(RSVP_OVERLAY);
-  });
-
-  it('keeps the RSVP overlay above the desktop window-border page frame', () => {
-    expect(RSVP_OVERLAY).toBeGreaterThan(PAGE_FRAME);
   });
 
   it('raises toasts above every modal so they show over open dialogs', () => {
@@ -77,7 +56,7 @@ describe('overlay z-index scale', () => {
   });
 
   it('uses a compact scale with no four-digit z-index', () => {
-    for (const value of [RSVP_OVERLAY, RSVP_CONTROLS, SETTINGS, MODAL, TOAST, APP_LOCK]) {
+    for (const value of [SETTINGS, MODAL, TOAST, APP_LOCK]) {
       expect(value).toBeLessThan(1000);
     }
   });

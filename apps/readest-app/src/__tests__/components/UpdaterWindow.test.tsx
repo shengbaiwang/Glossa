@@ -1,10 +1,4 @@
-/**
- * UpdaterContent — the "What's New in Readest" changelog.
- *
- * When the UI locale is non-English, the release notes are auto-translated in
- * place. These tests cover the "Show original" toggle that lets the reader flip
- * the auto-translated changelog back to the source English text (and back).
- */
+/** Release notes remain in the source language without remote translation. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -111,7 +105,7 @@ afterEach(() => {
   cleanup();
 });
 
-describe('UpdaterContent — auto-translated changelog', () => {
+describe('UpdaterContent — release notes', () => {
   it('contains download failures and shows an updater error', async () => {
     const failure = 'Download request failed with status: 403 Forbidden';
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -138,23 +132,12 @@ describe('UpdaterContent — auto-translated changelog', () => {
     expect(consoleError).toHaveBeenCalledWith('Failed to download and install update:', failure);
   });
 
-  it('shows a "Show original" toggle that swaps the translation for the source English', async () => {
+  it('keeps release notes in the source language without remote translation', async () => {
     mockLocale = 'zh-CN';
     render(<UpdaterContent checkUpdate={false} latestVersion='0.11.18' lastVersion='0.11.0' />);
-
-    // The translated notes render by default (current behavior preserved).
-    await waitFor(() => expect(screen.getByText('[zh] First feature')).toBeTruthy());
-    expect(mockTranslate).toHaveBeenCalled();
-    // The original English is hidden until the reader asks for it.
-    expect(screen.queryByText('First feature')).toBeNull();
-
-    const toggle = screen.getByRole('button', { name: 'Show original' });
-    fireEvent.click(toggle);
-
-    // Now the source English is shown, the translation is hidden, label flips.
     await waitFor(() => expect(screen.getByText('First feature')).toBeTruthy());
-    expect(screen.queryByText('[zh] First feature')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Show translation' })).toBeTruthy();
+    expect(mockTranslate).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Show original' })).toBeNull();
   });
 
   it('renders no toggle when the locale is English (nothing was translated)', async () => {

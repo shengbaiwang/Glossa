@@ -178,12 +178,12 @@ describe('useBookShortcuts', () => {
     expect(mockView.next).toHaveBeenCalledWith(72);
   });
 
-  it('dispatches rsvp-start for the current book when the RSVP shortcut fires', () => {
+  it('ignores removed speed-reading shortcuts', () => {
     const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
 
     render(<Harness />);
     shortcutState.actions?.['onStartRSVP']?.();
 
-    expect(dispatchSpy).toHaveBeenCalledWith('rsvp-start', { bookKey: 'book-1' });
+    expect(dispatchSpy).not.toHaveBeenCalledWith('rsvp-start', { bookKey: 'book-1' });
   });
 });

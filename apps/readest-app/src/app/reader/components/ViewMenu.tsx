@@ -8,7 +8,6 @@ import { MdZoomOut, MdZoomIn, MdCheck, MdInfoOutline, MdOutlineSensors } from 'r
 import { MdRemove, MdAdd, MdContrast } from 'react-icons/md';
 import { MdSync, MdSyncProblem } from 'react-icons/md';
 import { IoMdExpand } from 'react-icons/io';
-import { IoShareOutline } from 'react-icons/io5';
 import { TbArrowAutofitWidth } from 'react-icons/tb';
 import { TbColumns1, TbColumns2 } from 'react-icons/tb';
 import { TbCarouselVertical, TbCarouselHorizontal } from 'react-icons/tb';
@@ -58,7 +57,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
   const { envConfig, appService } = useEnv();
   const { getConfig, getBookData } = useBookDataStore();
   const { setSettingsDialogOpen, setSettingsDialogBookKey } = useSettingsStore();
-  const { getView, getViewSettings, getViewState, getProgress, setViewSettings } = useReaderStore();
+  const { getView, getViewSettings, getViewState, setViewSettings } = useReaderStore();
   const config = getConfig(bookKey)!;
   const bookData = getBookData(bookKey)!;
   const viewSettings = getViewSettings(bookKey)!;
@@ -70,9 +69,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
     viewSettings!.scrolledDirection ?? 'vertical',
   );
   const [webtoonMode, setWebtoonMode] = useState(viewSettings!.webtoonMode ?? false);
-  const [isParagraphMode, setParagraphMode] = useState(
-    viewSettings?.paragraphMode?.enabled ?? false,
-  );
+
   const [zoomLevel, setZoomLevel] = useState(viewSettings!.zoomLevel!);
   const [contrast, setContrast] = useState(viewSettings!.contrast ?? 100);
   const [zoomMode, setZoomMode] = useState(viewSettings!.zoomMode!);
@@ -93,11 +90,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
   const resetContrast = () => setContrast(100);
   const toggleScrolledMode = () => setScrolledMode(!isScrolledMode);
   const toggleWebtoonMode = () => setWebtoonMode(!webtoonMode);
-  const toggleParagraphMode = () => {
-    setParagraphMode(!isParagraphMode);
-    eventDispatcher.dispatch('toggle-paragraph-mode', { bookKey });
-    setIsDropdownOpen?.(false);
-  };
 
   const openFontLayoutMenu = () => {
     setIsDropdownOpen?.(false);
@@ -123,24 +115,9 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
     }
   };
 
-  const handleStartRSVP = () => {
-    setIsDropdownOpen?.(false);
-    eventDispatcher.dispatch('rsvp-start', { bookKey });
-  };
-
   const toggleAutoScroll = () => {
     setIsDropdownOpen?.(false);
     eventDispatcher.dispatch('autoscroll-toggle', { bookKey });
-  };
-
-  const handleShare = () => {
-    setIsDropdownOpen?.(false);
-    if (!bookData?.book) return;
-    const progress = getProgress(bookKey);
-    eventDispatcher.dispatch('show-share-dialog', {
-      book: bookData.book,
-      cfi: progress?.location ?? null,
-    });
   };
 
   useEffect(() => {
@@ -450,21 +427,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
 
       <hr aria-hidden='true' className='border-base-300 my-1' />
 
-      <MenuItem
-        label={_('Paragraph Mode')}
-        shortcut='Shift+P'
-        Icon={isParagraphMode ? MdCheck : undefined}
-        onClick={toggleParagraphMode}
-        disabled={bookData.isFixedLayout}
-      />
-
-      <MenuItem
-        label={_('Speed Reading Mode')}
-        shortcut='Shift+V'
-        onClick={handleStartRSVP}
-        disabled={bookData.isFixedLayout}
-      />
-
       <hr aria-hidden='true' className='border-base-300 my-1' />
 
       <MenuItem
@@ -534,8 +496,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
       />
 
       <hr aria-hidden='true' className='border-base-300 my-1' />
-
-      <MenuItem label={_('Share Book')} Icon={IoShareOutline} onClick={handleShare} />
     </Menu>
   );
 };

@@ -7,7 +7,7 @@ import { uniqueId } from '@/utils/misc';
 import { useParallelViewStore } from '@/store/parallelViewStore';
 import { navigateToReader } from '@/utils/nav';
 import { eventDispatcher } from '@/utils/event';
-import { consumePendingTTSAutoplay } from '@/utils/ttsAutoplay';
+
 import { useTranslation } from '@/hooks/useTranslation';
 
 const useBooksManager = () => {
@@ -88,23 +88,6 @@ const useBooksManager = () => {
   // wait. Caveat: unblockAudio (ttsMediaBridge) is gesture-gated on WebAudio, so
   // an Edge-engine autoplay may be a no-op if the launch is not treated as a
   // user gesture on Android WebView; native TTS is unaffected.
-  const startTTSWhenReady = (bookKey: string) => {
-    const ready = (state: ReturnType<typeof useReaderStore.getState>) => {
-      const vs = state.viewStates[bookKey];
-      return { done: !!vs?.error || (!!vs?.inited && !!vs?.view), ok: !!vs?.inited && !!vs?.view };
-    };
-    const initial = ready(useReaderStore.getState());
-    if (initial.done) {
-      if (initial.ok) eventDispatcher.dispatch('tts-speak', { bookKey });
-      return;
-    }
-    const unsub = useReaderStore.subscribe((state) => {
-      const { done, ok } = ready(state);
-      if (!done) return;
-      unsub();
-      if (ok) eventDispatcher.dispatch('tts-speak', { bookKey });
-    });
-  };
 
   // Open a book in-place when a widget/deep link targets a book while a reader
   // is already mounted. REPLACE the open book(s) with the target one (single
@@ -121,7 +104,7 @@ const useBooksManager = () => {
       // already mounted (the app relaunches straight into the reader), and
       // focusing it leaves bookKeys unchanged — the consumption effect below
       // never re-runs — so consume the pending request here too.
-      if (consumePendingTTSAutoplay(bookHash)) startTTSWhenReady(existing);
+
       return;
     }
     const newKey = `${bookHash}-${uniqueId()}`;
@@ -146,14 +129,6 @@ const useBooksManager = () => {
 
   // Consume an Android Auto cold-resume autoplay request once its book is in the
   // open set (covers both the in-place open and cold-navigate paths).
-  useEffect(() => {
-    for (const key of bookKeys) {
-      if (consumePendingTTSAutoplay(key.split('-')[0]!)) {
-        startTTSWhenReady(key);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookKeys]);
 
   // Close a book and sync with bookKeys and URL
   const dismissBook = (bookKey: string) => {

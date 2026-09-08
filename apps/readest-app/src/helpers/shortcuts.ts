@@ -43,54 +43,9 @@ const DEFAULT_SHORTCUTS = {
     description: _('Toggle Bookmark'),
     section: 'General',
   },
-  onToggleTTS: {
-    keys: ['t'],
-    description: _('Toggle Text to Speech'),
-    section: 'Text to Speech',
-  },
-  onTTSPlayPause: {
-    keys: [' '],
-    description: _('Play / Pause TTS'),
-    section: '',
-  },
-  onTTSGoNextSentence: {
-    keys: ['ctrl+]', 'cmd+]'],
-    description: _('Next Sentence'),
-    section: 'Text to Speech',
-  },
-  onTTSGoPreviousSentence: {
-    keys: ['ctrl+[', 'cmd+['],
-    description: _('Previous Sentence'),
-    section: 'Text to Speech',
-  },
-  onTTSGoNextParagraph: {
-    keys: ['ctrl+shift+}', 'cmd+shift+}'],
-    description: _('Next Paragraph'),
-    section: 'Text to Speech',
-  },
-  onTTSGoPreviousParagraph: {
-    keys: ['ctrl+shift+{', 'cmd+shift+{'],
-    description: _('Previous Paragraph'),
-    section: 'Text to Speech',
-  },
-  onTTSHighlightSentence: {
-    keys: ['shift+m'],
-    description: _('Highlight Current Sentence'),
-    section: 'Text to Speech',
-  },
-  onToggleParagraphMode: {
-    keys: ['shift+p'],
-    description: _('Toggle Paragraph Mode'),
-    section: 'General',
-  },
   onToggleAutoScroll: {
     keys: ['shift+a'],
     description: _('Toggle Auto Scroll'),
-    section: 'General',
-  },
-  onStartRSVP: {
-    keys: ['shift+v'],
-    description: _('Speed Reading Mode'),
     section: 'General',
   },
   onToggleToolbar: {
@@ -121,28 +76,6 @@ const DEFAULT_SHORTCUTS = {
   onCopySelection: {
     keys: ['ctrl+c', 'cmd+c'],
     description: _('Copy Selection'),
-    section: 'Selection',
-  },
-  onTranslateSelection: {
-    keys: ['ctrl+t', 'cmd+t'],
-    description: _('Translate Selection'),
-    section: 'Selection',
-  },
-  onDictionarySelection: {
-    keys: ['ctrl+d', 'cmd+d'],
-    description: _('Dictionary Lookup'),
-    section: 'Selection',
-  },
-  onReadAloudSelection: {
-    keys: ['ctrl+r', 'cmd+r'],
-    description: _('Read Aloud Selection'),
-    section: 'Selection',
-  },
-  onProofreadSelection: {
-    // alt+p is a print-free alternative on Windows/Linux, where ctrl+p is
-    // intercepted by the browser's print dialog (#4717).
-    keys: ['ctrl+p', 'cmd+p', 'alt+p'],
-    description: _('Proofread Selection'),
     section: 'Selection',
   },
   onAdjustTextSelection: {
@@ -304,7 +237,6 @@ export type ShortcutConfig = {
 export const SHORTCUT_SECTIONS = [
   _('General'),
   _('Navigation'),
-  _('Text to Speech'),
   _('Selection'),
   _('Zoom'),
   _('Window'),

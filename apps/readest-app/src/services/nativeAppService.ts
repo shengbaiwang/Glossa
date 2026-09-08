@@ -49,8 +49,8 @@ import { copyFiles } from '@/utils/files';
 import { detectViewTransitionGroup, detectViewTransitionsAPI } from '@/utils/viewTransition';
 
 import { BaseAppService } from './appService';
-import { isGlossaEnabled } from '@/glossa/featureFlag';
-import { getGlossaRuntimeSafetyError } from '@/glossa/runtime';
+
+import { getGlossaRuntimeSafetyError } from '@/services/glossaRuntime';
 import { DatabaseOpts, DatabaseService } from '@/types/database';
 import { SchemaType } from '@/services/database/migrate';
 import {
@@ -75,12 +75,12 @@ const OS_TYPE = osType();
 const assertSafeGlossaRuntime = async (): Promise<void> => {
   const expectedIdentifier = process.env['NEXT_PUBLIC_GLOSSA_RUNTIME_ID'];
   const initialError = getGlossaRuntimeSafetyError({
-    enabled: isGlossaEnabled(),
+    enabled: Boolean(expectedIdentifier),
     expectedIdentifier,
     portable: Boolean(process.env['NEXT_PUBLIC_PORTABLE_APP']),
   });
   if (initialError) throw new Error(initialError);
-  if (!isGlossaEnabled()) return;
+  if (!expectedIdentifier) return;
 
   const actualIdentifier = await invoke<string>('get_app_identifier');
   const identifierError = getGlossaRuntimeSafetyError({

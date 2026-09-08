@@ -1,0 +1,27 @@
+{
+  "productName": "Glossa",
+  "mainBinaryName": "glossa",
+  "identifier": "app.glossa.reader",
+  "build": {
+    "beforeBuildCommand": "pnpm --pm-on-fail=ignore exec dotenv -e .env.tauri -- next build --webpack"
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "icon": [
+      "icons/glossa/32x32.png",
+      "icons/glossa/128x128.png",
+      "icons/glossa/128x128@2x.png",
+      "icons/glossa/icon.icns",
+      "icons/glossa/icon.ico"
+    ],
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["glossa"]
+      }
+    }
+  }
+}

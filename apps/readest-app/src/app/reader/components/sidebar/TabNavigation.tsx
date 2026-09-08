@@ -7,7 +7,6 @@ import { LuMessageSquare } from 'react-icons/lu';
 
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useSettingsStore } from '@/store/settingsStore';
 
 const TabNavigation: React.FC<{
   activeTab: string;
@@ -15,13 +14,11 @@ const TabNavigation: React.FC<{
 }> = ({ activeTab, onTabChange }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
-  const { settings } = useSettingsStore();
-  const aiEnabled = settings?.aiSettings?.enabled ?? false;
 
   const forceMobileLayout =
     !!appService?.isMobile && window.innerWidth >= 640 && window.innerWidth <= window.innerHeight;
   const isMobile = forceMobileLayout || window.innerWidth < 640 || window.innerHeight < 640;
-  const tabs = ['toc', 'annotations', 'bookmarks', ...(aiEnabled ? ['history'] : [])];
+  const tabs = ['toc', 'annotations', 'bookmarks'];
 
   const getTabLabel = (tab: string) => {
     switch (tab) {

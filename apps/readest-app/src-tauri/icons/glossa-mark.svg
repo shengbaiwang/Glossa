@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Glossa logo mark</title>
+  <desc id="desc">Two primary text lines with a short interlinear gloss between them.</desc>
+  <!-- Start from Apple’s 1024 px, eight-cell positioning grid, then apply a
+       centered 15/16 optical reduction for the legacy ICNS Dock rendering. -->
+  <g transform="translate(32 32) scale(0.9375)">
+    <rect x="128" y="128" width="768" height="768" rx="176" fill="#fff"/>
+    <g transform="translate(118.8 115.9) scale(0.6267)" fill="currentColor" style="color:#000">
+      <rect x="219" y="466" width="777" height="48" rx="24"/>
+      <rect x="315" y="608" width="324" height="48" rx="24"/>
+      <rect x="291" y="750" width="745" height="48" rx="24"/>
+    </g>
+  </g>
+</svg>

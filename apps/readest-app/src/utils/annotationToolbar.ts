@@ -1,14 +1,4 @@
 import type { AnnotationToolType } from '@/types/annotator';
-import { BookFormat, FIXED_LAYOUT_FORMATS } from '@/types/book';
-
-// Proofread rewrites the rendered text through the content transformers, which
-// every reflowable format runs (Markdown wires the same pipeline in utils/md.ts
-// without an EPUB conversion). Only the fixed-layout formats are out: they
-// render pages, not text. The toolbar button used to require EPUB, the sole
-// format the feature shipped for (#2725).
-export const supportsProofread = (format: BookFormat | undefined): boolean =>
-  !!format && !FIXED_LAYOUT_FORMATS.has(format);
-
 // Canonical order of every annotation tool. Kept in sync with
 // `annotationToolButtons` in AnnotationTools.tsx (asserted by a unit test).
 export const ALL_ANNOTATION_TOOL_TYPES: AnnotationToolType[] = [
@@ -17,26 +7,14 @@ export const ALL_ANNOTATION_TOOL_TYPES: AnnotationToolType[] = [
   'highlight',
   'annotate',
   'search',
-  'dictionary',
-  'translate',
-  'tts',
-  'proofread',
-  'share',
 ];
 
-// Default toolbar: the eight pre-existing tools in their original order.
-// 'share' starts hidden in the Available tray per the #4014 design, and
-// 'copylink' is opt-in the same way (#5452) — a niche action most readers
-// never need, reachable by adding it in Customize Toolbar.
+// Basic reading actions; copying a location link is opt-in.
 export const DEFAULT_ANNOTATION_TOOLBAR_ITEMS: AnnotationToolType[] = [
   'copy',
   'highlight',
   'annotate',
   'search',
-  'dictionary',
-  'translate',
-  'tts',
-  'proofread',
 ];
 
 // Drop unknown/duplicate entries; fall back to the default when unset (a
@@ -57,18 +35,14 @@ const sanitize = (items: AnnotationToolType[] | undefined): AnnotationToolType[]
 // Visible tools to render in the live selection toolbar, in order.
 export const getToolbarToolTypes = (
   items: AnnotationToolType[] | undefined,
-  canShare: boolean,
-): AnnotationToolType[] => sanitize(items).filter((type) => canShare || type !== 'share');
+): AnnotationToolType[] => sanitize(items);
 
 // Hidden tools (the "Available" tray), in canonical order.
 export const getAvailableToolTypes = (
   items: AnnotationToolType[] | undefined,
-  canShare: boolean,
 ): AnnotationToolType[] => {
   const visible = new Set(sanitize(items));
-  return ALL_ANNOTATION_TOOL_TYPES.filter(
-    (type) => !visible.has(type) && (canShare || type !== 'share'),
-  );
+  return ALL_ANNOTATION_TOOL_TYPES.filter((type) => !visible.has(type));
 };
 
 // Add `type` to the visible list at `atIndex` (default: end). No-op if present.
@@ -103,3 +77,7 @@ export const reorderToolbar = (
   next.splice(to, 0, spliced[0]!);
   return next;
 };
+
+// Old per-book and synced preferences may still contain removed actions.
+export const getReadingQuickAction = (action: AnnotationToolType | null | undefined) =>
+  action === 'copy' || action === 'highlight' || action === 'search' ? action : null;
