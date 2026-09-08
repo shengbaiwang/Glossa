@@ -188,7 +188,7 @@ const OneDriveForm: React.FC = () => {
       </div>
       <Tips>
         <li>{_('Sign-in opens in your browser.')}</li>
-        <li>{_('Readest only accesses the files it creates in your OneDrive.')}</li>
+        <li>{_('Glossa only accesses the files it creates in your OneDrive.')}</li>
       </Tips>
     </div>
   );

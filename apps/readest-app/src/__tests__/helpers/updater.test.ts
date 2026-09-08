@@ -53,7 +53,11 @@ vi.mock('@/utils/version', async () => {
   };
 });
 
+let mockUpdaterEnabled = true;
 vi.mock('@/services/constants', () => ({
+  get GLOSSA_UPDATER_ENABLED() {
+    return mockUpdaterEnabled;
+  },
   CHECK_UPDATE_INTERVAL_SEC: 86400,
   READEST_UPDATER_FILE: 'https://example.com/latest.json',
   READEST_CHANGELOG_FILE: 'https://example.com/release-notes.json',
@@ -77,6 +81,7 @@ import {
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  mockUpdaterEnabled = true;
   mockIsTauriAppPlatform = false;
   mockAppVersion = '1.0.0';
   MockWebviewWindowLastArgs.length = 0;
@@ -553,5 +558,37 @@ describe('resolveNightlyUpdate — harness scenarios', () => {
       mkFetch(buildNightlyManifest(), buildStableManifest()) as never,
     );
     expect(r).toBeNull();
+  });
+});
+
+describe('Glossa has no configured update service', () => {
+  beforeEach(() => {
+    mockUpdaterEnabled = false;
+  });
+
+  test.each([
+    'stable',
+    'nightly',
+  ] as const)('never checks %s updates, even manually', async (channel) => {
+    mockOsType.mockReturnValue('macos');
+    mockCheck.mockResolvedValue({ version: '99.0.0' });
+    expect(await checkForAppUpdates(dummyTranslate, false, channel)).toBe(false);
+    expect(mockCheck).not.toHaveBeenCalled();
+    expect(mockTauriFetch).not.toHaveBeenCalled();
+    expect(localStorage.getItem('lastAppUpdateCheck')).toBeNull();
+  });
+
+  test('never fetches upstream release notes', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await checkAppReleaseNotes(false)).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mockSetUpdaterWindowVisible).not.toHaveBeenCalled();
+  });
+
+  test('never resolves a directly requested upstream nightly', async () => {
+    const fetchMock = vi.fn();
+    expect(await resolveNightlyUpdate('1.0.0', 'darwin-aarch64', fetchMock)).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

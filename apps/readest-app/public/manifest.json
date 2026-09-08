@@ -1,25 +1,16 @@
 {
-  "name": "Readest",
-  "short_name": "Readest",
+  "name": "Glossa",
+  "short_name": "Glossa",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "description": "Readest is an open-source eBook reader supporting EPUB, PDF, and sync across devices.",
+  "description": "Glossa is an open-source eBook reader supporting EPUB, PDF, and sync across devices.",
   "icons": [
     {
-      "src": "/icon.png",
+      "src": "/glossa-icon.png",
       "type": "image/png",
-      "sizes": "192x192"
-    },
-    {
-      "src": "/icon.png",
-      "type": "image/png",
-      "sizes": "256x256"
-    },
-    {
-      "src": "/icon.png",
-      "type": "image/png",
-      "sizes": "512x512"
+      "sizes": "512x512",
+      "purpose": "any"
     }
   ],
   "splash_pages": null

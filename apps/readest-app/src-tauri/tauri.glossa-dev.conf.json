@@ -8,7 +8,12 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["glossa-dev"]
+        "schemes": [
+          "glossa-dev",
+          "readest-onedrive",
+          "com.googleusercontent.apps.209390247301-ctpmep68ppfa56r1b8tr35e4qi4p60kq",
+          "readest"
+        ]
       }
     }
   }

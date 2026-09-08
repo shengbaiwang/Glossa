@@ -38,10 +38,11 @@ pub fn setup_macos_menu(app: &AppHandle) -> tauri::Result<()> {
 
     global_menu.append(
         &SubmenuBuilder::new(app, "Help")
-            .text("privacy_policy", "Privacy Policy")
+            .text("privacy_policy", "Readest Cloud Privacy Policy")
             .separator()
             .text("report_issue", "Report An Issue...")
-            .text("readest_help", "Readest Help")
+            .text("glossa_help", "Glossa Help")
+            .text("glossa_source", "Glossa Source Code & License")
             .build()?,
     )?;
 
@@ -59,9 +60,17 @@ pub fn handle_menu_event(app: &AppHandle, event: &MenuEvent) {
     } else if event.id() == "privacy_policy" {
         let _ = opener.open_url("https://readest.com/privacy-policy", None::<&str>);
     } else if event.id() == "report_issue" {
-        let _ = opener.open_url("https://github.com/readest/readest/issues", None::<&str>);
-    } else if event.id() == "readest_help" {
-        let _ = opener.open_url("https://readest.com/support", None::<&str>);
+        let _ = opener.open_url(
+            "https://github.com/shengbaiwang/Glossa/issues",
+            None::<&str>,
+        );
+    } else if event.id() == "glossa_source" {
+        let _ = opener.open_url("https://github.com/shengbaiwang/Glossa", None::<&str>);
+    } else if event.id() == "glossa_help" {
+        let _ = opener.open_url(
+            "https://github.com/shengbaiwang/Glossa#readme",
+            None::<&str>,
+        );
     }
 }
 

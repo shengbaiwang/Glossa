@@ -96,6 +96,7 @@ import {
 } from './utils/libraryUtils';
 import Spinner from '@/components/Spinner';
 import LibraryHeader from './components/LibraryHeader';
+import LibraryNavigation from './components/LibraryNavigation';
 import Bookshelf from './components/Bookshelf';
 import LibraryEmptyState from './components/LibraryEmptyState';
 import ImportMenuPopup from './components/ImportMenuPopup';
@@ -233,6 +234,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // remount, which used to flash a placeholder before `initLibrary` finished.
   const [libraryLoaded, setLibraryLoaded] = useState(() => libraryBooks.length > 0);
   const [isSelectMode, setIsSelectMode] = useState(false);
+  const [isLibrarySidebarVisible, setIsLibrarySidebarVisible] = useState(true);
   const [isSelectAll, setIsSelectAll] = useState(false);
   const [isSelectNone, setIsSelectNone] = useState(false);
   const [librarySearchQuery, setLibrarySearchQuery] = useState(searchParams?.get('q') ?? '');
@@ -1353,7 +1355,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         type: 'warning',
         timeout: 6000,
         message: _(
-          'iOS doesn\'t allow importing the "On My iPhone" root. Open it and pick a specific subfolder (e.g. Readest, Downloads), then try again.',
+          'iOS doesn\'t allow importing the "On My iPhone" root. Open it and pick a specific subfolder (e.g. Glossa, Downloads), then try again.',
         ),
       });
       return false;
@@ -1749,14 +1751,11 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         aria-label={_('Library Header')}
       >
         <LibraryHeader
+          isSidebarVisible={isLibrarySidebarVisible}
+          onToggleSidebar={() => setIsLibrarySidebarVisible((visible) => !visible)}
           isSelectMode={isSelectMode}
           isSelectAll={isSelectAll}
           onPullLibrary={pullLibrary}
-          onImportBooksFromFiles={handleImportBooksFromFiles}
-          onImportBooksFromDirectory={
-            appService?.canReadExternalDir ? handleImportBooksFromDirectory : undefined
-          }
-          onImportBookFromUrl={isTauriAppPlatform() ? () => setShowImportFromUrl(true) : undefined}
           onToggleSelectMode={() => handleSetSelectMode(!isSelectMode)}
           onSelectAll={handleSelectAll}
           onDeselectAll={handleDeselectAll}
@@ -1793,123 +1792,133 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           <Spinner loading />
         </div>
       )}
-      {librarySearchTarget === 'text' &&
-        !librarySearchQuery.trim() &&
-        librarySearchHistory.length > 0 && (
-          <div className='relative my-1 flex shrink-0 items-center px-4 sm:px-6'>
-            <div className='no-scrollbar not-eink:[mask-image:linear-gradient(to_right,transparent,black_12px,black_calc(100%_-_12px),transparent)] flex flex-1 gap-1.5 overflow-x-auto'>
-              {librarySearchHistory.map((term) => (
-                <button
-                  key={term}
-                  type='button'
-                  onClick={() => handleSearchQueryApply(term)}
-                  className='bg-base-300/45 hover:bg-base-300/70 text-base-content/70 max-w-[60%] flex-shrink-0 whitespace-nowrap rounded-full px-3 py-0.5 text-xs'
-                >
-                  <p className='truncate'>{term}</p>
-                </button>
-              ))}
-            </div>
-            <button
-              type='button'
-              onClick={() => {
-                clearLibrarySearchHistory();
-                setLibrarySearchHistory([]);
-              }}
-              title={_('Clear search history')}
-              aria-label={_('Clear search history')}
-              className='text-base-content/50 hover:text-base-content/80 flex h-6 w-8 shrink-0 items-center justify-center'
-            >
-              <X className='h-4 w-4' />
-            </button>
-          </div>
+      <div className='glossa-library-workspace'>
+        {isLibrarySidebarVisible && (
+          <LibraryNavigation onNavigate={() => handleSetSelectMode(false)} />
         )}
-      {currentGroupPath && (
-        <div
-          className={`transition-all duration-300 ease-in-out ${
-            currentGroupPath ? 'opacity-100' : 'max-h-0 opacity-0'
-          }`}
-        >
-          <div className='flex flex-wrap items-center gap-y-1 px-4 text-base'>
-            <button
-              onClick={() => handleNavigateToPath(undefined)}
-              className='hover:bg-base-300 text-base-content/85 rounded px-2 py-1'
-            >
-              {_('All')}
-            </button>
-            {getBreadcrumbs(currentGroupPath).map((crumb, index, array) => {
-              const isLast = index === array.length - 1;
-              return (
-                <React.Fragment key={index}>
-                  <ChevronRight size={iconSize} className='text-neutral-content rtl:rotate-180' />
-                  {isLast ? (
-                    <span className='truncate rounded px-2 py-1'>{crumb.name}</span>
-                  ) : (
+        <div className='glossa-library-content'>
+          {librarySearchTarget === 'text' &&
+            !librarySearchQuery.trim() &&
+            librarySearchHistory.length > 0 && (
+              <div className='relative my-1 flex shrink-0 items-center px-4 sm:px-6'>
+                <div className='no-scrollbar not-eink:[mask-image:linear-gradient(to_right,transparent,black_12px,black_calc(100%_-_12px),transparent)] flex flex-1 gap-1.5 overflow-x-auto'>
+                  {librarySearchHistory.map((term) => (
                     <button
-                      onClick={() => handleNavigateToPath(crumb.path)}
-                      className='hover:bg-base-300 text-base-content/85 truncate rounded px-2 py-1'
+                      key={term}
+                      type='button'
+                      onClick={() => handleSearchQueryApply(term)}
+                      className='bg-base-300/45 hover:bg-base-300/70 text-base-content/70 max-w-[60%] flex-shrink-0 whitespace-nowrap rounded-full px-3 py-0.5 text-xs'
                     >
-                      {crumb.name}
+                      <p className='truncate'>{term}</p>
                     </button>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      {currentVirtualGroup && (
-        <GroupHeader
-          groupBy={currentVirtualGroup.groupBy}
-          groupName={currentVirtualGroup.groupName}
-        />
-      )}
-      {showBookshelf &&
-        (libraryBooks.some((book) => !book.deletedAt) ? (
-          <div aria-label={_('Your Bookshelf')} className='flex min-h-0 flex-grow flex-col'>
+                  ))}
+                </div>
+                <button
+                  type='button'
+                  onClick={() => {
+                    clearLibrarySearchHistory();
+                    setLibrarySearchHistory([]);
+                  }}
+                  title={_('Clear search history')}
+                  aria-label={_('Clear search history')}
+                  className='text-base-content/50 hover:text-base-content/80 flex h-6 w-8 shrink-0 items-center justify-center'
+                >
+                  <X className='h-4 w-4' />
+                </button>
+              </div>
+            )}
+          {currentGroupPath && (
             <div
-              ref={containerRef}
-              className={clsx(
-                'scroll-container drop-zone flex min-h-0 flex-grow flex-col',
-                isDragging && 'drag-over',
-              )}
-              style={{
-                paddingRight: `${insets.right}px`,
-                paddingLeft: `${insets.left}px`,
-              }}
+              className={`transition-all duration-300 ease-in-out ${
+                currentGroupPath ? 'opacity-100' : 'max-h-0 opacity-0'
+              }`}
             >
-              <DropIndicator />
-              <Bookshelf
-                libraryBooks={libraryBooks}
-                isSelectMode={isSelectMode}
-                isSelectAll={isSelectAll}
-                isSelectNone={isSelectNone}
-                onScrollerRef={handleScrollerRef}
-                handleImportBooks={setImportMenuAnchor}
-                handleBookUpload={handleBookUpload}
-                handleBookDownload={handleBookDownload}
-                handleBookDelete={handleBookDelete('both')}
-                handleBookPurge={handleBookDelete('purge')}
-                handleSetSelectMode={handleSetSelectMode}
-                handleShowDetailsBook={handleShowDetailsBook}
-                handleLibraryNavigation={handleLibraryNavigation}
-                booksTransferProgress={booksTransferProgress}
-                handlePushLibrary={pushLibrary}
-                onSearchContents={() => handleSearchTargetChange('text')}
-                onSearchProgress={setLibrarySearchProgress}
-                contentSearch={
-                  librarySearchTarget === 'text'
-                    ? { query: searchParams?.get('q') ?? '', config: librarySearchConfig }
-                    : null
-                }
-              />
+              <div className='flex flex-wrap items-center gap-y-1 px-4 text-base'>
+                <button
+                  onClick={() => handleNavigateToPath(undefined)}
+                  className='hover:bg-base-300 text-base-content/85 rounded px-2 py-1'
+                >
+                  {_('All')}
+                </button>
+                {getBreadcrumbs(currentGroupPath).map((crumb, index, array) => {
+                  const isLast = index === array.length - 1;
+                  return (
+                    <React.Fragment key={index}>
+                      <ChevronRight
+                        size={iconSize}
+                        className='text-neutral-content rtl:rotate-180'
+                      />
+                      {isLast ? (
+                        <span className='truncate rounded px-2 py-1'>{crumb.name}</span>
+                      ) : (
+                        <button
+                          onClick={() => handleNavigateToPath(crumb.path)}
+                          className='hover:bg-base-300 text-base-content/85 truncate rounded px-2 py-1'
+                        >
+                          {crumb.name}
+                        </button>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className='hero drop-zone h-screen items-center justify-center'>
-            <DropIndicator />
-            <LibraryEmptyState onImport={setImportMenuAnchor} />
-          </div>
-        ))}
+          )}
+          {currentVirtualGroup && (
+            <GroupHeader
+              groupBy={currentVirtualGroup.groupBy}
+              groupName={currentVirtualGroup.groupName}
+            />
+          )}
+          {showBookshelf &&
+            (libraryBooks.some((book) => !book.deletedAt) ? (
+              <div aria-label={_('Your Bookshelf')} className='flex min-h-0 flex-grow flex-col'>
+                <div
+                  ref={containerRef}
+                  className={clsx(
+                    'scroll-container drop-zone flex min-h-0 flex-grow flex-col',
+                    isDragging && 'drag-over',
+                  )}
+                  style={{
+                    paddingRight: `${insets.right}px`,
+                    paddingLeft: `${insets.left}px`,
+                  }}
+                >
+                  <DropIndicator />
+                  <Bookshelf
+                    libraryBooks={libraryBooks}
+                    isSelectMode={isSelectMode}
+                    isSelectAll={isSelectAll}
+                    isSelectNone={isSelectNone}
+                    onScrollerRef={handleScrollerRef}
+                    handleImportBooks={setImportMenuAnchor}
+                    handleBookUpload={handleBookUpload}
+                    handleBookDownload={handleBookDownload}
+                    handleBookDelete={handleBookDelete('both')}
+                    handleBookPurge={handleBookDelete('purge')}
+                    handleSetSelectMode={handleSetSelectMode}
+                    handleShowDetailsBook={handleShowDetailsBook}
+                    handleLibraryNavigation={handleLibraryNavigation}
+                    booksTransferProgress={booksTransferProgress}
+                    handlePushLibrary={pushLibrary}
+                    onSearchContents={() => handleSearchTargetChange('text')}
+                    onSearchProgress={setLibrarySearchProgress}
+                    contentSearch={
+                      librarySearchTarget === 'text'
+                        ? { query: searchParams?.get('q') ?? '', config: librarySearchConfig }
+                        : null
+                    }
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className='hero drop-zone h-screen items-center justify-center'>
+                <DropIndicator />
+                <LibraryEmptyState onImport={setImportMenuAnchor} />
+              </div>
+            ))}
+        </div>
+      </div>
       {importMenuAnchor && (
         <ImportMenuPopup
           anchor={importMenuAnchor}

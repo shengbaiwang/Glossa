@@ -17,7 +17,7 @@
       </dict>
     </dict>
     <key>NSFaceIDUsageDescription</key>
-    <string>Readest uses Face ID to unlock the app.</string>
+    <string>Glossa uses Face ID to unlock the app.</string>
     <key>LSSupportsOpeningDocumentsInPlace</key>
     <false/>
     <key>UIViewControllerBasedStatusBarAppearance</key>

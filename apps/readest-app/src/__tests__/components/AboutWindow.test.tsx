@@ -55,7 +55,9 @@ vi.mock('next/image', () => ({
 vi.mock('@/components/SupportLinks', () => ({ default: () => null }));
 vi.mock('@/components/LegalLinks', () => ({ default: () => null }));
 vi.mock('@/components/Link', () => ({
-  default: ({ children }: { children: ReactNode }) => <span>{children}</span>,
+  default: ({ children, href }: { children: ReactNode; href: string }) => (
+    <a href={href}>{children}</a>
+  ),
 }));
 vi.mock('@/components/Dialog', () => ({
   default: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -122,5 +124,34 @@ describe('AboutWindow version label', () => {
 
     expect(label.tagName).toBe('BUTTON');
     expect(label.getAttribute('title')).toBe('Copy');
+  });
+
+  it('identifies Glossa and offers its own source and releases', async () => {
+    await openDialog();
+
+    expect(screen.getByRole('heading', { name: 'Glossa' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Glossa source code' }).getAttribute('href')).toBe(
+      'https://github.com/shengbaiwang/Glossa',
+    );
+    expect(screen.getByRole('link', { name: 'Glossa releases' }).getAttribute('href')).toBe(
+      'https://github.com/shengbaiwang/Glossa/releases',
+    );
+    expect(screen.queryByRole('button', { name: 'Check Update' })).toBeNull();
+  });
+
+  it('keeps upstream credit, warranty notice, and the complete license available offline', async () => {
+    await openDialog();
+
+    expect(screen.getByText('Based on Readest v0.12.1')).toBeTruthy();
+    expect(screen.getByText('© 2026 Bilingify LLC. All rights reserved.')).toBeTruthy();
+    expect(screen.getByText('Modified for Glossa on 2026-09-09')).toBeTruthy();
+    expect(screen.getByText(/No warranty is provided/)).toBeTruthy();
+    const licenses = screen.getByText('Open source licenses').closest('details');
+    expect(licenses).toBeTruthy();
+    fireEvent.click(screen.getByText('Open source licenses'));
+    expect(licenses?.textContent).toContain('GNU AFFERO GENERAL PUBLIC LICENSE');
+    expect(licenses?.textContent).toContain('13. Remote Network Interaction');
+    expect(licenses?.textContent).toContain('END OF TERMS AND CONDITIONS');
+    expect(licenses?.textContent).toContain('foliate-js');
   });
 });

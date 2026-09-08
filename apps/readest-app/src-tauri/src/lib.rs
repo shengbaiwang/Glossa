@@ -487,7 +487,6 @@ pub fn run() {
                 app.emit("single-instance", SingleInstancePayload { args: argv, cwd })
                     .unwrap();
             })
-            .dbus_id("com.bilingify.readest".to_owned())
             .build(),
     );
 
@@ -691,7 +690,7 @@ pub fn run() {
             let win_builder = win_builder
                 .decorations(true)
                 .title_bar_style(TitleBarStyle::Overlay)
-                .title("Readest");
+                .title(app.config().product_name.as_deref().unwrap_or("Glossa"));
 
             #[cfg(all(not(target_os = "macos"), desktop))]
             let win_builder = {
@@ -699,7 +698,7 @@ pub fn run() {
                     .decorations(false)
                     .visible(false)
                     .shadow(true)
-                    .title("Readest");
+                    .title(app.config().product_name.as_deref().unwrap_or("Glossa"));
 
                 #[cfg(target_os = "windows")]
                 {

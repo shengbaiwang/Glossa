@@ -3,36 +3,27 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { IoAlertCircleOutline, IoBookOutline, IoOpenOutline } from 'react-icons/io5';
-import { DOWNLOAD_READEST_URL, READEST_WEB_BASE_URL } from '@/services/constants';
+import { GLOSSA_DOWNLOAD_URL, GLOSSA_SOURCE_URL } from '@/services/constants';
 import { useTranslation } from '@/hooks/useTranslation';
 import { buildAnnotationAppUrl } from '@/utils/deeplink';
 import { BrandHeader } from '@/components/landing/BrandHeader';
 import { Card } from '@/components/landing/Card';
 import { PageFooter } from '@/components/landing/PageFooter';
 
-type Platform = 'android-chromium' | 'android-other' | 'ios' | 'desktop' | 'unknown';
+type Platform = 'android' | 'ios' | 'desktop' | 'unknown';
 
 const detectPlatform = (): Platform => {
   if (typeof navigator === 'undefined') return 'unknown';
   const ua = navigator.userAgent;
   const isAndroid = /Android/i.test(ua);
   const isIOS = /iPad|iPhone|iPod/.test(ua) && !('MSStream' in window);
-  if (isAndroid) {
-    const isChromium = /Chrome|CriOS|EdgA|Brave/i.test(ua) && !/Firefox|FxiOS/i.test(ua);
-    return isChromium ? 'android-chromium' : 'android-other';
-  }
+  if (isAndroid) return 'android';
   if (isIOS) return 'ios';
   return 'desktop';
 };
 
-const ANDROID_PACKAGE = 'com.bilingify.readest';
 const FALLBACK_TIMEOUT_MS = 1500;
 const DESKTOP_FALLBACK_DELAY_MS = 1000;
-
-const buildIntentUrl = (path: string, fallbackUrl: string) => {
-  const cleanPath = path.replace(/^\//, '');
-  return `intent://${cleanPath}#Intent;scheme=readest;package=${ANDROID_PACKAGE};S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};end`;
-};
 
 const buildWebReaderUrl = (bookHash: string, cfi: string | null): string => {
   const query = cfi ? `?${new URLSearchParams({ cfi }).toString()}` : '';
@@ -66,15 +57,8 @@ const OpenAnnotationLanding = () => {
     const platform = detectPlatform();
     const appUrl = buildAnnotationAppUrl({ bookHash, noteId, cfi: cfi ?? undefined });
     const webReaderUrl = buildWebReaderUrl(bookHash, cfi);
-    const path = `book/${bookHash}/annotation/${noteId}${cfi ? `?cfi=${encodeURIComponent(cfi)}` : ''}`;
-
-    if (platform === 'android-chromium') {
-      const absoluteFallback = `${READEST_WEB_BASE_URL}${webReaderUrl}`;
-      window.location.replace(buildIntentUrl(path, absoluteFallback));
-      return;
-    }
-
-    if (platform === 'android-other') {
+    if (platform === 'android') {
+      // Use Glossa's own scheme without targeting the upstream Android package.
       let cancelled = false;
       const onVisibility = () => {
         if (document.visibilityState === 'hidden') cancelled = true;
@@ -129,8 +113,8 @@ const OpenAnnotationLanding = () => {
                 'The annotation link is missing required information. The original link may have been truncated.',
               )}
             </p>
-            <a href='https://readest.com' className='btn btn-ghost btn-block mt-6' rel='noopener'>
-              {_('Go to Readest')}
+            <a href={GLOSSA_SOURCE_URL} className='btn btn-ghost btn-block mt-6' rel='noopener'>
+              {_('Go to Glossa')}
             </a>
           </div>
         </Card>
@@ -146,17 +130,17 @@ const OpenAnnotationLanding = () => {
     <main className='bg-base-200 flex min-h-dvh flex-col items-center justify-center p-4 sm:p-8'>
       <Card>
         <BrandHeader
-          title={_('Open in Readest')}
+          title={_('Open in Glossa')}
           subtitle={
             showManualOpen
-              ? _("If Readest didn't open automatically, choose an option below:")
+              ? _("If Glossa didn't open automatically, choose an option below:")
               : _('Continue reading where you left off.')
           }
-          alt={_('Readest logo')}
+          alt={_('Glossa logo')}
         />
 
         {/* Loading state — visible until the desktop timeout fires (or always
-            on Android-other while the auto-launch races the timeout). */}
+            on Android while the auto-launch races the timeout). */}
         {!showManualOpen && (
           <div
             className='mt-6 flex flex-col items-center gap-3 py-4'
@@ -164,7 +148,7 @@ const OpenAnnotationLanding = () => {
             aria-live='polite'
           >
             <span className='loading loading-dots loading-md text-primary' aria-hidden='true' />
-            <span className='text-base-content/70 text-sm'>{_('Opening Readest...')}</span>
+            <span className='text-base-content/70 text-sm'>{_('Opening Glossa...')}</span>
           </div>
         )}
 
@@ -177,16 +161,16 @@ const OpenAnnotationLanding = () => {
         >
           <a href={appUrl} className='btn btn-primary btn-block' rel='noopener'>
             <IoBookOutline className='h-5 w-5' aria-hidden='true' />
-            {_('Open in Readest app')}
+            {_('Open in Glossa app')}
           </a>
           <a href={webReaderHref} className='btn btn-ghost btn-block' rel='noopener'>
             <IoOpenOutline className='h-5 w-5' aria-hidden='true' />
             {_('Continue in browser')}
           </a>
           <p className='text-base-content/60 mt-3 text-center text-xs'>
-            {_("Don't have Readest?")}{' '}
+            {_("Don't have Glossa?")}{' '}
             <a
-              href={DOWNLOAD_READEST_URL}
+              href={GLOSSA_DOWNLOAD_URL}
               target='_blank'
               rel='noopener'
               className='text-primary font-medium hover:underline'

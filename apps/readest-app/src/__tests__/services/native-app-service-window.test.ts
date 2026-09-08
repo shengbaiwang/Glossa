@@ -93,3 +93,16 @@ describe('NativeAppService rounded-window capability', () => {
     expect(service.hasRoundedWindow).toBe(false);
   });
 });
+
+describe('Glossa updater capability', () => {
+  test.each([
+    'macos',
+    'windows',
+    'linux',
+    'android',
+    'ios',
+  ] as const)('%s does not offer unconfigured upstream updates', async (os) => {
+    const service = await loadServiceWithOS(os);
+    expect(service.hasUpdater).toBe(false);
+  });
+});

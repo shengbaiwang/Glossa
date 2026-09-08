@@ -38,6 +38,8 @@ import { stubTranslation as _ } from '@/utils/misc';
 
 import { DEFAULT_ANNOTATION_TOOLBAR_ITEMS } from '@/utils/annotationToolbar';
 
+// Existing local and cloud storage layout is part of the sync protocol.
+// Keep it stable when changing product branding to preserve users' libraries.
 export const DATA_SUBDIR = 'Readest';
 export const LOCAL_BOOKS_SUBDIR = `${DATA_SUBDIR}/Books`;
 export const CLOUD_BOOKS_SUBDIR = `${DATA_SUBDIR}/Books`;
@@ -874,7 +876,15 @@ export const CJK_FONTS_PATTENS = new RegExp(
 
 export const BOOK_IDS_SEPARATOR = '+';
 
-export const DOWNLOAD_READEST_URL = 'https://readest.com?utm_source=readest_web';
+export const GLOSSA_SOURCE_URL = 'https://github.com/shengbaiwang/Glossa';
+export const GLOSSA_DOWNLOAD_URL = `${GLOSSA_SOURCE_URL}/releases`;
+export const GLOSSA_ISSUES_URL = `${GLOSSA_SOURCE_URL}/issues`;
+
+// A Glossa-signed update service has not been configured. Never offer the
+// inherited Readest feeds as updates for this independently branded app.
+export const GLOSSA_UPDATER_ENABLED = false;
+
+export const DOWNLOAD_READEST_URL = GLOSSA_DOWNLOAD_URL;
 
 export const READEST_WEB_BASE_URL = 'https://web.readest.com';
 export const READEST_NODE_BASE_URL = 'https://node.readest.com';

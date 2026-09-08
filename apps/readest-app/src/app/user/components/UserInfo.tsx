@@ -34,6 +34,7 @@ const UserInfo: React.FC<UserInfoProps> = ({ avatarUrl, userFullName, userEmail,
       </div>
 
       <div className='flex-grow text-center md:text-left'>
+        <p className='text-base-content/60 mb-1 text-sm'>{_('Readest Cloud')}</p>
         <h2 className='text-base-content text-xl font-bold md:text-2xl'>{userFullName}</h2>
         <p className='text-base-content/60'>{userEmail}</p>
         <div className='mt-3'>

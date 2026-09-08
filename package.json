@@ -1,7 +1,7 @@
 {
-  "name": "@readest/monorepo",
+  "name": "@glossa/monorepo",
   "private": true,
-  "repository": "readest/readest",
+  "repository": "shengbaiwang/Glossa",
   "scripts": {
     "test": "pnpm --filter @readest/readest-app test",
     "test:lua": "pnpm --filter @readest/readest-app test:lua",
@@ -32,5 +32,6 @@
     "**/*.{js,jsx,ts,tsx,css,json}": [
       "biome format --write --no-errors-on-unmatched"
     ]
-  }
+  },
+  "license": "AGPL-3.0-or-later"
 }

@@ -1,0 +1,228 @@
+/* Desktop chrome uses the host UI font; book documents keep their own typography. */
+.glossa-library-workspace,
+.glossa-library-content {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.glossa-library-content {
+  flex-direction: column;
+}
+
+.glossa-library-navigation,
+.glossa-library-sidebar-toggle {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  html:is([data-page='library'], [data-page='reader']) body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  .glossa-library-header {
+    grid-template-columns: minmax(140px, 1fr) auto minmax(180px, 280px);
+    min-height: 54px;
+    gap: 20px;
+    padding: 9px 20px;
+    background: var(--glossa-wash);
+  }
+
+  .glossa-library-brand {
+    gap: 12px;
+    font-size: 14px;
+    letter-spacing: -0.2px;
+  }
+
+  .glossa-library-brand > svg {
+    display: none;
+  }
+
+  .glossa-library-sidebar-toggle {
+    display: inline-flex;
+  }
+
+  .glossa-library-search {
+    grid-column: 3;
+    grid-row: 1;
+    height: 32px;
+    border-radius: 7px;
+    background: var(--glossa-surface);
+  }
+
+  .glossa-library-search .glossa-icon-button {
+    width: 32px;
+    min-width: 32px;
+    height: 30px;
+    min-height: 30px;
+  }
+
+  .glossa-library-actions {
+    grid-column: 2;
+    grid-row: 1;
+    gap: 12px;
+  }
+
+  .glossa-library-actions .glossa-icon-button {
+    width: 32px;
+    height: 32px;
+    min-height: 32px;
+    border-radius: 6px;
+  }
+
+  .glossa-library-actions .glossa-button {
+    min-height: 32px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+  }
+
+  .glossa-library-navigation {
+    display: flex;
+    flex: 0 0 208px;
+    flex-direction: column;
+    gap: 3px;
+    padding: 22px 12px;
+    overflow-y: auto;
+    border-inline-end: 1px solid var(--glossa-border);
+    background: var(--glossa-wash);
+  }
+
+  .glossa-library-navigation h2 {
+    padding: 0 10px 7px;
+    color: var(--glossa-muted);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .glossa-library-navigation button {
+    display: flex;
+    min-height: 34px;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--glossa-ink);
+    text-align: start;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  .glossa-library-navigation button svg {
+    flex-shrink: 0;
+  }
+
+  .glossa-library-navigation button:hover {
+    background: var(--glossa-surface);
+  }
+
+  .glossa-library-navigation button[aria-current='page'] {
+    background: theme('colors.base-content / 0.09');
+    font-weight: 600;
+  }
+
+  .glossa-bookshelf {
+    --glossa-library-inset: 28px;
+  }
+
+  .glossa-library-heading {
+    padding-top: 28px;
+    padding-bottom: 24px;
+  }
+
+  .glossa-library-heading h1 {
+    font-size: 26px;
+    font-weight: 650;
+    letter-spacing: -0.6px;
+  }
+
+  .glossa-recent-heading h2,
+  .glossa-collection-heading h2 {
+    font-size: 15px;
+    letter-spacing: -0.2px;
+  }
+
+  .glossa-book-card.glossa-resume-card {
+    border-radius: 10px;
+    background: var(--glossa-surface);
+  }
+
+  .glossa-library-empty .glossa-empty-mark {
+    width: 58px;
+    height: 58px;
+    margin-bottom: 24px;
+  }
+
+  .glossa-library-empty h1 {
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.6px;
+  }
+
+  .glossa-library-empty p {
+    line-height: 1.6;
+  }
+
+  .glossa-reader-header,
+  .glossa-reader-header :is(.header-tools-start, .header-tools-end, .header-title),
+  .glossa-reader-panel-header {
+    background: var(--glossa-wash);
+  }
+
+  .glossa-reader-book-title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.1px;
+  }
+
+  .glossa-reader-toc-item {
+    border-inline-start: 2px solid transparent;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+
+  .glossa-reader-toc-item[aria-current='page'] {
+    border-inline-start-color: transparent;
+    background: theme('colors.base-content / 0.09');
+  }
+
+  .glossa-reader-tabs {
+    gap: 2px;
+    padding: 5px 8px;
+  }
+
+  .glossa-reader-tab {
+    min-height: 32px;
+    flex-direction: row;
+    gap: 5px;
+    padding-block: 5px;
+    border-radius: 6px;
+    font-size: 11px;
+  }
+
+  .glossa-reader-tab svg {
+    display: none;
+  }
+
+  .glossa-reader-tab[aria-pressed='true'] {
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
+  }
+
+  .glossa-reader-header .glossa-icon-button,
+  .glossa-reader-panel-header .glossa-icon-button {
+    border-radius: 6px;
+  }
+
+  [data-eink='true'] .glossa-library-navigation button[aria-current='page'],
+  [data-eink='true'] .glossa-reader-toc-item[aria-current='page'] {
+    border-color: var(--glossa-ink);
+    background: var(--glossa-surface);
+  }
+
+  [data-eink='true'] .glossa-reader-tab {
+    box-shadow: none;
+  }
+}

@@ -83,11 +83,6 @@
   gap: 4px;
 }
 
-.glossa-library-actions .glossa-import-button {
-  margin-inline-end: 8px;
-  white-space: nowrap;
-}
-
 .glossa-bookshelf {
   --glossa-library-inset: 36px;
 }
@@ -439,10 +434,6 @@
   .glossa-library-actions {
     grid-column: 2;
     grid-row: 1;
-  }
-
-  .glossa-import-button span {
-    display: none;
   }
 
   .glossa-library-heading {

@@ -8,6 +8,7 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
     constructor(label: string, options: Record<string, unknown>) {
       webviewWindowCtor(label, options);
     }
+    static getByLabel = vi.fn().mockResolvedValue(null);
     once() {}
     show() {}
   },
@@ -19,12 +20,13 @@ vi.mock('@tauri-apps/api/window', () => ({
 }));
 
 vi.mock('@/services/environment', () => ({
+  getAppName: () => 'Glossa',
   isTauriAppPlatform: () => true,
   isWebAppPlatform: () => false,
   isPWA: () => false,
 }));
 
-import { showReaderWindow } from '@/utils/nav';
+import { showReaderWindow, ensureMainLibraryWindow } from '@/utils/nav';
 
 const makeAppService = (os: 'macos' | 'windows' | 'linux'): AppService =>
   ({
@@ -54,5 +56,27 @@ describe('nav.ts window transparency', () => {
     showReaderWindow(makeAppService('macos'), ['book-1']);
     const options = webviewWindowCtor.mock.calls[0]![1] as Record<string, unknown>;
     expect(options['transparent']).toBe(false);
+  });
+});
+
+describe('Glossa names newly created windows', () => {
+  beforeEach(() => {
+    webviewWindowCtor.mockClear();
+  });
+
+  test('reader windows have a Glossa title before the book loads', () => {
+    showReaderWindow(makeAppService('macos'), ['book-1']);
+    expect(webviewWindowCtor).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ title: 'Glossa' }),
+    );
+  });
+
+  test('recreating the library retains the Glossa title', async () => {
+    await ensureMainLibraryWindow(makeAppService('windows'));
+    expect(webviewWindowCtor).toHaveBeenCalledWith(
+      'main',
+      expect.objectContaining({ title: 'Glossa' }),
+    );
   });
 });

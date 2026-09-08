@@ -5,6 +5,7 @@ import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { parseWebViewInfo } from '@/utils/ua';
 import { handleGlobalError } from '@/utils/error';
+import { GLOSSA_SOURCE_URL } from '@/services/constants';
 
 interface ErrorPageProps {
   error: Error & { digest?: string };
@@ -47,9 +48,7 @@ export default function ErrorPage({ error, reset }: ErrorPageProps) {
           <h1 className='text-base-content mb-4 text-5xl font-bold'>Oops!</h1>
 
           <p className='text-base-content/70 mb-8 text-lg'>
-            {_(
-              "Something went wrong. Don't worry, our team has been notified and we're working on a fix.",
-            )}
+            {_('Something went wrong. Try again, or report the issue to Glossa.')}
           </p>
 
           <div className='alert alert-error mb-8 overflow-hidden'>
@@ -119,8 +118,13 @@ export default function ErrorPage({ error, reset }: ErrorPageProps) {
           <div className='border-base-300 mt-8 border-t pt-6'>
             <p className='text-base-content/60 text-sm'>
               {_('Need help?')}{' '}
-              <a href='mailto:support@readest.com' className='link link-primary'>
-                {_('Contact Support')}
+              <a
+                href={`${GLOSSA_SOURCE_URL}/issues`}
+                className='link link-primary'
+                target='_blank'
+                rel='noopener noreferrer'
+              >
+                {_('Report an issue')}
               </a>
             </p>
           </div>

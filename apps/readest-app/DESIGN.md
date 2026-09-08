@@ -28,7 +28,25 @@ interaction, safe-area, RTL, theme and e-ink rules still apply.
 - Hover uses short color/border transitions. Reduced-motion and e-ink modes suppress
   decoration; e-ink uses crisp borders and full-contrast text.
 
-Implementation: `src/styles/glossa.css`, `glossa-library.css`, `glossa-reader.css`.
+### Glossa desktop refinement — 2026-09-09
+
+At widths of 900px and above, use Mac-style desktop chrome: a compact 54px library
+toolbar, host system UI typography, a 208px collapsible category sidebar, quiet
+neutral controls and rounded list selections. Preserve native traffic lights and
+the existing header measurement/drag integration. Do not draw imitation window controls.
+The library sidebar navigates existing grouping modes through URL state, retaining
+search and view options; it does not change saved grouping preferences. Arrow keys
+move focus within the sidebar; activation changes category. The toolbar search uses
+the existing configurable Find shortcut. Existing settings and file-opening shortcuts
+remain available.
+
+Reader toolbar dimensions stay unchanged so first-line selection and content insets
+remain correct. Only app chrome uses the system UI font; book fonts remain user-owned.
+Below 900px, retain the compact library layout without the desktop sidebar. Logical
+properties support RTL; e-ink retains explicit selection borders and no shadows.
+
+Implementation: `src/styles/glossa.css`, `glossa-library.css`, `glossa-reader.css`,
+`glossa-desktop.css`.
 
 Readest's UI is **Adwaita-aligned**, **e-ink-first**, **cross-platform-aware**. This doc is the
 reference for that language: principles, vocabulary, anti-patterns. New work should read it

@@ -9,16 +9,14 @@ import '../styles/globals.css';
 import '../styles/glossa.css';
 import '../styles/glossa-library.css';
 import '../styles/glossa-reader.css';
+import '../styles/glossa-desktop.css';
 
-const url = 'https://web.readest.com/';
 const title = 'Glossa — A quiet place to read';
 const description =
   'Your books, a thoughtful reading space, and notes alongside the original text. ' +
   'Read locally and keep your library in sync across devices.';
-const previewImage = 'https://cdn.readest.com/images/open_graph_preview_read_now.png';
 
 export const metadata: Metadata = {
-  metadataBase: new URL(url),
   title: {
     default: title,
     template: '%s | Glossa',
@@ -26,11 +24,11 @@ export const metadata: Metadata = {
   description,
   generator: 'Next.js',
   manifest: '/manifest.json',
-  keywords: ['epub', 'pdf', 'ebook', 'reader', 'readest', 'pwa'],
+  keywords: ['epub', 'pdf', 'ebook', 'reader', 'glossa', 'pwa'],
   authors: [
     {
-      name: 'readest',
-      url: 'https://github.com/readest/readest',
+      name: 'Glossa contributors',
+      url: 'https://github.com/shengbaiwang/Glossa',
     },
   ],
   icons: {
@@ -44,21 +42,16 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: 'website',
-    url,
     title,
     description,
-    images: [previewImage],
   },
   twitter: {
-    card: 'summary_large_image',
+    card: 'summary',
     title,
     description,
-    images: [previewImage],
   },
   other: {
     'apple-mobile-web-app-capable': 'yes',
-    'twitter:domain': 'web.readest.com',
-    'twitter:url': url,
   },
 };
 

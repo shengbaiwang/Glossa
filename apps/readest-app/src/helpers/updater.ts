@@ -10,6 +10,7 @@ import { isTauriAppPlatform } from '@/services/environment';
 import { getAppVersion, isUpdateNewer } from '@/utils/version';
 import {
   CHECK_UPDATE_INTERVAL_SEC,
+  GLOSSA_UPDATER_ENABLED,
   READEST_CHANGELOG_FILE,
   READEST_UPDATER_FILE,
   READEST_NIGHTLY_UPDATER_FILE,
@@ -104,6 +105,8 @@ export const resolveNightlyUpdate = async (
   platformKey: string,
   fetchFn: FetchFn,
 ): Promise<ResolvedNightlyUpdate | null> => {
+  if (!GLOSSA_UPDATER_ENABLED) return null;
+
   const [nightly, stable] = await Promise.all([
     fetchManifest(fetchFn, READEST_NIGHTLY_UPDATER_FILE),
     fetchManifest(fetchFn, READEST_UPDATER_FILE),
@@ -140,6 +143,8 @@ export const checkForAppUpdates = async (
   isAutoCheck = true,
   updateChannel: 'stable' | 'nightly' = 'stable',
 ): Promise<boolean> => {
+  if (!GLOSSA_UPDATER_ENABLED) return false;
+
   const lastCheck = localStorage.getItem(LAST_CHECK_KEY);
   const now = Date.now();
   if (isAutoCheck && lastCheck && now - parseInt(lastCheck, 10) < CHECK_UPDATE_INTERVAL_SEC * 1000)
@@ -218,6 +223,7 @@ export const getLastShownReleaseNotesVersion = () => {
 };
 
 export const checkAppReleaseNotes = async (isAutoCheck = true) => {
+  if (!GLOSSA_UPDATER_ENABLED) return false;
   const currentVersion = getAppVersion();
   const lastShownVersion = getLastShownReleaseNotesVersion();
   if ((lastShownVersion && semver.gt(currentVersion, lastShownVersion)) || !isAutoCheck) {

@@ -49,12 +49,14 @@ import { copyFiles } from '@/utils/files';
 import { detectViewTransitionGroup, detectViewTransitionsAPI } from '@/utils/viewTransition';
 
 import { BaseAppService } from './appService';
+import { getAppName } from './environment';
 
 import { getGlossaRuntimeSafetyError } from '@/services/glossaRuntime';
 import { DatabaseOpts, DatabaseService } from '@/types/database';
 import { SchemaType } from '@/services/database/migrate';
 import {
   DATA_SUBDIR,
+  GLOSSA_UPDATER_ENABLED,
   LOCAL_BOOKS_SUBDIR,
   LOCAL_DICTIONARIES_SUBDIR,
   LOCAL_FONTS_SUBDIR,
@@ -597,6 +599,7 @@ export class NativeAppService extends BaseAppService {
   override hasSafeAreaInset = OS_TYPE === 'ios' || OS_TYPE === 'android';
   override hasHaptics = OS_TYPE === 'ios' || OS_TYPE === 'android';
   override hasUpdater =
+    GLOSSA_UPDATER_ENABLED &&
     OS_TYPE !== 'ios' &&
     !process.env['NEXT_PUBLIC_DISABLE_UPDATER'] &&
     !window.__READEST_UPDATER_DISABLED;
@@ -905,7 +908,7 @@ export class NativeAppService extends BaseAppService {
         srcPath,
         fileName: galleryName,
         mimeType,
-        albumName: 'Readest',
+        albumName: getAppName(),
       });
       if (!res.success) {
         // The plugin returns the MediaStore exception here. Dropping it left an

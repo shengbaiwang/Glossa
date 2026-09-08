@@ -76,7 +76,7 @@ export const runGoogleDriveConnect = async (): Promise<ConnectGoogleDriveResult>
   }
   const persistence = await createDriveTokenPersistence();
   if (!persistence) {
-    throw new Error('Google Drive requires a Readest app build with secure storage');
+    throw new Error('Google Drive requires a Glossa app build with secure storage');
   }
   return connectGoogleDrive({
     clientId,

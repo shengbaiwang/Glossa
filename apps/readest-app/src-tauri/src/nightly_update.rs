@@ -102,6 +102,10 @@ pub async fn install_nightly_update<R: tauri::Runtime>(
     use tauri::Url;
     use tauri_plugin_updater::UpdaterExt;
 
+    if crate::updater_disabled(&app.config().identifier) {
+        return Err("In-app updates are not configured for Glossa.".into());
+    }
+
     let url = Url::parse(&endpoint).map_err(|e| e.to_string())?;
     let updater = app
         .updater_builder()

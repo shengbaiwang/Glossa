@@ -1,0 +1,47 @@
+Glossa — modified version of Readest
+
+Upstream: Readest v0.12.1
+Upstream source: https://github.com/readest/readest
+Upstream baseline: f3e1df7e0572c0119cbb420e1e27ca9af859f91c
+Glossa source: https://github.com/shengbaiwang/Glossa
+
+Retained upstream application copyright notice (as displayed in 2026):
+© 2026 Bilingify LLC. All rights reserved.
+Other copyright notices in individual files remain applicable and unchanged.
+The original authors retain copyright in their contributions.
+
+Modification notice — 2026-09-09
+The Glossa contributors modified Readest to create Glossa, including its name,
+icons, independent application identity, reading interface, and product scope.
+Glossa retains basic reading and cloud synchronization and removes dedicated
+AI, translation/dictionary, narration/speed-reading, subscription-feed, public
+sharing, and telemetry features. Git history records the individual changes.
+
+Glossa is an independent derivative project. Naming Readest here acknowledges
+its origin; it does not claim affiliation, endorsement, or trademark permission.
+Readest Cloud remains a separate service subject to its own terms and privacy
+policy. Existing service addresses and compatibility identifiers do not identify
+a Glossa-operated cloud service.
+
+License and warranty
+Glossa and its Readest-derived code are free software: you can redistribute
+them and/or modify them under the terms of the GNU Affero General Public
+License as published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version (AGPL-3.0-or-later).
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+details. A complete, unmodified copy accompanies this work in LICENSE.
+
+Source availability
+The Glossa source repository is https://github.com/shengbaiwang/Glossa.
+When distributing binaries or making a modified network-interactive version
+available, provide the complete Corresponding Source for that actual version
+under the applicable terms of AGPL sections 6 and 13. It includes the scripts
+needed to build, install, run and modify the work. A link to upstream Readest,
+or to a fork that lacks the delivered changes, is not the corresponding source
+for that version. Keep the source offer and license notices accessible.
+
+Third-party components retain their own licenses and copyright notices.
+See THIRD_PARTY_NOTICES.md and the notices supplied with each dependency.

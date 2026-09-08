@@ -265,3 +265,19 @@ describe('environment', () => {
     });
   });
 });
+
+describe('Glossa identity', () => {
+  test('defaults to Glossa even without a custom build environment', async () => {
+    delete env['NEXT_PUBLIC_GLOSSA_RUNTIME_ID'];
+    const { getAppName, getAppScheme } = await import('@/services/environment');
+    expect(getAppName()).toBe('Glossa');
+    expect(getAppScheme()).toBe('glossa');
+  });
+
+  test('keeps the isolated development identity', async () => {
+    env['NEXT_PUBLIC_GLOSSA_RUNTIME_ID'] = 'app.glossa.reader.dev';
+    const { getAppName, getAppScheme } = await import('@/services/environment');
+    expect(getAppName()).toBe('Glossa Dev');
+    expect(getAppScheme()).toBe('glossa-dev');
+  });
+});

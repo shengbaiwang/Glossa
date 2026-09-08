@@ -5,7 +5,7 @@ import {
   CheckCheck,
   CheckSquare2,
   Ellipsis,
-  Plus,
+  PanelLeft,
   Search,
   SearchCheck,
   SlidersHorizontal,
@@ -23,18 +23,15 @@ import useShortcuts from '@/hooks/useShortcuts';
 import WindowButtons from '@/components/WindowButtons';
 import Dropdown from '@/components/Dropdown';
 import SettingsMenu from './SettingsMenu';
-import ImportMenu from './ImportMenu';
 import LibrarySearchOptionsMenu from './LibrarySearchOptionsMenu';
 import ViewMenu from './ViewMenu';
 
 interface LibraryHeaderProps {
+  isSidebarVisible?: boolean;
+  onToggleSidebar?: () => void;
   isSelectMode: boolean;
   isSelectAll: boolean;
   onPullLibrary: () => void;
-  onImportBooksFromFiles: () => void;
-  onImportBooksFromDirectory?: () => void;
-  onImportBookFromUrl?: () => void;
-
   onToggleSelectMode: () => void;
   onSelectAll: () => void;
   onDeselectAll: () => void;
@@ -47,12 +44,11 @@ interface LibraryHeaderProps {
 }
 
 const LibraryHeader: React.FC<LibraryHeaderProps> = ({
+  isSidebarVisible,
+  onToggleSidebar,
   isSelectMode,
   isSelectAll,
   onPullLibrary,
-  onImportBooksFromFiles,
-  onImportBooksFromDirectory,
-  onImportBookFromUrl,
   onToggleSelectMode,
   onSelectAll,
   onDeselectAll,
@@ -69,11 +65,17 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
   const { currentBookshelf } = useLibraryStore();
 
   const headerRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const { isTrafficLightVisible } = useTrafficLight(headerRef);
   const { safeAreaInsets: insets } = useThemeStore();
 
   useShortcuts({
     onToggleSelectMode,
+    onShowSearchBar: () => {
+      searchRef.current?.focus();
+      searchRef.current?.select();
+      return true;
+    },
   });
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -99,6 +101,19 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
       }}
     >
       <div className='glossa-library-brand' aria-label='Glossa'>
+        {onToggleSidebar && (
+          <button
+            type='button'
+            className='exclude-title-bar-mousedown glossa-icon-button glossa-library-sidebar-toggle'
+            aria-label={_('Toggle Sidebar')}
+            title={_('Toggle Sidebar')}
+            aria-expanded={isSidebarVisible}
+            aria-controls='library-navigation'
+            onClick={onToggleSidebar}
+          >
+            <PanelLeft size={19} aria-hidden='true' />
+          </button>
+        )}
         <GlossaMark className='size-9 shrink-0' />
         <span>Glossa</span>
       </div>
@@ -117,6 +132,7 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
           {searchTarget === 'text' ? <SearchCheck size={18} /> : <Search size={18} />}
         </button>
         <input
+          ref={searchRef}
           type='search'
           value={searchQuery}
           aria-label={searchTarget === 'text' ? _('Full Text Search') : _('Search Books')}
@@ -173,23 +189,6 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
           </>
         ) : (
           <>
-            <Dropdown
-              label={_('Import Books')}
-              className='dropdown-bottom dropdown-end'
-              buttonClassName='touch-target glossa-button glossa-button-primary glossa-import-button'
-              toggleButton={
-                <>
-                  <Plus size={18} aria-hidden='true' />
-                  <span>{_('Import Books')}</span>
-                </>
-              }
-            >
-              <ImportMenu
-                onImportBooksFromFiles={onImportBooksFromFiles}
-                onImportBooksFromDirectory={onImportBooksFromDirectory}
-                onImportBookFromUrl={onImportBookFromUrl}
-              />
-            </Dropdown>
             <button
               type='button'
               onClick={onToggleSelectMode}

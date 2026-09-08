@@ -131,7 +131,9 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({
     const url = buildAnnotationUrl({ bookHash, noteId: item.id, cfi: item.cfi }, linkType);
     const linkLabel = item.page
       ? _('Page: {{number}}', { number: item.page })
-      : _('Open in Readest');
+      : linkType === 'web'
+        ? _('Open in browser')
+        : _('Open in Glossa');
     const markdown = buildAnnotationCopyMarkdown({
       text: item.text,
       note: item.note,

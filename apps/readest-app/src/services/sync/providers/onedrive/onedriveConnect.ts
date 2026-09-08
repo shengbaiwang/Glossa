@@ -62,7 +62,7 @@ export const runOneDriveConnect = async (): Promise<ConnectOneDriveResult> => {
   const clientId = getMicrosoftClientId();
   if (!clientId) throw new Error('OneDrive is not configured in this build');
   const persistence = await createOneDriveTokenPersistence();
-  if (!persistence) throw new Error('OneDrive requires a Readest app build with secure storage');
+  if (!persistence) throw new Error('OneDrive requires a Glossa app build with secure storage');
   return connectOneDrive({
     config: buildMicrosoftOAuthConfig(clientId),
     fetchFn: resolveFetch(),

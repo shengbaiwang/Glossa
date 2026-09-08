@@ -91,7 +91,7 @@ export const BackupWindow: React.FC<BackupWindowProps> = ({ onPullLibrary }) => 
 
     try {
       const timestamp = new Date().toISOString().slice(0, 10);
-      const filename = `readest-backup-${timestamp}.zip`;
+      const filename = `glossa-backup-${timestamp}.zip`;
       const saved = await saveBackupFile(
         appService,
         filename,

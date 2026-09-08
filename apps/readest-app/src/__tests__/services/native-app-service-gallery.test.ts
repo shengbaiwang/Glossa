@@ -113,6 +113,7 @@ describe('NativeAppService.saveImageToGallery', () => {
     // A constant display name makes the insert depend on the provider quietly
     // de-duplicating it (AOSP renames to "image (1).png"; stricter OEM providers
     // reject the row instead). Name the file ourselves so it never collides.
+    expect(first.albumName).toBe('Glossa');
     expect(first.fileName).not.toBe('image.png');
     expect(first.fileName).not.toBe(second.fileName);
     expect(first.fileName.endsWith('.png')).toBe(true);
