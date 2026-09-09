@@ -118,24 +118,24 @@ describe('getFontStyles branches (via getStyles)', () => {
 
   it('includes CJK font in serif font list when defaultCJKFont differs from serifFont', () => {
     const vs = makeViewSettings({
-      serifFont: 'Bitter',
-      defaultCJKFont: 'Source Han Serif CN',
+      serifFont: 'Times New Roman',
+      defaultCJKFont: 'SimSun',
     });
     const css = getStyles(vs, theme);
-    expect(css).toContain('"Source Han Serif CN"');
+    expect(css).toContain('"SimSun"');
   });
 
   it('does not duplicate CJK font in serif list when it equals serifFont', () => {
     const vs = makeViewSettings({
-      serifFont: 'LXGW WenKai GB Screen',
-      defaultCJKFont: 'LXGW WenKai GB Screen',
+      serifFont: 'KaiTi',
+      defaultCJKFont: 'KaiTi',
     });
     const css = getStyles(vs, theme);
     // The font should appear only once in the --serif declaration
     const match = css.match(/--serif:([^;]+);/);
     expect(match).not.toBeNull();
     const serifDecl = match![1]!;
-    const occurrences = serifDecl.split('"LXGW WenKai GB Screen"').length - 1;
+    const occurrences = serifDecl.split('"KaiTi"').length - 1;
     expect(occurrences).toBe(1);
   });
 
@@ -164,11 +164,11 @@ describe('getFontStyles branches (via getStyles)', () => {
   });
 
   it('puts monospace font first in the monospace list', () => {
-    const vs = makeViewSettings({ monospaceFont: 'Fira Code' });
+    const vs = makeViewSettings({ monospaceFont: 'Consolas' });
     const css = getStyles(vs, theme);
     const match = css.match(/--monospace:\s*([^;]+);/);
     expect(match).not.toBeNull();
-    expect(match![1]!.trimStart().startsWith('"Fira Code"')).toBe(true);
+    expect(match![1]!.trimStart().startsWith('"Consolas"')).toBe(true);
   });
 
   it('applies zoomLevel scaling to font size', () => {
@@ -902,14 +902,15 @@ describe('custom @font-face inlining (via getStyles)', () => {
     expect(css.indexOf('@font-face')).toBeLessThan(css.indexOf('--serif:'));
   });
 
-  it('emits one @font-face per loaded font', () => {
+  it('emits one @font-face per loaded font plus the bundled Kai fallback', () => {
     const vs = makeViewSettings();
     const fonts = [
       makeCustomFont({ id: 'font-a', name: 'Font A', blobUrl: 'blob:http://localhost/a' }),
       makeCustomFont({ id: 'font-b', name: 'Font B', blobUrl: 'blob:http://localhost/b' }),
     ];
     const css = getStyles(vs, theme, fonts);
-    expect(css.split('@font-face').length - 1).toBe(2);
+    expect(css.split('@font-face').length - 1).toBe(3);
+    expect(css).toContain('font-family: "Glossa Kai"');
     expect(css).toContain('font-family: "Font A"');
     expect(css).toContain('font-family: "Font B"');
   });

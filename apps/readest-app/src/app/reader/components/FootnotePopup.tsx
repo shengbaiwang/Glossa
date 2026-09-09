@@ -15,7 +15,6 @@ import { mountAdditionalFonts, mountCustomFont } from '@/styles/fonts';
 import { eventDispatcher } from '@/utils/event';
 import { shouldCheckAsFootnote } from '../utils/footnoteHeuristics';
 import { FoliateView } from '@/types/view';
-import { isCJKLang } from '@/utils/lang';
 import { Overlay } from '@/components/Overlay';
 import Popup from '@/components/Popup';
 
@@ -125,7 +124,7 @@ const FootnotePopup: React.FC<FootnotePopupProps> = ({ bookKey, bookDoc }) => {
       view.addEventListener('load', (e: CustomEvent) => {
         const { doc } = e.detail;
         const bookData = getBookData(bookKey)!;
-        mountAdditionalFonts(doc, isCJKLang(bookData.book?.primaryLanguage));
+        mountAdditionalFonts(doc, bookData.book?.primaryLanguage);
         getLoadedFonts().forEach((font) => {
           mountCustomFont(doc, font);
         });

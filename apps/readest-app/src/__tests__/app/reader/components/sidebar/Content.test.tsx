@@ -12,7 +12,11 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/store/bookDataStore', () => ({
-  useBookDataStore: () => ({ getConfig: () => mocks.config, setConfig: mocks.setConfig }),
+  useBookDataStore: () => ({
+    getConfig: () => mocks.config,
+    setConfig: mocks.setConfig,
+    getBookData: () => ({ book: { hash: 'book', format: 'EPUB' } }),
+  }),
 }));
 vi.mock('@/store/readerStore', () => ({
   useReaderStore: () => ({ setHoveredBookKey: vi.fn() }),

@@ -1,5 +1,7 @@
 'use client';
 
+import { mountAdditionalFonts } from '@/styles/fonts';
+
 import clsx from 'clsx';
 import * as React from 'react';
 import { useEffect, Suspense } from 'react';
@@ -20,9 +22,7 @@ import { useTransferQueue } from '@/hooks/useTransferQueue';
 import { useReplicaPull } from '@/hooks/useReplicaPull';
 import { eventDispatcher } from '@/utils/event';
 import { interceptWindowOpen } from '@/utils/open';
-import { mountAdditionalFonts } from '@/styles/fonts';
-import { isTauriAppPlatform } from '@/services/environment';
-import { getSysFontsList, setSystemUIVisibility } from '@/utils/bridge';
+import { setSystemUIVisibility } from '@/utils/bridge';
 import { AboutWindow } from '@/components/AboutWindow';
 import { KeyboardShortcutsHelp } from '@/components/KeyboardShortcutsHelp';
 import { UpdaterWindow } from '@/components/UpdaterWindow';
@@ -82,9 +82,6 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
   useEffect(() => {
     mountAdditionalFonts(document);
     interceptWindowOpen();
-    if (isTauriAppPlatform()) {
-      setTimeout(getSysFontsList, 3000);
-    }
     initDayjs(getLocale());
   }, []);
 

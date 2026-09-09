@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
@@ -18,6 +18,7 @@ import {
   ChevronRight,
   X,
   Search,
+  Server,
 } from 'lucide-react';
 import { getDirFromUILanguage } from '@/utils/rtl';
 import { getCommandPaletteShortcut } from '@/services/environment';
@@ -31,6 +32,7 @@ import DialogMenu from './DialogMenu';
 import ControlPanel from './ControlPanel';
 import LangPanel from './LangPanel';
 import MiscPanel from './MiscPanel';
+const ModelSettingsPanel = lazy(() => import('@/glossa/ui/ModelSettingsPanel'));
 
 export type SettingsPanelType =
   | 'Font'
@@ -39,6 +41,7 @@ export type SettingsPanelType =
   | 'Control'
   | 'Language'
   | 'Integrations'
+  | 'Models'
   | 'Custom';
 export type SettingsPanelPanelProp = {
   bookKey: string;
@@ -108,6 +111,11 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       label: _('Cloud Sync'),
     },
     {
+      tab: 'Models',
+      icon: Server,
+      label: _('Model Services'),
+    },
+    {
       tab: 'Custom',
       icon: Accessibility,
       label: _('Custom'),
@@ -163,6 +171,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     Control: null,
     Language: null,
     Integrations: null,
+    Models: null,
     Custom: null,
   });
 
@@ -455,6 +464,11 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         )}
 
         {activePanel === 'Integrations' && <IntegrationsPanel />}
+        {activePanel === 'Models' && (
+          <Suspense fallback={null}>
+            <ModelSettingsPanel />
+          </Suspense>
+        )}
         {activePanel === 'Custom' && (
           <MiscPanel
             bookKey={bookKey}

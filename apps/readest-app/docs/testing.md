@@ -17,6 +17,27 @@ pnpm test -- --watch                            # Watch mode
 - **Environment:** jsdom
 - **Use for:** Pure logic, utilities, services that don't need real browser APIs or Tauri IPC.
 
+### Native Turso vector precision
+
+The pinned `@tursodatabase/database@0.6.0-pre.28` native binary can use SimSIMD's
+serial approximate square root for L2 distance, even with `vector64`. On the tested
+macOS arm64 build, `[0,0]` to `[3,4]` returns `4.99704122543335` (relative error
+`0.000591755`), and `[0,0]` to `[1,1]` returns `1.414939284324646` (relative error
+`0.000513`). Direct SQL reproduces this without changes in `NodeDatabaseService`.
+The installed binary's `simsimd_l2_f64_serial` converts the sum to float32 and uses
+the fast inverse-square-root constant `0x5f1ffff9` before multiplying by the sum.
+SimSIMD describes this optimization in its author's
+[discussion of bypassing sqrt](https://ashvardanian.com/posts/simsimd-faster-scipy/).
+
+Only the Node suite therefore opts into a **0.1% relative L2 error budget**. This is
+a test acceptance bound for this pinned dependency, not a claim of exact arithmetic
+or a precision guarantee for arbitrary vector magnitudes. The shared suite retains
+its strict default for WASM and Tauri, and other metrics are unchanged. Assertions
+also cover finite/nonnegative results, exact zero, symmetry, actual nearest-neighbor
+IDs, and vector32/vector64 at scales `1e-6`, `1`, and `1e6` with signed odd-length
+vectors. Do not use a blanket absolute tolerance or round returned database values.
+Reassess the Node override when upgrading the native dependency.
+
 ## Browser Tests (`pnpm test:browser`)
 
 Runs tests in a **real Chromium** browser via Playwright. Required for code that depends on Web Workers, SharedArrayBuffer, OPFS, or other browser-only APIs.

@@ -55,10 +55,4 @@ server {
         client_max_body_size 0;
         proxy_request_buffering off;
     }
-
-    # Optional: serve mirrored CJK webfont bundles yourself and point the client
-    # at them with FONT_BASE_URL=https://your-domain.com/fonts (see README).
-    # location /fonts/ {
-    #     alias /srv/readest-fonts/;
-    # }
 }

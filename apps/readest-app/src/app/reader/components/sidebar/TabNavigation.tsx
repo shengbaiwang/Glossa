@@ -5,7 +5,8 @@ const TabNavigation: React.FC<{
   activeTab: string;
   onTabChange: (tab: string) => void;
   idPrefix?: string;
-}> = ({ activeTab, onTabChange, idPrefix }) => {
+  showStudyNotes?: boolean;
+}> = ({ activeTab, onTabChange, idPrefix, showStudyNotes = false }) => {
   const _ = useTranslation();
   const localId = useId();
   const prefix = idPrefix ?? localId;
@@ -14,6 +15,7 @@ const TabNavigation: React.FC<{
     { id: 'toc', label: _('Contents') },
     { id: 'annotations', label: _('Notes') },
     { id: 'bookmarks', label: _('Bookmarks') },
+    ...(showStudyNotes ? [{ id: 'study', label: _('Study') }] : []),
   ];
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {

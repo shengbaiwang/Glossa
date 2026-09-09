@@ -1,4 +1,5 @@
 {
+  "Add custom service": "إضافة خدمة مخصصة",
   "On hold": "معلق",
   "Mark as On hold": "تحديد كمعلق",
   "(detected)": "(تم التعرف)",
@@ -2225,5 +2226,19 @@
   "Danger Zone": "منطقة الخطر",
   "Delete All Books": "حذف جميع الكتب",
   "All books deleted.": "تم حذف جميع الكتب.",
-  "Failed to delete books. Please try again later.": "تعذّر حذف الكتب. يرجى المحاولة مرة أخرى لاحقًا."
+  "Failed to delete books. Please try again later.": "تعذّر حذف الكتب. يرجى المحاولة مرة أخرى لاحقًا.",
+  "SimSun": "宋体",
+  "KaiTi": "楷体",
+  "FangSong": "仿宋",
+  "MingLiU": "明體",
+  "SimHei": "黑体",
+  "Microsoft YaHei": "微软雅黑",
+  "Microsoft JhengHei": "微軟正黑體",
+  "Yu Mincho": "游明朝",
+  "Yu Gothic": "游ゴシック",
+  "Batang": "바탕",
+  "Malgun Gothic": "맑은 고딕",
+  "Traditional Arabic": "Traditional Arabic · العربية",
+  "Failed to import font": "تعذر استيراد الخط",
+  "Failed to delete font": "تعذر حذف الخط"
 }

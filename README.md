@@ -2,9 +2,9 @@
   <img src="apps/readest-app/public/glossa-icon.png" alt="Glossa" width="112" />
 </p>
 
-# Glossa：阅读与云同步
+# Glossa：阅读、学习笔记与云同步
 
-Glossa 是基于 [Readest](https://github.com/readest/readest) 修改的开源阅读器，专注于基础阅读、本地书库、书签批注和云端同步。Glossa 是独立项目；上游作者与贡献者的署名和开源许可保留在 [NOTICE](NOTICE)、[LICENSE](LICENSE) 和 [第三方声明](THIRD_PARTY_NOTICES.md) 中。
+Glossa 是基于 [Readest](https://github.com/readest/readest) 修改的开源阅读器，提供基础阅读、本地书库、书签批注、章节学习笔记和云端同步。Glossa 是独立项目；上游作者与贡献者的署名和开源许可保留在 [NOTICE](NOTICE)、[LICENSE](LICENSE) 和 [第三方声明](THIRD_PARTY_NOTICES.md) 中。
 
 **修改声明（2026-09-09）：** 本项目基于 Readest v0.12.1，基线提交为 `f3e1df7e0572c0119cbb420e1e27ca9af859f91c`。Glossa 修改了应用名称、图标、独立运行身份、阅读界面及功能范围，并移除了 AI、翻译词典、朗读速读、订阅、公开分享和遥测等附加实现。具体差异见 Git 历史和 [PROGRESS.md](PROGRESS.md)。
 
@@ -13,9 +13,18 @@ Glossa 是基于 [Readest](https://github.com/readest/readest) 修改的开源�
 - 导入和管理本地书籍，使用现有引擎阅读 EPUB、PDF 等支持的格式。
 - 翻页、目录、全文搜索、阅读进度恢复、字体排版及主题设置。
 - 书签、高亮、笔记、批注导出及跳回原文。
+- EPUB 章节 AI 学习笔记、可核对的原文来源、理解自测、独立个人心得与 Markdown 导出。这是精简旧 AI 功能后新增的独立模块。
 - 保留 Readest Cloud、WebDAV、Google Drive、OneDrive、S3 和 iCloud 的现有同步实现。Readest Cloud 是独立的上游服务，使用它仍受该服务的账号、权限、[服务条款](https://readest.com/terms-of-service)及[隐私政策](https://readest.com/privacy-policy)约束。
 
 当前范围与验收标准见 [PLAN.md](PLAN.md)，已完成的验证与已知限制见 [PROGRESS.md](PROGRESS.md)。
+
+## 章节学习笔记
+
+1. 在“设置 → 模型服务”选择预设或自定义服务，填写 API 地址、密钥与模型名称。支持标准 OpenAI-compatible Chat Completions；可以获取模型列表或手动填写，再检测连接。
+2. 打开 EPUB，在阅读侧栏切换到“学习”，选择目录章节后点击“生成学习笔记”。仅在点击后发送所选章节及子章节，长章分段处理；关闭面板或点击取消可中止生成。
+3. 点击笔记中的来源编号核对原文；自测答案可展开。历史版本和个人心得保存在本机，可导出 Markdown，暂不参与云同步。
+
+原生版 API 密钥使用系统安全存储，浏览器版仅在当前会话保留密钥。没有可靠章节边界的单文件整书暂不提供生成入口。来源编号经过程序校验，但笔记是否忠实于作者的观点仍需结合原文判断。
 
 ## 开发与构建
 

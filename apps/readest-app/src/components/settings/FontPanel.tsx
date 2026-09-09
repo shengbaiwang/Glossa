@@ -10,11 +10,16 @@ import {
   LINUX_FONTS,
   MACOS_FONTS,
   MONOSPACE_FONTS,
-  NON_FREE_FONTS,
   SANS_SERIF_FONTS,
   SERIF_FONTS,
   WINDOWS_FONTS,
 } from '@/services/constants';
+import { mountAdditionalFonts } from '@/styles/fonts';
+import {
+  getReadingFontFamily,
+  resolveReadingFont,
+  isRemovedReadingFont,
+} from '@/styles/readingFonts';
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -56,11 +61,7 @@ interface FontFaceProps {
 }
 
 const handleFontFaceFont = (option: string, family: string) => {
-  return `'${option}', ${family}`;
-};
-
-const filterNonFreeFonts = (font: string) => {
-  return !['android', 'linux'].includes(getOSPlatform()) || !NON_FREE_FONTS.includes(font);
+  return getReadingFontFamily(option, family);
 };
 
 const FontFace = ({
@@ -82,8 +83,20 @@ const FontFace = ({
       <SettingLabel className='min-w-10'>{label}</SettingLabel>
       <FontDropdown
         family={family}
-        options={options.map((option) => ({ option, label: _(option) }))}
-        moreOptions={moreOptions?.map((option) => ({ option, label: option })) ?? []}
+        options={[
+          ...new Set(
+            options.includes(selected) || moreOptions?.includes(selected)
+              ? options
+              : [selected, ...options],
+          ),
+        ]
+          .filter((font) => !isRemovedReadingFont(font))
+          .map((option) => ({ option, label: _(option) }))}
+        moreOptions={
+          moreOptions
+            ?.filter((font) => !isRemovedReadingFont(font))
+            .map((option) => ({ option, label: option })) ?? []
+        }
         selected={selected}
         onSelect={onSelect}
         onGetFontFamily={handleFontFaceFont}
@@ -98,7 +111,19 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
   const { getView, getViewSettings } = useReaderStore();
   const { settings, fontPanelView, setFontPanelView } = useSettingsStore();
   const { fonts: allCustomFonts, getFontFamilies } = useCustomFontStore();
-  const viewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
+  const storedSettings = getViewSettings(bookKey) || settings.globalViewSettings;
+  const importedFamilies = getFontFamilies();
+  const viewSettings = {
+    ...storedSettings,
+    serifFont: resolveReadingFont(storedSettings.serifFont, 'Times New Roman', importedFamilies),
+    sansSerifFont: resolveReadingFont(storedSettings.sansSerifFont, 'Arial', importedFamilies),
+    monospaceFont: resolveReadingFont(
+      storedSettings.monospaceFont,
+      'Courier New',
+      importedFamilies,
+    ),
+    defaultCJKFont: resolveReadingFont(storedSettings.defaultCJKFont, 'Auto', importedFamilies),
+  };
   const view = getView(bookKey);
 
   const fontFamilyOptions = [
@@ -187,6 +212,7 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
   });
 
   useEffect(() => {
+    mountAdditionalFonts(document);
     onRegisterReset(handleReset);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appService]);
@@ -194,7 +220,9 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
   useEffect(() => {
     setCJKFonts((prev) => {
       const newFonts = genCJKFontsList([...customFonts, ...sysFonts]);
-      return prev.length !== newFonts.length ? newFonts : prev;
+      return prev.length !== newFonts.length || prev.some((font, index) => font !== newFonts[index])
+        ? newFonts
+        : prev;
     });
   }, [customFonts, sysFonts]);
 
@@ -203,10 +231,16 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
   }, [allCustomFonts, getFontFamilies]);
 
   useEffect(() => {
+    setDefaultCJKFont(viewSettings.defaultCJKFont);
     setSerifFont(viewSettings.serifFont);
     setSansSerifFont(viewSettings.sansSerifFont);
     setMonospaceFont(viewSettings.monospaceFont);
-  }, [viewSettings.serifFont, viewSettings.sansSerifFont, viewSettings.monospaceFont]);
+  }, [
+    viewSettings.defaultCJKFont,
+    viewSettings.serifFont,
+    viewSettings.sansSerifFont,
+    viewSettings.monospaceFont,
+  ]);
 
   useEffect(() => {
     if (isTauriAppPlatform() && appService && !appService.isAndroidApp) {
@@ -217,7 +251,13 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
         }
         const processedFonts: string[] = [];
         Object.entries(res.fonts).forEach(([fontName, fontFamily]) => {
-          if (!fontName || isSymbolicFontName(fontName)) return;
+          if (
+            !fontName ||
+            isSymbolicFontName(fontName) ||
+            isRemovedReadingFont(fontName) ||
+            isRemovedReadingFont(fontFamily)
+          )
+            return;
 
           const fontsInFamily = Object.entries(res.fonts).filter(
             ([_, family]) => family === fontFamily,
@@ -282,11 +322,11 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
   const handleFontFamilyFont = (option: string) => {
     switch (option) {
       case 'Serif':
-        return `'${serifFont}', serif`;
+        return getReadingFontFamily(serifFont, 'serif');
       case 'Sans-serif':
-        return `'${sansSerifFont}', sans-serif`;
+        return getReadingFontFamily(sansSerifFont, 'sans-serif');
       case 'Monospace':
-        return `'${monospaceFont}', monospace`;
+        return getReadingFontFamily(monospaceFont, 'monospace');
       default:
         return '';
     }
@@ -353,7 +393,13 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
           <FontFace
             family='serif'
             label={_('CJK Font')}
-            options={CJKFonts}
+            options={[
+              'Auto',
+              ...customFonts.filter((font) => CJKFonts.includes(font)),
+              ...CJK_SERIF_FONTS,
+              ...CJK_SANS_SERIF_FONTS,
+            ]}
+            moreOptions={CJKFonts}
             selected={defaultCJKFont}
             onSelect={setDefaultCJKFont}
             data-setting-id='settings.font.cjkFont'
@@ -365,7 +411,7 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
         <FontFace
           family='serif'
           label={_('Serif Font')}
-          options={[...customFonts, ...SERIF_FONTS.filter(filterNonFreeFonts), ...CJK_SERIF_FONTS]}
+          options={[...customFonts, ...SERIF_FONTS, ...CJK_SERIF_FONTS]}
           moreOptions={sysFonts}
           selected={serifFont}
           onSelect={setSerifFont}
@@ -374,11 +420,7 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
         <FontFace
           family='sans-serif'
           label={_('Sans-Serif Font')}
-          options={[
-            ...customFonts,
-            ...SANS_SERIF_FONTS.filter(filterNonFreeFonts),
-            ...CJK_SANS_SERIF_FONTS,
-          ]}
+          options={[...customFonts, ...SANS_SERIF_FONTS, ...CJK_SANS_SERIF_FONTS]}
           moreOptions={sysFonts}
           selected={sansSerifFont}
           onSelect={setSansSerifFont}

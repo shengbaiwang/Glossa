@@ -1,11 +1,8 @@
 import {
-  MONOSPACE_FONTS,
-  SANS_SERIF_FONTS,
-  SERIF_FONTS,
-  FALLBACK_FONTS,
-  CJK_SANS_SERIF_FONTS,
-  CJK_SERIF_FONTS,
-} from '@/services/constants';
+  buildFontFamilyLists,
+  READING_FONT_LANGUAGES,
+  getBundledReadingFontCSS,
+} from '@/styles/readingFonts';
 import { ViewSettings } from '@/types/book';
 import {
   themes,
@@ -21,53 +18,10 @@ import { getOSPlatform } from './misc';
 import { SCROLL_WRAPPER_CLASS, SCROLL_WRAPPER_FIT_CLASS } from './scrollable';
 
 /**
- * Build the resolved CSS font-family lists (serif / sans-serif / monospace)
- * from the user's font settings. Each value is a ready-to-use `font-family`
- * string ending in the matching generic family. Shared by getFontStyles (which
- * exposes them as CSS variables inside the reader iframe) and getBaseFontFamily
- * (which applies the body font directly to top-level UI such as the RSVP overlay).
- */
-const buildFontFamilyLists = (
-  serif: string,
-  sansSerif: string,
-  monospace: string,
-  defaultCJKFont: string,
-) => {
-  const lastSerifFonts = ['Georgia', 'Times New Roman'];
-  const serifFonts = [
-    serif,
-    ...(defaultCJKFont !== serif ? [defaultCJKFont] : []),
-    ...SERIF_FONTS.filter(
-      (font) => font !== serif && font !== defaultCJKFont && !lastSerifFonts.includes(font),
-    ),
-    ...CJK_SERIF_FONTS.filter((font) => font !== serif && font !== defaultCJKFont),
-    ...lastSerifFonts.filter(
-      (font) => SERIF_FONTS.includes(font) && !lastSerifFonts.includes(defaultCJKFont),
-    ),
-    ...FALLBACK_FONTS,
-  ];
-  const sansSerifFonts = [
-    sansSerif,
-    ...(defaultCJKFont !== sansSerif ? [defaultCJKFont] : []),
-    ...SANS_SERIF_FONTS.filter((font) => font !== sansSerif && font !== defaultCJKFont),
-    ...CJK_SANS_SERIF_FONTS.filter((font) => font !== sansSerif && font !== defaultCJKFont),
-    ...FALLBACK_FONTS,
-  ];
-  const monospaceFonts = [monospace, ...MONOSPACE_FONTS.filter((font) => font !== monospace)];
-  const quote = (fonts: string[]) => fonts.map((font) => `"${font}"`).join(', ');
-  return {
-    serif: `${quote(serifFonts)}, serif`,
-    sansSerif: `${quote(sansSerifFonts)}, sans-serif`,
-    monospace: `${quote(monospaceFonts)}, monospace`,
-  };
-};
-
-/**
  * Resolve the body font-family string (serif or sans-serif chain, per the
  * user's "Default Font" setting) for use outside the reader iframe — e.g. the
  * RSVP overlay, which renders in the top document and can't read the iframe's
- * --serif/--sans-serif CSS variables. Custom fonts are already mounted in the
- * top document, so the returned chain resolves them by family name.
+ * --serif/--sans-serif CSS variables.
  */
 export const getBaseFontFamily = (viewSettings: ViewSettings): string => {
   const families = buildFontFamilyLists(
@@ -89,8 +43,27 @@ const getFontStyles = (
   minFontSize: number,
   fontWeight: number,
   overrideFont: boolean,
+  customFamilies: string[] = [],
 ) => {
-  const families = buildFontFamilyLists(serif, sansSerif, monospace, defaultCJKFont);
+  const families = buildFontFamilyLists(
+    serif,
+    sansSerif,
+    monospace,
+    defaultCJKFont,
+    undefined,
+    customFamilies,
+  );
+  const languageStyles = READING_FONT_LANGUAGES.map((language) => {
+    const localized = buildFontFamilyLists(
+      serif,
+      sansSerif,
+      monospace,
+      defaultCJKFont,
+      language,
+      customFamilies,
+    );
+    return `html:lang(${language}) { --serif: ${localized.serif}; --sans-serif: ${localized.sansSerif}; }`;
+  }).join('\n');
   const defaultFontFamily = defaultFont.toLowerCase() === 'serif' ? '--serif' : '--sans-serif';
   // Normalize publisher body-copy sizes (the Readium CSS element set) so the
   // configured font size applies even when the book sets explicit sizes on its
@@ -103,6 +76,7 @@ const getFontStyles = (
     }
   `;
   const fontStyles = `
+    ${getBundledReadingFontCSS()}
     html {
       --serif: ${families.serif};
       --sans-serif: ${families.sansSerif};
@@ -111,6 +85,7 @@ const getFontStyles = (
       --min-font-size: ${minFontSize}px;
       --font-weight: ${fontWeight};
     }
+    ${languageStyles}
     html, body {
       font-size: ${fontSize}px !important;
       font-weight: ${fontWeight};
@@ -919,6 +894,7 @@ export const getStyles = (
     viewSettings.minimumFontSize!,
     viewSettings.fontWeight!,
     viewSettings.overrideFont!,
+    customFonts.map((font) => font.family || font.name),
   );
   // Inline `@font-face` rules for the caller-supplied custom fonts so
   // they ship to the iframe synchronously with the rest of the

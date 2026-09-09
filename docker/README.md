@@ -185,20 +185,13 @@ to reach minio unchanged or the presigned signatures will not verify, and the
 request body limit has to be lifted on the bucket location or large book uploads
 are truncated.
 
-### CJK fonts on a custom domain
+### Reading fonts
 
-the reader loads a few CJK webfont bundles from Readest's CDN, which only sends
-`Access-Control-Allow-Origin` for readest.com origins, so the browser blocks them
-on a self-hosted domain. mirror
-`https://storage.readest.com/public/font/dist/<Family>/` (and the `.woff2` files it
-references) onto a path your proxy serves, then point the client at it:
-
-```env
-FONT_BASE_URL=https://your-domain.com/fonts
-```
-
-leaving `FONT_BASE_URL` empty keeps the default CDN. system and Google fonts are
-unaffected either way.
+Glossa uses common local system font stacks for Chinese, Latin, Japanese, Korean
+and Arabic text. No font CDN or `FONT_BASE_URL` configuration is needed. Missing
+faces fall back to local equivalents and the browser's generic serif/sans-serif
+fonts. A bundled AR PL UKai CN face supplies Kai when no system Kai is available.
+Users can still import their own font files and sync them.
 
 ---
 

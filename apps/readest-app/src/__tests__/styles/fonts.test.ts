@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('@/utils/misc', () => ({ isCJKEnv: vi.fn(() => false) }));
 vi.mock('@/utils/path', () => ({
   getFilename: vi.fn((path: string) => path.split('/').pop() || path),
 }));
@@ -8,7 +7,6 @@ vi.mock('@/utils/md5', () => ({
   md5Fingerprint: vi.fn((name: string) => `md5_${name}`),
 }));
 
-import { isCJKEnv } from '@/utils/misc';
 import {
   getFontName,
   getFontId,
@@ -318,80 +316,24 @@ describe('createCustomFont', () => {
 
 describe('mountAdditionalFonts', () => {
   beforeEach(() => {
-    // Reset document head between tests
     document.head.innerHTML = '';
-    vi.mocked(isCJKEnv).mockReturnValue(false);
+    document.documentElement.removeAttribute('lang');
   });
 
-  it('should mount basic Google Fonts link tags', async () => {
-    await mountAdditionalFonts(document);
-
-    const links = document.head.querySelectorAll('link[rel="stylesheet"]');
-    expect(links.length).toBeGreaterThanOrEqual(1);
-
-    // Verify at least one link points to Google Fonts
-    const hrefs = Array.from(links).map((l) => l.getAttribute('href') || '');
-    expect(hrefs.some((h) => h.includes('fonts.googleapis.com'))).toBe(true);
+  it('uses a bundled Kai fallback without external font services', async () => {
+    await mountAdditionalFonts(document, 'zh-CN');
+    expect(document.head.querySelectorAll('link')).toHaveLength(0);
+    expect(document.head.textContent).toContain('/fonts/ar-pl-ukai-cn.woff2');
+    expect(document.head.textContent).not.toMatch(/googleapis|readest.com|onlinewebfonts/);
+    await mountAdditionalFonts(document, 'zh-CN');
+    expect(document.head.querySelectorAll('#glossa-reading-fonts')).toHaveLength(1);
+    expect(document.documentElement.lang).toBe('zh-CN');
   });
 
-  it('should set crossOrigin on link tags', async () => {
-    await mountAdditionalFonts(document);
-
-    const links = document.head.querySelectorAll('link');
-    for (const link of Array.from(links)) {
-      expect(link.crossOrigin).toBe('anonymous');
-    }
-  });
-
-  it('should not mount CJK fonts when isCJK is false', async () => {
-    await mountAdditionalFonts(document, false);
-
-    const styles = document.head.querySelectorAll('style');
-    expect(styles.length).toBe(0);
-
-    const links = document.head.querySelectorAll('link');
-    const hrefs = Array.from(links).map((l) => l.getAttribute('href') || '');
-    expect(hrefs.some((h) => h.includes('jsdelivr.net'))).toBe(false);
-  });
-
-  it('should mount CJK fonts when isCJK is true', async () => {
-    await mountAdditionalFonts(document, true);
-
-    // Should have a style element with @font-face rules
-    const styles = document.head.querySelectorAll('style');
-    expect(styles.length).toBeGreaterThanOrEqual(1);
-
-    const styleContent = styles[0]!.textContent || '';
-    expect(styleContent).toContain('@font-face');
-    expect(styleContent).toContain('FangSong');
-    expect(styleContent).toContain('Kaiti');
-    expect(styleContent).toContain('Heiti');
-    expect(styleContent).toContain('XiHeiti');
-
-    // Should have CJK-specific link tags
-    const links = document.head.querySelectorAll('link');
-    const hrefs = Array.from(links).map((l) => l.getAttribute('href') || '');
-    expect(hrefs.some((h) => h.includes('jsdelivr.net'))).toBe(true);
-  });
-
-  it('should mount CJK fonts when isCJKEnv returns true', async () => {
-    vi.mocked(isCJKEnv).mockReturnValue(true);
-
-    await mountAdditionalFonts(document);
-
-    const styles = document.head.querySelectorAll('style');
-    expect(styles.length).toBeGreaterThanOrEqual(1);
-
-    const styleContent = styles[0]!.textContent || '';
-    expect(styleContent).toContain('@font-face');
-  });
-
-  it('should mount CJK fonts when either isCJK param or isCJKEnv is true', async () => {
-    vi.mocked(isCJKEnv).mockReturnValue(false);
-    await mountAdditionalFonts(document, true);
-
-    const styles = document.head.querySelectorAll('style');
-    expect(styles.length).toBeGreaterThanOrEqual(1);
+  it('preserves the chapter language instead of replacing it with the book language', async () => {
+    document.documentElement.lang = 'ja';
+    await mountAdditionalFonts(document, 'en');
+    expect(document.documentElement.lang).toBe('ja');
   });
 });
 

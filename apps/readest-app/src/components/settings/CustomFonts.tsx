@@ -10,6 +10,8 @@ import { useCustomFontStore } from '@/store/customFontStore';
 import { useFileSelector } from '@/hooks/useFileSelector';
 import { saveViewSettings } from '@/helpers/settings';
 import { CustomFont, mountCustomFont } from '@/styles/fonts';
+import { DEFAULT_BOOK_FONT } from '@/services/constants';
+import { isRemovedReadingFont } from '@/styles/readingFonts';
 import { queueReplicaBinaryUpload } from '@/services/sync/replicaBinaryUpload';
 import { Tips } from './primitives';
 
@@ -38,6 +40,8 @@ const CustomFonts: React.FC<CustomFontsProps> = ({ bookKey, onBack }) => {
   const { getViewSettings } = useReaderStore();
   const viewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
   const [isDeleteMode, setIsDeleteMode] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [fontError, setFontError] = useState('');
   // null = idle, true = importing (spinner), { family } = done importing (show font name).
   // The card stays mounted throughout — only its content changes.
   const [importingFont, setImportingFont] = useState<true | { family: string } | null>(null);
@@ -50,59 +54,69 @@ const CustomFonts: React.FC<CustomFontsProps> = ({ bookKey, onBack }) => {
   const currentFontFamily =
     currentDefaultFont === 'serif' ? viewSettings.serifFont : viewSettings.sansSerifFont;
 
-  const handleImportFont = () => {
-    selectFiles({ type: 'fonts', multiple: true }).then(async (result) => {
-      if (result.error || result.files.length === 0) return;
+  const handleImportFont = async () => {
+    if (!appService) return;
+    setFontError('');
+    try {
+      const result = await selectFiles({ type: 'fonts', multiple: true });
+      if (result.error) throw new Error(result.error);
+      if (result.files.length === 0) return;
       setImportingFont(true);
-      try {
-        for (const selectedFile of result.files) {
-          const fontInfo = await appService?.importFont(selectedFile.path || selectedFile.file);
-          if (!fontInfo) continue;
-
-          // Replace the spinner with the resolved font family name in-place,
-          // so the card stays at the same grid position without layout jump.
-          setImportingFont({ family: fontInfo.family });
-
-          const customFont = addFont(fontInfo.path, {
-            name: fontInfo.name,
-            family: fontInfo.family,
-            style: fontInfo.style,
-            weight: fontInfo.weight,
-            variable: fontInfo.variable,
-            contentId: fontInfo.contentId,
-            bundleDir: fontInfo.bundleDir,
-            byteSize: fontInfo.byteSize,
-          });
-          console.log('Added custom font:', customFont);
-          if (customFont && !customFont.error) {
+      for (const selectedFile of result.files) {
+        const fontInfo = await appService.importFont(selectedFile.path || selectedFile.file);
+        if (!fontInfo) continue;
+        setImportingFont({ family: fontInfo.family });
+        const customFont = addFont(fontInfo.path, {
+          name: fontInfo.name,
+          family: fontInfo.family,
+          style: fontInfo.style,
+          weight: fontInfo.weight,
+          variable: fontInfo.variable,
+          contentId: fontInfo.contentId,
+          bundleDir: fontInfo.bundleDir,
+          byteSize: fontInfo.byteSize,
+        });
+        try {
+          if (!customFont.error) {
             const loadedFont = await loadFont(envConfig, customFont.id);
             mountCustomFont(document, loadedFont);
-            if (appService) void queueReplicaBinaryUpload('font', customFont, appService);
+            void queueReplicaBinaryUpload('font', customFont, appService);
           }
+        } finally {
+          // Keep failed imports removable/retryable, too.
+          await saveCustomFonts(envConfig);
         }
-        saveCustomFonts(envConfig);
-      } finally {
-        // Keep the card visible — it now shows the font family name.
-        // availableFamilies will pick it up on next render and the
-        // importingFont card naturally becomes a regular font card.
-        // We clear importingFont after a tick so availableFamilies
-        // has a chance to include the new font first.
-        setTimeout(() => setImportingFont(null), 0);
       }
-    });
+    } catch {
+      setFontError(_('Failed to import font'));
+    } finally {
+      setImportingFont(null);
+    }
   };
 
-  const handleDeleteFamily = (family: FontFamily) => {
-    for (const font of family.fonts) {
-      if (font) {
+  const handleDeleteFamily = async (family: FontFamily) => {
+    if (!appService) return;
+    setFontError('');
+    setDeleting(true);
+    try {
+      for (const font of family.fonts) {
+        await appService.deleteFont(font);
         if (removeFont(font.id)) {
-          appService?.deleteFont(font);
-          saveCustomFonts(envConfig);
-          if (getAvailableFonts().length === 0) {
-            setIsDeleteMode(false);
-          }
+          document.getElementById(`custom-font-${font.id}`)?.remove();
+          await saveCustomFonts(envConfig);
         }
       }
+      const keys = ['serifFont', 'sansSerifFont', 'monospaceFont', 'defaultCJKFont'] as const;
+      for (const key of keys) {
+        if (viewSettings[key] === family.name) {
+          await saveViewSettings(envConfig, bookKey, key, DEFAULT_BOOK_FONT[key]);
+        }
+      }
+      if (getAvailableFonts().length === 0) setIsDeleteMode(false);
+    } catch {
+      setFontError(_('Failed to delete font'));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -136,7 +150,12 @@ const CustomFonts: React.FC<CustomFontsProps> = ({ bookKey, onBack }) => {
   };
 
   const availableFonts = customFonts
-    .filter((font) => !font.deletedAt)
+    .filter(
+      (font) =>
+        !font.deletedAt &&
+        !isRemovedReadingFont(font.family || font.name) &&
+        !isRemovedReadingFont(font.name),
+    )
     .sort((a, b) => (b.downloadedAt || 0) - (a.downloadedAt || 0));
 
   // Exclude the font that's currently shown by the importingFont card so
@@ -188,6 +207,7 @@ const CustomFonts: React.FC<CustomFontsProps> = ({ bookKey, onBack }) => {
         <button
           type='button'
           onClick={handleImportFont}
+          disabled={!!importingFont || deleting}
           className={clsx(
             'bg-base-100 eink-bordered group flex h-12 items-center justify-center gap-2 rounded-2xl',
             'border-base-200 hover:border-base-300 hover:bg-base-300/40 border',
@@ -273,6 +293,7 @@ const CustomFonts: React.FC<CustomFontsProps> = ({ bookKey, onBack }) => {
               {isDeleteMode && (
                 <button
                   onClick={() => handleDeleteFamily(family)}
+                  disabled={deleting || !!importingFont}
                   className='btn btn-ghost btn-xs absolute right-[-10px] top-[-10px] h-6 min-h-0 w-6 p-0 hover:bg-transparent'
                   title={_('Delete Font')}
                 >
@@ -284,6 +305,11 @@ const CustomFonts: React.FC<CustomFontsProps> = ({ bookKey, onBack }) => {
         ))}
       </div>
 
+      {fontError && (
+        <p role='alert' className='mt-4 text-sm text-error'>
+          {fontError}
+        </p>
+      )}
       <Tips className='mt-6'>
         <li>{_('Supported font formats: .ttf, .otf, .woff, .woff2')}</li>
         <li>{_('Custom fonts can be selected from the Font Face menu')}</li>

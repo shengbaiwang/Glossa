@@ -164,3 +164,150 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
     scroll-behavior: auto !important;
   }
 }
+
+/* Chapter notes use the same paper, ink and quiet controls as the reader. */
+.glossa-study-panel {
+  color: var(--glossa-ink);
+  overflow-wrap: anywhere;
+}
+
+.glossa-study-muted,
+.glossa-study-label {
+  color: var(--glossa-muted);
+}
+
+.glossa-study-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.glossa-study-input {
+  min-height: 40px;
+  border: 1px solid var(--glossa-border);
+  border-radius: var(--glossa-radius);
+  padding: 10px 12px;
+  background: var(--glossa-surface);
+  color: var(--glossa-ink);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.glossa-study-input:disabled {
+  opacity: 0.55;
+}
+
+.glossa-study-text-button {
+  min-height: 32px;
+  border-radius: 6px;
+  color: var(--glossa-ink);
+  font-size: 0.75rem;
+  text-decoration: underline;
+  text-decoration-color: var(--glossa-border);
+  text-underline-offset: 4px;
+}
+
+.glossa-study-callout,
+.glossa-study-source {
+  padding: 12px;
+  border: 1px solid var(--glossa-border);
+  border-radius: var(--glossa-radius);
+  background: var(--glossa-surface);
+}
+
+.glossa-study-source blockquote {
+  max-height: 180px;
+  overflow-y: auto;
+  padding-inline-start: 10px;
+  border-inline-start: 2px solid var(--glossa-border);
+  font-size: 0.8125rem;
+  line-height: 1.9;
+  white-space: pre-wrap;
+}
+
+.glossa-study-progress {
+  height: 3px;
+  accent-color: var(--glossa-ink);
+}
+
+.glossa-study-empty > svg {
+  color: var(--glossa-muted);
+}
+
+.glossa-study-document {
+  font-size: 0.875rem;
+  line-height: 1.95;
+}
+
+.glossa-study-document h3 {
+  margin-block: 8px 16px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.glossa-study-document h4 {
+  margin-block: 24px 10px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.glossa-study-document p {
+  margin-block: 10px;
+  white-space: pre-wrap;
+}
+
+.glossa-study-references {
+  display: inline;
+  margin-inline-start: 3px;
+}
+
+.glossa-study-reference {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 28px;
+  margin-inline: 2px;
+  padding-inline: 5px;
+  border: 1px solid var(--glossa-border);
+  border-radius: 6px;
+  color: var(--glossa-ink);
+  background: var(--glossa-surface);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.glossa-study-inference {
+  margin-inline-end: 6px;
+  color: var(--glossa-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.glossa-study-questions details {
+  padding-block: 12px;
+  border-bottom: 1px solid var(--glossa-border);
+}
+
+.glossa-study-questions summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.glossa-study-personal {
+  padding-top: 20px;
+  border-top: 1px solid var(--glossa-border);
+}
+
+@media (pointer: coarse) {
+  .glossa-study-reference,
+  .glossa-study-text-button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

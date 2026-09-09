@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { useId } from 'react';
+import React, { lazy, Suspense, useId } from 'react';
 
 import { BookDoc } from '@/libs/document';
 import { useSidebarStore } from '@/store/sidebarStore';
@@ -11,16 +11,24 @@ import 'overlayscrollbars/overlayscrollbars.css';
 import TOCView from './TOCView';
 import BooknoteView from './BooknoteView';
 import TabNavigation from './TabNavigation';
+const StudyNotesPanel = lazy(() => import('@/glossa/ui/StudyNotesPanel'));
 
 const SidebarContent: React.FC<{
   bookDoc: BookDoc;
   sideBarBookKey: string;
 }> = ({ bookDoc, sideBarBookKey }) => {
   const { setSearchBarVisible } = useSidebarStore();
-  const { getConfig, setConfig } = useBookDataStore();
+  const { getConfig, setConfig, getBookData } = useBookDataStore();
+  const book = getBookData(sideBarBookKey)?.book;
+  const showStudyNotes = book?.format === 'EPUB';
   const config = getConfig(sideBarBookKey);
   const storedTab = config?.viewSettings?.sideBarTab;
-  const activeTab = storedTab === 'annotations' || storedTab === 'bookmarks' ? storedTab : 'toc';
+  const activeTab =
+    storedTab === 'annotations' ||
+    storedTab === 'bookmarks' ||
+    (storedTab === 'study' && showStudyNotes)
+      ? storedTab
+      : 'toc';
   const tabId = useId();
 
   const handleTabChange = (tab: string) => {
@@ -36,7 +44,12 @@ const SidebarContent: React.FC<{
 
   return (
     <>
-      <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} idPrefix={tabId} />
+      <TabNavigation
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        idPrefix={tabId}
+        showStudyNotes={showStudyNotes}
+      />
       <div
         className={clsx(
           'sidebar-content glossa-reader-sidebar-content flex h-full min-h-0 flex-grow flex-col',
@@ -68,6 +81,16 @@ const SidebarContent: React.FC<{
             )}
             {activeTab === 'bookmarks' && (
               <BooknoteView type='bookmark' toc={bookDoc.toc ?? []} bookKey={sideBarBookKey} />
+            )}
+            {activeTab === 'study' && book && (
+              <Suspense fallback={null}>
+                <StudyNotesPanel
+                  key={sideBarBookKey}
+                  book={book}
+                  bookDoc={bookDoc}
+                  bookKey={sideBarBookKey}
+                />
+              </Suspense>
             )}
           </div>
         </OverlayScrollbarsComponent>

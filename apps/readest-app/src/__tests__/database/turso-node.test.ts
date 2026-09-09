@@ -35,7 +35,11 @@ describe('NodeDatabaseService (real in-memory SQLite)', () => {
   });
 
   describe('Vector Search', () => {
-    vectorTests(() => db);
+    // The pinned 0.6.0-pre.28 native binary can dispatch to SimSIMD's serial
+    // approximate sqrt (including for vector64). Its L2 results differ by
+    // ~0.06% here. Bound relative error to 0.1%; leave other backends strict.
+    // See docs/testing.md: Native Turso vector precision.
+    vectorTests(() => db, { l2RelativeTolerance: 1e-3 });
   });
 
   describe('Migrations', () => {

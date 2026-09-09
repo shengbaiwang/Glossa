@@ -76,7 +76,6 @@ import { collectDocumentImages, DocumentImage } from '../utils/documentImages';
 import { footerReservesBand } from '../utils/footerBand';
 import { showTransientSearchHighlight } from '../utils/searchHighlight';
 import { handleA11yNavigation } from '@/utils/a11y';
-import { isCJKLang } from '@/utils/lang';
 import { getLocale } from '@/utils/misc';
 import { isFontType } from '@/utils/font';
 import { getScrollGapAttr } from '@/utils/webtoon';
@@ -347,7 +346,7 @@ const FoliateViewer: React.FC<{
       }
 
       if (!bookData?.isFixedLayout) {
-        mountAdditionalFonts(detail.doc, isCJKLang(bookData.book?.primaryLanguage));
+        mountAdditionalFonts(detail.doc, bookData.book?.primaryLanguage);
       }
 
       getLoadedFonts().forEach((font) => {

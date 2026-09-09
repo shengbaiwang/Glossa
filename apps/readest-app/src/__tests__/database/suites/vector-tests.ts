@@ -18,7 +18,22 @@ import { DatabaseService } from '@/types/database';
  *
  * Reference: https://docs.turso.tech/sql-reference/functions/vector
  */
-export function vectorTests(getDb: () => DatabaseService) {
+export function vectorTests(
+  getDb: () => DatabaseService,
+  { l2RelativeTolerance = 0 }: { l2RelativeTolerance?: number } = {},
+) {
+  const expectL2Distance = (actual: number, expected: number) => {
+    expect(Number.isFinite(actual)).toBe(true);
+    expect(actual).toBeGreaterThanOrEqual(0);
+    if (expected === 0) {
+      expect(actual).toBe(0);
+    } else if (l2RelativeTolerance > 0) {
+      expect(Math.abs(actual - expected) / expected).toBeLessThanOrEqual(l2RelativeTolerance);
+    } else {
+      expect(actual).toBeCloseTo(expected, 4);
+    }
+  };
+
   // ---------------------------------------------------------------------------
   // Vector creation & storage
   // ---------------------------------------------------------------------------
@@ -97,7 +112,29 @@ export function vectorTests(getDb: () => DatabaseService) {
     const rows = await db.select<{ d: number }>(
       "SELECT vector_distance_l2(vector32('[0,0]'), vector32('[3,4]')) AS d",
     );
-    expect(rows[0]!.d).toBeCloseTo(5.0, 4);
+    expectL2Distance(rows[0]!.d, 5);
+  });
+
+  it.each([
+    'vector32',
+    'vector64',
+  ] as const)('%s L2 stays accurate across scales, signs and odd dimensions', async (vectorType) => {
+    const db = getDb();
+    for (const scale of [1e-6, 1, 1e6]) {
+      const a = [0, -3, 4, 1, -2, 5, -1].map((x) => x * scale);
+      const b = [1, 2, -2, 0, 3, -1, 2].map((x) => x * scale);
+      const expected = Math.hypot(...a.map((x, i) => x - b[i]!));
+      const rows = await db.select<{ distance: number; reverse: number; identical: number }>(
+        `SELECT vector_distance_l2(${vectorType}(?), ${vectorType}(?)) AS distance,
+                  vector_distance_l2(${vectorType}(?), ${vectorType}(?)) AS reverse,
+                  vector_distance_l2(${vectorType}(?), ${vectorType}(?)) AS identical`,
+        [a, b, b, a, a, a].map((vector) => JSON.stringify(vector)),
+      );
+      // Normalize to keep this assertion meaningful even for very small distances.
+      expectL2Distance(rows[0]!.distance / expected, 1);
+      expect(rows[0]!.reverse).toBe(rows[0]!.distance);
+      expect(rows[0]!.identical).toBe(0);
+    }
   });
 
   it('vector_distance_dot() returns more negative for similar vectors', async () => {
@@ -155,10 +192,11 @@ export function vectorTests(getDb: () => DatabaseService) {
        FROM points ORDER BY dist ASC`,
     );
     expect(rows).toHaveLength(3);
+    expect(rows.map((row) => row.id)).toEqual([1, 3, 2]);
     // Origin first, then [1,1] (dist ~1.41), then [3,4] (dist 5)
-    expect(rows[0]!.dist).toBeCloseTo(0, 4);
-    expect(rows[1]!.dist).toBeCloseTo(Math.sqrt(2), 4);
-    expect(rows[2]!.dist).toBeCloseTo(5, 4);
+    expectL2Distance(rows[0]!.dist, 0);
+    expectL2Distance(rows[1]!.dist, Math.sqrt(2));
+    expectL2Distance(rows[2]!.dist, 5);
   });
 
   // ---------------------------------------------------------------------------
@@ -231,7 +269,7 @@ export function vectorTests(getDb: () => DatabaseService) {
     const rows = await db.select<{ d: number }>(
       "SELECT vector_distance_l2(vector64('[0,0]'), vector64('[3,4]')) AS d",
     );
-    expect(rows[0]!.d).toBeCloseTo(5.0, 4);
+    expectL2Distance(rows[0]!.d, 5);
   });
 
   // ---------------------------------------------------------------------------

@@ -303,11 +303,11 @@ export const DEFAULT_MOBILE_READSETTINGS: Partial<ReadSettings> = {
 };
 
 export const DEFAULT_BOOK_FONT: BookFont = {
-  serifFont: 'Bitter',
-  sansSerifFont: 'Roboto',
-  monospaceFont: 'Consolas',
+  serifFont: 'Times New Roman',
+  sansSerifFont: 'Arial',
+  monospaceFont: 'Courier New',
   defaultFont: 'Serif',
-  defaultCJKFont: 'LXGW WenKai GB Screen',
+  defaultCJKFont: 'Auto',
   defaultFontSize: 16,
   minimumFontSize: 8,
   fontWeight: 400,
@@ -529,41 +529,26 @@ export const DEFAULT_VIEW_SETTINGS_CONFIG: ViewSettingsConfig = {
 
 export const SYSTEM_SETTINGS_VERSION = 1;
 
-export const SERIF_FONTS = [
-  'Bitter',
-  'Literata',
-  'Merriweather',
-  'Roboto Slab',
-  'Vollkorn',
-  'PT Serif',
-  'Georgia',
-  'Times New Roman',
-];
-
+// Common system faces. These are local font stacks, never bundled downloads.
+export const SERIF_FONTS = ['Times New Roman', 'Georgia', _('Traditional Arabic')];
 export const NON_FREE_FONTS = ['Georgia', 'Times New Roman'];
-
 export const CJK_SERIF_FONTS = [
-  _('LXGW WenKai GB Screen'),
-  _('LXGW WenKai TC'),
-  _('GuanKiapTsingKhai-T'),
-  _('Source Han Serif CN'),
-  _('Huiwen-MinchoGBK'),
-  _('KingHwa_OldSong'),
+  _('SimSun'),
+  _('KaiTi'),
+  _('FangSong'),
+  _('MingLiU'),
+  _('Yu Mincho'),
+  _('Batang'),
 ];
-
-export const CJK_SANS_SERIF_FONTS = ['Noto Sans SC', 'Noto Sans TC'];
-
-export const SANS_SERIF_FONTS = ['Roboto', 'Noto Sans', 'Open Sans', 'PT Sans', 'Helvetica'];
-
-export const MONOSPACE_FONTS = [
-  'Fira Code',
-  'Consolas',
-  'Courier New',
-  'Lucida Console',
-  'PT Mono',
+export const CJK_SANS_SERIF_FONTS = [
+  _('SimHei'),
+  _('Microsoft YaHei'),
+  _('Yu Gothic'),
+  _('Malgun Gothic'),
 ];
-
-export const FALLBACK_FONTS = ['MiSans L3'];
+export const SANS_SERIF_FONTS = ['Arial', 'Helvetica', 'Verdana', 'Tahoma'];
+export const MONOSPACE_FONTS = ['Courier New', 'Consolas', 'Menlo'];
+export const FALLBACK_FONTS = ['Noto Serif', 'Noto Sans'];
 
 export const WINDOWS_FONTS = [
   'Arial',
@@ -593,8 +578,6 @@ export const WINDOWS_FONTS = [
   'Leelawadee UI',
   'Lucida Console',
   'Lucida Sans Unicode',
-  'LXGW WenKai GB Screen',
-  'LXGW WenKai TC',
   'Malgun Gothic',
   'Marlett',
   'Microsoft Himalaya',
@@ -689,8 +672,6 @@ export const MACOS_FONTS = [
   'Kozuka Mincho Pro',
   'Lucida Grande',
   'Luminari',
-  'LXGW WenKai GB Screen',
-  'LXGW WenKai TC',
   'Marker Felt',
   'Menlo',
   'Microsoft Sans Serif',
@@ -747,8 +728,6 @@ export const LINUX_FONTS = [
   'Liberation Mono',
   'Liberation Sans',
   'Liberation Serif',
-  'LXGW WenKai GB Screen',
-  'LXGW WenKai TC',
   'Noto Mono',
   'Noto Sans',
   'Noto Sans JP',
@@ -785,8 +764,6 @@ export const IOS_FONTS = [
   'Hiragino Mincho',
   'Hiragino Sans',
   'Kaiti',
-  'LXGW WenKai GB Screen',
-  'LXGW WenKai TC',
   'Palatino',
   'PingFang SC',
   'PingFang TC',
@@ -809,8 +786,6 @@ export const ANDROID_FONTS = [
   'Georgia',
   'Heiti',
   'Kaiti',
-  'LXGW WenKai GB Screen',
-  'LXGW WenKai TC',
   'Noto Sans',
   'Noto Sans CJK',
   'Noto Sans JP',
@@ -839,6 +814,11 @@ export const CJK_FONTS_PATTENS = new RegExp(
     'SC$',
     'HK',
     'JP',
+    'KR',
+    'Batang',
+    'Gothic',
+    'Myungjo',
+    'Malgun',
     'TW',
     'Sim',
     'Kai',

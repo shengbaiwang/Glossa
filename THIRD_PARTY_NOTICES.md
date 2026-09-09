@@ -10,6 +10,21 @@ Before distributing a build, include the license texts and required notices for
 the dependencies and assets actually shipped in it. Preserve their original
 terms; Glossa branding does not replace their authorship or licenses.
 
+## Glossa bundled Kai fallback (2026-09-09)
+
+AR PL UKai CN by Arphic Technology and CJKUnifonts/Arne Goetje is included as a
+local fallback for the common Kai typeface. The complete CN face was extracted
+and converted to WOFF2 by Glossa contributors on 2026-09-09, without removing or
+redesigning glyphs. The modification notice is embedded in the font. It remains
+under the Arphic Public License (1999); this font license is independent of the
+application's AGPL. The unmodified license, original credits, source package,
+checksum and reproduction instructions ship in `public/fonts/` alongside the
+font (`ARPHICPL.txt`, `ar-pl-ukai-copyright.txt`, `README.md`).
+
+The former online reading-font catalog below is retained as historical upstream
+attribution; Glossa no longer downloads those fonts. Common commercial system
+fonts are referenced by installed family name and are not distributed.
+
 ## Retained upstream licensing and acknowledgements
 
 Readest is free software: you can redistribute it and/or modify it under the terms of the [GNU Affero General Public License](https://www.gnu.org/licenses/agpl-3.0.html) as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. See the [LICENSE](LICENSE) file for details.
