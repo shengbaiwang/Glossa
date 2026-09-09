@@ -77,7 +77,9 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
   const [codeHighlighting, setcodeHighlighting] = useState(viewSettings.codeHighlighting);
   const [codeLanguage, setCodeLanguage] = useState(viewSettings.codeLanguage);
   const [selectedTextureId, setSelectedTextureId] = useState(currentTextureId);
-  const [backgroundTransparency, setBackgroundTransparency] = useState(currentBackgroundTransparency);
+  const [backgroundTransparency, setBackgroundTransparency] = useState(
+    currentBackgroundTransparency,
+  );
   const [backgroundSize, setBackgroundSize] = useState(currentBackgroundSize);
   const [highlightTransparency, setHighlightTransparency] = useState(
     viewSettings.highlightTransparency ?? 0.6,
