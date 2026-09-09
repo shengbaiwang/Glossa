@@ -2167,5 +2167,18 @@
   "Search Fonts": "搜索字体",
   "No matching fonts": "未找到字体",
   "System fonts unavailable": "无法读取系统字体",
-  "Could not save font settings": "字体设置未保存"
+  "Could not save font settings": "字体设置未保存",
+  "Soft gray": "柔灰",
+  "Reading preview": "阅读预览",
+  "A quiet page, a clear mind.": "一页静读，片刻清明。",
+  "Read at your own pace.": "按自己的节奏阅读。",
+  "More colors": "更多配色",
+  "Fewer colors": "收起配色",
+  "Reading colors": "阅读颜色",
+  "Enter a theme name.": "请输入主题名称。",
+  "A theme with this name already exists.": "已有同名主题。",
+  "A quiet page, a little time, and room to think.": "静读一页，让思绪慢慢展开。",
+  "Sample Link": "链接示例",
+  "Could not save the theme. Try again.": "主题保存失败，请重试。",
+  "Could not delete the theme. Try again.": "主题删除失败，请重试。"
 }

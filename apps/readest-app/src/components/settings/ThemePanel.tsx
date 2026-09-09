@@ -30,7 +30,7 @@ import { PREDEFINED_TEXTURES } from '@/styles/textures';
 
 import { DefaultHighlightColor, HighlightColor, UserHighlightColor } from '@/types/book';
 import clsx from 'clsx';
-import { SettingLabel } from './primitives';
+import { BoxedList, SettingsSwitchRow } from './primitives';
 import { HIGHLIGHT_COLOR_HEX } from '@/services/constants';
 import ThemeEditor from './theme/ThemeEditor';
 import ThemeModeSelector from './theme/ThemeModeSelector';
@@ -39,7 +39,6 @@ import BackgroundTextureSelector from './theme/BackgroundTextureSelector';
 import HighlightColorsEditor from './theme/HighlightColorsEditor';
 import CodeHighlightingSettings from './theme/CodeHighlightingSettings';
 import ReadingRulerSettings from './theme/ReadingRulerSettings';
-import { Toggle } from '../primitives/toggle';
 import LibrarySettings from './theme/LibrarySettings';
 
 const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }) => {
@@ -292,16 +291,16 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
     saveSysSettings(envConfig, 'librarySkeuomorphicCovers', skeuomorphicCovers);
   }, [skeuomorphicCovers]);
 
-  const handleSaveCustomTheme = (customTheme: CustomTheme) => {
+  const handleSaveCustomTheme = async (customTheme: CustomTheme) => {
+    await saveCustomTheme(envConfig, settings, customTheme);
     applyCustomTheme(customTheme);
-    saveCustomTheme(envConfig, settings, customTheme);
     setSettings({ ...settings });
     setThemeColor(customTheme.name);
     setShowCustomThemeEditor(false);
   };
 
-  const handleDeleteCustomTheme = (customTheme: CustomTheme) => {
-    saveCustomTheme(envConfig, settings, customTheme, true);
+  const handleDeleteCustomTheme = async (customTheme: CustomTheme) => {
+    await saveCustomTheme(envConfig, settings, customTheme, true);
     setSettings({ ...settings });
     setThemeColor('default');
     setShowCustomThemeEditor(false);
@@ -383,6 +382,7 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
       {showCustomThemeEditor ? (
         <ThemeEditor
           customTheme={editTheme}
+          baseTheme={themes.concat(customThemes).find((theme) => theme.name === themeColor)}
           onSave={handleSaveCustomTheme}
           onDelete={handleDeleteCustomTheme}
           onCancel={() => setShowCustomThemeEditor(false)}
@@ -396,39 +396,34 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
             data-setting-id='settings.color.themeMode'
           />
 
-          <label
-            data-setting-id='settings.color.invertImageInDarkMode'
-            className={clsx(
-              'flex items-center justify-between px-4',
-              !isDarkMode && 'cursor-not-allowed opacity-50',
-              isDarkMode && 'cursor-pointer',
-            )}
-          >
-            <SettingLabel>{_('Invert Image In Dark Mode')}</SettingLabel>
-            <Toggle
-              checked={invertImgColorInDark}
-              disabled={!isDarkMode}
-              onChange={() => setInvertImgColorInDark(!invertImgColorInDark)}
-            />
-          </label>
-
-          <label
-            data-setting-id='settings.color.overrideBookColor'
-            className='flex cursor-pointer items-center justify-between px-4'
-          >
-            <SettingLabel>{_('Override Book Color')}</SettingLabel>
-            <Toggle checked={overrideColor} onChange={() => setOverrideColor(!overrideColor)} />
-          </label>
-
           <ThemeColorSelector
             themes={themes.concat(customThemes)}
             themeColor={themeColor}
             isDarkMode={isDarkMode}
             onThemeColorChange={setThemeColor}
             onEditTheme={handleEditTheme}
-            onCreateTheme={() => setShowCustomThemeEditor(true)}
+            onCreateTheme={() => {
+              setEditTheme(null);
+              setShowCustomThemeEditor(true);
+            }}
             data-setting-id='settings.color.themeColor'
           />
+
+          <BoxedList title={_('Reading colors')} cardClassName='glossa-font-card'>
+            <SettingsSwitchRow
+              data-setting-id='settings.color.overrideBookColor'
+              label={_('Override Book Color')}
+              checked={overrideColor}
+              onChange={() => setOverrideColor(!overrideColor)}
+            />
+            <SettingsSwitchRow
+              data-setting-id='settings.color.invertImageInDarkMode'
+              label={_('Invert Image In Dark Mode')}
+              checked={invertImgColorInDark}
+              disabled={!isDarkMode}
+              onChange={() => setInvertImgColorInDark(!invertImgColorInDark)}
+            />
+          </BoxedList>
 
           <BackgroundTextureSelector
             predefinedTextures={PREDEFINED_TEXTURES}

@@ -36,6 +36,52 @@ import { addPluginListener } from '@tauri-apps/api/core';
 import { startAmbientLightUpdates, stopAmbientLightUpdates } from '@/utils/bridge';
 import { useThemeStore, loadDataTheme, initSystemThemeListener } from '@/store/themeStore';
 import type { AppService } from '@/types/system';
+import type { SystemSettings } from '@/types/settings';
+import type { EnvConfigType } from '@/services/environment';
+import type { CustomTheme } from '@/styles/themes';
+
+describe('custom theme persistence', () => {
+  const original: CustomTheme = {
+    name: 'paper',
+    label: 'Paper',
+    colors: {
+      light: { bg: '#faf9f6', fg: '#242521', primary: '#343630' },
+      dark: { bg: '#20211f', fg: '#edeee8', primary: '#e1e3d9' },
+    },
+  };
+  const fixture = (saveSettings: AppService['saveSettings']) => ({
+    // The persistence method only consumes customThemes; no real app service or book data.
+    settings: { globalReadSettings: { customThemes: [original] } } as SystemSettings,
+    env: { getAppService: async () => ({ saveSettings }) as AppService } satisfies EnvConfigType,
+  });
+
+  test('failed saves and deletes leave existing preferences and startup cache untouched', async () => {
+    const save = vi.fn().mockRejectedValue(new Error('write failed'));
+    const { settings, env } = fixture(save);
+    const oldCache = JSON.stringify([original]);
+    localStorage.setItem('customThemes', oldCache);
+    const edited = { ...original, label: 'New name' };
+    await expect(useThemeStore.getState().saveCustomTheme(env, settings, edited)).rejects.toThrow();
+    expect(settings.globalReadSettings.customThemes).toEqual([original]);
+    expect(localStorage.getItem('customThemes')).toBe(oldCache);
+    await expect(
+      useThemeStore.getState().saveCustomTheme(env, settings, original, true),
+    ).rejects.toThrow();
+    expect(settings.globalReadSettings.customThemes).toEqual([original]);
+    expect(localStorage.getItem('customThemes')).toBe(oldCache);
+  });
+
+  test('successful rename replaces its original ID and delete removes only that ID', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const { settings, env } = fixture(save);
+    const edited = { ...original, label: 'New name' };
+    await useThemeStore.getState().saveCustomTheme(env, settings, edited);
+    expect(settings.globalReadSettings.customThemes).toEqual([edited]);
+    expect(JSON.parse(localStorage.getItem('customThemes')!)).toEqual([edited]);
+    await useThemeStore.getState().saveCustomTheme(env, settings, edited, true);
+    expect(settings.globalReadSettings.customThemes).toEqual([]);
+  });
+});
 
 describe('themeStore', () => {
   beforeEach(() => {

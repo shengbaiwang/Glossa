@@ -2167,5 +2167,18 @@
   "Search Fonts": "搜尋字體",
   "No matching fonts": "找不到字體",
   "System fonts unavailable": "無法讀取系統字體",
-  "Could not save font settings": "字體設定未儲存"
+  "Could not save font settings": "字體設定未儲存",
+  "Soft gray": "柔灰",
+  "Reading preview": "閱讀預覽",
+  "A quiet page, a clear mind.": "一頁靜讀，片刻清明。",
+  "Read at your own pace.": "按自己的節奏閱讀。",
+  "More colors": "更多配色",
+  "Fewer colors": "收起配色",
+  "Reading colors": "閱讀顏色",
+  "Enter a theme name.": "請輸入主題名稱。",
+  "A theme with this name already exists.": "已有同名主題。",
+  "A quiet page, a little time, and room to think.": "靜讀一頁，讓思緒慢慢展開。",
+  "Sample Link": "連結範例",
+  "Could not save the theme. Try again.": "主題儲存失敗，請重試。",
+  "Could not delete the theme. Try again.": "主題刪除失敗，請重試。"
 }

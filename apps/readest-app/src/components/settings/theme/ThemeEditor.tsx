@@ -1,129 +1,93 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from '@/hooks/useTranslation';
-import { CustomTheme } from '@/styles/themes';
+import { CustomTheme, Theme, themes } from '@/styles/themes';
 import { md5Fingerprint } from '@/utils/md5';
-import { CUSTOM_THEME_TEMPLATES } from '@/services/constants';
 import { useSettingsStore } from '@/store/settingsStore';
-import clsx from 'clsx';
+import BoxedList from '../primitives/BoxedList';
+import SettingsRow from '../primitives/SettingsRow';
 import ColorInput from './ColorInput';
 
 type ThemeEditorProps = {
   customTheme: CustomTheme | null;
-  onSave: (customTheme: CustomTheme) => void;
-  onDelete: (customTheme: CustomTheme) => void;
+  baseTheme?: Theme;
+  onSave: (customTheme: CustomTheme) => void | Promise<void>;
+  onDelete: (customTheme: CustomTheme) => void | Promise<void>;
   onCancel: () => void;
 };
 
-const ThemePreview: React.FC<{
-  textColor: string;
-  backgroundColor: string;
-  primaryColor: string;
-  label: string;
-}> = ({ textColor, backgroundColor, primaryColor, label }) => {
-  const _ = useTranslation();
-  return (
-    <div className='mb-2 mt-4'>
-      <label className='mb-1 block text-sm font-medium'>{label}</label>
-      <div
-        className='border-base-300 overflow-hidden rounded border p-2'
-        style={{
-          backgroundColor: backgroundColor,
-          color: textColor,
-        }}
-      >
-        <p className='mb-2 whitespace-pre-line break-words text-xs'>
-          {_(
-            'All the world’s a stage, and all the men and women merely players; they have their exits and their entrances, and one man in his time plays many parts.',
-          )}
-          {'\n\n'}
-          <span
-            className='mt-4 cursor-pointer italic'
-            style={{
-              color: primaryColor,
-            }}
-          >
-            {_('— William Shakespeare, As You Like It')}
-          </span>
-        </p>
-      </div>
-    </div>
-  );
-};
-
-const ThemeColorInput: React.FC<{
-  label: string;
-  hex: string;
-  onChange: (hex: string) => void;
-  pickerPosition?: 'left' | 'center' | 'right';
-}> = ({ label, hex, onChange, pickerPosition = 'left' }) => {
-  return (
-    <div className='flex items-center justify-between gap-2'>
-      <span className='min-w-0 flex-1 truncate' title={label}>
-        {label}
-      </span>
-      <div className='shrink-0'>
-        <ColorInput label={label} value={hex} onChange={onChange} pickerPosition={pickerPosition} />
-      </div>
-    </div>
-  );
-};
-
-const ThemeEditor: React.FC<ThemeEditorProps> = ({ customTheme, onSave, onDelete, onCancel }) => {
+const ThemeEditor: React.FC<ThemeEditorProps> = ({
+  customTheme,
+  baseTheme = themes[0]!,
+  onSave,
+  onDelete,
+  onCancel,
+}) => {
   const _ = useTranslation();
   const { settings } = useSettingsStore();
-  const [template] = useState(
-    () => CUSTOM_THEME_TEMPLATES[Math.floor(Math.random() * CUSTOM_THEME_TEMPLATES.length)]!,
-  );
-  const [lightTextColor, setLightTextColor] = useState(
-    customTheme?.colors.light.fg || template.light.fg,
-  );
-  const [lightBackgroundColor, setLightBackgroundColor] = useState(
-    customTheme?.colors.light.bg || template.light.bg,
-  );
-  const [lightPrimaryColor, setLightPrimaryColor] = useState(
-    customTheme?.colors.light.primary || template.light.primary,
-  );
-  const [darkTextColor, setDarkTextColor] = useState(
-    customTheme?.colors.dark.fg || template.dark.fg,
-  );
-  const [darkBackgroundColor, setDarkBackgroundColor] = useState(
-    customTheme?.colors.dark.bg || template.dark.bg,
-  );
-  const [darkPrimaryColor, setDarkPrimaryColor] = useState(
-    customTheme?.colors.dark.primary || template.dark.primary,
-  );
-
-  const [themeName, setThemeName] = useState(customTheme?.label || _('Custom'));
-
-  const existingTheme = settings.globalReadSettings.customThemes.find(
-    (theme) => theme.name === md5Fingerprint(themeName),
-  );
-
-  const getCustomTheme = () => {
-    return {
-      name: md5Fingerprint(themeName),
-      label: themeName,
-      colors: {
+  const nameId = useId();
+  const errorId = useId();
+  const [colors, setColors] = useState<CustomTheme['colors']>(
+    () =>
+      customTheme?.colors ?? {
         light: {
-          fg: lightTextColor,
-          bg: lightBackgroundColor,
-          primary: lightPrimaryColor,
+          fg: baseTheme.colors.light['base-content'],
+          bg: baseTheme.colors.light['base-100'],
+          primary: baseTheme.colors.light.primary,
         },
         dark: {
-          fg: darkTextColor,
-          bg: darkBackgroundColor,
-          primary: darkPrimaryColor,
+          fg: baseTheme.colors.dark['base-content'],
+          bg: baseTheme.colors.dark['base-100'],
+          primary: baseTheme.colors.dark.primary,
         },
       },
-    };
+  );
+  const [themeName, setThemeName] = useState(customTheme?.label ?? _('Custom'));
+  const [isBusy, setIsBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const trimmedName = themeName.trim();
+  // Existing IDs are referenced by saved reader settings, so renaming only
+  // changes the display label. New themes retain the existing ID convention.
+  const themeId = customTheme?.name ?? md5Fingerprint(trimmedName);
+  const hasNameConflict = settings.globalReadSettings.customThemes.some(
+    (theme) =>
+      theme.name !== customTheme?.name &&
+      (theme.label.trim().toLowerCase() === trimmedName.toLowerCase() || theme.name === themeId),
+  );
+  const nameError = !trimmedName
+    ? _('Enter a theme name.')
+    : hasNameConflict
+      ? _('A theme with this name already exists.')
+      : null;
+
+  const handleSave = async () => {
+    if (nameError || isBusy) return;
+    setIsBusy(true);
+    setActionError(null);
+    try {
+      await onSave({ name: themeId, label: trimmedName, colors });
+    } catch {
+      setActionError(_('Could not save the theme. Try again.'));
+    } finally {
+      setIsBusy(false);
+    }
   };
 
-  // Render the Save/Cancel bar outside the dialog's scroll viewport (pinned to
-  // the modal box) instead of as a sticky footer inside it. A sticky footer
-  // overlaps the scrolling preview cards, which leaks a hairline of card pixels
-  // at its clipped bottom edge on fractional-DPR screens and jumps a pixel when
-  // the scroll bottoms out. Portaling it out of the scroller sidesteps both.
+  const handleDelete = async () => {
+    if (!customTheme || isBusy) return;
+    setIsBusy(true);
+    setActionError(null);
+    try {
+      await onDelete(customTheme);
+    } catch {
+      setActionError(_('Could not delete the theme. Try again.'));
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  // Keep actions outside the dialog's scroll viewport so the preview cards
+  // cannot slide underneath the footer on fractional-DPR screens.
   const rootRef = useRef<HTMLDivElement>(null);
   const [footerContainer, setFooterContainer] = useState<HTMLElement | null>(null);
   useEffect(() => {
@@ -131,110 +95,120 @@ const ThemeEditor: React.FC<ThemeEditorProps> = ({ customTheme, onSave, onDelete
   }, []);
 
   const footer = (
-    <div
-      className={clsx(
-        'flex shrink-0 bg-base-200 px-6 py-2 sm:px-[10%]',
-        existingTheme ? 'justify-between' : 'justify-end',
-      )}
-    >
-      {existingTheme && (
-        <button className='btn btn-error btn-sm px-2' onClick={() => onDelete(getCustomTheme())}>
+    <div className='glossa-theme-editor-footer bg-base-200 flex shrink-0 items-center justify-end gap-2 px-6 py-3 sm:px-[10%]'>
+      {customTheme && (
+        <button
+          type='button'
+          className='glossa-button eink-bordered me-auto min-h-11 text-error'
+          disabled={isBusy}
+          onClick={handleDelete}
+        >
           {_('Delete')}
         </button>
       )}
-
-      <div className='flex gap-2'>
-        <button className='btn btn-ghost btn-sm px-2' onClick={onCancel}>
-          {_('Cancel')}
-        </button>
-        <button
-          className='btn btn-contrast btn-sm text-base-content px-2'
-          onClick={() => onSave(getCustomTheme())}
-        >
-          {_('Save')}
-        </button>
-      </div>
+      <button
+        type='button'
+        className='glossa-button eink-bordered min-h-11'
+        disabled={isBusy}
+        onClick={onCancel}
+      >
+        {_('Cancel')}
+      </button>
+      <button
+        type='button'
+        className='glossa-button glossa-button-primary min-h-11'
+        disabled={!!nameError || isBusy}
+        onClick={handleSave}
+      >
+        {_('Save')}
+      </button>
     </div>
   );
 
   return (
-    <div ref={rootRef} className='flex flex-col gap-2 mt-6 rounded-lg'>
-      <div className='flex items-center gap-4'>
-        <label className='font-medium whitespace-nowrap'>{_('Theme Name')}</label>
-        <input
-          type='text'
-          value={themeName}
-          onChange={(e) => setThemeName(e.target.value)}
-          className='bg-base-100 text-base-content border-base-200 min-w-0 flex-1 rounded border p-2 text-sm'
-          placeholder={_('Custom Theme')}
-        />
+    <div
+      ref={rootRef}
+      className='glossa-theme-editor mt-5 flex min-w-0 flex-col gap-5'
+      aria-busy={isBusy}
+    >
+      <div>
+        <BoxedList>
+          <SettingsRow label={<label htmlFor={nameId}>{_('Theme Name')}</label>}>
+            <input
+              id={nameId}
+              type='text'
+              value={themeName}
+              disabled={isBusy}
+              onChange={(event) => setThemeName(event.target.value)}
+              aria-invalid={!!nameError}
+              aria-describedby={nameError ? errorId : undefined}
+              className='settings-content eink-bordered border-base-300 bg-base-100 text-base-content focus-visible:ring-base-content/20 min-h-11 min-w-0 flex-1 rounded-xl border px-3 focus-visible:outline-none focus-visible:ring-2'
+              placeholder={_('Custom Theme')}
+            />
+          </SettingsRow>
+        </BoxedList>
+        {nameError && (
+          <p id={errorId} role='alert' className='text-error mt-2 px-1 text-[0.85em]'>
+            {nameError}
+          </p>
+        )}
+        {actionError && (
+          <p role='alert' className='text-error mt-2 px-1 text-[0.85em]'>
+            {actionError}
+          </p>
+        )}
       </div>
 
-      <div className='grid grid-cols-1 gap-4 mt-4 sm:grid-cols-2 sm:gap-6'>
-        <div className='bg-base-100 rounded-lg p-3'>
-          <h3 className='mb-3 truncate text-center font-medium' title={_('Light Mode')}>
-            {_('Light Mode')}
-          </h3>
-
-          <div className='flex flex-col gap-2'>
-            <ThemeColorInput
-              label={_('Text Color')}
-              hex={lightTextColor}
-              onChange={setLightTextColor}
-            />
-            <ThemeColorInput
-              label={_('Background Color')}
-              hex={lightBackgroundColor}
-              onChange={setLightBackgroundColor}
-            />
-            <ThemeColorInput
-              label={_('Link Color')}
-              hex={lightPrimaryColor}
-              onChange={setLightPrimaryColor}
-            />
-          </div>
-
-          <ThemePreview
-            textColor={lightTextColor}
-            backgroundColor={lightBackgroundColor}
-            primaryColor={lightPrimaryColor}
-            label={_('Preview')}
-          />
-        </div>
-
-        <div className='bg-base-100 rounded-lg p-3'>
-          <h3 className='mb-3 truncate text-center font-medium' title={_('Dark Mode')}>
-            {_('Dark Mode')}
-          </h3>
-
-          <div className='flex flex-col gap-2'>
-            <ThemeColorInput
-              pickerPosition='right'
-              label={_('Text Color')}
-              hex={darkTextColor}
-              onChange={setDarkTextColor}
-            />
-            <ThemeColorInput
-              pickerPosition='right'
-              label={_('Background Color')}
-              hex={darkBackgroundColor}
-              onChange={setDarkBackgroundColor}
-            />
-            <ThemeColorInput
-              pickerPosition='right'
-              label={_('Link Color')}
-              hex={darkPrimaryColor}
-              onChange={setDarkPrimaryColor}
-            />
-          </div>
-
-          <ThemePreview
-            textColor={darkTextColor}
-            backgroundColor={darkBackgroundColor}
-            primaryColor={darkPrimaryColor}
-            label={_('Preview')}
-          />
-        </div>
+      <div className='grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-5'>
+        {(['light', 'dark'] as const).map((mode) => {
+          const modeLabel = mode === 'light' ? _('Light Mode') : _('Dark Mode');
+          const palette = colors[mode];
+          return (
+            <fieldset key={mode} aria-label={modeLabel} className='min-w-0' disabled={isBusy}>
+              <BoxedList title={modeLabel}>
+                {(
+                  [
+                    ['fg', _('Text Color')],
+                    ['bg', _('Background Color')],
+                    ['primary', _('Link Color')],
+                  ] as const
+                ).map(([field, label]) => (
+                  <SettingsRow key={field} label={label}>
+                    <div className='flex shrink-0 items-center gap-2'>
+                      <span className='text-neutral-content font-mono text-[0.75em]'>
+                        {palette[field].toUpperCase()}
+                      </span>
+                      <div className='[&_button]:h-11 [&_button]:w-11 [&_button]:rounded-xl [&_button]:shadow-none [&_button]:transition-colors [&_button:hover]:scale-100'>
+                        <ColorInput
+                          label={`${modeLabel}: ${label}`}
+                          value={palette[field]}
+                          onChange={(value) =>
+                            setColors((current) => ({
+                              ...current,
+                              [mode]: { ...current[mode], [field]: value },
+                            }))
+                          }
+                          pickerPosition='right'
+                        />
+                      </div>
+                    </div>
+                  </SettingsRow>
+                ))}
+              </BoxedList>
+              <div
+                role='region'
+                aria-label={`${modeLabel}: ${_('Preview')}`}
+                className='glossa-theme-preview glossa-theme-editor-preview'
+                style={{ backgroundColor: palette.bg, color: palette.fg }}
+              >
+                <p>{_('A quiet page, a little time, and room to think.')}</p>
+                <span className='glossa-theme-preview-accent' style={{ color: palette.primary }}>
+                  {_('Sample Link')}
+                </span>
+              </div>
+            </fieldset>
+          );
+        })}
       </div>
       {footerContainer ? createPortal(footer, footerContainer) : footer}
     </div>

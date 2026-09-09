@@ -312,6 +312,189 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
   }
 }
 
+/* Reading colors: rounded paper tiles, borrowing the app icon's shape and space. */
+.glossa-theme-selector {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 20px;
+  container-type: inline-size;
+}
+.glossa-theme-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.glossa-theme-heading .glossa-button {
+  padding-inline: 12px;
+  font-size: 0.75rem;
+}
+.glossa-theme-heading > .glossa-button {
+  border-radius: 999px;
+  background: var(--glossa-surface);
+}
+.glossa-theme-selector .glossa-button,
+.glossa-theme-editor-footer .glossa-button {
+  min-height: 44px;
+}
+.glossa-theme-preview {
+  padding: 20px 24px 26px;
+  border: 1px solid color-mix(in srgb, currentColor 9%, transparent);
+  border-radius: var(--glossa-radius-lg);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.025);
+}
+.glossa-theme-preview-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.glossa-theme-mode {
+  flex-shrink: 0;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  font-size: 0.625rem;
+  font-weight: 400;
+}
+.glossa-theme-preview-caption > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.glossa-theme-preview p {
+  margin-block: 26px 12px;
+  font-family: Georgia, 'Noto Serif', serif;
+  font-size: 1.375rem;
+  line-height: 1.8;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+.glossa-theme-preview-accent {
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+.glossa-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px 14px;
+}
+.glossa-theme-choice {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  cursor: pointer;
+}
+.glossa-theme-swatch {
+  position: relative;
+  display: flex;
+  min-height: 100px;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+  border-radius: var(--glossa-radius-lg);
+  box-shadow: 0 2px 5px rgb(0 0 0 / 0.035);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+.glossa-theme-choice input:checked + .glossa-theme-swatch {
+  border-color: currentColor;
+  box-shadow: 0 3px 8px rgb(0 0 0 / 0.06);
+}
+.glossa-theme-choice input:checked ~ .glossa-theme-name {
+  font-weight: 600;
+}
+.glossa-theme-choice input:focus-visible + .glossa-theme-swatch {
+  outline: 2px solid var(--glossa-focus);
+  outline-offset: 3px;
+}
+.glossa-theme-specimen {
+  font-family: Georgia, serif;
+  font-size: 1.875rem;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+.glossa-theme-name {
+  padding-inline: 2px;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.5;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.glossa-theme-check {
+  position: absolute;
+  inset-block-start: 8px;
+  inset-inline-end: 8px;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 50%;
+}
+.glossa-theme-more {
+  display: flex;
+  width: fit-content;
+  margin-block: 14px 8px;
+  margin-inline: auto;
+  padding-inline: 12px;
+  font-size: 0.75rem;
+}
+.glossa-theme-custom {
+  padding-top: 16px;
+}
+.glossa-theme-custom .glossa-theme-heading {
+  min-height: 40px;
+  margin-bottom: 8px;
+}
+.glossa-theme-editor-preview {
+  margin-top: 12px;
+}
+.glossa-theme-editor-preview p {
+  margin-top: 0;
+  font-size: 1.125rem;
+}
+@container (max-width: 300px) {
+  .glossa-theme-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .glossa-theme-preview {
+    padding-inline: 20px;
+  }
+}
+@media (hover: hover) {
+  .glossa-theme-choice:hover .glossa-theme-swatch {
+    border-color: currentColor;
+  }
+}
+[data-eink='true'] .glossa-theme-swatch,
+[data-eink='true'] .glossa-theme-preview {
+  border-color: currentColor;
+  box-shadow: none;
+  transition: none;
+}
+[data-eink='true'] .glossa-theme-choice input:checked + .glossa-theme-swatch {
+  border-width: 2px;
+  padding: 17px;
+  box-shadow: none;
+}
+[data-eink='true'] .glossa-theme-mode {
+  background: transparent;
+}
+@media (prefers-reduced-motion: reduce) {
+  .glossa-theme-swatch {
+    transition: none;
+  }
+}
+
 /* Reading typography: compact choices, a shared specimen, and quiet paper surfaces. */
 .glossa-font-panel {
   display: flex;
@@ -499,7 +682,7 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
 }
 
 @media (min-width: 1000px) and (min-height: 640px) {
-  .glossa-reader-font-settings > .modal-box {
+  .glossa-reader-settings > .modal-box {
     inset-inline-start: auto;
     inset-inline-end: 20px;
     top: 64px;
@@ -509,7 +692,7 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
     max-width: calc(100vw - 40px);
     height: calc(100dvh - 88px);
   }
-  .glossa-reader-font-settings > .dialog-overlay {
+  .glossa-reader-settings > .dialog-overlay {
     background: transparent !important;
   }
 }

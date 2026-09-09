@@ -74,6 +74,38 @@ Implementation: `src/styles/glossa.css`, `glossa-library.css`, `glossa-reader.cs
   fonts, margins, reading position, synchronization and book data remain authoritative.
   Use theme-derived colors, logical directions, visible focus and crisp e-ink states.
 
+### Glossa reading colors — 2026-09-09
+
+Keep the default paper/ink identity. Built-in presets use restrained, low-saturation
+light/dark pairs, including a Soft gray preset informed by Dark Reader's
+[default background and text colors](https://github.com/darkreader/darkreader/blob/main/src/defaults.ts).
+Surface steps stay close in tone; check body, primary and secondary text contrast.
+Custom palette generation and existing theme IDs remain compatible.
+
+- Put a reading specimen above the preset grid. Show six common choices first,
+  with the remaining built-ins under More colors and saved custom colors below.
+  Borrow the app icon's rounded paper shape and generous space: center the text
+  specimen on a 20px-radius tile, put the name below, and use one fine outline with
+  a small inverse-ink round check for selection. Allow very light paper elevation;
+  omit decorative sample rules, preview underlines and section dividers. Use the
+  same paper treatment in custom-theme previews. Preserve native radio keyboard
+  behavior and isolate reading shortcuts in the settings dialog's capture phase.
+- Keep automatic/light/dark appearance separate from the chosen color pair.
+  Group book-color override and image inversion in the existing settings primitives.
+- Start a custom theme from the current pair, with separate light/dark previews.
+  Preserve its ID when renaming; reject conflicting names, and apply saves/deletes
+  only after persistence succeeds. Failed actions retain the draft for retry.
+- Use logical spacing, two columns in narrow containers and visible focus. E-ink
+  uses crisp borders/checks with no shadows or transitions; reduced motion disables
+  transitions. Describe colors as preferences, without health claims.
+
+### Reader settings placement — 2026-09-09
+
+All reader settings tabs share the same 440px trailing-edge sheet on viewports
+at least 1000px wide and 640px tall, with a transparent overlay and consistent
+body padding. Switching tabs must not recenter or resize the dialog. Preserve
+RTL mirroring, the narrow-screen dialog and the library settings layout.
+
 ### Glossa font controls — 2026-09-09
 
 Use short labels, native buttons and visible font samples. For this user-requested

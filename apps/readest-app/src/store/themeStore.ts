@@ -52,7 +52,7 @@ interface ThemeState {
     settings: SystemSettings,
     theme: CustomTheme,
     isDelete?: boolean,
-  ) => void;
+  ) => Promise<void>;
   handleSystemThemeChange: (isDark: boolean) => void;
   handleAmbientLightChange: (lux: number) => void;
   updateSafeAreaInsets: (insets: Insets) => void;
@@ -208,7 +208,7 @@ export const useThemeStore = create<ThemeState>((set, get) => {
       }
     },
     saveCustomTheme: async (envConfig, settings, theme, isDelete) => {
-      const customThemes = settings.globalReadSettings.customThemes || [];
+      const customThemes = [...(settings.globalReadSettings.customThemes || [])];
       const index = customThemes.findIndex((t) => t.name === theme.name);
       if (isDelete) {
         if (index > -1) {
@@ -221,10 +221,14 @@ export const useThemeStore = create<ThemeState>((set, get) => {
           customThemes.push(theme);
         }
       }
-      settings.globalReadSettings.customThemes = customThemes;
-      localStorage.setItem('customThemes', JSON.stringify(customThemes));
       const appService = await envConfig.getAppService();
-      await appService.saveSettings(settings);
+      await appService.saveSettings({
+        ...settings,
+        globalReadSettings: { ...settings.globalReadSettings, customThemes },
+      });
+      // A failed write leaves both the live settings and the startup cache intact.
+      settings.globalReadSettings = { ...settings.globalReadSettings, customThemes };
+      localStorage.setItem('customThemes', JSON.stringify(customThemes));
     },
     handleSystemThemeChange: (systemIsDarkMode) => {
       const mode = get().themeMode;

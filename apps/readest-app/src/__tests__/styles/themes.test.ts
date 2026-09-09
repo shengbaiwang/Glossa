@@ -5,10 +5,77 @@ import {
   getContrastHex,
   generateLightPalette,
   generateDarkPalette,
+  themes,
   type BaseColor,
   type Palette,
 } from '@/styles/themes';
 import tinycolor from 'tinycolor2';
+
+describe('built-in reading themes', () => {
+  const surfaces = ['base-100', 'base-200', 'base-300'] as const;
+
+  it('preserves saved theme names and provides the soft gray preset', () => {
+    const names = themes.map(({ name }) => name);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'default',
+        'gray',
+        'sepia',
+        'grass',
+        'cherry',
+        'sky',
+        'solarized',
+        'gruvbox',
+        'nord',
+        'contrast',
+        'sunset',
+        'darkreader',
+      ]),
+    );
+  });
+
+  describe.each(themes)('$name', ({ colors }) => {
+    describe.each(['light', 'dark'] as const)('%s mode', (mode) => {
+      const palette = colors[mode];
+
+      it('keeps body and interactive text readable on resting and active surfaces', () => {
+        for (const surface of surfaces) {
+          expect(
+            tinycolor.readability(palette[surface], palette['base-content']),
+          ).toBeGreaterThanOrEqual(4.5);
+          expect(tinycolor.readability(palette[surface], palette.primary)).toBeGreaterThanOrEqual(
+            4.5,
+          );
+        }
+      });
+
+      it('keeps neutral text and primary button labels readable', () => {
+        expect(
+          tinycolor.readability(palette.neutral, palette['neutral-content']),
+        ).toBeGreaterThanOrEqual(4.5);
+        expect(
+          tinycolor.readability(palette.primary, getContrastHex(palette.primary)),
+        ).toBeGreaterThanOrEqual(4.5);
+      });
+
+      it('uses distinct, restrained surface steps in the correct direction', () => {
+        const values = surfaces.map((surface) => tinycolor(palette[surface]).getLuminance());
+        for (let index = 1; index < surfaces.length; index++) {
+          if (mode === 'light') {
+            expect(values[index]).toBeLessThan(values[index - 1]!);
+          } else {
+            expect(values[index]).toBeGreaterThan(values[index - 1]!);
+          }
+          // Hover and pressed states should remain part of the same paper surface.
+          expect(
+            tinycolor.readability(palette[surfaces[index]!], palette[surfaces[index - 1]!]),
+          ).toBeLessThanOrEqual(1.35);
+        }
+      });
+    });
+  });
+});
 
 describe('hexToOklch', () => {
   it('should convert red (#ff0000) to oklch string', () => {

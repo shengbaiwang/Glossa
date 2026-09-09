@@ -291,7 +291,7 @@ function ReadingContextFixture() {
         <p>雨还没有停，书页却已翻过。方才读到的意思，像窗边渐渐明亮的天色，留在心里。</p>
       </article>
       {open && (
-        <div className='glossa-settings glossa-reader-font-settings modal-open fixed inset-0 z-50 flex items-center justify-center'>
+        <div className='glossa-settings glossa-reader-settings modal-open fixed inset-0 z-50 flex items-center justify-center'>
           <div className='dialog-overlay absolute inset-0 z-10 bg-black/50 sm:!bg-black/20' />
           <section
             aria-label='字体设置'
