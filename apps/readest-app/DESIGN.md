@@ -74,6 +74,29 @@ Implementation: `src/styles/glossa.css`, `glossa-library.css`, `glossa-reader.cs
   fonts, margins, reading position, synchronization and book data remain authoritative.
   Use theme-derived colors, logical directions, visible focus and crisp e-ink states.
 
+### Glossa font controls — 2026-09-09
+
+Use short labels, native buttons and visible font samples. For this user-requested
+surface, omit the introductory description required by upstream §2.9; the controls
+and preview provide orientation. Keep the paper/ink palette, 12px controls, 9px
+segmented buttons, visible keyboard focus and crisp e-ink selection states.
+
+- Open Font directly from the reader's typography button. At desktop widths of
+  1000px and heights of 640px or more, place the dialog beside the visible reading
+  area without resizing the page; retain the existing modal dismissal behavior.
+- Keep Book Fonts / My Fonts, size, weight and language-specific font choices in
+  the main view. Put minimum size, exact weight and secondary font families in More.
+  Show the live sample only for My Fonts; Book Fonts are represented by the book.
+- Expand font choices inline, with search, a shared sample and a selected check.
+  Escape closes the list before the dialog. Enter commits numeric edits; keep
+  arrow-key navigation and 44px touch controls.
+- Use `微雨从东来，好风与之俱` for simplified Chinese and
+  `Sunt lacrimae rerum et mentem mortalia tangunt.` for Latin scripts. Other scripts
+  use short poetic samples; render them through the same font aliases as the reader.
+- Preserve the explicit This Book / All Books scope, custom-font management and
+  existing settings search links. Changes preview immediately and save in order;
+  failed saves expose a concise retry action. Opening unchanged settings does not save.
+
 Readest's UI is **Adwaita-aligned**, **e-ink-first**, **cross-platform-aware**. This doc is the
 reference for that language: principles, vocabulary, anti-patterns. New work should read it
 before reaching for daisyui defaults; existing work is gradually migrating toward it.

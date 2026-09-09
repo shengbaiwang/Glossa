@@ -6,6 +6,18 @@
 
 2026-09-09 用户明确要求增加 EPUB 章节 AI 学习笔记与模型服务设置。这是对精简范围的局部调整，以 `PLAN.md` 为准；旧 AI MVP 历史记录仍不作为当前任务清单。
 
+### 2026-09-09 字体交互重构
+
+- 按用户要求完成 Glossa 字体面板：主层为“原书字体 / 自选字体”、字号加减与直接输入、三档字重、按文档语言的字体选择；“更多”保留最小字号、精确字重、字体类别及其他字族。字体管理、旧设置搜索跳转和本书/全部书籍保存范围保持可用，打开未变化的配置不重复保存。
+- 字体列表原地展开，支持搜索、统一样句比较、选中标记和直接选择。中文使用“微雨从东来，好风与之俱”，西文使用“Sunt lacrimae rerum et mentem mortalia tangunt.”；按阅读语言提供其他文字的原创诗意样句，简繁中文分别显示。样句使用阅读器原有字体别名与回退；原书模式以正文体现出版字体，不展示自选字体的假预览。
+- 延续纸白/墨灰、主题变量与圆角控件，省去解释性长文。阅读工具栏 Aa 直接进入字体页；宽屏侧置面板保留正文可见区域。深色、窄屏、RTL、电子墨水及 44px 触控按钮均已做真实 Chromium 检查，字体列表先响应 Esc，字号 Enter 可在现有设置对话框中提交。
+- 保存队列按操作顺序落盘，覆盖连续选择与范围切换；失败时保留当前预览并提供重试。为既有设置 helper 增加显式强制落盘参数，解决首次失败已更新内存而第二次同值重试无效的问题，重试同值不重复排版。导入字体被外部删除后清除其待保存/失败选择，保留原有删除回退与旧字体迁移。
+- 33 个非英文语言目录各补充 20 个简短标签，原有翻译值保持不变；英文沿用键值回退。`PLAN.md` 和应用 `DESIGN.md` 已记录交互范围与字体面板省略介绍文字的用户要求。
+- 最终全量 Vitest 为 **566 文件、6,892 项通过，零失败**，3 文件/7 项既有跳过。保存重试、连续选择与删除在途字体的回归均先复现失败后修复；真实 Chromium 常规 2/2、额外触控配置 1/1 通过。TypeScript、全量 Biome lint（1,576 文件）、修改代码 Biome check、翻译旧值保持检查和 `git diff --check` 通过。测试使用 Node 24；仅以命令级 `NODE_PATH` 指向已安装的 canvas 依赖，解决首次全量中 3 个 PDF 套件的模块解析失败，未安装依赖或改动原有断言。
+- 浏览器截图位于 `.glossa-dev/qa/font-settings-*.png`；已查看浅色、深色、窄屏与阅读上下文效果。独立面板截图为实际 React 组件，阅读上下文截图使用合成正文和简化外框。没有读取用户书籍、字体文件或凭据，没有调用模型、改变依赖或更新已安装应用。
+- 生产构建在 `.glossa-dev/font-ui-build` 的隔离副本完成，**Webpack、构建内 TypeScript 与 19 个静态页面生成全部通过**，最终退出码为 0；保留既有 workspace root、export 与 Cache-Control 警告。首次副本遗漏原生 guest JS 路径已补齐；默认 4 GB Node 堆触限后，改用项目打包脚本既有的单次 8 GB 配置；静态生成因副本漏加载公共环境配置失败后，恢复加载仓库跟踪的 `.env` 与 `.env.tauri`。最终副本与所有改动的应用文件内容一致，没有影响原有 `.next/dev` 服务。
+- 下一步：本轮源码与前端构建交付完成；后续用户明确安排原生打包时纳入这轮字体交互。
+
 ### 2026-09-09 系统级 Glossa 品牌补全
 
 - 根据钥匙串截图定位两处根因：桌面凭据服务硬编码为 `Readest Safe Storage`；Tauri 开发入口直接执行 Cargo 的隐式 `Readest` 二进制，之前仅修改 `productName`/`mainBinaryName` 未覆盖此路径。现显式设置 Cargo `Glossa` 二进制和 `default-run`，保持 Rust 包/库名及独立 bundle identifier 不变。
@@ -195,6 +207,12 @@
 - 参考项目：[Marginalia](https://github.com/EurFelux/marginalia)（GPL-3.0-or-later，阅读侧栏、可切换上下文、章节摘要；该项目的更多 AI 功能不代表 Glossa 本轮范围）、[Open Notebook](https://github.com/lfnovo/open-notebook)（MIT，[Transformations](https://github.com/lfnovo/open-notebook/blob/main/docs/3-USER-GUIDE/transformations.md) 提供来源到结构化笔记的模板与批处理）、[LlamaIndex](https://github.com/run-llama/llama_index)（MIT，[TreeSummarize](https://github.com/run-llama/llama_index/blob/main/llama-index-core/llama_index/core/response_synthesizers/tree_summarize.py) 提供分层汇总实现）。建议借鉴各自相关部分，当前无需增加独立向量库或完整笔记平台。
 - 同时查看两个专门的 EPUB 总结公开源码范例；未确认其明确许可证，未将其当作可直接复制的开源依赖。官方 README、规划和源码可能不同步，未仅凭项目宣传认定章节边界、来源或生成质量已满足 Glossa 要求。
 - 本轮未安装范例、发送书籍正文、调用真实 LLM、修改产品代码或执行产品测试。下一步如用户选择推进，可先以三类获准 EPUB 章节验证提取、生成与来源跳转，再确定具体实现范围；现有阅读/同步及其他工作区修改保留。
+
+## 2026-09-09 阅读字体配置交互参考
+
+- 核对现有 FontPanel、FontDropDown 与字号/行距快捷面板，并查阅 Apple Books、Kobo、Readwise Reader 官方说明。可借鉴主题与细调分层、阅读页集中调节、正文宽度和键盘快捷操作；针对 Glossa 建议优先简化字体入口、增加统一样句比较，并明确单书与默认设置的作用范围。
+- 来源：[Apple Books](https://support.apple.com/zh-cn/guide/ipad/ipadc8494b6b/ipados)、[Kobo](https://help.kobo.com/hc/en-us/articles/360017639913-Adjust-font-size-and-change-the-font-style-on-your-Kobo-eReader)、[Readwise Reader](https://docs.readwise.io/reader/docs/faqs/appearance)。本轮为设计建议，未改变产品范围或代码，未运行产品测试。
+- 调研后的字体交互实现与验证见顶部“字体交互重构”；本段保留调研时的事实。
 
 ## 历史记录（原 AI MVP，保留原有工作区内容）
 

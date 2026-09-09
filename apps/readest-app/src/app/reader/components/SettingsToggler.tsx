@@ -16,9 +16,10 @@ const SettingsToggler: React.FC<SettingsTogglerProps> = ({ bookKey }) => {
   const iconSize = useResponsiveSize(18);
   const { setHoveredBookKey } = useReaderStore();
   const { isSettingsDialogOpen, setSettingsDialogOpen } = useSettingsStore();
-  const { setSettingsDialogBookKey } = useSettingsStore();
+  const { setSettingsDialogBookKey, setRequestedPanel } = useSettingsStore();
   const handleToggleSettings = () => {
     setHoveredBookKey('');
+    setRequestedPanel('Font');
     setSettingsDialogBookKey(bookKey);
     setSettingsDialogOpen(!isSettingsDialogOpen);
   };

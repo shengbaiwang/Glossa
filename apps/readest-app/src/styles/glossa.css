@@ -311,3 +311,219 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
     min-width: 44px;
   }
 }
+
+/* Reading typography: compact choices, a shared specimen, and quiet paper surfaces. */
+.glossa-font-panel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+  padding-block: 12px;
+  color: var(--glossa-ink);
+}
+
+.glossa-font-segments {
+  display: inline-flex;
+  min-width: 0;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--glossa-border);
+  border-radius: var(--glossa-radius);
+  background: var(--glossa-wash);
+}
+
+.glossa-font-segments .glossa-button {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 12px;
+  border-radius: 9px;
+  white-space: nowrap;
+}
+
+.glossa-font-segments .glossa-button[aria-pressed='true'] {
+  border-color: var(--glossa-border);
+  background: var(--glossa-surface);
+}
+
+.glossa-font-preview {
+  display: flex;
+  min-height: 132px;
+  max-height: 240px;
+  flex-direction: column;
+  justify-content: safe center;
+  gap: 16px;
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--glossa-border);
+  border-radius: var(--glossa-radius);
+  background: var(--glossa-surface);
+  line-height: 1.7;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+.glossa-font-preview p {
+  margin: 0;
+}
+.glossa-font-preview-latin {
+  color: var(--glossa-muted);
+}
+.glossa-font-card {
+  border-radius: var(--glossa-radius);
+  border-color: var(--glossa-border);
+}
+.glossa-font-card > div {
+  border-radius: inherit;
+}
+.glossa-font-trigger {
+  border-radius: var(--glossa-radius);
+  padding: 14px 16px;
+  font-weight: 400;
+}
+.glossa-font-trigger > span:nth-child(2) {
+  color: var(--glossa-muted);
+}
+.glossa-font-trigger[aria-expanded='true'] > span:nth-child(2) {
+  color: var(--glossa-ink);
+}
+.glossa-font-option {
+  padding: 12px;
+}
+.glossa-font-option > span > span:first-child {
+  color: var(--glossa-muted);
+}
+.glossa-font-options > li {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 82px;
+}
+.glossa-font-sample {
+  overflow-wrap: anywhere;
+}
+.glossa-font-picker {
+  min-width: 0;
+}
+
+.glossa-font-number,
+.glossa-font-weight {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  font-size: 0.875rem;
+}
+
+.glossa-font-stepper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--glossa-border);
+  border-radius: var(--glossa-radius);
+}
+
+.glossa-font-stepper input {
+  width: 44px;
+  min-width: 0;
+  padding: 4px 0;
+  background: transparent;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+}
+
+.glossa-font-stepper input::-webkit-inner-spin-button,
+.glossa-font-stepper input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+.glossa-font-stepper .glossa-icon-button {
+  width: 36px;
+  height: 36px;
+}
+.glossa-font-weight .glossa-button {
+  font-size: 0.8125rem;
+  padding-inline: 10px;
+}
+.glossa-font-actions,
+.glossa-font-footer,
+.glossa-font-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.glossa-font-actions .glossa-button {
+  padding-inline: 8px;
+}
+.glossa-font-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.glossa-font-footer {
+  padding-top: 12px;
+  border-top: 1px solid var(--glossa-border);
+}
+.glossa-font-footer .glossa-button {
+  font-size: 0.75rem;
+  padding-inline: 10px;
+}
+.glossa-font-status {
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 380px) {
+  .glossa-font-number,
+  .glossa-font-weight {
+    padding-inline: 10px;
+    gap: 6px;
+  }
+  .glossa-font-weight .glossa-button {
+    padding-inline: 7px;
+  }
+  .glossa-font-trigger {
+    padding-inline: 10px;
+  }
+  .glossa-font-preview {
+    padding: 20px 16px;
+  }
+}
+
+@media (min-width: 1000px) and (min-height: 640px) {
+  .glossa-reader-font-settings > .modal-box {
+    inset-inline-start: auto;
+    inset-inline-end: 20px;
+    top: 64px;
+    bottom: auto;
+    width: 440px;
+    min-width: 0;
+    max-width: calc(100vw - 40px);
+    height: calc(100dvh - 88px);
+  }
+  .glossa-reader-font-settings > .dialog-overlay {
+    background: transparent !important;
+  }
+}
+
+[data-eink='true'] .glossa-font-segments .glossa-button[aria-pressed='true'] {
+  background: var(--glossa-ink) !important;
+  color: var(--glossa-surface) !important;
+}
+[data-eink='true'] .glossa-font-option[aria-pressed='true'] {
+  border: 2px solid var(--glossa-ink);
+}
+
+@media (pointer: coarse) {
+  .glossa-font-segments .glossa-button,
+  .glossa-font-stepper .glossa-icon-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .glossa-font-number,
+  .glossa-font-weight {
+    flex-wrap: wrap;
+  }
+}

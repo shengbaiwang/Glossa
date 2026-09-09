@@ -1,11 +1,16 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
 
-const getViewSettingsMock = vi.fn<(bookKey: string) => { isGlobal?: boolean } | undefined>(
+const getViewSettingsMock = vi.fn<(bookKey: string) => Partial<ViewSettings> | undefined>(
   () => undefined,
 );
 const setViewSettingsMock = vi.fn();
-const getViewMock = vi.fn(() => null);
-const getViewStateMock = vi.fn(() => undefined);
+const setStylesMock = vi.fn();
+const getViewMock = vi.fn<() => { renderer: { setStyles: typeof setStylesMock } } | null>(
+  () => null,
+);
+const getViewStateMock = vi.fn<() => { isPrimary: boolean } | undefined>(() => undefined);
+const getConfigMock = vi.fn<() => { viewSettings: Partial<ViewSettings> } | null>(() => null);
+const saveConfigMock = vi.fn(async () => {});
 
 vi.mock('@/store/readerStore', () => ({
   useReaderStore: {
@@ -22,8 +27,8 @@ vi.mock('@/store/readerStore', () => ({
 vi.mock('@/store/bookDataStore', () => ({
   useBookDataStore: {
     getState: () => ({
-      getConfig: vi.fn(() => null),
-      saveConfig: vi.fn(),
+      getConfig: getConfigMock,
+      saveConfig: saveConfigMock,
     }),
   },
 }));
@@ -63,6 +68,11 @@ beforeEach(() => {
   getViewSettingsMock.mockReset();
   getViewSettingsMock.mockReturnValue(undefined);
   setViewSettingsMock.mockReset();
+  setStylesMock.mockReset();
+  getViewMock.mockReset().mockReturnValue(null);
+  getViewStateMock.mockReset().mockReturnValue(undefined);
+  getConfigMock.mockReset().mockReturnValue(null);
+  saveConfigMock.mockReset().mockResolvedValue(undefined);
   useSettingsStore.setState({
     settings: makeSettings(),
     setSettings: (s: SystemSettings) => useSettingsStore.setState({ settings: s }),
@@ -164,6 +174,38 @@ describe('getBackgroundTextureSettings', () => {
 });
 
 describe('saveViewSettings', () => {
+  test('explicitly retries a failed per-book write without applying unchanged styles again', async () => {
+    const viewSettings = { isGlobal: false, fontWeight: 400 };
+    const config = { viewSettings };
+    getViewSettingsMock.mockReturnValue(viewSettings);
+    getViewMock.mockReturnValue({ renderer: { setStyles: setStylesMock } });
+    getViewStateMock.mockReturnValue({ isPrimary: true });
+    getConfigMock.mockReturnValue(config);
+    saveConfigMock.mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(saveViewSettings(envConfig, 'book-1', 'fontWeight', 700)).rejects.toThrow(
+      'disk full',
+    );
+    expect(viewSettings.fontWeight).toBe(700);
+    expect(setViewSettingsMock).toHaveBeenCalledOnce();
+    expect(setStylesMock).toHaveBeenCalledOnce();
+
+    await saveViewSettings(envConfig, 'book-1', 'fontWeight', 700);
+    expect(saveConfigMock).toHaveBeenCalledOnce();
+
+    await saveViewSettings(envConfig, 'book-1', 'fontWeight', 700, false, true, true);
+    expect(saveConfigMock).toHaveBeenCalledTimes(2);
+    expect(saveConfigMock).toHaveBeenLastCalledWith(
+      envConfig,
+      'book-1',
+      config,
+      useSettingsStore.getState().settings,
+    );
+    expect(setViewSettingsMock).toHaveBeenCalledOnce();
+    expect(setStylesMock).toHaveBeenCalledOnce();
+    expect(useSettingsStore.getState().saveSettings).not.toHaveBeenCalled();
+  });
+
   test('global write swaps the settings reference so replicaSettingsSync subscribers fire', async () => {
     // Mirrors the gating subscriber installed by replicaSettingsSync.initSettingsSync.
     // The publish path is bypassed entirely when this never fires, which is exactly

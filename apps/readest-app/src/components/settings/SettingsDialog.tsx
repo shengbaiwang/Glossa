@@ -342,7 +342,11 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       // inside RSVP shows on top instead of behind it (#3235), and below the
       // modal layer (z-120) so a modal opened from inside Settings (e.g. Add
       // OPDS Catalog) renders on top. !important beats the Dialog's hardcoded z-50.
-      className='glossa-settings modal-open !z-[110]'
+      className={clsx(
+        'glossa-settings modal-open !z-[110]',
+        bookKey && activePanel === 'Font' && 'glossa-reader-font-settings',
+      )}
+      contentClassName={activePanel === 'Font' ? 'sm:!px-5' : undefined}
       bgClassName={bookKey ? 'sm:!bg-black/20' : 'sm:!bg-black/50'}
       boxClassName={clsx(
         'sm:min-w-[520px] overflow-hidden not-eink:bg-base-200',
@@ -433,6 +437,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       >
         {activePanel === 'Font' && (
           <FontPanel
+            key={bookKey}
             bookKey={bookKey}
             onRegisterReset={(fn) => registerResetFunction('Font', fn)}
           />

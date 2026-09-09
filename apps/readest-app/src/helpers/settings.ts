@@ -60,6 +60,7 @@ export const saveViewSettings = async <K extends keyof ViewSettings>(
   value: ViewSettings[K],
   skipGlobal = false,
   applyStyles = true,
+  forceSave = false,
 ) => {
   const { settings, setSettings, saveSettings } = useSettingsStore.getState();
   const { bookKeys, getView, getViewState, getViewSettings, setViewSettings } =
@@ -69,13 +70,17 @@ export const saveViewSettings = async <K extends keyof ViewSettings>(
   const applyViewSettings = async (bookKey: string) => {
     const viewSettings = getViewSettings(bookKey);
     const viewState = getViewState(bookKey);
-    if (bookKey && viewSettings && viewSettings[key] !== value) {
-      viewSettings[key] = value;
-      setViewSettings(bookKey, viewSettings);
-      if (applyStyles) {
-        const view = getView(bookKey);
-        view?.renderer.setStyles?.(getStyles(viewSettings));
+    if (bookKey && viewSettings && (viewSettings[key] !== value || forceSave)) {
+      if (viewSettings[key] !== value) {
+        viewSettings[key] = value;
+        setViewSettings(bookKey, viewSettings);
+        if (applyStyles) {
+          const view = getView(bookKey);
+          view?.renderer.setStyles?.(getStyles(viewSettings));
+        }
       }
+      // A failed disk write already updated the live view. Explicit retries must
+      // persist that unchanged value without restyling or moving the reading view.
       const config = getConfig(bookKey);
       if (viewState?.isPrimary && config) {
         await saveConfig(envConfig, bookKey, config, settings);
