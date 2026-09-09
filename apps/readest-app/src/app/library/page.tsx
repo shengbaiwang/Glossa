@@ -331,10 +331,10 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     envConfig,
     applyBackgroundTexture,
     settings.libraryBackgroundTextureId,
-    settings.libraryBackgroundOpacity,
+    settings.libraryBackgroundTransparency,
     settings.libraryBackgroundSize,
     settings.globalViewSettings?.backgroundTextureId,
-    settings.globalViewSettings?.backgroundOpacity,
+    settings.globalViewSettings?.backgroundTransparency,
     settings.globalViewSettings?.backgroundSize,
   ]);
 

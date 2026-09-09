@@ -361,9 +361,9 @@ export const DEFAULT_BOOK_STYLE: BookStyle = {
   hyphenation: true,
   theme: 'light',
   backgroundTextureId: 'none',
-  backgroundOpacity: 0.6,
+  backgroundTransparency: 0.4,
   backgroundSize: 'cover',
-  highlightOpacity: 0.4,
+  highlightTransparency: 0.6,
   codeHighlighting: false,
   codeLanguage: 'auto-detect',
   userStylesheet: '',
@@ -443,7 +443,7 @@ export const DEFAULT_VIEW_CONFIG: ViewConfig = {
   readingRulerEnabled: false,
   readingRulerLines: 2,
   readingRulerPosition: 33,
-  readingRulerOpacity: 0.5,
+  readingRulerTransparency: 0.5,
   readingRulerColor: 'transparent',
 };
 

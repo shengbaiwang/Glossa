@@ -21,15 +21,62 @@ const baseProps = {
   customTextures: [],
   scope: 'library' as const,
   selectedTextureId: 'none',
-  backgroundOpacity: 0.6,
+  backgroundTransparency: 0.4,
   backgroundSize: 'cover',
   onScopeChange: vi.fn(),
   onTextureSelect: vi.fn(),
-  onOpacityChange: vi.fn(),
+  onTransparencyChange: vi.fn(),
   onSizeChange: vi.fn(),
   onImportImage: vi.fn(),
   onDeleteTexture: vi.fn(),
 };
+
+describe('BackgroundTextureSelector transparency', () => {
+  it.each([
+    [0.45, 45],
+    [0, 0],
+    [1, 100],
+  ])('displays saved transparency %s as %s percent without changing it', (backgroundTransparency, transparency) => {
+    const onTransparencyChange = vi.fn();
+    render(
+      <BackgroundTextureSelector
+        {...baseProps}
+        selectedTextureId='paper'
+        backgroundTransparency={backgroundTransparency}
+        onTransparencyChange={onTransparencyChange}
+      />,
+    );
+    expect((screen.getByRole('slider', { name: 'Transparency' }) as HTMLInputElement).value).toBe(
+      String(transparency),
+    );
+    expect(screen.getByText(`${transparency}%`)).not.toBeNull();
+    expect(onTransparencyChange).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [0, 0],
+    [75, 0.75],
+    [100, 1],
+  ])('saves %s percent transparency as %s', (transparency, savedTransparency) => {
+    const onTransparencyChange = vi.fn();
+    render(
+      <BackgroundTextureSelector
+        {...baseProps}
+        selectedTextureId='paper'
+        onTransparencyChange={onTransparencyChange}
+      />,
+    );
+    fireEvent.change(screen.getByRole('slider', { name: 'Transparency' }), {
+      target: { value: String(transparency) },
+    });
+    expect(onTransparencyChange).toHaveBeenCalledExactlyOnceWith(savedTransparency);
+  });
+
+  it('hides transparency when no background is selected', () => {
+    render(<BackgroundTextureSelector {...baseProps} />);
+    expect(screen.queryByRole('slider', { name: 'Transparency' })).toBeNull();
+  });
+});
 
 describe('BackgroundTextureSelector scope switcher', () => {
   it('renders Library and Reader as a radiogroup of two segments', () => {

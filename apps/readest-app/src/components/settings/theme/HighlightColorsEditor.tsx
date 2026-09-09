@@ -18,11 +18,11 @@ interface HighlightColorsEditorProps {
   customHighlightColors: Record<HighlightColor, string>;
   userHighlightColors: UserHighlightColor[];
   defaultHighlightLabels: Partial<Record<DefaultHighlightColor, string>>;
-  highlightOpacity: number;
+  highlightTransparency: number;
   onCustomHighlightColorsChange: (colors: Record<HighlightColor, string>) => void;
   onUserHighlightColorsChange: (colors: UserHighlightColor[]) => void;
   onDefaultHighlightLabelsChange: (labels: Partial<Record<DefaultHighlightColor, string>>) => void;
-  onOpacityChange: (opacity: number) => void;
+  onTransparencyChange: (transparency: number) => void;
 }
 
 /**
@@ -120,11 +120,11 @@ const HighlightColorsEditor: React.FC<HighlightColorsEditorProps> = ({
   customHighlightColors,
   userHighlightColors,
   defaultHighlightLabels,
-  highlightOpacity,
+  highlightTransparency,
   onCustomHighlightColorsChange,
   onUserHighlightColorsChange,
   onDefaultHighlightLabelsChange,
-  onOpacityChange,
+  onTransparencyChange,
 }) => {
   const _ = useTranslation();
   const [newColor, setNewColor] = useState('#808080');
@@ -268,11 +268,11 @@ const HighlightColorsEditor: React.FC<HighlightColorsEditorProps> = ({
       </div>
 
       <NumberInput
-        label={_('Opacity')}
-        value={highlightOpacity}
-        onChange={onOpacityChange}
-        min={0.1}
-        max={1}
+        label={_('Transparency')}
+        value={highlightTransparency}
+        onChange={onTransparencyChange}
+        min={0}
+        max={0.9}
         step={0.1}
       />
     </BoxedList>

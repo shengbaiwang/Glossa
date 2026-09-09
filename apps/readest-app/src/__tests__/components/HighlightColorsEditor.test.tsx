@@ -60,11 +60,11 @@ const Harness: React.FC<{ initialUserColors: UserHighlightColor[] }> = ({ initia
       customHighlightColors={customColors}
       userHighlightColors={userColors}
       defaultHighlightLabels={labels}
-      highlightOpacity={0.3}
+      highlightTransparency={0.7}
       onCustomHighlightColorsChange={setCustomColors}
       onUserHighlightColorsChange={setUserColors}
       onDefaultHighlightLabelsChange={setLabels}
-      onOpacityChange={() => {}}
+      onTransparencyChange={() => {}}
     />
   );
 };
@@ -106,5 +106,31 @@ describe('HighlightColorsEditor — user color HexColorPicker stability', () => 
     expect(pickerAfter).not.toBeNull();
     expect(pickerAfter!.getAttribute('data-color')).toBe('#112233');
     expect(pickerAfter!.getAttribute('data-mount-id')).toBe(initialMountId);
+  });
+});
+
+describe('HighlightColorsEditor transparency', () => {
+  it('displays and saves transparency directly', () => {
+    const onTransparencyChange = vi.fn();
+    render(
+      <HighlightColorsEditor
+        customHighlightColors={HIGHLIGHT_COLOR_HEX}
+        userHighlightColors={[]}
+        defaultHighlightLabels={{}}
+        highlightTransparency={0.7}
+        onCustomHighlightColorsChange={() => {}}
+        onUserHighlightColorsChange={() => {}}
+        onDefaultHighlightLabelsChange={() => {}}
+        onTransparencyChange={onTransparencyChange}
+      />,
+    );
+
+    expect(screen.getByText('Transparency')).not.toBeNull();
+    const input = screen.getByRole('textbox', { name: 'Transparency' });
+    expect((input as HTMLInputElement).value).toBe('0.7');
+
+    fireEvent.change(input, { target: { value: '0.8' } });
+    fireEvent.blur(input);
+    expect(onTransparencyChange).toHaveBeenCalledExactlyOnceWith(0.8);
   });
 });

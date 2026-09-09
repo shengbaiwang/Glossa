@@ -22,7 +22,7 @@ export const useTheme = ({
   const isEink = settings?.globalViewSettings?.isEink;
   const isColorEink = settings?.globalViewSettings?.isColorEink;
   const isBwEink = isEink && !isColorEink;
-  const highlightOpacity = settings?.globalViewSettings?.highlightOpacity ?? 0.4;
+  const highlightTransparency = settings?.globalViewSettings?.highlightTransparency ?? 0.6;
   const {
     themeColor,
     isDarkMode,
@@ -134,7 +134,7 @@ export const useTheme = ({
     document.documentElement.style.setProperty('--scroll-bg-opacity', isBwEink ? '1.0' : '0.5');
     document.documentElement.style.setProperty(
       '--overlayer-highlight-opacity',
-      isBwEink ? '1.0' : String(highlightOpacity),
+      isBwEink ? '1.0' : String(1 - highlightTransparency),
     );
     document.documentElement.style.setProperty(
       '--overlayer-highlight-blend-mode',
@@ -144,5 +144,5 @@ export const useTheme = ({
       '--bg-texture-blend-mode',
       isDarkMode ? 'lighten' : 'multiply',
     );
-  }, [themeColor, isDarkMode, isBwEink, highlightOpacity]);
+  }, [themeColor, isDarkMode, isBwEink, highlightTransparency]);
 };

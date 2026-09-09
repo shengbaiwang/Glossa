@@ -522,13 +522,13 @@ describe('services/constants', () => {
     it('has theme and appearance settings', () => {
       expect(typeof DEFAULT_BOOK_STYLE.theme).toBe('string');
       expect(typeof DEFAULT_BOOK_STYLE.backgroundTextureId).toBe('string');
-      expect(typeof DEFAULT_BOOK_STYLE.backgroundOpacity).toBe('number');
-      expect(DEFAULT_BOOK_STYLE.backgroundOpacity).toBeGreaterThanOrEqual(0);
-      expect(DEFAULT_BOOK_STYLE.backgroundOpacity).toBeLessThanOrEqual(1);
+      expect(typeof DEFAULT_BOOK_STYLE.backgroundTransparency).toBe('number');
+      expect(DEFAULT_BOOK_STYLE.backgroundTransparency).toBeGreaterThanOrEqual(0);
+      expect(DEFAULT_BOOK_STYLE.backgroundTransparency).toBeLessThanOrEqual(1);
       expect(typeof DEFAULT_BOOK_STYLE.backgroundSize).toBe('string');
-      expect(typeof DEFAULT_BOOK_STYLE.highlightOpacity).toBe('number');
-      expect(DEFAULT_BOOK_STYLE.highlightOpacity).toBeGreaterThanOrEqual(0);
-      expect(DEFAULT_BOOK_STYLE.highlightOpacity).toBeLessThanOrEqual(1);
+      expect(typeof DEFAULT_BOOK_STYLE.highlightTransparency).toBe('number');
+      expect(DEFAULT_BOOK_STYLE.highlightTransparency).toBeGreaterThanOrEqual(0);
+      expect(DEFAULT_BOOK_STYLE.highlightTransparency).toBeLessThanOrEqual(1);
     });
 
     it('has code language setting', () => {
@@ -622,9 +622,9 @@ describe('services/constants', () => {
       expect(typeof DEFAULT_VIEW_CONFIG.readingRulerLines).toBe('number');
       expect(DEFAULT_VIEW_CONFIG.readingRulerLines).toBeGreaterThan(0);
       expect(typeof DEFAULT_VIEW_CONFIG.readingRulerPosition).toBe('number');
-      expect(typeof DEFAULT_VIEW_CONFIG.readingRulerOpacity).toBe('number');
-      expect(DEFAULT_VIEW_CONFIG.readingRulerOpacity).toBeGreaterThanOrEqual(0);
-      expect(DEFAULT_VIEW_CONFIG.readingRulerOpacity).toBeLessThanOrEqual(1);
+      expect(typeof DEFAULT_VIEW_CONFIG.readingRulerTransparency).toBe('number');
+      expect(DEFAULT_VIEW_CONFIG.readingRulerTransparency).toBeGreaterThanOrEqual(0);
+      expect(DEFAULT_VIEW_CONFIG.readingRulerTransparency).toBeLessThanOrEqual(1);
       expect(typeof DEFAULT_VIEW_CONFIG.readingRulerColor).toBe('string');
     });
 

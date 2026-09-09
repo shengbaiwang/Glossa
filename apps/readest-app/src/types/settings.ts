@@ -436,7 +436,7 @@ export interface SystemSettings {
    * the `texture` replica kind. Resolved by `getLibraryViewSettings`.
    */
   libraryBackgroundTextureId?: string;
-  libraryBackgroundOpacity?: number;
+  libraryBackgroundTransparency?: number;
   libraryBackgroundSize?: string;
   customFonts: CustomFont[];
   customTextures: CustomTexture[];

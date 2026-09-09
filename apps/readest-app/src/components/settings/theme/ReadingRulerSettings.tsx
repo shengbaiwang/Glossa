@@ -7,11 +7,11 @@ import NumberInput from '../NumberInput';
 interface ReadingRulerSettingsProps {
   enabled: boolean;
   lines: number;
-  opacity: number;
+  transparency: number;
   color: ReadingRulerColor;
   onEnabledChange: (enabled: boolean) => void;
   onLinesChange: (lines: number) => void;
-  onOpacityChange: (opacity: number) => void;
+  onTransparencyChange: (transparency: number) => void;
   onColorChange: (color: ReadingRulerColor) => void;
   'data-setting-id'?: string;
 }
@@ -27,11 +27,11 @@ const RULER_COLORS: { value: ReadingRulerColor; className: string; hoverClassNam
 const ReadingRulerSettings: React.FC<ReadingRulerSettingsProps> = ({
   enabled,
   lines,
-  opacity,
+  transparency,
   color,
   onEnabledChange,
   onLinesChange,
-  onOpacityChange,
+  onTransparencyChange,
   onColorChange,
   'data-setting-id': dataSettingId,
 }) => {
@@ -70,9 +70,9 @@ const ReadingRulerSettings: React.FC<ReadingRulerSettingsProps> = ({
         </div>
       </SettingsRow>
       <NumberInput
-        label={_('Opacity')}
-        value={opacity}
-        onChange={onOpacityChange}
+        label={_('Transparency')}
+        value={transparency}
+        onChange={onTransparencyChange}
         disabled={!enabled}
         min={0.1}
         max={0.9}

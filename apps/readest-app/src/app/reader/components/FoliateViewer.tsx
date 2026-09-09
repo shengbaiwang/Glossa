@@ -940,7 +940,7 @@ const FoliateViewer: React.FC<{
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     viewSettings?.backgroundTextureId,
-    viewSettings?.backgroundOpacity,
+    viewSettings?.backgroundTransparency,
     viewSettings?.backgroundSize,
     applyBackgroundTexture,
   ]);

@@ -240,9 +240,9 @@ export interface BookStyle {
   hyphenation: boolean;
   theme: string;
   backgroundTextureId: string;
-  backgroundOpacity: number;
+  backgroundTransparency: number;
   backgroundSize: string;
-  highlightOpacity: number;
+  highlightTransparency: number;
   codeHighlighting: boolean;
   codeLanguage: string;
   userStylesheet: string;
@@ -325,7 +325,7 @@ export interface ViewConfig {
   readingRulerEnabled: boolean;
   readingRulerLines: number;
   readingRulerPosition: number;
-  readingRulerOpacity: number;
+  readingRulerTransparency: number;
   readingRulerColor: ReadingRulerColor;
 }
 

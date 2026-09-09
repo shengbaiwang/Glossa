@@ -20,9 +20,9 @@ const envConfig = {};
 const viewSettings = {
   invertImgColorInDark: false,
   overrideColor: false,
-  highlightOpacity: 0.3,
+  highlightTransparency: 0.7,
   backgroundTextureId: 'none',
-  backgroundOpacity: 0.6,
+  backgroundTransparency: 0.4,
   backgroundSize: 'cover',
 };
 const settings = {

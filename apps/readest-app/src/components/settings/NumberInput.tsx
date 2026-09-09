@@ -76,6 +76,7 @@ const NumberInput: React.FC<NumberInputProps> = ({
           <input
             type='text'
             inputMode='decimal'
+            aria-label={label}
             disabled={disabled}
             value={displayValue}
             onChange={handleChange}

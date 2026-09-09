@@ -23,8 +23,8 @@ export const getLibraryViewSettings = (settings: SystemSettings): ViewSettings =
     ...globalViewSettings,
     backgroundTextureId:
       settings.libraryBackgroundTextureId ?? globalViewSettings?.backgroundTextureId ?? 'none',
-    backgroundOpacity:
-      settings.libraryBackgroundOpacity ?? globalViewSettings?.backgroundOpacity ?? 0.6,
+    backgroundTransparency:
+      settings.libraryBackgroundTransparency ?? globalViewSettings?.backgroundTransparency ?? 0.4,
     backgroundSize: settings.libraryBackgroundSize ?? globalViewSettings?.backgroundSize ?? 'cover',
   };
 };
@@ -41,14 +41,14 @@ export const getBackgroundTextureSettings = (
   scope: BackgroundTextureScope,
   settings: SystemSettings,
   readerViewSettings?: ViewSettings,
-): Pick<ViewSettings, 'backgroundTextureId' | 'backgroundOpacity' | 'backgroundSize'> => {
+): Pick<ViewSettings, 'backgroundTextureId' | 'backgroundTransparency' | 'backgroundSize'> => {
   const source =
     scope === 'library'
       ? getLibraryViewSettings(settings)
       : (readerViewSettings ?? settings.globalViewSettings);
   return {
     backgroundTextureId: source?.backgroundTextureId ?? 'none',
-    backgroundOpacity: source?.backgroundOpacity ?? 0.6,
+    backgroundTransparency: source?.backgroundTransparency ?? 0.4,
     backgroundSize: source?.backgroundSize ?? 'cover',
   };
 };

@@ -64,7 +64,7 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
     bookKey ? viewSettings : undefined,
   );
   const currentTextureId = currentBackground.backgroundTextureId;
-  const currentBackgroundOpacity = currentBackground.backgroundOpacity;
+  const currentBackgroundTransparency = currentBackground.backgroundTransparency;
   const currentBackgroundSize = currentBackground.backgroundSize;
 
   const [invertImgColorInDark, setInvertImgColorInDark] = useState(
@@ -77,9 +77,11 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
   const [codeHighlighting, setcodeHighlighting] = useState(viewSettings.codeHighlighting);
   const [codeLanguage, setCodeLanguage] = useState(viewSettings.codeLanguage);
   const [selectedTextureId, setSelectedTextureId] = useState(currentTextureId);
-  const [backgroundOpacity, setBackgroundOpacity] = useState(currentBackgroundOpacity);
+  const [backgroundTransparency, setBackgroundTransparency] = useState(currentBackgroundTransparency);
   const [backgroundSize, setBackgroundSize] = useState(currentBackgroundSize);
-  const [highlightOpacity, setHighlightOpacity] = useState(viewSettings.highlightOpacity ?? 0.3);
+  const [highlightTransparency, setHighlightTransparency] = useState(
+    viewSettings.highlightTransparency ?? 0.6,
+  );
   const [customHighlightColors, setCustomHighlightColors] = useState(
     settings.globalReadSettings.customHighlightColors,
   );
@@ -92,7 +94,9 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
 
   const [readingRulerEnabled, setReadingRulerEnabled] = useState(viewSettings.readingRulerEnabled);
   const [readingRulerLines, setReadingRulerLines] = useState(viewSettings.readingRulerLines);
-  const [readingRulerOpacity, setReadingRulerOpacity] = useState(viewSettings.readingRulerOpacity);
+  const [readingRulerTransparency, setReadingRulerTransparency] = useState(
+    viewSettings.readingRulerTransparency,
+  );
   const [readingRulerColor, setReadingRulerColor] = useState(viewSettings.readingRulerColor);
 
   const [skeuomorphicCovers, setSkeuomorphicCovers] = useState(settings.librarySkeuomorphicCovers);
@@ -113,17 +117,17 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
     resetToDefaults({
       overrideColor: setOverrideColor,
       invertImgColorInDark: setInvertImgColorInDark,
-      highlightOpacity: setHighlightOpacity,
+      highlightTransparency: setHighlightTransparency,
       codeHighlighting: setcodeHighlighting,
       codeLanguage: setCodeLanguage,
       readingRulerEnabled: setReadingRulerEnabled,
       readingRulerLines: setReadingRulerLines,
-      readingRulerOpacity: setReadingRulerOpacity,
+      readingRulerTransparency: setReadingRulerTransparency,
     });
     setThemeColor('default');
     setThemeMode('auto');
     setSelectedTextureId('none');
-    setBackgroundOpacity(0.6);
+    setBackgroundTransparency(0.4);
     setBackgroundSize('cover');
     setCustomHighlightColors(HIGHLIGHT_COLOR_HEX);
     setUserHighlightColors([]);
@@ -147,7 +151,7 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
     const next = getBackgroundTextureSettings(scope, settings, bookKey ? viewSettings : undefined);
     setTextureScope(scope);
     setSelectedTextureId(next.backgroundTextureId);
-    setBackgroundOpacity(next.backgroundOpacity);
+    setBackgroundTransparency(next.backgroundTransparency);
     setBackgroundSize(next.backgroundSize);
   };
 
@@ -173,10 +177,10 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
   }, [overrideColor]);
 
   useEffect(() => {
-    if (highlightOpacity === viewSettings.highlightOpacity) return;
-    saveViewSettings(envConfig, bookKey, 'highlightOpacity', highlightOpacity);
+    if (highlightTransparency === viewSettings.highlightTransparency) return;
+    saveViewSettings(envConfig, bookKey, 'highlightTransparency', highlightTransparency);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [highlightOpacity]);
+  }, [highlightTransparency]);
 
   useEffect(() => {
     let update = false;
@@ -208,15 +212,15 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
   }, [selectedTextureId]);
 
   useEffect(() => {
-    if (backgroundOpacity === currentBackgroundOpacity) return;
+    if (backgroundTransparency === currentBackgroundTransparency) return;
     if (textureScope === 'library') {
-      saveSysSettings(envConfig, 'libraryBackgroundOpacity', backgroundOpacity);
+      saveSysSettings(envConfig, 'libraryBackgroundTransparency', backgroundTransparency);
     } else {
-      saveViewSettings(envConfig, bookKey, 'backgroundOpacity', backgroundOpacity);
+      saveViewSettings(envConfig, bookKey, 'backgroundTransparency', backgroundTransparency);
     }
     applyPageBackgroundTexture();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backgroundOpacity]);
+  }, [backgroundTransparency]);
 
   useEffect(() => {
     if (backgroundSize === currentBackgroundSize) return;
@@ -240,9 +244,16 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
   }, [readingRulerLines]);
 
   useEffect(() => {
-    saveViewSettings(envConfig, bookKey, 'readingRulerOpacity', readingRulerOpacity, false, false);
+    saveViewSettings(
+      envConfig,
+      bookKey,
+      'readingRulerTransparency',
+      readingRulerTransparency,
+      false,
+      false,
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [readingRulerOpacity]);
+  }, [readingRulerTransparency]);
 
   useEffect(() => {
     saveViewSettings(envConfig, bookKey, 'readingRulerColor', readingRulerColor, false, false);
@@ -264,7 +275,7 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
       applyBackgroundTexture(envConfig, {
         ...viewSettings,
         backgroundTextureId: selectedTextureId,
-        backgroundOpacity,
+        backgroundTransparency,
         backgroundSize,
       });
     }
@@ -431,10 +442,10 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
             scope={textureScope}
             onScopeChange={handleScopeChange}
             selectedTextureId={selectedTextureId}
-            backgroundOpacity={backgroundOpacity}
+            backgroundTransparency={backgroundTransparency}
             backgroundSize={backgroundSize}
             onTextureSelect={handleTextureSelect}
-            onOpacityChange={setBackgroundOpacity}
+            onTransparencyChange={setBackgroundTransparency}
             onSizeChange={setBackgroundSize}
             onImportImage={handleImportImage}
             onDeleteTexture={handleDeleteCustomTexture}
@@ -445,22 +456,22 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
             customHighlightColors={customHighlightColors}
             userHighlightColors={userHighlightColors}
             defaultHighlightLabels={defaultHighlightLabels}
-            highlightOpacity={highlightOpacity}
+            highlightTransparency={highlightTransparency}
             onCustomHighlightColorsChange={handleCustomHighlightColorsChange}
             onUserHighlightColorsChange={handleUserHighlightColorsChange}
             onDefaultHighlightLabelsChange={handleDefaultHighlightLabelsChange}
-            onOpacityChange={setHighlightOpacity}
+            onTransparencyChange={setHighlightTransparency}
             data-setting-id='settings.color.highlightColors'
           />
 
           <ReadingRulerSettings
             enabled={readingRulerEnabled}
             lines={readingRulerLines}
-            opacity={readingRulerOpacity}
+            transparency={readingRulerTransparency}
             color={readingRulerColor}
             onEnabledChange={setReadingRulerEnabled}
             onLinesChange={setReadingRulerLines}
-            onOpacityChange={setReadingRulerOpacity}
+            onTransparencyChange={setReadingRulerTransparency}
             onColorChange={setReadingRulerColor}
             data-setting-id='settings.color.readingRuler'
           />

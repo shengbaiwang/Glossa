@@ -12,7 +12,7 @@ export const useBackgroundTexture = () => {
       if (textureId !== 'none') {
         document.documentElement.style.setProperty(
           '--bg-texture-opacity',
-          `${viewSettings.backgroundOpacity}`,
+          `${1 - viewSettings.backgroundTransparency}`,
         );
         document.documentElement.style.setProperty(
           '--bg-texture-size',

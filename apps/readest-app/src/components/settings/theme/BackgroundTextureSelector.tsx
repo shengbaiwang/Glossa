@@ -22,10 +22,10 @@ interface BackgroundTextureSelectorProps {
   scope: BackgroundTextureScope;
   onScopeChange: (scope: BackgroundTextureScope) => void;
   selectedTextureId: string;
-  backgroundOpacity: number;
+  backgroundTransparency: number;
   backgroundSize: string;
   onTextureSelect: (id: string) => void;
-  onOpacityChange: (opacity: number) => void;
+  onTransparencyChange: (transparency: number) => void;
   onSizeChange: (size: string) => void;
   onImportImage: () => void;
   onDeleteTexture: (id: string) => void;
@@ -37,10 +37,10 @@ const BackgroundTextureSelector: React.FC<BackgroundTextureSelectorProps> = ({
   scope,
   onScopeChange,
   selectedTextureId,
-  backgroundOpacity,
+  backgroundTransparency,
   backgroundSize,
   onTextureSelect,
-  onOpacityChange,
+  onTransparencyChange,
   onSizeChange,
   onImportImage,
   onDeleteTexture,
@@ -158,19 +158,20 @@ const BackgroundTextureSelector: React.FC<BackgroundTextureSelectorProps> = ({
       {/* Background Image Settings — boxed list once a texture is selected */}
       {selectedTextureId !== 'none' && (
         <BoxedList>
-          <SettingsRow label={_('Opacity')}>
+          <SettingsRow label={_('Transparency')}>
             <div className='flex items-center gap-2'>
               <input
                 type='range'
+                aria-label={_('Transparency')}
                 min='0'
-                max='1'
-                step='0.05'
-                value={backgroundOpacity}
-                onChange={(e) => onOpacityChange(parseFloat(e.target.value))}
+                max='100'
+                step='5'
+                value={Math.round(backgroundTransparency * 100)}
+                onChange={(e) => onTransparencyChange(Number(e.target.value) / 100)}
                 className='range range-sm w-32'
               />
               <span className='text-base-content/70 w-12 text-end text-sm'>
-                {Math.round(backgroundOpacity * 100)}%
+                {Math.round(backgroundTransparency * 100)}%
               </span>
             </div>
           </SettingsRow>

@@ -41,7 +41,7 @@ const SAVED_TEXTURE: CustomTexture = {
 const makeViewSettings = (overrides: Partial<ViewSettings> = {}): ViewSettings =>
   ({
     backgroundTextureId: SAVED_TEXTURE.id,
-    backgroundOpacity: 0.6,
+    backgroundTransparency: 0.4,
     backgroundSize: 'cover',
     ...overrides,
   }) as unknown as ViewSettings;
