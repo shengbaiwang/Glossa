@@ -1346,7 +1346,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
       accept: '.json,application/json',
       extensions: ['json'],
       multiple: false,
-      dialogTitle: _('Select Glossa / Readest Annotations File'),
+      dialogTitle: _('Select Glossa Annotations File'),
     });
     if (result.error || result.files.length === 0) return;
 
@@ -1364,7 +1364,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     if (!payload) {
       eventDispatcher.dispatch('toast', {
         type: 'warning',
-        message: _('This is not a Glossa / Readest annotations file.'),
+        message: _('This is not a Glossa annotations file.'),
         timeout: 3000,
       });
       return;

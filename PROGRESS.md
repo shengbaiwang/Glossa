@@ -6,6 +6,18 @@
 
 2026-09-09 用户明确要求增加 EPUB 章节 AI 学习笔记与模型服务设置。这是对精简范围的局部调整，以 `PLAN.md` 为准；旧 AI MVP 历史记录仍不作为当前任务清单。
 
+### 2026-09-09 系统级 Glossa 品牌补全
+
+- 根据钥匙串截图定位两处根因：桌面凭据服务硬编码为 `Readest Safe Storage`；Tauri 开发入口直接执行 Cargo 的隐式 `Readest` 二进制，之前仅修改 `productName`/`mainBinaryName` 未覆盖此路径。现显式设置 Cargo `Glossa` 二进制和 `default-run`，保持 Rust 包/库名及独立 bundle identifier 不变。
+- 正式版、开发版分别使用 `Glossa Safe Storage`、`Glossa Dev Safe Storage`，其他运行身份独立命名。旧凭据仅在新条目不存在时按需读取并复制；保留原条目，拒绝访问或复制失败继续返回错误。清除保存不含秘密的标记，防止旧值复活；共享事务锁覆盖等待系统授权期间的迁移、保存与清除，避免并发覆盖。没有扫描、读取或改写用户真实钥匙串，本轮验证全部使用内存假存储。
+- 批注导入/导出入口、34 个语言目录、简繁中文 PIN 提示、保存图片文件名及快捷键帮助统一 Glossa；账号说明明确标注实际 `Readest Cloud` 服务。桌面与移动端剪藏默认提示、Android 新建图片相册、Windows 安装器与 COM 缩略图服务显示名称同步替换。
+- Windows 缩略图识别兼容 `Glossa.exe` 与旧 `Readest.exe`，按文件名精确匹配，避免将包含 Readest 的父目录误判为阅读器。原有 DLL/CLSID、书库和缓存路径、批注 JSON 格式、云同步/OAuth 协议、iCloud 既有容器名称及上游法律归属保持兼容；历史发行元数据不伪装为已发布的 Glossa 版本。
+- 验证：品牌与两项凭据并发回归先复现失败后修复；最终全量 Vitest **564 文件、6,868 项通过，零失败**，3 文件/7 项既有跳过。原生应用 92 项、安全存储插件 12 项、独立 Windows 路径识别 2 项全部通过；TypeScript、全量 Biome lint、修改文件 Biome check、应用/插件 Rust fmt、应用严格 clippy、离线许可证一致性及 `git diff --check` 通过，保留既有 Rust 依赖/宏警告。
+- 实际重新编译的开发 Mach-O 名为 `Glossa`，嵌入 `CFBundleName=Glossa Dev`，签名标识前缀已从 Readest 改为 Glossa。为保护已有 `.next/dev` 服务，从忽略目录中的独立源码副本完成前端生产构建，Webpack、TypeScript 和 19 个静态页面生成通过。未停止用户开发进程、修改现有书库、调用模型或推送/发布。
+- 最新独立开发包已生成于 `.glossa-dev/target/debug/bundle/macos/Glossa Dev.app`，嵌入本轮前端和最终原生代码，`CFBundleName/DisplayName=Glossa Dev`、可执行文件 `glossa-dev`、identifier `app.glossa.reader.dev`。本地 ad-hoc 签名及 `codesign --verify --deep --strict` 通过，图标哈希与 Glossa 图标一致，三份离线法律文件完整。Tauri 的内部 pnpm 版本查询曾停滞，最终仅结束本轮构建进程，改用离线 Cargo `tauri/custom-protocol` 编译与独立 `tauri bundle` 完成；未改永久配置、下载依赖、启动或覆盖已安装应用。开发入口 `--check` 通过；插件严格 clippy 在仅豁免已有 Objective-C `unexpected_cfgs` 警告后通过。
+- 按用户明确要求，已将当前源码重新打包为正式 `Glossa.app` 并替换 `/Applications/Glossa.app`。为绕过 Tauri 内部 pnpm 版本查询停滞，前端先在隔离副本以正式 `app.glossa.reader` 身份完成 Webpack 生产构建（TypeScript、19 个静态页面）；原生以离线 Cargo `tauri/custom-protocol` 重新编译并单独 bundle。新包 `CFBundleName=Glossa`、可执行文件 `glossa`、identifier `app.glossa.reader`，图标和三份法律文件均已核对。本地 ad-hoc 签名和替换后的 `codesign --verify --deep --strict` 通过。旧 `/Applications/Glossa.app` 已移动到 `.glossa-build/backups/20260909-system-branding/Glossa.app`（约 79 MB）；新安装包约 203 MB。替换采用 `/Applications/Glossa.installing.app` 暂存并带失败回滚，未触碰 Application Support、书库、笔记、同步或钥匙串数据。沙箱禁止枚举进程，未确认用户是否仍在运行旧实例，因此未强制关闭或打开应用；需要用户自行退出后重新启动，才能加载新二进制。
+- 下一步：重启原生开发窗口以加载新二进制；单纯前端热更新无法改变系统权限提示。首次兼容读取旧钥匙串条目时仍可能出现旧条目名称；复制成功后使用新的 Glossa 条目。移动端和 Windows COM 的系统运行效果未在本机验收。
+
 ### 本轮已完成
 
 - 修复此前 3 项 Turso L2 测试失败：已复现并核对原生二进制，锁定的 Node `@tursodatabase/database@0.6.0-pre.28` 可调用 SimSIMD 的单精度近似平方根，`5` 与 `sqrt(2)` 的实测相对误差约为 0.0592% 与 0.0513%。仅为 Node 测试设置 0.1% 相对 L2 误差预算，WASM/Tauri 保持原有严格默认值；新增 vector32/vector64 不同尺度、符号、奇数维度、对称性和精确零距离断言，并直接验证最近邻 ID 顺序。此次修复的是测试与既有依赖数值行为的契约，不改变数据库计算结果；未升级依赖、迁移数据库或操作用户数据，依据记录在 `apps/readest-app/docs/testing.md`。
@@ -21,6 +33,7 @@
 
 ### 验证与交付边界
 
+- 2026-09-09 启动截图诊断：日志明确报告同目录已有 Next dev 服务（截图 PID 76384、localhost:3000），新实例退出后使 Tauri `beforeDevCommand` 失败。已核对主配置使用 `pnpm dev` 与该 devUrl；Rust 宏、workspace root 与 Cache-Control 信息在该日志中均为警告。当前沙箱不允许 `ps`，未确认截图 PID 现在是否仍存在；未停止进程或修改启动配置。本次仅解释原因，无产品变更，无需运行产品测试；后续停止原启动终端中的服务后重试。
 - Turso 精度兼容修复验收：先复现原有 3 项失败，新增尺度测试在修复前也失败；修复后数据库专项 5 文件/89 项通过（1 项既有跳过），真实 Chromium WASM 55 项通过（1 项既有跳过），保留严格默认精度。最终全量 Vitest **564 文件、6,864 项通过，零失败**，3 文件/7 项既有跳过；TypeScript、全量 Biome lint、修改文件 Biome check 和 `git diff --check` 均通过。未运行 Tauri 窗口测试，本轮不修改原生实现或依赖；此前全量测试中的 3 项 Turso 失败已在本次解决，以下旧记录保留历史事实。
 - 多自定义服务专项：先运行失败测试再修复；最终 Glossa 6 个文件、59 项单元测试通过，覆盖连续添加、重开恢复、选择/改名、旧配置兼容、密钥隔离、保存失败重试及超过 30 项保存。真实 Chromium 中文模型设置测试通过，覆盖多条服务菜单名称及桌面/390px 控件无横向溢出；已查看更新后的截图。TypeScript、全量 Biome lint、11 个相关文件 Biome check 通过；未调用真实模型、读取用户密钥或替换已安装应用。
 - 本轮全量 Vitest：563 个文件、6,858 项通过，3 个文件/7 项跳过；失败仅为此前已记录的 3 项 Turso 向量精度断言，未修改其实现或断言。`git diff --check` 通过。测试使用本机已有 Node 24 与依赖，单次设置 `pnpm_config_verify_deps_before_run=warn`，未重装依赖或修改锁文件；浏览器测试获准启动本地服务器后通过。

@@ -10,6 +10,8 @@ pub use models::*;
 mod desktop;
 #[cfg(mobile)]
 mod mobile;
+#[cfg(desktop)]
+mod secure_storage;
 
 mod commands;
 mod error;

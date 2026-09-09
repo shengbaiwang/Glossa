@@ -22,8 +22,15 @@ configuration are available without starting the application.
 
 The launcher selects Homebrew Node 24 and Rust when they are installed, sets
 the isolated runtime identifier, disables the upstream updater and writes Rust output
-only under `.glossa-dev/target/`. It refuses portable mode because a Tauri dev
-binary and the portable data directory would otherwise both be named `Readest`.
+only under `.glossa-dev/target/`. Portable mode remains disabled so development
+uses the isolated application data directory.
+
+The Cargo executable is explicitly named `Glossa`, including `cargo run` and
+`tauri dev`. Tauri's `mainBinaryName` only renames packaged builds and does not
+control the executable shown in unbundled macOS permission dialogs. The embedded
+development plist takes its `CFBundleName` from the configured product name
+(`Glossa Dev` with the isolated overlay). Restart the development app after a
+native rebuild for these operating-system names to take effect.
 
 ## Build the local macOS app
 
@@ -57,6 +64,28 @@ overlay. It supplies the separate product name, executable name, identifier and
 Release app instead uses `tauri.glossa.conf.json` and `glossa://`.
 
 When `NEXT_PUBLIC_GLOSSA_RUNTIME_ID` is set, `NativeAppService` checks the runtime identifier before preparing the books directory or writing settings. Use the launcher so the build and native identifiers match. Do not set `NEXT_PUBLIC_PORTABLE_APP` for Glossa.
+
+## Desktop secure storage
+
+New desktop credentials use `Glossa Safe Storage` for the local app and
+`Glossa Dev Safe Storage` for development. Other runtime identifiers receive
+their own service name. The caller's account key remains unchanged.
+
+When a requested credential is absent from the new service, the app reads its
+matching `Readest Safe Storage` entry and copies it to the current Glossa service.
+macOS may show the old item name during this first read. The old entry is retained
+for compatibility; the agent's tests use an in-memory store and never read real
+credentials. Denied access and failed copies remain errors and can be retried.
+
+The new service stores a one-byte record tag followed by the UTF-8 value (`1`),
+or a single cleared marker (`0`) containing no secret. Clearing overwrites the
+Glossa value with that marker so it cannot be restored from the retained legacy
+entry. A shared process lock serializes complete reads, copies, saves and clears,
+including while the operating system waits for keychain authorization.
+
+Rebuild and restart the native app to use the new executable and service names.
+Frontend hot reload alone cannot update operating-system permission prompts;
+an installed app also needs a freshly built bundle.
 
 ## What remains shared intentionally
 

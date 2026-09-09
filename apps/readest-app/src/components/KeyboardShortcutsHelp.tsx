@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '@/hooks/useTranslation';
+import { GLOSSA_ISSUES_URL } from '@/services/constants';
 import { isMacPlatform } from '@/services/environment';
 import { getShortcutsForDisplay } from '@/helpers/shortcuts';
 import { formatKeyForDisplay } from '@/utils/shortcutKeys';
@@ -127,11 +128,8 @@ export const KeyboardShortcutsHelp = () => {
             <div>{rightColumn.map(renderSection)}</div>
           </div>
           <div className='border-base-200 mt-2 border-t pt-3 text-center'>
-            <Link
-              href='https://github.com/readest/readest/wiki/Keyboard-Shortcuts-Reference-Guide'
-              className='text-primary text-sm underline'
-            >
-              {_('View all keyboard shortcuts')}
+            <Link href={GLOSSA_ISSUES_URL} className='text-primary text-sm underline'>
+              {_('Glossa support')}
             </Link>
           </div>
         </div>

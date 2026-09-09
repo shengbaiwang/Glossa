@@ -114,7 +114,7 @@ describe('NativeAppService.saveImageToGallery', () => {
     // de-duplicating it (AOSP renames to "image (1).png"; stricter OEM providers
     // reject the row instead). Name the file ourselves so it never collides.
     expect(first.albumName).toBe('Glossa');
-    expect(first.fileName).not.toBe('image.png');
+    expect(first.fileName).toMatch(/^glossa-\d{8}-\d{6}-\d{3}\.png$/);
     expect(first.fileName).not.toBe(second.fileName);
     expect(first.fileName.endsWith('.png')).toBe(true);
     expect(second.fileName.endsWith('.png')).toBe(true);

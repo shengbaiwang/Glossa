@@ -1,10 +1,10 @@
-/// Windows COM Thumbnail Provider for Readest
+/// Windows COM Thumbnail Provider for Glossa
 ///
 /// Implements IThumbnailProvider and IInitializeWithItem for Windows Shell integration.
 /// This allows Windows Explorer to show book covers as thumbnails for eBook files.
 ///
-/// **Important**: Thumbnails are only shown when Readest.exe is the default application
-/// for the file type.
+/// **Important**: Thumbnails are only shown when Glossa.exe or the legacy
+/// Readest.exe is the default application for the file type.
 ///
 /// ## CLSID: {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 use std::cell::UnsafeCell;
@@ -33,6 +33,7 @@ use windows::Win32::UI::Shell::{
 use windows_core::BOOL;
 use windows_core::{implement, Ref};
 
+use super::app_identity::is_reader_executable;
 use super::cached_thumbnail_for_path;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -75,8 +76,8 @@ fn get_dll_module() -> Option<HMODULE> {
 // File Association Check
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Check if Readest.exe is the default application for a given file extension.
-fn is_readest_default_for_extension(ext: &str) -> bool {
+/// Check if the reader is the default application for a given file extension.
+fn is_reader_default_for_extension(ext: &str) -> bool {
     let ext_wide: Vec<u16> = ext.encode_utf16().chain(std::iter::once(0)).collect();
     let mut buffer = [0u16; 260];
     let mut buffer_size = buffer.len() as u32;
@@ -93,19 +94,19 @@ fn is_readest_default_for_extension(ext: &str) -> bool {
 
         if result.is_ok() {
             let len = buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len());
-            let path = String::from_utf16_lossy(&buffer[..len]).to_lowercase();
-            return path.contains("readest");
+            let path = String::from_utf16_lossy(&buffer[..len]);
+            return is_reader_executable(&path);
         }
     }
 
     false
 }
 
-/// Check if Readest is the default app for a specific file path.
-fn is_readest_default_for_file(path: &PathBuf) -> bool {
+/// Check if the reader is the default app for a specific file path.
+fn is_reader_default_for_file(path: &PathBuf) -> bool {
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
         let ext_with_dot = format!(".{}", ext.to_lowercase());
-        return is_readest_default_for_extension(&ext_with_dot);
+        return is_reader_default_for_extension(&ext_with_dot);
     }
     false
 }
@@ -185,7 +186,7 @@ impl IInitializeWithItem_Impl for ThumbnailProvider_Impl {
 
             CoTaskMemFree(Some(path_pwstr.0 as *const c_void));
 
-            let is_default = is_readest_default_for_file(&path);
+            let is_default = is_reader_default_for_file(&path);
             self.should_provide.set(is_default);
 
             if !is_default {
@@ -456,7 +457,7 @@ unsafe fn register_server_impl() -> Result<(), HRESULT> {
 
     // CLSID key
     let clsid_key = create_reg_key(HKEY_CLASSES_ROOT, &format!("CLSID\\{}", clsid))?;
-    set_reg_value(clsid_key, "", "Readest Thumbnail Provider")?;
+    set_reg_value(clsid_key, "", "Glossa Thumbnail Provider")?;
 
     // CRITICAL: DisableProcessIsolation = 1
     let disable_isolation_name = to_wide("DisableProcessIsolation");

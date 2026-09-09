@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use tauri::{plugin::PluginApi, AppHandle, Runtime};
 
 use crate::models::*;
+use crate::secure_storage::{SecureStorage, SYNC_ACCOUNT};
 
 pub fn init<R: Runtime, C: DeserializeOwned>(
     app: &AppHandle<R>,
@@ -240,16 +241,18 @@ impl<R: Runtime> NativeBridge<R> {
     //   * Windows → Credential Manager (windows-native-keyring-store)
     //   * Linux → Secret Service (dbus-secret-service-keyring-store)
     //
-    // `service` and `user` form the keychain item identity. Service is
-    // the bundle id; user is a stable string ("default") so multiple
-    // Readest installs on the same machine could coexist with distinct
-    // user values if ever needed.
+    // Service names use Glossa's brand and isolate each runtime identity.
+    // The account stays stable so existing credentials can be copied on demand.
+
+    fn secure_storage(&self) -> SecureStorage {
+        SecureStorage::for_app(&self.0.config().identifier)
+    }
 
     pub fn set_sync_passphrase(
         &self,
         payload: SetSyncPassphraseRequest,
     ) -> crate::Result<SyncPassphraseResponse> {
-        match keyring_entry().and_then(|e| e.set_password(&payload.passphrase)) {
+        match self.secure_storage().set(SYNC_ACCOUNT, &payload.passphrase) {
             Ok(()) => Ok(SyncPassphraseResponse {
                 success: true,
                 error: None,
@@ -262,7 +265,7 @@ impl<R: Runtime> NativeBridge<R> {
     }
 
     pub fn get_sync_passphrase(&self) -> crate::Result<GetSyncPassphraseResponse> {
-        match keyring_entry().and_then(|e| e.get_password()) {
+        match self.secure_storage().get(SYNC_ACCOUNT) {
             Ok(passphrase) => Ok(GetSyncPassphraseResponse {
                 passphrase: Some(passphrase),
                 error: None,
@@ -279,8 +282,8 @@ impl<R: Runtime> NativeBridge<R> {
     }
 
     pub fn clear_sync_passphrase(&self) -> crate::Result<SyncPassphraseResponse> {
-        match keyring_entry().and_then(|e| e.delete_credential()) {
-            Ok(()) | Err(keyring_core::Error::NoEntry) => Ok(SyncPassphraseResponse {
+        match self.secure_storage().clear(SYNC_ACCOUNT) {
+            Ok(()) => Ok(SyncPassphraseResponse {
                 success: true,
                 error: None,
             }),
@@ -295,7 +298,7 @@ impl<R: Runtime> NativeBridge<R> {
         // Best-effort probe: open an entry handle. Surface the error
         // string instead of throwing so the TS layer can fall back
         // to the ephemeral store gracefully.
-        match keyring_entry() {
+        match self.secure_storage().probe() {
             Ok(_) => Ok(SyncKeychainAvailableResponse {
                 available: true,
                 error: None,
@@ -339,7 +342,7 @@ impl<R: Runtime> NativeBridge<R> {
         &self,
         payload: SetSecureItemRequest,
     ) -> crate::Result<SecureItemResponse> {
-        match keyring_entry_for(&payload.key).and_then(|e| e.set_password(&payload.value)) {
+        match self.secure_storage().set(&payload.key, &payload.value) {
             Ok(()) => Ok(SecureItemResponse {
                 success: true,
                 error: None,
@@ -355,7 +358,7 @@ impl<R: Runtime> NativeBridge<R> {
         &self,
         payload: GetSecureItemRequest,
     ) -> crate::Result<GetSecureItemResponse> {
-        match keyring_entry_for(&payload.key).and_then(|e| e.get_password()) {
+        match self.secure_storage().get(&payload.key) {
             Ok(value) => Ok(GetSecureItemResponse {
                 value: Some(value),
                 error: None,
@@ -375,8 +378,8 @@ impl<R: Runtime> NativeBridge<R> {
         &self,
         payload: GetSecureItemRequest,
     ) -> crate::Result<SecureItemResponse> {
-        match keyring_entry_for(&payload.key).and_then(|e| e.delete_credential()) {
-            Ok(()) | Err(keyring_core::Error::NoEntry) => Ok(SecureItemResponse {
+        match self.secure_storage().clear(&payload.key) {
+            Ok(()) => Ok(SecureItemResponse {
                 success: true,
                 error: None,
             }),
@@ -451,17 +454,4 @@ impl<R: Runtime> NativeBridge<R> {
             Err(crate::Error::UnsupportedPlatformError)
         }
     }
-}
-
-const KEYRING_SERVICE: &str = "Readest Safe Storage";
-const KEYRING_USER: &str = "default";
-
-fn keyring_entry() -> std::result::Result<keyring_core::Entry, keyring_core::Error> {
-    keyring_core::Entry::new(KEYRING_SERVICE, KEYRING_USER)
-}
-
-/// Keychain entry for a keyed secure item — same service as the passphrase,
-/// with the caller's `key` as the per-item account so each secret is distinct.
-fn keyring_entry_for(key: &str) -> std::result::Result<keyring_core::Entry, keyring_core::Error> {
-    keyring_core::Entry::new(KEYRING_SERVICE, key)
 }

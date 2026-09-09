@@ -106,7 +106,7 @@
   "Failed to download {{count}} book(s)_other": "Failed to download {{count}} books",
   "{{count}} books_one": "{{count}} book",
   "{{count}} books_other": "{{count}} books",
-  "App settings still sync through your Readest account while signed in.": "App settings still sync through your Readest account while signed in.",
+  "App settings still sync through your Readest Cloud account while signed in.": "App settings still sync through your Readest Cloud account while signed in.",
   "Something went wrong. Try again, or report the issue to Glossa.": "Something went wrong. Try again, or report the issue to Glossa.",
   "Report an issue": "Report an issue",
   "Glossa support": "Glossa support",

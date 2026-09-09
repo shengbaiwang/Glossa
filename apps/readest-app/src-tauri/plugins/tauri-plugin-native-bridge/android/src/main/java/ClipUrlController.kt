@@ -121,7 +121,7 @@ class ClipUrlController(
         """
 
         // Defaults match `ClipOptions::*()` accessors on the Rust side.
-        private const val DEFAULT_OVERLAY_TITLE = "Saving to Readest"
+        private const val DEFAULT_OVERLAY_TITLE = "Saving to Glossa"
         private const val DEFAULT_LOADING_STATUS = "Loading article…"
         private const val DEFAULT_CAPTURING_STATUS = "Capturing article…"
         private const val DEFAULT_BACKGROUND = "#1f2024"

@@ -1,5 +1,6 @@
 [package]
 name = "Readest"
+default-run = "Glossa"
 version = "0.2.2"
 description = "Glossa reading and cloud sync, derived from Readest"
 authors = ["Bilingify LLC"]
@@ -7,6 +8,12 @@ license = "AGPL-3.0-or-later"
 repository = "https://github.com/shengbaiwang/Glossa"
 edition = "2021"
 rust-version = "1.77.2"
+
+# Tauri dev uses Cargo's executable directly; mainBinaryName only applies to
+# packaged builds. Keep macOS permission dialogs branded in both launch paths.
+[[bin]]
+name = "Glossa"
+path = "src/main.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

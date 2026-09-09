@@ -470,13 +470,13 @@ const ExportMarkdownDialog: React.FC<ExportMarkdownDialogProps> = ({
           >
             <option value='markdown'>{_('Markdown')}</option>
             <option value='text'>{_('Plain Text')}</option>
-            <option value='json'>{_('JSON (Glossa / Readest)')}</option>
+            <option value='json'>{_('JSON (Glossa)')}</option>
           </select>
         </div>
 
         {isJson && (
           <p className='text-base-content/70 text-xs'>
-            {_('A machine-readable file that Glossa and Readest can import back into any book.')}
+            {_('A machine-readable file that Glossa can import back into any book.')}
           </p>
         )}
 

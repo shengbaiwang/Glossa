@@ -78,10 +78,10 @@ impl ClipOptions {
     fn window_title(&self) -> &str {
         self.window_title
             .as_deref()
-            .unwrap_or("Saving to your Readest library…")
+            .unwrap_or("Saving to your Glossa library…")
     }
     fn overlay_title(&self) -> &str {
-        self.overlay_title.as_deref().unwrap_or("Saving to Readest")
+        self.overlay_title.as_deref().unwrap_or("Saving to Glossa")
     }
     fn loading_status(&self) -> &str {
         self.loading_status.as_deref().unwrap_or("Loading article…")
@@ -92,7 +92,7 @@ impl ClipOptions {
             .unwrap_or("Capturing article…")
     }
     fn saved_title(&self) -> &str {
-        self.saved_title.as_deref().unwrap_or("Saved to Readest")
+        self.saved_title.as_deref().unwrap_or("Saved to Glossa")
     }
     fn background(&self) -> &str {
         self.background.as_deref().unwrap_or("#1f2024")
