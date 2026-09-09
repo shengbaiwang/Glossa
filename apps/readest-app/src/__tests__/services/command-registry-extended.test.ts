@@ -68,6 +68,18 @@ function createMockOptions(
 }
 
 describe('buildCommandRegistry', () => {
+  it('exposes direct reading font selection without retired or duplicate font settings', () => {
+    const options = createMockOptions();
+    const items = buildCommandRegistry(options);
+    for (const id of ['minimumFontSize', 'defaultFont', 'serifFont', 'sansSerifFont']) {
+      expect(items.find((item) => item.id === `settings.font.${id}`)).toBeUndefined();
+    }
+    const readingFont = items.find((item) => item.id === 'settings.font.readingFont');
+    expect(readingFont).toBeDefined();
+    readingFont!.action();
+    expect(options.openSettingsPanel).toHaveBeenCalledWith('Font', 'settings.font.readingFont');
+    expect(items.find((item) => item.id === 'settings.font.monospaceFont')).toBeDefined();
+  });
   it('should return an array of command items', () => {
     const items = buildCommandRegistry(createMockOptions());
     expect(items.length).toBeGreaterThan(0);

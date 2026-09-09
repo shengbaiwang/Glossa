@@ -84,9 +84,15 @@ segmented buttons, visible keyboard focus and crisp e-ink selection states.
 - Open Font directly from the reader's typography button. At desktop widths of
   1000px and heights of 640px or more, place the dialog beside the visible reading
   area without resizing the page; retain the existing modal dismissal behavior.
-- Keep Book Fonts / My Fonts, size, weight and language-specific font choices in
-  the main view. Put minimum size, exact weight and secondary font families in More.
-  Show the live sample only for My Fonts; Book Fonts are represented by the book.
+- Put Book Fonts first in the language-specific font lists, alongside concrete fonts;
+  remove the separate Book Fonts / My Fonts switch. Keep size and a continuous weight
+  slider (100–1000, step 1) with a numeric stepper in the main view. More contains only
+  the monospace font for code reading. Do not restore minimum-size, three weight
+  presets, serif/sans category or duplicate face controls. Direct font selection keeps the existing saved family preference; the
+  retired minimum-size field stays in legacy records but no longer affects rendering.
+  Show the live sample only for custom font selections; Book Fonts are represented by
+  the book and have no synthetic sample in the list. Switching to Book Fonts preserves
+  the saved custom choices.
 - Expand font choices inline, with search, a shared sample and a selected check.
   Escape closes the list before the dialog. Enter commits numeric edits; keep
   arrow-key navigation and 44px touch controls.

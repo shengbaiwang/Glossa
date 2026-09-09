@@ -40,7 +40,6 @@ const getFontStyles = (
   defaultFont: string,
   defaultCJKFont: string,
   fontSize: number,
-  minFontSize: number,
   fontWeight: number,
   overrideFont: boolean,
   customFamilies: string[] = [],
@@ -82,7 +81,6 @@ const getFontStyles = (
       --sans-serif: ${families.sansSerif};
       --monospace: ${families.monospace};
       --font-size: ${fontSize}px;
-      --min-font-size: ${minFontSize}px;
       --font-weight: ${fontWeight};
     }
     ${languageStyles}
@@ -101,10 +99,10 @@ const getFontStyles = (
       ${overrideFont ? `font-family: var(${defaultFontFamily}) !important;` : ''}
     }
     font[size="1"] {
-      font-size: ${minFontSize}px;
+      font-size: 8px;
     }
     font[size="2"] {
-      font-size: ${minFontSize * 1.5}px;
+      font-size: 12px;
     }
     font[size="3"] {
       font-size: ${fontSize}px;
@@ -891,7 +889,6 @@ export const getStyles = (
     viewSettings.defaultFont!,
     viewSettings.defaultCJKFont!,
     viewSettings.defaultFontSize! * fontScale * zoomScale,
-    viewSettings.minimumFontSize!,
     viewSettings.fontWeight!,
     viewSettings.overrideFont!,
     customFonts.map((font) => font.family || font.name),

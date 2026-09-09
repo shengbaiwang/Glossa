@@ -11,6 +11,8 @@ interface FontPickerProps {
   onSelect: (option: string) => void;
   onGetFontFamily: (option: string) => string;
   language?: string;
+  useBookFonts?: boolean;
+  onSelectBookFonts?: () => void;
   'data-setting-id'?: string;
 }
 
@@ -21,6 +23,8 @@ const FontPicker = ({
   onSelect,
   onGetFontFamily,
   language,
+  useBookFonts = false,
+  onSelectBookFonts,
   'data-setting-id': settingId,
 }: FontPickerProps) => {
   const _ = useTranslation();
@@ -30,7 +34,12 @@ const FontPicker = ({
   const listRef = useRef<HTMLUListElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [query, setQuery] = useState('');
-  const selectedLabel = options.find(({ option }) => option === selected)?.label ?? selected;
+  const selectedLabel = useBookFonts
+    ? _('Book Fonts')
+    : (options.find(({ option }) => option === selected)?.label ?? selected);
+  const showBookFonts =
+    onSelectBookFonts &&
+    _('Book Fonts').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
   const sample = getFontPreviewSample(language);
   const filteredOptions = useMemo(() => {
     const search = query.trim().toLocaleLowerCase();
@@ -122,13 +131,32 @@ const FontPicker = ({
             aria-label={label}
             className='glossa-font-options max-h-72 space-y-1 overflow-y-auto overscroll-contain p-1'
           >
+            {showBookFonts && (
+              <li>
+                <button
+                  type='button'
+                  className='glossa-button glossa-font-option eink-bordered flex w-full !justify-between gap-3 text-start'
+                  aria-label={_('Book Fonts')}
+                  aria-pressed={useBookFonts}
+                  onClick={() => {
+                    onSelectBookFonts();
+                    close();
+                  }}
+                >
+                  <span>{_('Book Fonts')}</span>
+                  <span className='w-4 shrink-0' aria-hidden='true'>
+                    {useBookFonts && <Check size={16} />}
+                  </span>
+                </button>
+              </li>
+            )}
             {filteredOptions.map(({ option, label }) => (
               <li key={option}>
                 <button
                   type='button'
                   className='glossa-button glossa-font-option eink-bordered flex w-full !items-start !justify-start gap-3 text-start'
                   aria-label={label}
-                  aria-pressed={selected === option}
+                  aria-pressed={!useBookFonts && selected === option}
                   onClick={() => {
                     onSelect(option);
                     close();
@@ -147,13 +175,13 @@ const FontPicker = ({
                     </span>
                   </span>
                   <span className='mt-0.5 w-4 shrink-0' aria-hidden='true'>
-                    {selected === option && <Check size={16} />}
+                    {!useBookFonts && selected === option && <Check size={16} />}
                   </span>
                 </button>
               </li>
             ))}
           </ul>
-          {filteredOptions.length === 0 && (
+          {filteredOptions.length === 0 && !showBookFonts && (
             <p role='status' className='px-3 py-5 text-center text-sm text-[var(--glossa-muted)]'>
               {_('No matching fonts')}
             </p>

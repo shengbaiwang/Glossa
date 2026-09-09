@@ -103,10 +103,13 @@ describe('getFontStyles branches (via getStyles)', () => {
     expect(css).toContain('font-size: 20px !important');
   });
 
-  it('sets minimum font-size via --min-font-size', () => {
-    const vs = makeViewSettings({ minimumFontSize: 10 });
-    const css = getStyles(vs, theme);
-    expect(css).toContain('--min-font-size: 10px');
+  it('ignores retired minimum sizes without changing the stored configuration', () => {
+    for (const overrideFont of [false, true]) {
+      const original = makeViewSettings({ minimumFontSize: 8, defaultFontSize: 16, overrideFont });
+      const legacy = { ...original, minimumFontSize: 40 };
+      expect(getStyles(legacy, theme)).toBe(getStyles(original, theme));
+      expect(legacy.minimumFontSize).toBe(40);
+    }
   });
 
   it('sets font-weight', () => {

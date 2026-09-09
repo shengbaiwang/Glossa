@@ -269,6 +269,7 @@ export interface BookFont {
   defaultFont: string;
   defaultCJKFont: string;
   defaultFontSize: number;
+  /** @deprecated Compatibility field for old book/sync records; ignored by rendering. */
   minimumFontSize: number;
   fontWeight: number;
 }

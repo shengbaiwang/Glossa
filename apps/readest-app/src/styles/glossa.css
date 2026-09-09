@@ -404,8 +404,7 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
   min-width: 0;
 }
 
-.glossa-font-number,
-.glossa-font-weight {
+.glossa-font-number {
   display: flex;
   min-height: 64px;
   align-items: center;
@@ -443,9 +442,20 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
   width: 36px;
   height: 36px;
 }
-.glossa-font-weight .glossa-button {
-  font-size: 0.8125rem;
-  padding-inline: 10px;
+.glossa-font-weight-slider {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  accent-color: var(--glossa-ink);
+  cursor: pointer;
+}
+.glossa-font-weight-slider:focus-visible {
+  outline: 2px solid var(--glossa-focus);
+  outline-offset: 2px;
+}
+[data-eink='true'] .glossa-font-weight-slider {
+  accent-color: currentColor;
 }
 .glossa-font-actions,
 .glossa-font-footer,
@@ -476,13 +486,9 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
 }
 
 @media (max-width: 380px) {
-  .glossa-font-number,
-  .glossa-font-weight {
+  .glossa-font-number {
     padding-inline: 10px;
     gap: 6px;
-  }
-  .glossa-font-weight .glossa-button {
-    padding-inline: 7px;
   }
   .glossa-font-trigger {
     padding-inline: 10px;
@@ -522,8 +528,7 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
     min-width: 44px;
     min-height: 44px;
   }
-  .glossa-font-number,
-  .glossa-font-weight {
+  .glossa-font-number {
     flex-wrap: wrap;
   }
 }

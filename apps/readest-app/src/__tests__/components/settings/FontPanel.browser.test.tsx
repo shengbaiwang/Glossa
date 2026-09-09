@@ -140,10 +140,12 @@ it('previews and selects fonts with real Glossa styles across desktop, narrow, d
     }
   };
 
+  expect(screen.queryByRole('button', { name: t('My Fonts') })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: `${t('Chinese Font')}: ${t('Book Fonts')}` }));
   expect(screen.getByRole('button', { name: t('Book Fonts') }).getAttribute('aria-pressed')).toBe(
     'true',
   );
-  fireEvent.click(screen.getByRole('button', { name: t('My Fonts') }));
+  fireEvent.click(screen.getByRole('button', { name: t('SimSun') }));
   await expectSaved('overrideFont', true);
   const chinese = screen.getByText('微雨从东来，好风与之俱');
   const western = screen.getByText('Sunt lacrimae rerum et mentem mortalia tangunt.');
@@ -181,39 +183,35 @@ it('previews and selects fonts with real Glossa styles across desktop, narrow, d
   fireEvent.change(sizeInput, { target: { value: '22' } });
   fireEvent.keyDown(sizeInput, { key: 'Enter' });
   await expectSaved('defaultFontSize', 22);
-  fireEvent.click(screen.getByRole('button', { name: t('Medium') }));
-  await expectSaved('fontWeight', 500);
+  const weightSlider = screen.getByRole('slider', { name: t('Font Weight') });
+  fireEvent.change(weightSlider, { target: { value: '563' } });
+  await expectSaved('fontWeight', 563);
+  expect(getComputedStyle(chinese).fontWeight).toBe('563');
 
   const updatedTrigger = screen.getByRole('button', {
     name: `${t('Chinese Font')}: ${t('KaiTi')}`,
   });
   fireEvent.click(updatedTrigger);
   fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'ArrowDown' });
-  expect(document.activeElement).toBe(screen.getByRole('button', { name: t('KaiTi') }));
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: t('Book Fonts') }));
   onSettingsKeyDown.mockClear();
   fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
   expect(onSettingsKeyDown).not.toHaveBeenCalled();
   expect(settingsHost.hasAttribute('data-settings-closed')).toBe(false);
   expect(screen.queryByRole('searchbox')).toBeNull();
   expect(document.activeElement).toBe(updatedTrigger);
-  expect(screen.getByRole('button', { name: t('My Fonts') })).toBeTruthy();
+  expect(screen.getByRole('button', { name: `${t('Chinese Font')}: ${t('KaiTi')}` })).toBeTruthy();
 
   document.documentElement.setAttribute('data-theme', 'default-dark');
   await waitFor(() => {
-    const selected = screen.getByRole('button', { name: t('Medium') });
-    expect(getComputedStyle(selected).backgroundColor).toBe(
-      getComputedStyle(screen.getByRole('region', { name: t('Font Preview') })).backgroundColor,
-    );
+    expect(getComputedStyle(weightSlider).accentColor).toBe(getComputedStyle(chinese).color);
   });
   assertNoOverflow();
   await page.screenshot({ path: '../../../../../../.glossa-dev/qa/font-settings-dark.png' });
   document.documentElement.setAttribute('data-theme', 'default-light');
   await page.viewport(390, 844);
   await waitFor(() => {
-    const selected = screen.getByRole('button', { name: t('Medium') });
-    expect(getComputedStyle(selected).backgroundColor).toBe(
-      getComputedStyle(screen.getByRole('region', { name: t('Font Preview') })).backgroundColor,
-    );
+    expect(getComputedStyle(weightSlider).accentColor).toBe(getComputedStyle(chinese).color);
   });
   assertNoOverflow();
   if (matchMedia('(pointer: coarse)').matches) {
@@ -233,7 +231,10 @@ it('previews and selects fonts with real Glossa styles across desktop, narrow, d
   });
   fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'Escape' });
   fireEvent.click(screen.getByRole('button', { name: t('More') }));
-  expect(screen.getByText(t('Minimum Font Size'))).toBeTruthy();
+  expect(screen.queryByText(t('Minimum Font Size'))).toBeNull();
+  expect(screen.getByRole('spinbutton', { name: t('Font Weight') })).toBeTruthy();
+  expect(screen.queryByRole('combobox', { name: t('Default Font') })).toBeNull();
+  expect(screen.getByRole('button', { name: `${t('Monospace Font')}: Courier New` })).toBeTruthy();
   assertNoOverflow();
 
   document.documentElement.dir = 'rtl';
@@ -341,8 +342,7 @@ it('keeps the reader width stable and opens a transparent desktop side sheet at 
   expect(reader.getBoundingClientRect().left).toBe(initialReader.left);
   expect(sheet.scrollWidth).toBeLessThanOrEqual(sheet.clientWidth);
 
-  fireEvent.click(screen.getByRole('button', { name: t('My Fonts') }));
-  fireEvent.click(screen.getByRole('button', { name: `${t('Chinese Font')}: ${t('SimSun')}` }));
+  fireEvent.click(screen.getByRole('button', { name: `${t('Chinese Font')}: ${t('Book Fonts')}` }));
   fireEvent.click(screen.getByRole('button', { name: t('KaiTi') }));
   await document.fonts.ready;
   await page.screenshot({ path: '../../../../../../.glossa-dev/qa/font-settings-reading.png' });

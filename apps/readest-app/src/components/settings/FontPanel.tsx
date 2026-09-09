@@ -35,19 +35,15 @@ import { useKeyDownActions } from '@/hooks/useKeyDownActions';
 import { saveViewSettings } from '@/helpers/settings';
 import type { BookFont } from '@/types/book';
 import type { SettingsPanelPanelProp } from './SettingsDialog';
-import { BoxedList, SettingsRow, SettingsSelect } from './primitives';
+import { BoxedList } from './primitives';
 import FontPicker from './FontPicker';
 import CustomFonts from './CustomFonts';
 
-type FontValues = BookFont & { overrideFont: boolean };
-const FONT_KEYS = [...Object.keys(DEFAULT_BOOK_FONT), 'overrideFont'] as (keyof FontValues)[];
-const ADVANCED_IDS = [
-  'minimumFontSize',
-  'defaultFont',
-  'serifFont',
-  'sansSerifFont',
-  'monospaceFont',
-];
+type FontValues = Omit<BookFont, 'minimumFontSize'> & { overrideFont: boolean };
+const FONT_KEYS = [
+  ...Object.keys(DEFAULT_BOOK_FONT).filter((key) => key !== 'minimumFontSize'),
+  'overrideFont',
+] as (keyof FontValues)[];
 const isSymbolicFont = (font: string) =>
   /emoji|icons|symbol|dingbats|ornaments|webdings|wingdings|miuiex/i.test(font);
 
@@ -56,7 +52,6 @@ function FontNumber({
   value,
   min,
   max,
-  step = 1,
   onChange,
   settingId,
 }: {
@@ -64,7 +59,6 @@ function FontNumber({
   value: number;
   min: number;
   max: number;
-  step?: number;
   onChange: (value: number) => void;
   settingId?: string;
 }) {
@@ -86,7 +80,7 @@ function FontNumber({
           className='glossa-icon-button'
           aria-label={`${_('Decrease')} ${label}`}
           disabled={value <= min}
-          onClick={() => commit(value - step)}
+          onClick={() => commit(value - 1)}
         >
           <Minus size={16} />
         </button>
@@ -95,7 +89,7 @@ function FontNumber({
           type='number'
           min={min}
           max={max}
-          step={step}
+          step={1}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onBlur={() => commit(draft.trim() === '' ? value : Number(draft))}
@@ -116,7 +110,7 @@ function FontNumber({
           className='glossa-icon-button'
           aria-label={`${_('Increase')} ${label}`}
           disabled={value >= max}
-          onClick={() => commit(value + step)}
+          onClick={() => commit(value + 1)}
         >
           <Plus size={16} />
         </button>
@@ -286,7 +280,6 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
     bookKey,
     stored.defaultFont,
     stored.defaultFontSize,
-    stored.minimumFontSize,
     stored.fontWeight,
     stored.overrideFont,
     stored.serifFont,
@@ -300,7 +293,7 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
   useEffect(() => {
     if (!activeSettingsItemId?.startsWith('settings.font.')) return;
     setFontPanelView('main-fonts');
-    if (ADVANCED_IDS.includes(activeSettingsItemId.split('.').at(-1)!)) setMore(true);
+    if (activeSettingsItemId === 'settings.font.monospaceFont') setMore(true);
   }, [activeSettingsItemId, setFontPanelView]);
 
   useKeyDownActions({
@@ -385,53 +378,50 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
     key: 'serifFont' | 'sansSerifFont' | 'monospaceFont' | 'defaultCJKFont',
     font: string,
   ) => change({ [key]: font, overrideFont: true });
-  const renderFace = (key: 'serifFont' | 'sansSerifFont' | 'monospaceFont', label: string) => (
-    <FontPicker
-      label={label}
-      selected={values[key]}
-      language={key === 'monospaceFont' ? 'la' : language}
-      options={options(
-        values[key],
-        key === 'monospaceFont' ? [...imported, ...MONOSPACE_FONTS, ...sysFonts] : allFonts,
-      )}
-      onGetFontFamily={(font) =>
-        getReadingFontFamily(
-          font,
-          key === 'monospaceFont' ? 'monospace' : key === 'sansSerifFont' ? 'sans-serif' : 'serif',
-        )
-      }
-      onSelect={(font) => selectFont(key, font)}
-      data-setting-id={`settings.font.${key}`}
-    />
-  );
-
   if (fontPanelView === 'custom-fonts')
     return <CustomFonts bookKey={bookKey} onBack={() => setFontPanelView('main-fonts')} />;
 
   return (
     <div className='glossa-font-panel'>
-      <div
-        className='glossa-font-segments eink-bordered'
-        role='group'
-        aria-label={_('Font Source')}
-        data-setting-id='settings.font.overrideBookFont'
-      >
-        <button
-          type='button'
-          className='glossa-button'
-          aria-pressed={!values.overrideFont}
-          onClick={() => change({ overrideFont: false })}
-        >
-          {_('Book Fonts')}
-        </button>
-        <button
-          type='button'
-          className='glossa-button'
-          aria-pressed={values.overrideFont}
-          onClick={() => change({ overrideFont: true })}
-        >
-          {_('My Fonts')}
-        </button>
+      <div data-setting-id='settings.font.overrideBookFont'>
+        <BoxedList innerClassName='!ps-0' cardClassName='glossa-font-card'>
+          {isCJK && (
+            <FontPicker
+              label={cjkLabel}
+              selected={values.defaultCJKFont}
+              useBookFonts={!values.overrideFont}
+              onSelectBookFonts={() => change({ overrideFont: false })}
+              language={language}
+              options={options(values.defaultCJKFont, ['Auto', ...cjkFonts])}
+              onGetFontFamily={(font) => {
+                const fonts = buildFontFamilyLists(
+                  'Auto',
+                  'Auto',
+                  values.monospaceFont,
+                  font,
+                  language,
+                  imported,
+                );
+                return activeKey === 'serifFont' ? fonts.serif : fonts.sansSerif;
+              }}
+              onSelect={(font) => selectFont('defaultCJKFont', font)}
+              data-setting-id='settings.font.cjkFont'
+            />
+          )}
+          <FontPicker
+            label={isCJK ? _('Western Font') : _('Reading Font')}
+            selected={values[activeKey]}
+            useBookFonts={!values.overrideFont}
+            onSelectBookFonts={() => change({ overrideFont: false })}
+            language={isCJK ? 'la' : language}
+            options={options(values[activeKey], allFonts)}
+            onGetFontFamily={(font) =>
+              getReadingFontFamily(font, activeKey === 'serifFont' ? 'serif' : 'sans-serif')
+            }
+            onSelect={(font) => selectFont(activeKey, font)}
+            data-setting-id='settings.font.readingFont'
+          />
+        </BoxedList>
       </div>
       {values.overrideFont && (
         <div
@@ -473,70 +463,34 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
         <FontNumber
           label={_('Font Size')}
           value={values.defaultFontSize}
-          min={values.minimumFontSize}
+          min={8}
           max={120}
           onChange={(value) => change({ defaultFontSize: value })}
           settingId='settings.font.defaultFontSize'
         />
-        <div className='glossa-font-weight' data-setting-id='settings.font.fontWeight'>
-          <span>{_('Font Weight')}</span>
-          <div
-            role='group'
-            aria-label={_('Font Weight')}
-            className='glossa-font-segments eink-bordered'
-          >
-            {[
-              { value: 400, label: _('Regular') },
-              { value: 500, label: _('Medium') },
-              { value: 700, label: _('Bold') },
-            ].map((item) => (
-              <button
-                type='button'
-                key={item.value}
-                className='glossa-button'
-                aria-pressed={values.fontWeight === item.value}
-                onClick={() => change({ fontWeight: item.value })}
-              >
-                {item.label}
-              </button>
-            ))}
+        <div data-setting-id='settings.font.fontWeight'>
+          <FontNumber
+            label={_('Font Weight')}
+            value={values.fontWeight}
+            min={100}
+            max={1000}
+            onChange={(value) => change({ fontWeight: value })}
+          />
+          <div className='px-4 pb-3'>
+            <input
+              type='range'
+              className='glossa-font-weight-slider'
+              aria-label={_('Font Weight')}
+              min={100}
+              max={1000}
+              step={1}
+              value={values.fontWeight}
+              onChange={(event) => change({ fontWeight: Number(event.target.value) })}
+            />
           </div>
         </div>
       </BoxedList>
-      <BoxedList innerClassName='!ps-0' cardClassName='glossa-font-card'>
-        {isCJK && (
-          <FontPicker
-            label={cjkLabel}
-            selected={values.defaultCJKFont}
-            language={language}
-            options={options(values.defaultCJKFont, ['Auto', ...cjkFonts])}
-            onGetFontFamily={(font) => {
-              const fonts = buildFontFamilyLists(
-                'Auto',
-                'Auto',
-                values.monospaceFont,
-                font,
-                language,
-                imported,
-              );
-              return activeKey === 'serifFont' ? fonts.serif : fonts.sansSerif;
-            }}
-            onSelect={(font) => selectFont('defaultCJKFont', font)}
-            data-setting-id='settings.font.cjkFont'
-          />
-        )}
-        <FontPicker
-          label={isCJK ? _('Western Font') : _('Reading Font')}
-          selected={values[activeKey]}
-          language={isCJK ? 'la' : language}
-          options={options(values[activeKey], allFonts)}
-          onGetFontFamily={(font) =>
-            getReadingFontFamily(font, activeKey === 'serifFont' ? 'serif' : 'sans-serif')
-          }
-          onSelect={(font) => selectFont(activeKey, font)}
-          data-setting-id='settings.font.readingFont'
-        />
-      </BoxedList>
+
       {fontLoadError && (
         <div className='glossa-font-status' role='status'>
           <span>{_('System fonts unavailable')}</span>
@@ -572,44 +526,19 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
       {more && (
         <div id={advancedId} className='glossa-font-advanced'>
           <BoxedList innerClassName='!ps-0' cardClassName='glossa-font-card'>
-            <FontNumber
-              label={_('Minimum Font Size')}
-              value={values.minimumFontSize}
-              min={1}
-              max={values.defaultFontSize}
-              onChange={(value) => change({ minimumFontSize: value })}
-              settingId='settings.font.minimumFontSize'
+            <FontPicker
+              label={_('Monospace Font')}
+              selected={values.monospaceFont}
+              language='la'
+              options={options(values.monospaceFont, [
+                ...imported,
+                ...MONOSPACE_FONTS,
+                ...sysFonts,
+              ])}
+              onGetFontFamily={(font) => getReadingFontFamily(font, 'monospace')}
+              onSelect={(font) => selectFont('monospaceFont', font)}
+              data-setting-id='settings.font.monospaceFont'
             />
-            <FontNumber
-              label={_('Font Weight')}
-              value={values.fontWeight}
-              min={100}
-              max={900}
-              step={100}
-              onChange={(value) => change({ fontWeight: value })}
-            />
-            <SettingsRow
-              className='px-4'
-              label={_('Default Font')}
-              data-setting-id='settings.font.defaultFont'
-            >
-              <SettingsSelect
-                ariaLabel={_('Default Font')}
-                value={values.defaultFont}
-                options={[
-                  { value: 'Serif', label: _('Serif Font') },
-                  { value: 'Sans-serif', label: _('Sans-Serif Font') },
-                ]}
-                onChange={(event) =>
-                  change({ defaultFont: event.target.value, overrideFont: true })
-                }
-              />
-            </SettingsRow>
-          </BoxedList>
-          <BoxedList innerClassName='!ps-0' cardClassName='glossa-font-card'>
-            {renderFace('serifFont', _('Serif Font'))}
-            {renderFace('sansSerifFont', _('Sans-Serif Font'))}
-            {renderFace('monospaceFont', _('Monospace Font'))}
           </BoxedList>
         </div>
       )}

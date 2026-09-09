@@ -174,22 +174,10 @@ const fontPanelItems = [
     section: 'Font Size',
   },
   {
-    id: 'settings.font.minimumFontSize',
-    labelKey: _('Minimum Font Size'),
-    keywords: ['font', 'size', 'minimum', 'min', 'small'],
-    section: 'Font Size',
-  },
-  {
     id: 'settings.font.fontWeight',
     labelKey: _('Font Weight'),
     keywords: ['font', 'weight', 'bold', 'light', 'thickness'],
     section: 'Font Weight',
-  },
-  {
-    id: 'settings.font.defaultFont',
-    labelKey: _('Default Font'),
-    keywords: ['font', 'family', 'serif', 'sans', 'default'],
-    section: 'Font Family',
   },
   {
     id: 'settings.font.cjkFont',
@@ -198,15 +186,9 @@ const fontPanelItems = [
     section: 'Font Family',
   },
   {
-    id: 'settings.font.serifFont',
-    labelKey: _('Serif Font'),
-    keywords: ['font', 'serif', 'family', 'typeface'],
-    section: 'Font Face',
-  },
-  {
-    id: 'settings.font.sansSerifFont',
-    labelKey: _('Sans-Serif Font'),
-    keywords: ['font', 'sans', 'serif', 'family', 'typeface'],
+    id: 'settings.font.readingFont',
+    labelKey: _('Reading Font'),
+    keywords: ['font', 'reading', 'western', 'family', 'typeface'],
     section: 'Font Face',
   },
   {

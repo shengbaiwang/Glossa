@@ -55,7 +55,7 @@ vi.mock('@/store/customFontStore', () => ({
 vi.mock('@/components/settings/CustomFonts', () => ({ default: () => null }));
 
 beforeEach(() => {
-  Object.assign(saved, DEFAULT_BOOK_FONT, { overrideFont: false, isGlobal: false });
+  Object.assign(saved, DEFAULT_BOOK_FONT, { overrideFont: true, isGlobal: false });
   activeSettingsItemId = null;
 });
 afterEach(() => {
@@ -74,20 +74,66 @@ describe('Glossa font settings', () => {
     );
     expect(screen.queryByText('Minimum Font Size')).toBeNull();
   });
-  it('switches font source without losing the chosen fonts', async () => {
+  it('selects book fonts from the same list and retains custom choices', async () => {
+    saved.overrideFont = false;
     saved.serifFont = 'Georgia';
     mount();
-    fireEvent.click(screen.getByRole('button', { name: 'My Fonts' }));
+    expect(screen.queryByRole('group', { name: 'Font Source' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'My Fonts' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Font Preview' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Western Font: Book Fonts' }));
+    const original = screen.getByRole('button', { name: 'Book Fonts' });
+    expect(original.getAttribute('aria-pressed')).toBe('true');
+    expect(original.querySelector('.glossa-font-sample')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Georgia' }).getAttribute('aria-pressed')).toBe(
+      'false',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Georgia' }));
     await waitFor(() =>
       expect(saveViewSettings).toHaveBeenCalledWith({}, 'book', 'overrideFont', true),
     );
-    expect(screen.getByText('微雨从东来，好风与之俱')).toBeTruthy();
-    expect(screen.getByText('Sunt lacrimae rerum et mentem mortalia tangunt.')).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Font Preview' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Chinese Font: Auto' }));
     fireEvent.click(screen.getByRole('button', { name: 'Book Fonts' }));
-    expect(screen.getByRole('button', { name: 'Western Font: Georgia' })).toBeTruthy();
     await waitFor(() =>
       expect(saveViewSettings).toHaveBeenCalledWith({}, 'book', 'overrideFont', false),
     );
+    expect(screen.queryByRole('region', { name: 'Font Preview' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Western Font: Book Fonts' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Georgia' }));
+    expect(screen.getByRole('button', { name: 'Western Font: Georgia' })).toBeTruthy();
+    expect(vi.mocked(saveViewSettings).mock.calls.every((call) => call[2] === 'overrideFont')).toBe(
+      true,
+    );
+  });
+  it('preserves arbitrary weights and supports fine slider and numeric adjustments', async () => {
+    saved.fontWeight = 437;
+    mount();
+    const slider = screen.getByRole('slider', { name: 'Font Weight' });
+    const number = screen.getByRole('spinbutton', { name: 'Font Weight' });
+    expect((slider as HTMLInputElement).value).toBe('437');
+    expect(slider.getAttribute('step')).toBe('1');
+    fireEvent.change(slider, { target: { value: '563' } });
+    await waitFor(() =>
+      expect(saveViewSettings).toHaveBeenCalledWith({}, 'book', 'fontWeight', 563),
+    );
+    expect((number as HTMLInputElement).value).toBe('563');
+    expect(
+      screen.getByRole('region', { name: 'Font Preview' }).querySelector('p')!.style.fontWeight,
+    ).toBe('563');
+    fireEvent.change(number, { target: { value: '9999' } });
+    fireEvent.blur(number);
+    await waitFor(() =>
+      expect(saveViewSettings).toHaveBeenCalledWith({}, 'book', 'fontWeight', 1000),
+    );
+    fireEvent.change(number, { target: { value: '0' } });
+    fireEvent.blur(number);
+    await waitFor(() =>
+      expect(saveViewSettings).toHaveBeenCalledWith({}, 'book', 'fontWeight', 100),
+    );
+    fireEvent.change(number, { target: { value: '' } });
+    fireEvent.blur(number);
+    expect((number as HTMLInputElement).value).toBe('100');
   });
   it('migrates obsolete selections and never reinserts removed fonts', async () => {
     saved.serifFont = removed[0]!;
@@ -105,8 +151,9 @@ describe('Glossa font settings', () => {
     for (const font of removed) expect(screen.queryAllByText(font)).toHaveLength(0);
   });
   it('searches system and imported fonts, selects directly and enables custom fonts', async () => {
+    saved.overrideFont = false;
     mount();
-    fireEvent.click(screen.getByRole('button', { name: 'Western Font: Times New Roman' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Western Font: Book Fonts' }));
     await screen.findByRole('button', { name: 'My System Font' });
     expect(screen.getByRole('button', { name: 'My Reading Font' })).toBeTruthy();
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Georgia' } });
@@ -143,16 +190,23 @@ describe('Glossa font settings', () => {
     expect(
       (screen.getByRole('button', { name: 'Increase Font Size' }) as HTMLButtonElement).disabled,
     ).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Medium' }));
+    fireEvent.change(screen.getByRole('slider', { name: 'Font Weight' }), {
+      target: { value: '500' },
+    });
     await waitFor(() =>
       expect(saveViewSettings).toHaveBeenCalledWith({}, 'book', 'fontWeight', 500),
     );
     fireEvent.click(screen.getByRole('button', { name: 'More' }));
-    expect(screen.getByRole('spinbutton', { name: 'Minimum Font Size' })).toBeTruthy();
+    expect(screen.queryByRole('spinbutton', { name: 'Minimum Font Size' })).toBeNull();
+    expect(screen.getByRole('spinbutton', { name: 'Font Weight' })).toBeTruthy();
+    expect(screen.queryByRole('combobox', { name: 'Default Font' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Serif Font: Times New Roman' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Sans-Serif Font: Arial' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Monospace Font: Courier New' })).toBeTruthy();
   });
   it('restores current defaults explicitly and preserves scope', async () => {
     saved.defaultFontSize = 24;
+    saved.minimumFontSize = 20;
     saved.overrideFont = true;
     saved.serifFont = 'Georgia';
     mount();
@@ -169,6 +223,30 @@ describe('Glossa font settings', () => {
     expect(vi.mocked(saveViewSettings).mock.calls.some((call) => call[2] === 'isGlobal')).toBe(
       false,
     );
+    expect(
+      vi.mocked(saveViewSettings).mock.calls.some((call) => call[2] === 'minimumFontSize'),
+    ).toBe(false);
+    expect(saved.minimumFontSize).toBe(20);
+  });
+  it('allows reducing size below the retired minimum without changing legacy configuration', async () => {
+    saved.minimumFontSize = 16;
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Decrease Font Size' }));
+    await waitFor(() =>
+      expect(saveViewSettings).toHaveBeenCalledWith({}, 'book', 'defaultFontSize', 15),
+    );
+    expect(saved.minimumFontSize).toBe(16);
+  });
+  it('keeps direct font selection working for an existing sans-serif preference', async () => {
+    saved.defaultFont = 'Sans-serif';
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Western Font: Arial' }));
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Georgia' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Georgia' }));
+    await waitFor(() =>
+      expect(saveViewSettings).toHaveBeenCalledWith({}, 'book', 'sansSerifFont', 'Georgia'),
+    );
+    expect(saved.defaultFont).toBe('Sans-serif');
   });
   it('shows inherited global scope and changes it only on explicit selection', async () => {
     saved.isGlobal = true;
@@ -206,7 +284,9 @@ describe('Glossa font settings', () => {
   it('reports save failures and retries the chosen value', async () => {
     vi.mocked(saveViewSettings).mockRejectedValueOnce(new Error('disk full'));
     mount();
-    fireEvent.click(screen.getByRole('button', { name: 'Bold' }));
+    fireEvent.change(screen.getByRole('slider', { name: 'Font Weight' }), {
+      target: { value: '700' },
+    });
     const alert = await screen.findByRole('alert');
     fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
