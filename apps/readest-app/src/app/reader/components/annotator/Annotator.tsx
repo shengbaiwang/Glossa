@@ -1,7 +1,4 @@
 import { getReadingQuickAction } from '@/utils/annotationToolbar';
-import { MessageCircle } from '@/components/GlossaIcons';
-import { useConversationSelection } from '@/glossa/conversation/selection';
-import { conversationSelectionCfi } from '@/glossa/context/conversation';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { RiDeleteBinLine } from 'react-icons/ri';
 
@@ -1637,37 +1634,6 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   const toolButtons = getToolbarToolTypes(viewSettings.annotationToolbarItems)
     .map(buildToolButton)
     .filter((button): button is NonNullable<typeof button> => button !== null);
-
-  const attachToConversation = () => {
-    if (!selection?.text || !view) return;
-    const cfi = conversationSelectionCfi(view, selection.index, selection.range);
-    if (!cfi) return;
-    useConversationSelection.getState().attach(bookKey, cfi);
-    useSidebarStore.getState().setSideBarBookKey(bookKey);
-    useNotebookStore.getState().setNotebookActiveTab('conversation');
-    useNotebookStore.getState().setNotebookVisible(true);
-    handleDismissPopupAndSelection();
-  };
-  if (bookData.book?.format === 'EPUB')
-    toolButtons.push({
-      tooltipText: _('Conversation'),
-      Icon: MessageCircle,
-      onClick: attachToConversation,
-    });
-
-  useEffect(() => {
-    const notebook = useNotebookStore.getState();
-    if (
-      selection?.text &&
-      view &&
-      bookData.book?.format === 'EPUB' &&
-      notebook.isNotebookVisible &&
-      notebook.notebookActiveTab === 'conversation'
-    ) {
-      const cfi = conversationSelectionCfi(view, selection.index, selection.range);
-      if (cfi) useConversationSelection.getState().attach(bookKey, cfi);
-    }
-  }, [selection, view, bookKey, bookData.book?.format]);
 
   // The lookup popups never deselect (handleDictionary / handleTranslation /
   // handleProofread only flip popup flags), so a genuine selection is still

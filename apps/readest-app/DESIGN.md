@@ -64,23 +64,18 @@ there is no automatic next passage, whole-book report, quiz or AI notes version 
 Use the existing paper/ink tokens, quiet controls and readable spacing. Preserve
 keyboard, narrow-screen, RTL, e-ink, source-return and resize behavior.
 
-Conversation (2026-09-11) uses the same paper/ink system and a persistent bottom
-composer. Its desktop pane sits beside the book even when unpinned. A visible,
-context area shows the book title, author, current chapter and reading position at
-all times. A collapsed materials control selects scope and a 2k/4k/8k character
-budget (2k default); an excerpt checklist shows exact included/excluded materials.
-The input stays visible while the materials area scrolls. Default to the actual visible page; allow a paragraph, a user-chosen
-section/article/chapter from the book's own outline, or whole-book local retrieval.
-Allow up to four outline entries together. Preserve the sent materials after a
-successful reply for follow-ups until the reader changes them; show and allow
-disabling the bounded summary, and retain a per-reply materials receipt.
-Show the exact excerpts before sending, and label sampled evidence and expanded
-unread scope. Choosing context does not start the model. Distinguish source-backed
-paragraphs, interpretations, background and insufficient evidence; verify quotes
-locally before source navigation. Keep suggestions optional, replies short, stop
-and retry available, and per-book conversation history on this device. Do not
-silently treat whole-book scope as proof of complete coverage. See
-`../../docs/design/conversation.md` for boundaries and the Gemini reference.
+Conversation (2026-09-12) is a simple API chat using only book title, author and the
+current table-of-contents section. Keep a quiet session selector with new/delete
+icons, two compact identity lines, an open message list and a fixed bottom composer.
+No materials cards, scope controls, evidence badges, summaries, suggestions or
+instructional footnotes. Render ordinary safe Markdown with modest paragraph
+spacing; keep copy/regenerate actions small and the model name secondary.
+The composer's model control opens an inline service/model picker with search,
+manual model entry and a settings action. Switching models keeps the conversation.
+New conversations isolate history; stopping keeps partial text. Use the shared
+paper/ink tokens, 9/12px controls, 16px message/composer rounding, logical spacing,
+visible focus and crisp e-ink borders. Bound menus to the viewport and keep the
+composer usable in short/narrow panes. See `../../docs/design/conversation.md`.
 
 - Draw core icons on a 24-unit grid with consistent 1.8-unit rounded ink strokes.
   Use open silhouettes and the mark's interlinear rhythm; avoid decorated notebooks,

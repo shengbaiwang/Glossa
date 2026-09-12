@@ -1,5 +1,5 @@
+// Read-only schema compatibility for conversation-1/2 records. New chat never builds this context.
 import { z } from 'zod';
-import type { ChapterSource } from '@/glossa/context/types';
 
 export const CONTEXT_BUDGETS = [2000, 4000, 8000] as const;
 export type ContextBudget = (typeof CONTEXT_BUDGETS)[number];
@@ -47,17 +47,3 @@ export const contextReceiptSchema = z
   })
   .strict();
 export type ContextReceipt = z.infer<typeof contextReceiptSchema>;
-
-/** Preserve complete source blocks; never shorten a quotation to fit the budget. */
-export function fitConversationEvidence(
-  candidates: ChapterSource[],
-  budget: number,
-  excluded: string[] = [],
-): ChapterSource[] {
-  let size = 0;
-  return candidates.filter((source) => {
-    if (excluded.includes(source.sourceId) || size + source.text.length > budget) return false;
-    size += source.text.length;
-    return true;
-  });
-}

@@ -118,6 +118,28 @@ export const listChapters = (book: BookDoc): ChapterDescriptor[] => {
   return chapters;
 };
 
+/** Full outline path for a reading position, e.g. "第一讲 › （二）中央政府的组织". */
+export const chapterPathForHref = (book: BookDoc, href?: string): string => {
+  if (
+    !href ||
+    !book?.toc?.length ||
+    !book.sections?.length ||
+    typeof book.splitTOCHref !== 'function'
+  )
+    return '';
+  const target = decode(href);
+  const chapters = listChapters(book);
+  const byId = new Map(chapters.map((chapter) => [chapter.id, chapter]));
+  const leaf = chapters.find((chapter) => decode(chapter.href) === target);
+  if (!leaf) return '';
+  const labels: string[] = [];
+  for (let node: ChapterDescriptor | undefined = leaf; node; ) {
+    labels.unshift(node.title);
+    node = node.parentId ? byId.get(node.parentId) : undefined;
+  }
+  return labels.join(' › ');
+};
+
 const fragmentElement = (doc: Document, fragment: string): Element | undefined =>
   doc.getElementById(fragment) ?? Array.from(doc.getElementsByName(fragment))[0];
 

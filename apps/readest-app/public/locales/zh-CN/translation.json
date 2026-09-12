@@ -871,7 +871,7 @@
   "Start Indexing": "开始索引",
   "Indexing book...": "正在索引书籍...",
   "Preparing...": "准备中...",
-  "Delete this conversation?": "删除此对话？",
+  "Delete this conversation?": "删除这段对话？",
   "No conversations yet": "暂无对话",
   "Start a new chat to ask questions about this book": "开始新对话来询问关于这本书的问题",
   "Rename": "重命名",
@@ -2318,5 +2318,16 @@
   "Adjust materials": "调整材料",
   "Follow-up materials": "追问材料",
   "{{count}} excerpts · {{characters}} / {{limit}} characters": "{{count}} 个片段 · {{characters}} / {{limit}} 字符",
-  "No book text was sent.": "本轮未发送原文。"
+  "No book text was sent.": "本轮未发送原文。",
+  "Message": "消息",
+  "Message…": "发送消息…",
+  "Search or enter model": "搜索或输入模型",
+  "Regenerate reply": "重新生成",
+  "Reply interrupted": "回答中断",
+  "Conversation not saved.": "对话未保存。",
+  "Choose model": "选择模型",
+  "Model settings": "模型设置",
+  "Stopped": "已停止",
+  "Use a shorter question.": "请缩短问题。",
+  "Retry reply": "重试回答"
 }

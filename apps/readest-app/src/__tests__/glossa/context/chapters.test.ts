@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as CFI from 'foliate-js/epubcfi.js';
 import type { BookDoc, TOCItem } from '@/libs/document';
-import { extractChapter, listChapters } from '@/glossa/context/chapters';
+import { extractChapter, listChapters, chapterPathForHref } from '@/glossa/context/chapters';
 import { resolveSource, validateSourceIds } from '@/glossa/citations/sources';
 
 const item = (label: string, href: string, subitems?: TOCItem[]): TOCItem => ({
@@ -96,6 +96,26 @@ describe('chapter sources', () => {
       '（一）组织',
       '细节',
     ]);
+  });
+
+  it('resolves the full outline path for a reading position', () => {
+    const doc = book(
+      [
+        '<h1>第一讲</h1><p>引言</p><p id="a">一、制度</p><p id="b">（一）组织</p><p>细节</p>',
+        '<h1>第二讲</h1>',
+      ],
+      [
+        item('第一讲', 'chapter0.xhtml'),
+        item('一、制度', 'chapter0.xhtml#a'),
+        item('（一）组织', 'chapter0.xhtml#b'),
+        item('第二讲', 'chapter1.xhtml'),
+      ],
+    );
+    expect(chapterPathForHref(doc, 'chapter0.xhtml#b')).toBe('第一讲 › 一、制度 › （一）组织');
+    expect(chapterPathForHref(doc, 'chapter0.xhtml')).toBe('第一讲');
+    expect(chapterPathForHref(doc, 'chapter0.xhtml#missing')).toBe('');
+    expect(chapterPathForHref(doc, undefined)).toBe('');
+    expect(chapterPathForHref({} as BookDoc, 'chapter0.xhtml')).toBe('');
   });
 
   it('collects a chapter spanning spine files and clips the final file before next fragment', async () => {

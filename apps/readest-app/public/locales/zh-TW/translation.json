@@ -870,7 +870,7 @@
   "Start Indexing": "開始索引",
   "Indexing book...": "正在索引書籍...",
   "Preparing...": "準備中...",
-  "Delete this conversation?": "刪除此對話？",
+  "Delete this conversation?": "刪除這段對話？",
   "No conversations yet": "尚無對話",
   "Start a new chat to ask questions about this book": "開始新對話來詢問關於這本書的問題",
   "Rename": "重新命名",
@@ -2318,5 +2318,16 @@
   "Adjust materials": "調整材料",
   "Follow-up materials": "追問材料",
   "{{count}} excerpts · {{characters}} / {{limit}} characters": "{{count}} 個片段 · {{characters}} / {{limit}} 字元",
-  "No book text was sent.": "本輪未傳送原文。"
+  "No book text was sent.": "本輪未傳送原文。",
+  "Message": "訊息",
+  "Message…": "傳送訊息…",
+  "Search or enter model": "搜尋或輸入模型",
+  "Regenerate reply": "重新生成",
+  "Reply interrupted": "回答中斷",
+  "Conversation not saved.": "對話未儲存。",
+  "Choose model": "選擇模型",
+  "Model settings": "模型設定",
+  "Stopped": "已停止",
+  "Use a shorter question.": "請縮短問題。",
+  "Retry reply": "重試回答"
 }

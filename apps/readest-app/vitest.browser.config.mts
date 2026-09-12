@@ -24,6 +24,8 @@ export default defineConfig({
       '@tauri-apps/api/path',
       '@tauri-apps/api/core',
       '@testing-library/react',
+      'react-markdown',
+      'remark-gfm',
       '@zip.js/zip.js',
       'franc-min',
       'iso-639-2',

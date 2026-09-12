@@ -5,7 +5,15 @@ import { passageSourcesSchema } from '@/glossa/guide/schema';
 import { stubTranslation as _ } from '@/utils/misc';
 
 export class ConversationError extends Error {}
-export const CONVERSATION_PROMPT_VERSION = 'conversation-2';
+export const CONVERSATION_PROMPT_VERSION = 'conversation-3';
+export const chatIdentitySchema = z
+  .object({
+    bookTitle: z.string().max(500),
+    author: z.string().max(500),
+    chapterTitle: z.string().max(500),
+  })
+  .strict();
+export type ChatIdentity = z.infer<typeof chatIdentitySchema>;
 export const conversationSourcesSchema = passageSourcesSchema.or(z.array(z.never()).length(0));
 export const blockSchema = z
   .object({
@@ -21,7 +29,7 @@ export const blockSchema = z
   );
 export type ConversationBlock = z.infer<typeof blockSchema>;
 export const bodySchema = z.object({ blocks: z.array(blockSchema).min(1).max(8) }).strict();
-export const turnSchema = bodySchema
+const legacyTurnSchema = bodySchema
   .extend({
     id: z.string().min(1).max(100),
     question: z.string().trim().min(1).max(2000),
@@ -30,10 +38,37 @@ export const turnSchema = bodySchema
     provider: z
       .object({ id: z.string(), name: z.string(), baseUrl: z.string(), model: z.string() })
       .strict(),
-    promptVersion: z.enum(['conversation-1', CONVERSATION_PROMPT_VERSION]),
+    promptVersion: z.enum(['conversation-1', 'conversation-2']),
     context: contextReceiptSchema.optional(),
   })
   .strict();
+const chatTurnSchema = z
+  .object({
+    id: z.string().min(1).max(100),
+    question: z.string().trim().min(1).max(2000),
+    blocks: z
+      .array(
+        z
+          .object({
+            kind: z.literal('background'),
+            text: z.string().min(1).max(32000),
+            sourceIds: z.array(z.never()).length(0),
+          })
+          .strict(),
+      )
+      .length(1),
+    sources: z.array(z.never()).length(0),
+    createdAt: z.number().finite(),
+    provider: z
+      .object({ id: z.string(), name: z.string(), baseUrl: z.string(), model: z.string() })
+      .strict(),
+    promptVersion: z.literal(CONVERSATION_PROMPT_VERSION),
+    metadata: chatIdentitySchema,
+    status: z.enum(['complete', 'stopped', 'failed']),
+    context: z.undefined().optional(),
+  })
+  .strict();
+export const turnSchema = z.union([legacyTurnSchema, chatTurnSchema]);
 export type ConversationTurn = z.infer<typeof turnSchema>;
 
 export const validBlockSources = (blocks: ConversationBlock[], sources: ChapterSource[]) => {

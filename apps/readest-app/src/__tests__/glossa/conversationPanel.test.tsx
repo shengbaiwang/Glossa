@@ -2,33 +2,36 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { Book } from '@/types/book';
 import type { BookDoc } from '@/libs/document';
-import type { ChapterSource } from '@/glossa/context/types';
-import { useConversationSelection } from '@/glossa/conversation/selection';
 import { ConversationError } from '@/glossa/conversation/schema';
 const f = vi.hoisted(() => ({
   load: vi.fn(),
   save: vi.fn(),
-  read: vi.fn(),
   generate: vi.fn(),
   status: vi.fn(),
-  location: 'page-one',
+  list: vi.fn(),
+  saveConfig: vi.fn(),
+  location: 'one',
+  model: 'fixture',
+  sectionHref: undefined as string | undefined,
+  settings: vi.fn(),
 }));
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (key: string) => key }));
-vi.mock('@/store/readerStore', () => ({
-  useReaderStore: { getState: () => ({ getView: () => ({ lastLocation: { cfi: f.location } }) }) },
-}));
 vi.mock('@/store/readerProgressStore', () => ({
   useBookProgress: () => ({
-    location: f.location,
-    sectionLabel: f.location === 'page-one' ? 'Chapter one' : 'Chapter two',
-    fraction: f.location === 'page-one' ? 0.1 : 0.6,
+    sectionHref: f.sectionHref,
+    sectionLabel: `Chapter ${f.location}`,
+    fraction: 0.1,
   }),
 }));
-vi.mock('@/glossa/context/conversation', async (original) => ({
-  ...(await original<typeof import('@/glossa/context/conversation')>()),
-  createConversationReader: () => ({ visibleLocation: () => f.location, readLocation: f.read }),
+vi.mock('@/store/settingsStore', () => ({
+  useSettingsStore: {
+    getState: () => ({
+      setSettingsDialogBookKey: vi.fn(),
+      setRequestedPanel: vi.fn(),
+      setSettingsDialogOpen: f.settings,
+    }),
+  },
 }));
-vi.mock('@/glossa/context/chapters', () => ({ listChapters: () => [] }));
 vi.mock('@/glossa/conversation/store', async (original) => ({
   ...(await original<typeof import('@/glossa/conversation/store')>()),
   loadConversations: f.load,
@@ -45,192 +48,329 @@ vi.mock('@/glossa/ai/provider', async (original) => ({
     id: 'fixture',
     name: 'Fixture',
     baseUrl: 'http://localhost:1234/v1',
-    model: 'fixture',
+    model: f.model,
   }),
+  getSavedProviderConfigs: () => [
+    { id: 'fixture', name: 'Fixture', baseUrl: 'http://localhost:1234/v1', model: f.model },
+  ],
   getProviderStatus: f.status,
+  listProviderModels: f.list,
+  saveProviderConfig: f.saveConfig,
 }));
 import ConversationPanel from '@/glossa/ui/ConversationPanel';
-const source: ChapterSource = {
-  sourceId: 's1',
-  text: 'An original sentence.',
-  kind: 'paragraph',
-  anchor: {
-    sectionIndex: 0,
-    cfi: 'epubcfi(/6/2!/4/2)',
-    quote: { exact: 'An original sentence.', prefix: '', suffix: '' },
-  },
-};
-const blocks = [{ kind: 'source', text: 'The explanation.', sourceIds: ['s1'] }];
-const book = () => ({ hash: crypto.randomUUID(), title: 'Fixture', format: 'EPUB' }) as Book;
+import { MODEL_SETTINGS_EVENT } from '@/glossa/ai/provider';
+const book = () =>
+  ({ hash: crypto.randomUUID(), title: 'Fixture', author: 'Writer', format: 'EPUB' }) as Book;
 beforeEach(() => {
   vi.clearAllMocks();
-  useConversationSelection.setState({ selection: null });
-  f.location = 'page-one';
+  f.location = 'one';
+  f.model = 'fixture';
+  f.sectionHref = undefined;
   f.load.mockResolvedValue(null);
   f.save.mockResolvedValue(undefined);
-  f.read.mockResolvedValue([source]);
   f.status.mockResolvedValue({ configured: true });
-  f.generate.mockResolvedValue(blocks);
+  f.generate.mockResolvedValue('The **explanation**.');
+  f.list.mockResolvedValue(['fixture', 'second-model']);
+  f.saveConfig.mockImplementation(async (config) => {
+    f.model = config.model;
+    window.dispatchEvent(new Event(MODEL_SETTINGS_EVENT));
+    return config;
+  });
 });
 afterEach(cleanup);
-const mount = (b = book()) =>
-  render(<ConversationPanel book={b} bookDoc={{} as BookDoc} bookKey={b.hash} />);
-async function typeQuestion() {
-  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Explain this' } });
+const mount = (b = book(), doc = {} as BookDoc) =>
+  render(<ConversationPanel book={b} bookDoc={doc} bookKey={b.hash} />);
+async function typeQuestion(question = 'Explain this') {
+  fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+    target: { value: question },
+  });
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'Send message' }).hasAttribute('disabled')).toBe(
       false,
     ),
   );
 }
-it('does no model work on open, and handles IME and Shift+Enter without sending', async () => {
-  mount();
+const send = () => fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+async function answer() {
+  await waitFor(() =>
+    expect(document.querySelector('.glossa-chat-answer')?.textContent).toBe('The explanation.'),
+  );
+}
+function holdReply(text = '') {
+  f.generate.mockImplementationOnce((request) => {
+    if (text) request.onText(text);
+    return new Promise((_, reject) =>
+      request.signal.addEventListener('abort', () =>
+        reject(new DOMException('Aborted', 'AbortError')),
+      ),
+    );
+  });
+}
+it('does no book/API work on open and uses only identity when sending; IME and Shift+Enter never send', async () => {
+  const read = vi.fn();
+  mount(book(), { sections: [{ createDocument: read }] } as unknown as BookDoc);
   await typeQuestion();
   expect(f.generate).not.toHaveBeenCalled();
+  expect(read).not.toHaveBeenCalled();
+  expect(f.list).not.toHaveBeenCalled();
+  expect(screen.queryByText('Adjust materials')).toBeNull();
+  expect(document.querySelector('.glossa-chat-context')).toBeNull();
   fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', isComposing: true });
   fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', shiftKey: true });
   expect(f.generate).not.toHaveBeenCalled();
   fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
-  await waitFor(() =>
-    expect(document.querySelector('.glossa-chat-answer p')?.textContent).toBe('The explanation.'),
-  );
-  expect(f.generate).toHaveBeenCalledTimes(1);
+  await answer();
+  expect(f.generate.mock.calls[0]![0].metadata).toEqual({
+    bookTitle: 'Fixture',
+    author: 'Writer',
+    chapterTitle: 'Chapter one',
+  });
+  expect(f.generate.mock.calls[0]![0]).not.toHaveProperty('sources');
+  expect(read).not.toHaveBeenCalled();
 });
-it('retains the answer after a save failure and offers a working retry', async () => {
+it('sends the full outline path as hidden identity without rendering it', async () => {
+  f.sectionHref = 'one.xhtml#a';
+  const doc = {
+    toc: [
+      {
+        id: 0,
+        index: 0,
+        label: 'Part One',
+        href: 'one.xhtml',
+        subitems: [{ id: 1, index: 0, label: 'Section A', href: 'one.xhtml#a' }],
+      },
+      { id: 2, index: 0, label: 'Part Two', href: 'two.xhtml' },
+    ],
+    sections: [
+      { id: 'one.xhtml', href: 'one.xhtml', linear: 'yes' },
+      { id: 'two.xhtml', href: 'two.xhtml', linear: 'yes' },
+    ],
+    splitTOCHref: (href: string) => href.split('#'),
+  } as unknown as BookDoc;
+  mount(book(), doc);
+  expect(document.querySelector('.glossa-chat-book')).toBeNull();
+  await typeQuestion();
+  send();
+  await answer();
+  expect(f.generate.mock.calls[0]![0].metadata.chapterTitle).toBe('Part One › Section A');
+});
+it('retains the answer after a save failure and retries without generating again', async () => {
   f.save.mockRejectedValueOnce(new Error('disk unavailable'));
   mount();
   await typeQuestion();
-  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
-  await waitFor(() =>
-    expect(document.querySelector('.glossa-chat-answer p')?.textContent).toBe('The explanation.'),
-  );
-  await screen.findByRole('button', { name: 'Retry saving' });
-  fireEvent.click(screen.getByRole('button', { name: 'Retry saving' }));
+  send();
+  await answer();
+  fireEvent.click(await screen.findByRole('button', { name: 'Retry saving' }));
   await waitFor(() => expect(screen.queryByRole('button', { name: 'Retry saving' })).toBeNull());
   expect(f.generate).toHaveBeenCalledTimes(1);
   expect(f.save).toHaveBeenCalledTimes(2);
 });
-it('does not overwrite unreadable history and supports loading it again', async () => {
+it('never overwrites unreadable history and supports loading again', async () => {
   f.load.mockRejectedValueOnce(new ConversationError('Conversations could not be loaded.'));
   mount();
   await screen.findByText('Conversations could not be loaded.');
-  expect(screen.getByRole('button', { name: 'Send message' }).hasAttribute('disabled')).toBe(true);
   expect(f.save).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: 'Send message' }).hasAttribute('disabled')).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   await typeQuestion();
 });
-it('retains the question after generation fails and does not persist an invalid reply', async () => {
-  f.generate.mockRejectedValueOnce(
-    new ConversationError('The reply was incomplete or cited unavailable sources. Try again.'),
-  );
+it('restores the question after generation fails without persisting an empty reply', async () => {
+  f.generate.mockRejectedValueOnce(new Error('secret network payload'));
   mount();
   await typeQuestion();
-  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  send();
   await screen.findByRole('alert');
   expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Explain this');
+  expect(screen.queryByText('secret network payload')).toBeNull();
   expect(f.save).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
-  await waitFor(() =>
-    expect(document.querySelector('.glossa-chat-answer p')?.textContent).toBe('The explanation.'),
-  );
+  send();
+  await answer();
 });
-it('rejects stale context while a new page capture is pending', async () => {
+it('keeps conversation messages while the current directory section changes', async () => {
   const b = book();
-  const doc = {} as BookDoc;
-  const panel = render(<ConversationPanel book={b} bookDoc={doc} bookKey={b.hash} />);
+  const panel = mount(b);
   await typeQuestion();
-  let finish!: (sources: ChapterSource[]) => void;
-  f.read.mockImplementationOnce(
-    () =>
-      new Promise<ChapterSource[]>((resolve) => {
-        finish = resolve;
-      }),
-  );
-  f.location = 'page-two';
-  panel.rerender(<ConversationPanel book={b} bookDoc={doc} bookKey={b.hash} />);
-  await waitFor(() =>
-    expect(f.read).toHaveBeenCalledWith('page-two', expect.any(AbortSignal), false),
-  );
-  expect(screen.getByRole('button', { name: 'Send message' }).hasAttribute('disabled')).toBe(true);
-  fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
-  expect(f.generate).not.toHaveBeenCalled();
-  await act(async () => finish([{ ...source, sourceId: 's2' }]));
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'Send message' }).hasAttribute('disabled')).toBe(
-      false,
-    ),
-  );
+  send();
+  await answer();
+  f.location = 'two';
+  panel.rerender(<ConversationPanel book={b} bookDoc={{} as BookDoc} bookKey={b.hash} />);
+  await typeQuestion('Why?');
+  send();
+  await waitFor(() => expect(f.generate).toHaveBeenCalledTimes(2));
+  expect(f.generate.mock.calls[1]![0].metadata.chapterTitle).toBe('Chapter two');
+  expect(f.generate.mock.calls[1]![0].turns).toHaveLength(1);
 });
-it('offers model setup when credentials are missing', async () => {
+it('opens model setup when credentials are missing', async () => {
   f.status.mockResolvedValue({ configured: false });
   mount();
-  await screen.findByText(/Setup needed/);
-  expect(screen.getByRole('button', { name: 'Send message' }).hasAttribute('disabled')).toBe(true);
-  expect(f.generate).not.toHaveBeenCalled();
+  fireEvent.click(await screen.findByRole('button', { name: 'Set up a model' }));
+  expect(f.settings).toHaveBeenCalledWith(true);
 });
-
-it('keeps follow-up materials stable across page turns and lets readers return to the page', async () => {
-  const b = { ...book(), author: 'Fixture author' };
-  const doc = {} as BookDoc;
-  const panel = render(<ConversationPanel book={b} bookDoc={doc} bookKey={b.hash} />);
-  await typeQuestion();
-  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
-  await waitFor(() =>
-    expect(document.querySelector('.glossa-chat-answer p')?.textContent).toBe('The explanation.'),
-  );
-  f.location = 'page-two';
-  f.read.mockResolvedValue([{ ...source, sourceId: 's2' }]);
-  panel.rerender(<ConversationPanel book={b} bookDoc={doc} bookKey={b.hash} />);
-  await typeQuestion();
-  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
-  await waitFor(() => expect(f.generate).toHaveBeenCalledTimes(2));
-  expect(f.generate.mock.calls[1]![0].sources).toEqual([source]);
-  expect(f.generate.mock.calls[1]![0].metadata).toEqual({
-    bookTitle: b.title,
-    author: 'Fixture author',
-    chapterTitle: 'Chapter two',
-    progress: 0.6,
-  });
-  fireEvent.click(await screen.findByRole('button', { name: 'Use current reading materials' }));
-  await typeQuestion();
-  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
-  await waitFor(() => expect(f.generate).toHaveBeenCalledTimes(3));
-  expect(f.generate.mock.calls[2]![0].sources[0].sourceId).toBe('s2');
-});
-it('lets readers remove individual evidence and disable follow-up memory', async () => {
+it('switches models directly and continues the same conversation', async () => {
   mount();
   await typeQuestion();
-  fireEvent.click(
-    screen.getByRole('checkbox', { name: 'Include excerpt {{number}}', hidden: true }),
-  );
-  fireEvent.click(
-    screen.getByRole('checkbox', { name: 'Include follow-up summary', hidden: true }),
-  );
-  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
-  await waitFor(() => expect(f.generate).toHaveBeenCalledTimes(1));
-  expect(f.generate.mock.calls[0]![0].sources).toEqual([]);
-  expect(f.generate.mock.calls[0]![0].includeHistory).toBe(false);
+  send();
+  await answer();
+  fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'second-model' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await typeQuestion('Go on');
+  send();
+  await waitFor(() => expect(f.generate).toHaveBeenCalledTimes(2));
+  expect(f.generate.mock.calls[1]![0].config.model).toBe('second-model');
+  expect(f.generate.mock.calls[1]![0].turns).toHaveLength(1);
 });
-
-it('cancels the old reply when a new reading selection becomes the focus', async () => {
-  const b = book();
-  f.generate.mockImplementationOnce(
-    (request) =>
-      new Promise((_, reject) =>
-        request.signal.addEventListener('abort', () =>
-          reject(new DOMException('Aborted', 'AbortError')),
-        ),
-      ),
-  );
-  mount(b);
+it('accepts a manual model if listing is unavailable and closes the picker with Escape', async () => {
+  f.list.mockRejectedValue(new Error('no list'));
+  mount();
   await typeQuestion();
-  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search or enter model' }), {
+    target: { value: 'manual-model' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'manual-model' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(f.saveConfig).toHaveBeenCalledWith(expect.objectContaining({ model: 'manual-model' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
+  fireEvent.keyDown(screen.getByRole('textbox', { name: 'Search or enter model' }), {
+    key: 'Escape',
+  });
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+it('starts an empty conversation, restores per-session drafts, and deletes only the chosen session', async () => {
+  mount();
+  await typeQuestion();
+  send();
+  await answer();
+  await typeQuestion('Unsent first draft');
+  const oldId = (
+    screen.getByRole('combobox', { name: 'Conversation history' }) as HTMLSelectElement
+  ).value;
+  fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('');
+  expect(document.querySelector('.glossa-chat-answer')).toBeNull();
+  await typeQuestion('A new subject');
+  send();
+  await answer();
+  expect(f.generate.mock.calls[1]![0].turns).toEqual([]);
+  fireEvent.change(screen.getByRole('combobox', { name: 'Conversation history' }), {
+    target: { value: oldId },
+  });
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Unsent first draft');
+  fireEvent.click(screen.getByRole('button', { name: 'Delete conversation' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+  expect(screen.queryByText('Explain this')).toBeNull();
+  expect(document.querySelector('.glossa-chat-question')?.textContent).toBe('A new subject');
+});
+it('stops immediately, preserves partial text and ignores a late completion after starting a new session', async () => {
+  let resolve!: (text: string) => void;
+  f.generate.mockImplementationOnce((r) => {
+    r.onText('Partial reply');
+    return new Promise<string>((done) => {
+      resolve = done;
+    });
+  });
+  mount();
+  await typeQuestion();
+  send();
+  fireEvent.click(await screen.findByRole('button', { name: 'Stop reply' }));
+  await screen.findByText('Stopped');
+  expect(screen.getByText('Partial reply')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
+  await act(async () => resolve('LATE_REPLY'));
+  expect(screen.queryByText('LATE_REPLY')).toBeNull();
+  expect(f.save.mock.calls[0]![0].sessions[0].turns[0].status).toBe('stopped');
+});
+it('cancels on model change and on close, preserving a question with no reply', async () => {
+  holdReply();
+  const readingBook = book();
+  const panel = mount(readingBook);
+  await typeQuestion();
+  send();
   await screen.findByRole('button', { name: 'Stop reply' });
-  act(() => useConversationSelection.getState().attach(b.hash, 'new-selection'));
-  await screen.findByText('Reply stopped. Your question is ready to send again.');
+  act(() => {
+    f.model = 'changed';
+    window.dispatchEvent(new Event(MODEL_SETTINGS_EVENT));
+  });
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Stop reply' })).toBeNull());
   expect(f.generate.mock.calls[0]![0].signal.aborted).toBe(true);
-  expect(f.save).not.toHaveBeenCalled();
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Explain this');
+  holdReply();
+  await typeQuestion();
+  send();
+  panel.unmount();
+  expect(f.generate.mock.calls[1]![0].signal.aborted).toBe(true);
+  mount(readingBook);
   await waitFor(() =>
-    expect(f.read).toHaveBeenCalledWith('new-selection', expect.any(AbortSignal)),
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Explain this'),
   );
+});
+it('regenerates the last reply without adding a duplicate or sending its old answer', async () => {
+  mount();
+  await typeQuestion();
+  send();
+  await answer();
+  fireEvent.click(screen.getByRole('button', { name: 'Regenerate reply' }));
+  await waitFor(() => expect(f.save).toHaveBeenCalledTimes(2));
+  expect(f.generate.mock.calls[1]![0].turns).toEqual([]);
+  expect(f.save.mock.calls[1]![0].sessions[0].turns).toHaveLength(1);
+});
+it('a failed regeneration retains the previous valid answer', async () => {
+  mount();
+  await typeQuestion();
+  send();
+  await answer();
+  f.generate.mockRejectedValueOnce(new Error('failed'));
+  fireEvent.click(screen.getByRole('button', { name: 'Regenerate reply' }));
+  await screen.findByRole('alert');
+  await answer();
+  expect(f.save).toHaveBeenCalledTimes(1);
+});
+it('renders Markdown without executing HTML or loading remote images', async () => {
+  f.generate.mockResolvedValue(
+    '**Safe** ![alt](https://example.com/tracker.png) <script>evil()</script> [bad](javascript:evil())',
+  );
+  mount();
+  await typeQuestion();
+  send();
+  await waitFor(() =>
+    expect(document.querySelector('.glossa-chat-answer strong')?.textContent).toBe('Safe'),
+  );
+  expect(
+    document.querySelector(
+      '.glossa-chat-answer img, .glossa-chat-answer script, .glossa-chat-answer a[href^="javascript:"]',
+    ),
+  ).toBeNull();
+});
+it('restores an unsent first draft after closing and opens a genuinely empty new conversation', async () => {
+  const b = book();
+  const first = mount(b);
+  await typeQuestion('Keep this draft');
+  first.unmount();
+  mount(b);
+  await waitFor(() =>
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Keep this draft'),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('');
+});
+it('keeps a draft typed during a failed reply and can retry the original question', async () => {
+  let fail!: (error: Error) => void;
+  f.generate.mockImplementationOnce(
+    () =>
+      new Promise((_, reject) => {
+        fail = reject;
+      }),
+  );
+  mount();
+  await typeQuestion('Original question');
+  send();
+  await screen.findByRole('button', { name: 'Stop reply' });
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Next draft' } });
+  await act(async () => fail(new Error('offline')));
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Next draft');
+  fireEvent.click(screen.getByRole('button', { name: 'Retry reply' }));
+  await answer();
+  expect(f.generate.mock.calls[1]![0].question).toBe('Original question');
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Next draft');
 });

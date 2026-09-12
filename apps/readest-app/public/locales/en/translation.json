@@ -386,5 +386,17 @@
   "Adjust materials": "Adjust materials",
   "Follow-up materials": "Follow-up materials",
   "{{count}} excerpts · {{characters}} / {{limit}} characters": "{{count}} excerpts · {{characters}} / {{limit}} characters",
-  "No book text was sent.": "No book text was sent."
+  "No book text was sent.": "No book text was sent.",
+  "Message": "Message",
+  "Message…": "Message…",
+  "Search or enter model": "Search or enter model",
+  "Regenerate reply": "Regenerate reply",
+  "Reply interrupted": "Reply interrupted",
+  "Conversation not saved.": "Conversation not saved.",
+  "Delete this conversation?": "Delete this conversation?",
+  "Choose model": "Choose model",
+  "Model settings": "Model settings",
+  "Stopped": "Stopped",
+  "Use a shorter question.": "Use a shorter question.",
+  "Retry reply": "Retry reply"
 }
