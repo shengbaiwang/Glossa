@@ -2,17 +2,17 @@ import { z } from 'zod';
 import { validateProviderConfig } from '@/glossa/ai/provider';
 import { stubTranslation as _ } from '@/utils/misc';
 import { getMindmapIdentity, MINDMAP_PROMPT_VERSION, MINDMAP_SCHEMA_VERSION } from './identity';
-import { getPassageId } from '@/glossa/guide/passages';
-import { passageSourcesSchema } from '@/glossa/guide/schema';
+import { getPassageId } from '@/glossa/passages/passages';
+import { passageSourcesSchema } from '@/glossa/passages/schema';
 import { mindmapBodySchema, validateMindmapSources } from './schema';
-import { GuideError, throwIfAborted } from '@/glossa/guide/types';
+import { PassageError, throwIfAborted } from '@/glossa/passages/types';
 import type { ReadingMindmap } from './types';
 
 const DATABASE_NAME = 'glossa-reading-mindmaps';
 const GUIDES = 'mindmaps';
 let databasePromise: Promise<IDBDatabase> | undefined;
 const storageError = () =>
-  new GuideError('storage', _('The mind map could not be read or saved on this device.'));
+  new PassageError('storage', _('The mind map could not be read or saved on this device.'));
 
 const mindmapSchema = mindmapBodySchema
   .safeExtend({

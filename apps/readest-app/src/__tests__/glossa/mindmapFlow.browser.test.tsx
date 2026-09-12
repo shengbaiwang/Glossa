@@ -5,7 +5,7 @@ import { zipSync, strToU8 } from 'fflate';
 import { DocumentLoader } from '@/libs/document';
 import type { FoliateView } from '@/types/view';
 import { extractChapter, listChapters } from '@/glossa/context/chapters';
-import { buildReadingPassages } from '@/glossa/guide/passages';
+import { buildReadingPassages } from '@/glossa/passages/passages';
 import { loadMindmap } from '@/glossa/mindmap/store';
 import type { CompletionRequest, ProviderConfig } from '@/glossa/ai/provider';
 import MindmapPanel from '@/glossa/ui/MindmapPanel';
@@ -93,7 +93,7 @@ async function fixture() {
     'META-INF/container.xml':
       '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>',
     'content.opf':
-      '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">reading-guide-fixture</dc:identifier><dc:title>理解的路径</dc:title><dc:language>zh</dc:language></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="one" href="one.xhtml" media-type="application/xhtml+xml"/><item id="two" href="two.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="one"/><itemref idref="two"/></spine></package>',
+      '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">reading-passage-fixture</dc:identifier><dc:title>理解的路径</dc:title><dc:language>zh</dc:language></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="one" href="one.xhtml" media-type="application/xhtml+xml"/><item id="two" href="two.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="one"/><itemref idref="two"/></spine></package>',
     'nav.xhtml':
       '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>目录</title></head><body><nav epub:type="toc"><ol><li><a href="one.xhtml">第一章　从问题走向解释</a></li><li><a href="two.xhtml">第二章　比较与应用</a></li></ol></nav></body></html>',
     'one.xhtml':
@@ -105,13 +105,13 @@ async function fixture() {
     Object.fromEntries(Object.entries(files).map(([path, text]) => [path, strToU8(text)])),
   );
   const { book: doc } = await new DocumentLoader(
-    new File([new Uint8Array(bytes)], 'reading-guide.epub'),
+    new File([new Uint8Array(bytes)], 'reading-passage.epub'),
   ).open();
   return {
     doc,
     chapters: listChapters(doc),
     book: {
-      hash: `guide-flow-${crypto.randomUUID()}`,
+      hash: `passage-flow-${crypto.randomUUID()}`,
       title: '理解的路径',
       author: 'Glossa · 原创验收材料',
       format: 'EPUB' as const,
@@ -258,7 +258,7 @@ it('maps a real selected EPUB passage, restores locally and verifies source/retu
   const expectedSource = map.sources.find((source) => source.text.startsWith('理解一个观点'))!;
   fireEvent.click(screen.getByRole('button', { name: '怎样理解一个观点' }));
   await waitFor(() => expect(f.goTo).toHaveBeenLastCalledWith(expectedSource.anchor.cfi));
-  expect(document.querySelector('.glossa-guide-reference')).toBeNull();
+  expect(document.querySelector('.glossa-passage-reference')).toBeNull();
   expect(f.goTo).toHaveBeenLastCalledWith(expectedSource.anchor.cfi);
   const resolved = view.resolveCFI(expectedSource.anchor.cfi);
   const visible = view.renderer.getContents()[0]!;

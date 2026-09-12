@@ -21,7 +21,7 @@ const isTargetVisible = (location: string, visibleLocation?: string): boolean =>
 };
 
 /** Keep an uncancellable renderer jump ahead of any newer source or return jump. */
-export const navigateGuideSource = (
+export const navigateSource = (
   view: NavigationView,
   location: string,
   signal: AbortSignal,

@@ -8,16 +8,16 @@ import type { BookDoc } from '@/libs/document';
 import { listChapters, extractChapter } from '@/glossa/context/chapters';
 import type { ChapterDescriptor, ChapterSource } from '@/glossa/context/types';
 import { resolveSource } from '@/glossa/citations/sources';
-import { navigateGuideSource } from '@/glossa/citations/navigation';
+import { navigateSource } from '@/glossa/citations/navigation';
 import {
   getActiveProviderConfig,
   getProviderStatus,
   ModelServiceError,
   type ProviderConfig,
 } from '@/glossa/ai/provider';
-import { GuideError, type ReadingPassage } from '@/glossa/guide/types';
-import { buildReadingPassages } from '@/glossa/guide/passages';
-import type { generateReadingGuide } from '@/glossa/guide/generate';
+import { PassageError, type ReadingPassage } from '@/glossa/passages/types';
+import { buildReadingPassages } from '@/glossa/passages/passages';
+import type { generateMindmap } from '@/glossa/mindmap/generate';
 
 export interface ReadingPanelProps {
   book: Book;
@@ -32,10 +32,9 @@ export interface PassageResult {
 }
 export interface ReadingPanelAdapter<T extends PassageResult> {
   id: string;
-  strings?: Record<string, string>;
   directNavigation?: boolean;
   unsaved: Map<string, T>;
-  generate: (options: Parameters<typeof generateReadingGuide>[0]) => Promise<T>;
+  generate: (options: Parameters<typeof generateMindmap>[0]) => Promise<T>;
   load: (bookId: string, chapterId: string, passageId: string) => Promise<T | null>;
   save: (result: T, signal?: AbortSignal) => Promise<void>;
   cacheKey: (bookId: string, passage: ReadingPassage, config: ProviderConfig) => Promise<string>;
@@ -47,24 +46,21 @@ export interface ReadingPanelAdapter<T extends PassageResult> {
 }
 type Props<T extends PassageResult> = ReadingPanelProps & { adapter: ReadingPanelAdapter<T> };
 
-function usePanelTranslation(strings?: Record<string, string>) {
-  const translate = useTranslation();
-  return (key: string, options?: Record<string, string | number>) =>
-    translate(strings?.[key] ?? key, options);
-}
-
 const safeError = (cause: unknown, fallback: string) =>
-  cause instanceof GuideError || cause instanceof ModelServiceError ? cause.message : fallback;
+  cause instanceof PassageError || cause instanceof ModelServiceError ? cause.message : fallback;
 
 export default function ReadingPassagePanel<T extends PassageResult>(props: Props<T>) {
   return (
-    <ReadingGuideBook key={`${props.adapter.id}:${props.book.hash}:${props.bookKey}`} {...props} />
+    <ReadingPassageBook
+      key={`${props.adapter.id}:${props.book.hash}:${props.bookKey}`}
+      {...props}
+    />
   );
 }
 
-function ReadingGuideBook<T extends PassageResult>(props: Props<T>) {
+function ReadingPassageBook<T extends PassageResult>(props: Props<T>) {
   const { book, bookDoc, bookKey, adapter } = props;
-  const _ = usePanelTranslation(adapter.strings);
+  const _ = useTranslation();
   const chapters = useMemo(
     () => (book.format === 'EPUB' ? listChapters(bookDoc) : []),
     [book.format, bookDoc],
@@ -109,20 +105,18 @@ function ReadingGuideBook<T extends PassageResult>(props: Props<T>) {
   };
 
   return (
-    <div className='glossa-guide-panel' aria-label={_('Guide')}>
+    <div className='glossa-passage-panel' aria-label={_('Mind map')}>
       {!chapter && (
-        <p className='glossa-guide-intro'>
-          {_(
-            'Choose the passage you are reading. Start with a short guide, then unfold only what needs explaining.',
-          )}
+        <p className='glossa-passage-intro'>
+          {_('Choose a passage to map its ideas and connections.')}
         </p>
       )}
-      <label className='glossa-guide-label' htmlFor={`${bookKey}-${adapter.id}-chapter`}>
+      <label className='glossa-passage-label' htmlFor={`${bookKey}-${adapter.id}-chapter`}>
         {_('Chapter')}
       </label>
       <select
         id={`${bookKey}-${adapter.id}-chapter`}
-        className='glossa-guide-select eink-bordered'
+        className='glossa-passage-select eink-bordered'
         value={chapterId}
         onChange={(event) => setChapterId(event.target.value)}
       >
@@ -137,7 +131,7 @@ function ReadingGuideBook<T extends PassageResult>(props: Props<T>) {
         ))}
       </select>
       {chapter && (
-        <ChapterGuide
+        <ChapterPassages
           key={chapter.id}
           {...props}
           chapter={chapter}
@@ -147,7 +141,7 @@ function ReadingGuideBook<T extends PassageResult>(props: Props<T>) {
         />
       )}
       {providerError && (
-        <p role='alert' className='glossa-guide-message'>
+        <p role='alert' className='glossa-passage-message'>
           {_(providerError)}
         </p>
       )}
@@ -163,9 +157,9 @@ interface ChapterProps<T extends PassageResult> extends ReadingPanelProps {
   openModels: () => void;
 }
 
-function ChapterGuide<T extends PassageResult>(props: ChapterProps<T>) {
+function ChapterPassages<T extends PassageResult>(props: ChapterProps<T>) {
   const { bookDoc, bookKey, chapter, adapter } = props;
-  const _ = usePanelTranslation(adapter.strings);
+  const _ = useTranslation();
   const [passages, setPassages] = useState<ReadingPassage[]>([]);
   const [passageId, setPassageId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -200,17 +194,17 @@ function ChapterGuide<T extends PassageResult>(props: ChapterProps<T>) {
 
   if (loading)
     return (
-      <p role='status' className='glossa-guide-message'>
+      <p role='status' className='glossa-passage-message'>
         {_('Reading chapter…')}
       </p>
     );
   if (error)
     return (
-      <div role='alert' className='glossa-guide-message'>
+      <div role='alert' className='glossa-passage-message'>
         <p>{_(error)}</p>
         <button
           type='button'
-          className='glossa-guide-text-button'
+          className='glossa-passage-text-button'
           onClick={() => setReload((value) => value + 1)}
         >
           {_('Retry reading chapter')}
@@ -219,17 +213,17 @@ function ChapterGuide<T extends PassageResult>(props: ChapterProps<T>) {
     );
   if (!passages.length)
     return (
-      <p className='glossa-guide-message'>{_('No passage text is available in this chapter.')}</p>
+      <p className='glossa-passage-message'>{_('No passage text is available in this chapter.')}</p>
     );
 
   return (
-    <div className='glossa-guide-chapter'>
-      <label className='glossa-guide-label' htmlFor={`${bookKey}-${adapter.id}-passage`}>
+    <div className='glossa-passage-chapter'>
+      <label className='glossa-passage-label' htmlFor={`${bookKey}-${adapter.id}-passage`}>
         {_('Passage')}
       </label>
       <select
         id={`${bookKey}-${adapter.id}-passage`}
-        className='glossa-guide-select eink-bordered'
+        className='glossa-passage-select eink-bordered'
         value={passageId}
         onChange={(event) => setPassageId(event.target.value)}
       >
@@ -240,12 +234,12 @@ function ChapterGuide<T extends PassageResult>(props: ChapterProps<T>) {
           </option>
         ))}
       </select>
-      {passage && <PassageGuide key={passage.id} {...props} passage={passage} />}
+      {passage && <PassageResultPanel key={passage.id} {...props} passage={passage} />}
     </div>
   );
 }
 
-function PassageGuide<T extends PassageResult>({
+function PassageResultPanel<T extends PassageResult>({
   adapter,
   book,
   bookDoc,
@@ -256,7 +250,7 @@ function PassageGuide<T extends PassageResult>({
   providerReady,
   openModels,
 }: ChapterProps<T> & { passage: ReadingPassage }) {
-  const _ = usePanelTranslation(adapter.strings);
+  const _ = useTranslation();
   const identity = JSON.stringify([book.hash, chapter.id, passage.id]);
   const unsavedGuides = adapter.unsaved;
   const ResultDocument = adapter.Document;
@@ -306,7 +300,7 @@ function PassageGuide<T extends PassageResult>({
         setReady(true);
       })
       .catch((cause: unknown) => {
-        if (current) setLoadError(safeError(cause, 'Saved guide could not be loaded.'));
+        if (current) setLoadError(safeError(cause, 'Saved mind map could not be loaded.'));
       });
     return () => {
       current = false;
@@ -345,10 +339,10 @@ function PassageGuide<T extends PassageResult>({
       if (controller.signal.aborted) return;
       if (unsavedGuides.get(identity) === result) unsavedGuides.delete(identity);
       setUnsaved(false);
-      setNotice('Guide saved on this device.');
+      setNotice('Mind map saved on this device.');
     } catch (cause) {
       if (!controller.signal.aborted)
-        setError(safeError(cause, 'The guide could not be saved on this device.'));
+        setError(safeError(cause, 'The mind map could not be saved on this device.'));
     }
   };
 
@@ -387,7 +381,10 @@ function PassageGuide<T extends PassageResult>({
       if (!controller.signal.aborted) {
         setNotice('');
         setError(
-          safeError(cause, 'Could not generate the guide. Check the model service and try again.'),
+          safeError(
+            cause,
+            'Could not generate the mind map. Check the model service and try again.',
+          ),
         );
       }
     } finally {
@@ -434,7 +431,7 @@ function PassageGuide<T extends PassageResult>({
       const origin = reader.getProgress(bookKey)?.location;
       // Foliate may finish goTo after cancellation, so retain the return point before moving.
       if (origin) setReturnLocation((previous) => previous || origin);
-      await navigateGuideSource(view, resolved.cfi, controller.signal);
+      await navigateSource(view, resolved.cfi, controller.signal);
       if (controller.signal.aborted) return;
       if (!adapter.directNavigation) setPreview({ text: resolved.text, verified: true });
     } catch {
@@ -458,7 +455,7 @@ function PassageGuide<T extends PassageResult>({
     try {
       const view = useReaderStore.getState().getView(bookKey);
       if (!view) throw new Error('missing view');
-      await navigateGuideSource(view, returnLocation, controller.signal);
+      await navigateSource(view, returnLocation, controller.signal);
       if (!controller.signal.aborted) setReturnLocation('');
     } catch {
       if (!controller.signal.aborted)
@@ -472,7 +469,7 @@ function PassageGuide<T extends PassageResult>({
   const last = passage.sources[passage.sources.length - 1]?.text ?? '';
   const rangeAndActions = (
     <>
-      <details className='glossa-guide-range' open={!guide}>
+      <details className='glossa-passage-range' open={!guide}>
         <summary>
           {_('Passage {{number}} · {{count}} characters', {
             number: passage.index + 1,
@@ -485,14 +482,14 @@ function PassageGuide<T extends PassageResult>({
         <p>{_('Ends: {{text}}', { text: last.length > 72 ? `…${last.slice(-72)}` : last })}</p>
       </details>
       {passage.unavailable ? (
-        <p className='glossa-guide-message'>
-          {_('This passage is too long to guide safely. Choose another passage.')}
+        <p className='glossa-passage-message'>
+          {_('This passage is too long to map safely. Choose another passage.')}
         </p>
       ) : (
-        <div className='glossa-guide-actions'>
+        <div className='glossa-passage-actions'>
           <button
             type='button'
-            className='glossa-guide-text-button glossa-guide-model'
+            className='glossa-passage-text-button glossa-passage-model'
             onClick={openModels}
             title={_('Model Services')}
           >
@@ -501,25 +498,25 @@ function PassageGuide<T extends PassageResult>({
               : _('Configure model service')}
           </button>
           {config && (
-            <p className='glossa-guide-message'>
+            <p className='glossa-passage-message'>
               {_('Only this passage will be sent to {{provider}}.', { provider: config.name })}
             </p>
           )}
 
           <button
             type='button'
-            className='glossa-button glossa-button-primary btn-contrast glossa-guide-generate'
+            className='glossa-button glossa-button-primary btn-contrast glossa-passage-generate'
             disabled={!ready || !providerReady || busy !== null || unsaved}
             onClick={() => void generate()}
           >
-            {_(guide ? 'Regenerate guide' : 'Generate guide')}
+            {_(guide ? 'Regenerate mind map' : 'Generate mind map')}
           </button>
         </div>
       )}
     </>
   );
   return (
-    <div className='glossa-guide-passage'>
+    <div className='glossa-passage-passage'>
       {adapter.directNavigation && guide ? (
         <details className='glossa-map-options'>
           <summary>{_('Passage and model')}</summary>
@@ -529,34 +526,40 @@ function PassageGuide<T extends PassageResult>({
         rangeAndActions
       )}
       {!ready && !loadError && (
-        <p role='status' className='glossa-guide-message'>
-          {_('Loading saved guide…')}
+        <p role='status' className='glossa-passage-message'>
+          {_('Loading saved mind map…')}
         </p>
       )}
       {loadError && (
-        <div role='alert' className='glossa-guide-message'>
+        <div role='alert' className='glossa-passage-message'>
           <p>{_(loadError)}</p>
           <button
             type='button'
-            className='glossa-guide-text-button'
+            className='glossa-passage-text-button'
             onClick={() => setReload((value) => value + 1)}
           >
-            {_('Retry loading guide')}
+            {_('Retry loading mind map')}
           </button>
         </div>
       )}
       {busy && (
-        <div role='status' className='glossa-guide-status'>
+        <div role='status' className='glossa-passage-status'>
           <span>
-            {_(busy === 'saving' ? 'Saving…' : received ? 'Writing guide…' : 'Preparing guide…')}
+            {_(
+              busy === 'saving'
+                ? 'Saving…'
+                : received
+                  ? 'Mapping connections…'
+                  : 'Preparing mind map…',
+            )}
           </span>
-          <button type='button' className='glossa-guide-text-button' onClick={cancel}>
+          <button type='button' className='glossa-passage-text-button' onClick={cancel}>
             {_('Cancel')}
           </button>
         </div>
       )}
       {error && (
-        <p role='alert' className='glossa-guide-message'>
+        <p role='alert' className='glossa-passage-message'>
           {_(error)}
         </p>
       )}
@@ -564,30 +567,30 @@ function PassageGuide<T extends PassageResult>({
         <p
           role='status'
           className={
-            adapter.directNavigation && notice === 'Guide saved on this device.'
+            adapter.directNavigation && notice === 'Mind map saved on this device.'
               ? 'sr-only'
-              : 'glossa-guide-message'
+              : 'glossa-passage-message'
           }
         >
           {_(notice)}
         </p>
       )}
       {unsaved && !busy && (
-        <div className='glossa-guide-message'>
-          <p>{_('This guide has not been saved yet.')}</p>
+        <div className='glossa-passage-message'>
+          <p>{_('This mind map has not been saved yet.')}</p>
           <button
             type='button'
-            className='glossa-guide-text-button'
+            className='glossa-passage-text-button'
             disabled={!ready}
             onClick={() => void retrySave()}
           >
-            {_('Retry saving guide')}
+            {_('Retry saving mind map')}
           </button>
         </div>
       )}
       {guide && cacheKey && guide.cacheKey !== cacheKey && (
-        <p className='glossa-guide-message'>
-          {_('This saved guide uses earlier text or model settings.')}
+        <p className='glossa-passage-message'>
+          {_('This saved mind map uses earlier text or model settings.')}
         </p>
       )}
       {guide && (
@@ -601,7 +604,7 @@ function PassageGuide<T extends PassageResult>({
       {returnLocation && (
         <button
           type='button'
-          className='glossa-guide-text-button'
+          className='glossa-passage-text-button'
           disabled={sourceBusy}
           onClick={() => void goBack()}
         >
@@ -610,13 +613,13 @@ function PassageGuide<T extends PassageResult>({
         </button>
       )}
       {sourceError && (
-        <p role='alert' className='glossa-guide-message'>
+        <p role='alert' className='glossa-passage-message'>
           {_(sourceError)}
         </p>
       )}
       {preview && (
-        <aside className='glossa-guide-source eink-bordered' aria-label={_('Source excerpt')}>
-          <div className='glossa-guide-status'>
+        <aside className='glossa-passage-source eink-bordered' aria-label={_('Source excerpt')}>
+          <div className='glossa-passage-status'>
             <span role='status'>
               {_(
                 sourceBusy
@@ -628,7 +631,7 @@ function PassageGuide<T extends PassageResult>({
             </span>
             <button
               type='button'
-              className='glossa-guide-text-button'
+              className='glossa-passage-text-button'
               aria-label={_('Close source excerpt')}
               onClick={clearSource}
             >

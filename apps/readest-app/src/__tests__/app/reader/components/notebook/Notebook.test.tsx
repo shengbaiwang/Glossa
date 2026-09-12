@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   rtl: false,
   format: 'EPUB',
   saveSysSettings: vi.fn(),
-  guideUnmount: vi.fn(),
+  conversationUnmount: vi.fn(),
   notes: [] as BookNote[],
 }));
 
@@ -59,12 +59,13 @@ vi.mock('@/app/reader/utils/annotatorUtil', () => ({
   removeEmptyAnnotationPlaceholder: vi.fn(),
   filterBooknotes: () => [],
 }));
-vi.mock('@/glossa/ui/ReadingGuidePanel', () => ({
+vi.mock('@/glossa/ui/ConversationPanel', () => ({
   default: ({ bookKey }: { bookKey: string }) => {
-    useEffect(() => () => mocks.guideUnmount(bookKey), [bookKey]);
+    useEffect(() => () => mocks.conversationUnmount(bookKey), [bookKey]);
     return (
       <div>
-        <p>Guide for {bookKey}</p>
+        <p>Conversation panel</p>
+        <p>Conversation for {bookKey}</p>
         <button type='button' onClick={() => eventDispatcher.dispatch('navigate')}>
           View source
         </button>
@@ -73,9 +74,6 @@ vi.mock('@/glossa/ui/ReadingGuidePanel', () => ({
   },
 }));
 vi.mock('@/glossa/ui/MindmapPanel', () => ({ default: () => <div>Mind map panel</div> }));
-vi.mock('@/glossa/ui/ConversationPanel', () => ({
-  default: () => <div>Conversation panel</div>,
-}));
 
 const editNote: BookNote = {
   id: 'note-1',
@@ -107,10 +105,18 @@ afterEach(() => {
 const openNotebook = async () => {
   render(<Notebook />);
   act(() => useNotebookStore.getState().setNotebookVisible(true));
-  await screen.findByRole('tab', { name: 'Guide' });
+  await screen.findByRole('tab', { name: 'Conversation' });
 };
 
-describe('Notebook reading guide integration', () => {
+describe('Notebook reading assistant integration', () => {
+  it('removes the guide tab and opens conversation by default', async () => {
+    await openNotebook();
+    expect(screen.queryByRole('tab', { name: 'Guide' })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Conversation' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+  });
+
   it('opens conversation beside the book and keeps it open when navigating to a source', async () => {
     await openNotebook();
     fireEvent.click(screen.getByRole('tab', { name: 'Conversation' }));
@@ -119,7 +125,7 @@ describe('Notebook reading guide integration', () => {
     expect(document.querySelector('.overlay')).toBeNull();
     await act(() => eventDispatcher.dispatch('navigate'));
     expect(useNotebookStore.getState().isNotebookVisible).toBe(true);
-    fireEvent.click(screen.getByRole('tab', { name: 'Guide' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Excerpts' }));
     expect(screen.queryByText('Conversation panel')).toBeNull();
   });
 
@@ -135,9 +141,9 @@ describe('Notebook reading guide integration', () => {
     expect(screen.queryByText('Mind map panel')).toBeNull();
   });
 
-  it('opens a new annotation in excerpts and preserves its draft when returning from the guide', async () => {
+  it('opens a new annotation in excerpts and preserves its draft when returning from conversation', async () => {
     await openNotebook();
-    await screen.findByText('Guide for first-0');
+    await screen.findByText('Conversation for first-0');
     act(() =>
       useNotebookStore.getState().setNotebookNewAnnotation({
         key: 'selection',
@@ -152,7 +158,7 @@ describe('Notebook reading guide integration', () => {
       'true',
     );
     fireEvent.change(screen.getByRole('textbox', { name: '' }), { target: { value: 'New idea' } });
-    fireEvent.click(screen.getByRole('tab', { name: 'Guide' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Conversation' }));
     expect(useNotebookStore.getState().notebookNewAnnotation?.text).toBe('Selected words');
     fireEvent.click(screen.getByRole('tab', { name: 'Excerpts' }));
     expect((screen.getByRole('textbox', { name: '' }) as HTMLTextAreaElement).value).toBe(
@@ -160,9 +166,9 @@ describe('Notebook reading guide integration', () => {
     );
   });
 
-  it('opens the guide by default, keeps sources visible and cancels the guide when switching to excerpts', async () => {
+  it('opens conversation by default, keeps sources visible and cancels conversation when switching to excerpts', async () => {
     await openNotebook();
-    await screen.findByText('Guide for first-0');
+    await screen.findByText('Conversation for first-0');
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'View source' })));
     expect(useNotebookStore.getState().isNotebookVisible).toBe(true);
     act(() => useNotebookStore.getState().setNotebookEditAnnotation({ ...editNote }));
@@ -171,9 +177,9 @@ describe('Notebook reading guide integration', () => {
     );
     const editor = screen.getByRole('textbox', { name: '' });
     fireEvent.change(editor, { target: { value: 'Unfinished thought' } });
-    fireEvent.click(screen.getByRole('tab', { name: 'Guide' }));
-    expect(await screen.findByText('Guide for first-0')).toBeTruthy();
-    expect(mocks.guideUnmount).toHaveBeenCalledWith('first-0');
+    fireEvent.click(screen.getByRole('tab', { name: 'Conversation' }));
+    expect(await screen.findByText('Conversation for first-0')).toBeTruthy();
+    expect(mocks.conversationUnmount).toHaveBeenCalledWith('first-0');
     fireEvent.click(screen.getByRole('tab', { name: 'Excerpts' }));
     expect((screen.getByRole('textbox', { name: '' }) as HTMLTextAreaElement).value).toBe(
       'Unfinished thought',
@@ -182,14 +188,14 @@ describe('Notebook reading guide integration', () => {
 
   it('isolates book content and clears an editor when switching books', async () => {
     await openNotebook();
-    await screen.findByText('Guide for first-0');
+    await screen.findByText('Conversation for first-0');
     act(() => useNotebookStore.getState().setNotebookEditAnnotation({ ...editNote }));
     act(() => useSidebarStore.getState().setSideBarBookKey('second-0'));
     expect(useNotebookStore.getState().notebookEditAnnotation).toBeNull();
-    fireEvent.click(screen.getByRole('tab', { name: 'Guide' }));
-    expect(await screen.findByText('Guide for second-0')).toBeTruthy();
-    expect(screen.queryByText('Guide for first-0')).toBeNull();
-    expect(mocks.guideUnmount).toHaveBeenCalledWith('first-0');
+    fireEvent.click(screen.getByRole('tab', { name: 'Conversation' }));
+    expect(await screen.findByText('Conversation for second-0')).toBeTruthy();
+    expect(screen.queryByText('Conversation for first-0')).toBeNull();
+    expect(mocks.conversationUnmount).toHaveBeenCalledWith('first-0');
     expect(screen.queryByText('Original excerpt')).toBeNull();
   });
 
@@ -214,7 +220,7 @@ describe('Notebook reading guide integration', () => {
     document.documentElement.dir = 'rtl';
     document.documentElement.style.direction = 'rtl';
     await openNotebook();
-    const reading = screen.getByRole('tab', { name: 'Guide' });
+    const reading = screen.getByRole('tab', { name: 'Conversation' });
     fireEvent.keyDown(reading, { key: 'ArrowLeft' });
     expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Mind map' }));
     fireEvent.keyDown(document.activeElement!, { key: 'Home' });
@@ -241,7 +247,7 @@ describe('Notebook reading guide integration', () => {
     expect(panel.style.width).toBe('100%');
     expect(panel.style.position).toBe('fixed');
     expect(document.querySelector('.overlay')).toBeTruthy();
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Guide' }), { key: 'Escape' });
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Conversation' }), { key: 'Escape' });
     expect(useNotebookStore.getState().isNotebookVisible).toBe(false);
   });
 
@@ -249,7 +255,7 @@ describe('Notebook reading guide integration', () => {
     mocks.format = 'PDF';
     render(<Notebook />);
     act(() => useNotebookStore.getState().setNotebookVisible(true));
-    expect(screen.queryByRole('tab', { name: 'Guide' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Conversation' })).toBeNull();
     expect(screen.getByText('No Notes')).toBeTruthy();
   });
 });

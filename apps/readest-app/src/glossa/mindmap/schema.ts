@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { ChapterSource } from '@/glossa/context/types';
-import { passageSourcesSchema } from '@/glossa/guide/schema';
-import { GuideError } from '@/glossa/guide/types';
+import { passageSourcesSchema } from '@/glossa/passages/schema';
+import { PassageError } from '@/glossa/passages/types';
 import { stubTranslation as _ } from '@/utils/misc';
 
 const nodeSchema = z
@@ -70,7 +70,7 @@ export function parseMindmap(raw: string, sources: ChapterSource[]): MindmapBody
       throw new Error();
     return result;
   } catch {
-    throw new GuideError(
+    throw new PassageError(
       'invalid-response',
       _('The mind map was incomplete or cited unavailable sources. Try again.'),
     );

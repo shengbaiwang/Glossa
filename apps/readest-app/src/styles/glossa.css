@@ -604,29 +604,29 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
 }
 
 /* Passage guides keep the reading rhythm in one quiet, text-led column. */
-.glossa-guide-panel {
+.glossa-passage-panel {
   padding: 16px 18px 32px;
   color: var(--glossa-ink);
   font-size: 14px;
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
-.glossa-guide-intro,
-.glossa-guide-message,
-.glossa-guide-range {
+.glossa-passage-intro,
+.glossa-passage-message,
+.glossa-passage-range {
   font-size: 12px;
   color: var(--glossa-muted);
 }
-.glossa-guide-intro {
+.glossa-passage-intro {
   margin-block-end: 18px;
 }
-.glossa-guide-label {
+.glossa-passage-label {
   display: block;
   margin-block-end: 6px;
   font-size: 12px;
   font-weight: 600;
 }
-.glossa-guide-select {
+.glossa-passage-select {
   display: block;
   inline-size: 100%;
   min-block-size: 44px;
@@ -640,24 +640,24 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
   font-size: 13px;
   text-overflow: ellipsis;
 }
-.glossa-guide-chapter,
-.glossa-guide-passage {
+.glossa-passage-chapter,
+.glossa-passage-passage {
   margin-block-start: 16px;
 }
-.glossa-guide-range p {
+.glossa-passage-range p {
   margin-block-start: 4px;
 }
-.glossa-guide-range summary {
+.glossa-passage-range summary {
   min-block-size: 44px;
   padding-block: 10px;
   color: var(--glossa-ink);
   font-weight: 500;
   cursor: pointer;
 }
-.glossa-guide-actions {
+.glossa-passage-actions {
   margin-block: 14px;
 }
-.glossa-guide-text-button {
+.glossa-passage-text-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -670,121 +670,58 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
   font-size: 12px;
   text-align: start;
 }
-.glossa-guide-text-button:hover:not(:disabled),
-.glossa-guide-reference:hover:not(:disabled) {
+.glossa-passage-text-button:hover:not(:disabled) {
   background: var(--glossa-wash);
 }
-.glossa-guide-text-button:disabled {
+.glossa-passage-text-button:disabled {
   opacity: 0.5;
   cursor: default;
 }
-.glossa-guide-model {
+.glossa-passage-model {
   justify-content: flex-start;
   max-inline-size: 100%;
 }
-.glossa-guide-generate {
+.glossa-passage-generate {
   inline-size: 100%;
   min-block-size: 44px;
   margin-block-start: 12px;
 }
-.glossa-guide-message {
+.glossa-passage-message {
   margin-block: 10px;
 }
-.glossa-guide-status {
+.glossa-passage-status {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   font-size: 12px;
 }
-.glossa-guide-document {
-  padding-block-start: 8px;
-  margin-block-start: 14px;
-  font-size: 14px;
-  line-height: 1.85;
-}
-.glossa-guide-document p {
-  margin-block: 0 14px;
-  white-space: pre-line;
-}
-.glossa-guide-document h3 {
-  font-size: 12px;
-  font-weight: 600;
-  margin-block-end: 6px;
-}
-.glossa-guide-cue {
-  margin-block: 18px;
-}
-.glossa-guide-difficulty {
-  border-block-start: 1px solid var(--glossa-border);
-}
-.glossa-guide-difficulty summary {
-  min-block-size: 44px;
-  padding-block: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-}
-.glossa-guide-difficulty > p {
-  padding-block-end: 8px;
-}
-.glossa-guide-inference {
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-}
-.glossa-guide-references {
-  display: inline;
-  white-space: normal;
-}
-.glossa-guide-reference {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-inline-size: 44px;
-  min-block-size: 44px;
-  border-radius: 8px;
-  font-size: 11px;
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  vertical-align: middle;
-}
-.glossa-guide-source {
+.glossa-passage-source {
   margin-block-start: 14px;
   border: 1px solid var(--glossa-border);
   border-radius: 10px;
   padding: 10px 12px;
 }
-.glossa-guide-source blockquote {
+.glossa-passage-source blockquote {
   margin-block-start: 8px;
   font-size: 13px;
   white-space: pre-wrap;
 }
-.glossa-guide-panel :is(button, select, summary):focus-visible {
+.glossa-passage-panel :is(button, select, summary):focus-visible {
   outline: 2px solid var(--glossa-focus);
   outline-offset: 2px;
 }
-[data-eink='true'] :is(.glossa-guide-intro, .glossa-guide-message, .glossa-guide-range) {
+[data-eink='true'] :is(.glossa-passage-intro, .glossa-passage-message, .glossa-passage-range) {
   color: var(--glossa-ink);
 }
-[data-eink='true'] .glossa-guide-difficulty {
-  border-color: var(--glossa-ink);
-}
-[data-eink='true'] .glossa-guide-panel :is(button, select) {
+
+[data-eink='true'] .glossa-passage-panel :is(button, select) {
   box-shadow: none;
   transition: none;
 }
-[data-eink='true'] .glossa-guide-text-button:disabled {
+[data-eink='true'] .glossa-passage-text-button:disabled {
   opacity: 1;
   text-decoration: line-through;
-}
-
-.glossa-guide-related {
-  display: block;
-  font-size: 11px;
-  font-weight: 500;
-  margin-block-start: 6px;
 }
 
 /* A reflowing concept tree keeps relationships readable in the trailing reading pane. */

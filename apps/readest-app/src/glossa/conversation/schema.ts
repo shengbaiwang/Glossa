@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { contextReceiptSchema } from './context';
 import type { ChapterSource } from '@/glossa/context/types';
-import { passageSourcesSchema } from '@/glossa/guide/schema';
+import { passageSourcesSchema } from '@/glossa/passages/schema';
 import { stubTranslation as _ } from '@/utils/misc';
 
 export class ConversationError extends Error {}

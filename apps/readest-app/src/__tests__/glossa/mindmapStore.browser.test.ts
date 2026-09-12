@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { generateMindmap } from '@/glossa/mindmap/generate';
-import { getPassageId } from '@/glossa/guide/passages';
+import { getPassageId } from '@/glossa/passages/passages';
 import { loadMindmap, saveMindmap } from '@/glossa/mindmap/store';
-import type { ReadingPassage } from '@/glossa/guide/types';
+import type { ReadingPassage } from '@/glossa/passages/types';
 import type { ReadingMindmap } from '@/glossa/mindmap/types';
 import type { MindmapBody } from '@/glossa/mindmap/schema';
 
@@ -54,7 +54,7 @@ async function guideFixture(
   return generateMindmap(
     {
       bookId,
-      bookTitle: 'Original reading guide fixture',
+      bookTitle: 'Original mind map fixture',
       chapterTitle: 'Conditions and conclusions',
       chapterId,
       passage,
@@ -117,7 +117,7 @@ async function readRaw(name: string, store: string, key: IDBValidKey): Promise<u
   }
 }
 
-describe('reading guides in real IndexedDB', () => {
+describe('mind maps in real IndexedDB', () => {
   it('uses the new database without opening, transacting with or deleting legacy study notes', async () => {
     const sentinelKey = crypto.randomUUID();
     const sentinel = { personalNote: 'PRIVATE_LEGACY_SENTINEL', versions: [{ id: 'keep-me' }] };
