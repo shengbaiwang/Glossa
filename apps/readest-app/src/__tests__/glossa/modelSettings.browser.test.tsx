@@ -41,6 +41,13 @@ vi.mock('@/glossa/ai/provider', () => ({
   saveProviderConfig: fixture.save,
   listProviderModels: fixture.models,
   testProviderConnection: fixture.test,
+  providerCapabilities: () => ({ reasoningEfforts: [], maxTokensParam: 'max_tokens' }),
+  providerIdentity: (config: ProviderConfig) => ({
+    id: config.id,
+    name: config.name,
+    baseUrl: config.baseUrl,
+    model: config.model,
+  }),
 }));
 
 afterEach(() => {

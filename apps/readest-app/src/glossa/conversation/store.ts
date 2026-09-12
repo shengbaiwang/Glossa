@@ -8,7 +8,15 @@ const sessionSchema = z
     version: z.literal(1),
     bookId: z.string().min(1).max(500),
     sessions: z
-      .array(z.object({ id: z.string().min(1), turns: z.array(turnSchema).max(40) }).strict())
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            title: z.string().trim().min(1).max(120).optional(),
+            turns: z.array(turnSchema).max(40),
+          })
+          .strict(),
+      )
       .max(20),
     activeId: z.string().min(1),
   })
@@ -30,6 +38,8 @@ export function validateHistory(raw: unknown): ConversationHistory {
   for (const session of history.sessions)
     for (const turn of session.turns) {
       validateProviderConfig(turn.provider);
+      if ('versions' in turn && turn.versions)
+        for (const version of turn.versions) validateProviderConfig(version.provider);
       if (!validBlockSources(turn.blocks, turn.sources)) throw storageError();
       if (turn.context) {
         const ids = new Set(turn.sources.map((source) => source.sourceId));
@@ -88,6 +98,10 @@ export async function loadConversations(bookId: string): Promise<ConversationHis
 }
 export function hasUnsavedConversations(bookId: string): boolean {
   return pending.has(bookId);
+}
+/** A reopened panel can observe a save started before it was mounted. */
+export function waitForConversationSave(bookId: string): Promise<void> {
+  return queues.get(bookId) ?? Promise.resolve();
 }
 export function saveConversations(input: ConversationHistory): Promise<void> {
   const history = structuredClone(validateHistory(input));

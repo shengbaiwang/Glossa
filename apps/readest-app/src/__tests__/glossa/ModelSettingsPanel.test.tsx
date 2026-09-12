@@ -94,4 +94,28 @@ describe('model service settings', () => {
       mocks.active.baseUrl,
     );
   });
+
+  it('hides reasoning effort for unsupported services but keeps the output limit', () => {
+    render(<ModelSettingsPanel />);
+    expect(screen.queryByLabelText('Reasoning effort')).toBeNull();
+    expect(screen.getByLabelText('Output limit')).toBeTruthy();
+  });
+
+  it('offers reasoning effort for a supported model and saves both parameters', async () => {
+    mocks.active = {
+      ...mocks.active,
+      baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      model: 'glm-5.3-flash',
+    };
+    render(<ModelSettingsPanel />);
+    const effort = await screen.findByLabelText('Reasoning effort');
+    fireEvent.change(effort, { target: { value: 'high' } });
+    fireEvent.change(screen.getByLabelText('Output limit'), { target: { value: '2048' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Use this service' }));
+    await screen.findByText('Model service saved.');
+    expect(mocks.save).toHaveBeenCalledWith(
+      expect.objectContaining({ reasoningEffort: 'high', maxTokens: 2048 }),
+      undefined,
+    );
+  });
 });

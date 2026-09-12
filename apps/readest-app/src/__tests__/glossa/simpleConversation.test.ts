@@ -106,6 +106,88 @@ it('bounds history by complete exchanges and total characters without truncating
   } as ConversationTurn;
   expect(conversationMessages([large, large])).toHaveLength(2);
 });
+it('sends only the selected answer version when a turn keeps several', () => {
+  const versions = [
+    {
+      id: 'v1',
+      question: 'Q1',
+      text: 'OLD_ANSWER',
+      createdAt: 1,
+      provider: config,
+      status: 'complete' as const,
+    },
+    {
+      id: 'v2',
+      question: 'Q2',
+      text: 'NEW_ANSWER',
+      createdAt: 2,
+      provider: config,
+      status: 'complete' as const,
+    },
+  ];
+  const turn = {
+    ...chatTurn(),
+    versions,
+    activeVersionId: 'v1',
+    question: 'Q1',
+    blocks: [{ kind: 'background' as const, text: 'OLD_ANSWER', sourceIds: [] }],
+  } as ConversationTurn;
+  const messages = conversationMessages([turn]);
+  expect(JSON.stringify(messages)).toContain('OLD_ANSWER');
+  expect(JSON.stringify(messages)).not.toContain('NEW_ANSWER');
+  const staleMirror = { ...turn, activeVersionId: 'v2' } as ConversationTurn;
+  expect(conversationMessages([staleMirror])).toEqual([
+    { role: 'user', content: 'Q2' },
+    { role: 'assistant', content: 'NEW_ANSWER' },
+  ]);
+});
+it('validates stored answer versions and rejects inconsistent selections', () => {
+  const version = {
+    id: 'v1',
+    question: 'Q',
+    text: 'A',
+    createdAt: 1,
+    provider: config,
+    status: 'complete' as const,
+  };
+  const turn = { ...chatTurn(), versions: [version], activeVersionId: 'v1' };
+  const history = {
+    version: 1 as const,
+    bookId: 'b',
+    activeId: 'a',
+    sessions: [{ id: 'a', turns: [turn] }],
+  };
+  expect(validateHistory(history).sessions[0]!.turns[0]).toMatchObject({ activeVersionId: 'v1' });
+  expect(() =>
+    validateHistory({
+      ...history,
+      sessions: [{ id: 'a', turns: [{ ...turn, activeVersionId: 'missing' }] }],
+    }),
+  ).toThrow();
+  expect(() =>
+    validateHistory({
+      ...history,
+      sessions: [
+        {
+          id: 'a',
+          turns: [{ ...turn, versions: [{ ...version, text: 'x'.repeat(32001) }] }],
+        },
+      ],
+    }),
+  ).toThrow();
+});
+it('stores an optional conversation title within bounds', () => {
+  const history = {
+    version: 1 as const,
+    bookId: 'b',
+    activeId: 'a',
+    sessions: [{ id: 'a', title: 'Reading notes', turns: [] }],
+  };
+  expect(validateHistory(history).sessions[0]!.title).toBe('Reading notes');
+  expect(() =>
+    validateHistory({ ...history, sessions: [{ id: 'a', title: 'x'.repeat(121), turns: [] }] }),
+  ).toThrow();
+});
 it('ignores extra metadata fields from a stale caller and handles unknown identity', async () => {
   const complete = vi.fn(async () => 'OK');
   await generateConversation(
@@ -133,7 +215,7 @@ it('rejects cancelled, empty and oversized requests before transport', async () 
   await expect(generateConversation(input, { complete })).rejects.toMatchObject({
     name: 'AbortError',
   });
-  for (const question of ['', 'x'.repeat(2001)])
+  for (const question of ['', 'x'.repeat(20001)])
     await expect(
       generateConversation(
         { ...input, question, signal: new AbortController().signal },
@@ -141,6 +223,22 @@ it('rejects cancelled, empty and oversized requests before transport', async () 
       ),
     ).rejects.toThrow();
   expect(complete).not.toHaveBeenCalled();
+});
+it('accepts a question up to the raised 20000 character limit', async () => {
+  const complete = vi.fn(async () => 'OK');
+  await expect(
+    generateConversation(
+      {
+        metadata,
+        question: 'x'.repeat(20000),
+        turns: [],
+        config,
+        signal: new AbortController().signal,
+      },
+      { complete },
+    ),
+  ).resolves.toBe('OK');
+  expect(complete).toHaveBeenCalledOnce();
 });
 it('validates plain chat storage and rejects attached materials, injected credentials and excessive replies', () => {
   const history = {
@@ -156,4 +254,37 @@ it('validates plain chat storage and rejects attached materials, injected creden
     { ...chatTurn(), blocks: [{ kind: 'background', text: 'x'.repeat(32001), sourceIds: [] }] },
   ])
     expect(() => validateHistory({ ...history, sessions: [{ id: 'a', turns: [turn] }] })).toThrow();
+});
+it('derives a clean conversation title without deliberate reasoning', async () => {
+  const { generateConversationTitle } = await import('@/glossa/conversation/generate');
+  const complete = vi.fn(
+    async (_request: CompletionRequest) => '“阅读笔记：第一章 从问题走向解释”。\n第二行忽略',
+  );
+  const title = await generateConversationTitle(
+    {
+      question: '这一章在回答什么问题？',
+      answer: '它在回答理解如何发生。',
+      config: { ...config, reasoningEffort: 'high' },
+    },
+    { complete },
+  );
+  expect(title).toBe('阅读笔记：第一章 从问题走向解释');
+  const request = complete.mock.calls[0]![0];
+  expect(request.config?.reasoningEffort).toBeUndefined();
+  expect(request.maxTokens).toBe(256);
+  expect(request.messages).toHaveLength(1);
+  expect(request.messages[0]!.content).toContain('这一章在回答什么问题？');
+});
+it('returns an empty title for unusable suggestions and caps long ones', async () => {
+  const { generateConversationTitle } = await import('@/glossa/conversation/generate');
+  const blank = vi.fn(async () => '\n  。\n');
+  await expect(
+    generateConversationTitle({ question: 'q', answer: 'a', config }, { complete: blank }),
+  ).resolves.toBe('');
+  const long = vi.fn(async () => '字'.repeat(80));
+  const title = await generateConversationTitle(
+    { question: 'q', answer: 'a', config },
+    { complete: long },
+  );
+  expect(title).toHaveLength(48);
 });

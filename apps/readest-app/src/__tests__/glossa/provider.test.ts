@@ -21,8 +21,10 @@ import {
   getSavedProviderConfigs,
   listProviderModels,
   normalizeBaseUrl,
+  providerIdentity,
   saveProviderConfig,
   streamCompletion,
+  validateProviderConfig,
   type ProviderConfig,
 } from '@/glossa/ai/provider';
 
@@ -343,5 +345,68 @@ describe('reasoning model completion budget', () => {
     const request = JSON.parse(mocks.fetch.mock.calls[0]![1].body);
     expect(request.reasoning_effort).toBe(effort);
     expect(request.thinking).toBeUndefined();
+  });
+  it('honors a saved reasoning effort only on an endpoint that accepts it', async () => {
+    mocks.fetch.mockResolvedValue(
+      sse(['data: {"choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\n']),
+    );
+    await streamCompletion({
+      config: {
+        ...config,
+        baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+        model: 'glm-5.3-flash',
+        reasoningEffort: 'high',
+      },
+      messages,
+    });
+    expect(JSON.parse(mocks.fetch.mock.calls[0]![1].body).reasoning_effort).toBe('high');
+    mocks.fetch.mockResolvedValue(
+      sse(['data: {"choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\n']),
+    );
+    await streamCompletion({ config: { ...config, reasoningEffort: 'high' }, messages });
+    expect(JSON.parse(mocks.fetch.mock.calls[1]![1].body).reasoning_effort).toBeUndefined();
+  });
+  it('uses the service-specific output parameter and the saved cap', async () => {
+    mocks.fetch.mockResolvedValue(
+      sse(['data: {"choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\n']),
+    );
+    await streamCompletion({
+      config: { ...config, baseUrl: 'https://api.openai.com/v1', model: 'gpt-5', maxTokens: 2048 },
+      messages,
+    });
+    const body = JSON.parse(mocks.fetch.mock.calls[0]![1].body);
+    expect(body.max_completion_tokens).toBe(2048);
+    expect(body.max_tokens).toBeUndefined();
+  });
+  it('stores only provider identity without capability fields', () => {
+    expect(providerIdentity({ ...config, reasoningEffort: 'high', maxTokens: 2048 })).toEqual(
+      config,
+    );
+    expect(() => validateProviderConfig({ ...config, reasoningEffort: 'extreme' })).toThrow();
+    expect(() => validateProviderConfig({ ...config, maxTokens: 0 })).toThrow();
+  });
+  it.each([
+    ['o3', 'minimal', undefined],
+    ['o3-mini', 'high', 'high'],
+    ['o1-mini', 'high', undefined],
+    ['gpt-5-chat-latest', 'high', undefined],
+    ['gpt-5-unknown', 'high', undefined],
+    ['gpt-5.1', 'minimal', undefined],
+    ['gpt-5.2', 'none', 'none'],
+    ['gpt-5.2', 'xhigh', 'xhigh'],
+  ])('only sends a verified effort for %s', async (model, effort, expected) => {
+    mocks.fetch.mockResolvedValue(
+      sse(['data: {"choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\n']),
+    );
+    await streamCompletion({
+      config: validateProviderConfig({
+        ...config,
+        baseUrl: 'https://api.openai.com/v1',
+        model,
+        reasoningEffort: effort,
+      }),
+      messages,
+    });
+    expect(JSON.parse(mocks.fetch.mock.calls[0]![1].body).reasoning_effort).toBe(expected);
   });
 });

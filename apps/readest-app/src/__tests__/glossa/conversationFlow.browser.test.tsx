@@ -6,7 +6,12 @@ import { DocumentLoader } from '@/libs/document';
 import type { FoliateView } from '@/types/view';
 import { listChapters } from '@/glossa/context/chapters';
 import type { CompletionRequest, ProviderConfig } from '@/glossa/ai/provider';
-import { loadConversations, saveConversations, validateHistory } from '@/glossa/conversation/store';
+import {
+  hasUnsavedConversations,
+  loadConversations,
+  saveConversations,
+  validateHistory,
+} from '@/glossa/conversation/store';
 import ConversationPanel from '@/glossa/ui/ConversationPanel';
 import '@/styles/globals.css';
 import '@/styles/glossa.css';
@@ -142,6 +147,15 @@ function answer(request: CompletionRequest) {
   request.onDelta?.(raw.slice(14));
   return raw;
 }
+/** Session naming shares the mocked completion; keep its requests out of chat assertions. */
+const isTitleRequest = (request: CompletionRequest) =>
+  request.messages.length === 1 &&
+  typeof request.messages[0]?.content === 'string' &&
+  request.messages[0].content.startsWith('Name this conversation');
+const chatCalls = () =>
+  f.complete.mock.calls
+    .map((call) => call[0] as CompletionRequest)
+    .filter((r) => !isTitleRequest(r));
 async function ask(question = '如何理解一个观点？') {
   fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
     target: { value: question },
@@ -157,7 +171,7 @@ it('chats beside a real EPUB using only identity, restores history, changes mode
   const readers = doc.sections.map((section) => vi.spyOn(section, 'createDocument'));
   expect(f.complete).not.toHaveBeenCalled();
   await ask();
-  const request = f.complete.mock.calls[0]![0] as CompletionRequest;
+  const request = chatCalls()[0]!;
   expect(JSON.parse(request.messages[0]!.content)).toEqual({
     bookTitle: book.title,
     author: book.author,
@@ -170,6 +184,11 @@ it('chats beside a real EPUB using only identity, restores history, changes mode
   await waitFor(async () =>
     expect((await loadConversations(book.hash))?.sessions[0]?.turns).toHaveLength(1),
   );
+  await waitFor(async () =>
+    expect((await loadConversations(book.hash))?.sessions[0]?.title).toBe(
+      '先找到作者回答的问题，再看理由如何支持结论',
+    ),
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
   await screen.findByRole('button', { name: 'second-model' });
   await page.screenshot({
@@ -178,7 +197,7 @@ it('chats beside a real EPUB using only identity, restores history, changes mode
   fireEvent.click(screen.getByRole('button', { name: 'second-model' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   await ask('能举一个例子吗？');
-  const followup = f.complete.mock.calls[1]![0] as CompletionRequest;
+  const followup = chatCalls()[1]!;
   expect(followup.config?.model).toBe('second-model');
   expect(followup.messages).toHaveLength(4);
   expect(followup.messages[1]!.content).toBe('如何理解一个观点？');
@@ -204,10 +223,10 @@ it('chats beside a real EPUB using only identity, restores history, changes mode
   panel.unmount();
   render(wrapper());
   await screen.findByText('能举一个例子吗？');
-  expect(f.complete).toHaveBeenCalledTimes(2);
+  expect(chatCalls()).toHaveLength(2);
   fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
   await ask('聊个新问题');
-  expect((f.complete.mock.calls[2]![0] as CompletionRequest).messages).toHaveLength(2);
+  expect(chatCalls()[2]!.messages).toHaveLength(2);
   const saved = await loadConversations(book.hash);
   expect(saved?.sessions).toHaveLength(2);
 });
@@ -260,12 +279,12 @@ it('sends the prompt chosen in the composer picker as the system message', async
     path: '../../../../../.glossa-dev/qa/conversation-prompt-picker.png',
   });
   await ask('这条用哪个提示词？');
-  const request = f.complete.mock.calls[0]![0] as CompletionRequest;
+  const request = chatCalls()[0]!;
   expect(request.messages[0]).toEqual({ role: 'system', content: 'PROMPT_SENTINEL_B' });
   fireEvent.click(screen.getByRole('button', { name: 'Choose prompt' }));
   fireEvent.click(await screen.findByRole('button', { name: 'No prompt' }));
   await ask('这条不用提示词');
-  const plain = f.complete.mock.calls[1]![0] as CompletionRequest;
+  const plain = chatCalls()[1]!;
   expect(plain.messages.some((message) => message.role === 'system')).toBe(false);
 });
 it('keeps the composer and model menu usable in a short narrow window', async () => {
@@ -282,5 +301,97 @@ it('keeps the composer and model menu usable in a short narrow window', async ()
   expect(sidebar.scrollWidth).toBeLessThanOrEqual(320);
   await page.screenshot({
     path: '../../../../../.glossa-dev/qa/conversation-simple-narrow-menu.png',
+  });
+});
+it('preserves answer versions, restores a renamed history and lays out math, code and the conversation menu', async () => {
+  const original =
+    '由关系得到 $E = mc^2$。\n\n$$a^2 + b^2 = c^2$$\n\n```js\nconst energy = mass * c ** 2;\n```';
+  const chatAnswers = [original, '另一种解释。', '修改问题后的回答。', '继续解释。'];
+  f.complete.mockImplementation(async (request: CompletionRequest) =>
+    isTitleRequest(request) ? '公式与条件（自动）' : (chatAnswers.shift() ?? '继续解释。'),
+  );
+  const { book, panel, wrapper } = await setup();
+  await ask('解释这个公式');
+  expect(document.querySelectorAll('.glossa-chat-answer math')).toHaveLength(2);
+  await screen.findByRole('button', { name: 'Copy code' });
+  fireEvent.click(screen.getByRole('button', { name: 'Regenerate reply' }));
+  await screen.findByText('另一种解释。');
+  fireEvent.click(screen.getByRole('button', { name: 'Edit question' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Edit question' }), {
+    target: { value: '解释公式的条件' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Resend' }));
+  await screen.findByText('修改问题后的回答。');
+  fireEvent.click(screen.getByRole('button', { name: 'Previous answer' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Previous answer' }));
+  await screen.findByRole('button', { name: 'Copy code' });
+  fireEvent.click(screen.getByRole('button', { name: 'Conversation menu' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Large' }));
+  expect(screen.getByRole('button', { name: 'Copy code' })).toBeTruthy();
+  await ask('接着讲');
+  const request = chatCalls()[3]!;
+  expect(request.messages.filter((message) => message.role === 'assistant')).toEqual([
+    { role: 'assistant', content: original },
+  ]);
+  expect(JSON.stringify(request.messages)).not.toMatch(/另一种解释|修改问题|解释公式的条件/);
+  fireEvent.click(screen.getByRole('button', { name: 'Conversation menu' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Rename conversation' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Conversation name' }), {
+    target: { value: '公式与条件' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(async () =>
+    expect((await loadConversations(book.hash))?.sessions[0]?.title).toBe('公式与条件'),
+  );
+  panel.unmount();
+  render(wrapper());
+  await screen.findByRole('option', { name: '公式与条件' });
+  await screen.findByRole('button', { name: 'Copy code' });
+  await waitFor(() => expect(hasUnsavedConversations(book.hash)).toBe(false));
+  expect(screen.queryByText('Conversation not saved.')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Search conversations' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search conversations' }), {
+    target: { value: '另一种解释' },
+  });
+  expect(document.querySelector('.glossa-chat-search-snippet')?.textContent).toContain(
+    '另一种解释',
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Search conversations' }));
+  const sidebar = screen.getByTestId('chat-sidebar');
+  for (const [theme, width, eink] of [
+    ['default-light', 420, false],
+    ['default-dark', 420, false],
+    ['default-light', 320, true],
+  ] as const) {
+    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-eink', String(eink));
+    document.documentElement.dir = eink ? 'rtl' : 'ltr';
+    sidebar.style.width = `${width}px`;
+    fireEvent.click(screen.getByRole('button', { name: 'Conversation menu' }));
+    const menu = screen.getByRole('dialog', { name: 'Conversation menu' }).getBoundingClientRect();
+    const bounds = sidebar.getBoundingClientRect();
+    expect(menu.left).toBeGreaterThanOrEqual(bounds.left);
+    expect(menu.right).toBeLessThanOrEqual(bounds.right);
+    expect(sidebar.scrollWidth).toBeLessThanOrEqual(width);
+    await page.screenshot({
+      path: `../../../../../.glossa-dev/qa/conversation-audit-${theme}-${width}.png`,
+    });
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Conversation menu' }), { key: 'Escape' });
+  }
+  await page.viewport(640, 480);
+  sidebar.style.height = '480px';
+  expect(screen.queryByRole('button', { name: 'Expand input' })).toBeNull();
+  fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+    target: { value: '需要梳理的条件。\n'.repeat(100) },
+  });
+  const inputBounds = screen.getByRole('textbox', { name: 'Message' }).getBoundingClientRect();
+  expect(inputBounds.height).toBeGreaterThan(76);
+  expect(inputBounds.height).toBeLessThanOrEqual(180);
+  const sendBounds = screen.getByRole('button', { name: 'Send message' }).getBoundingClientRect();
+  expect(sendBounds.bottom).toBeLessThanOrEqual(480);
+  expect(sendBounds.top).toBeGreaterThan(0);
+  expect(sidebar.scrollWidth).toBeLessThanOrEqual(320);
+  await page.screenshot({
+    path: '../../../../../.glossa-dev/qa/conversation-audit-long-input-narrow.png',
   });
 });

@@ -17,9 +17,11 @@ import {
   listProviderModels,
   ModelServiceError,
   PROVIDER_PRESETS,
+  providerCapabilities,
   saveProviderConfig,
   testProviderConnection,
   type ProviderConfig,
+  type ReasoningEffort,
 } from '../ai/provider';
 
 const builtinProviders = PROVIDER_PRESETS.filter((preset) => preset.id !== 'custom');
@@ -42,6 +44,16 @@ const ModelSettingsPanel: React.FC = () => {
   const isNative = isTauriAppPlatform();
   const isCustom = !builtinProviders.some((preset) => preset.id === config.id);
   const isSaved = savedProviders.some((provider) => provider.id === config.id);
+  const capabilities = providerCapabilities(config);
+  const effortLabels: Record<ReasoningEffort, string> = {
+    none: _('None'),
+    minimal: _('Minimal'),
+    low: _('Low'),
+    medium: _('Medium'),
+    high: _('High'),
+    xhigh: _('Extra high'),
+    max: _('Max'),
+  };
 
   useEffect(() => {
     mounted.current = true;
@@ -254,6 +266,51 @@ const ModelSettingsPanel: React.FC = () => {
             />
           </SettingsRow>
         )}
+        {capabilities.reasoningEfforts.length > 0 && (
+          <SettingsRow label={_('Reasoning effort')}>
+            <SettingsSelect
+              ariaLabel={_('Reasoning effort')}
+              value={
+                capabilities.reasoningEfforts.includes(config.reasoningEffort as ReasoningEffort)
+                  ? (config.reasoningEffort as string)
+                  : ''
+              }
+              disabled={Boolean(busy)}
+              options={[
+                { value: '', label: _('Service default') },
+                ...capabilities.reasoningEfforts.map((effort) => ({
+                  value: effort,
+                  label: effortLabels[effort],
+                })),
+              ]}
+              onChange={(event) =>
+                updateConfig({
+                  reasoningEffort: (event.target.value || undefined) as ReasoningEffort | undefined,
+                })
+              }
+            />
+          </SettingsRow>
+        )}
+        <SettingsRow label={_('Output limit')} asLabel>
+          <SettingsInput
+            aria-label={_('Output limit')}
+            type='number'
+            inputMode='numeric'
+            min={1}
+            max={65536}
+            value={config.maxTokens ?? ''}
+            placeholder={_('Service default')}
+            disabled={Boolean(busy)}
+            onChange={(event) => {
+              const raw = event.target.value.trim();
+              const parsed = raw ? Number(raw) : NaN;
+              updateConfig({
+                maxTokens:
+                  Number.isInteger(parsed) && parsed >= 1 && parsed <= 65536 ? parsed : undefined,
+              });
+            }}
+          />
+        </SettingsRow>
       </BoxedList>
 
       <div className='flex flex-wrap items-center gap-2'>

@@ -210,6 +210,15 @@ export function Redo2(props: GlossaIconProps) {
   );
 }
 
+export function RefreshCw(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <path d='M19 12a7 7 0 1 1-7-7c1.96 0 3.84.78 5.24 2.13L19 8.2' />
+      <path d='M19 4.2v4h-4' />
+    </Icon>
+  );
+}
+
 export function Plus(props: GlossaIconProps) {
   return (
     <Icon {...props}>

@@ -1,5 +1,6 @@
 import {
   ModelServiceError,
+  providerIdentity,
   streamCompletion,
   validateProviderConfig,
   type ProviderConfig,
@@ -143,7 +144,7 @@ export async function generateReadingGuide(
     createdAt: new Date().toISOString(),
     promptVersion: READING_GUIDE_PROMPT_VERSION,
     schemaVersion: READING_GUIDE_SCHEMA_VERSION,
-    provider: config,
+    provider: providerIdentity(config),
     sources,
   };
 }

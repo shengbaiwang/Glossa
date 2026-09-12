@@ -1,5 +1,6 @@
 import {
   ModelServiceError,
+  providerIdentity,
   streamCompletion,
   validateProviderConfig,
   type ProviderConfig,
@@ -139,7 +140,7 @@ export async function generateMindmap(
     createdAt: new Date().toISOString(),
     promptVersion: MINDMAP_PROMPT_VERSION,
     schemaVersion: MINDMAP_SCHEMA_VERSION,
-    provider: config,
+    provider: providerIdentity(config),
     sources,
   };
 }

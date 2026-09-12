@@ -7,14 +7,19 @@ const f = vi.hoisted(() => ({
   load: vi.fn(),
   save: vi.fn(),
   generate: vi.fn(),
+  title: vi.fn(),
   status: vi.fn(),
   list: vi.fn(),
   saveConfig: vi.fn(),
   location: 'one',
   model: 'fixture',
+  baseUrl: 'http://localhost:1234/v1',
+  effort: undefined as string | undefined,
   sectionHref: undefined as string | undefined,
   settings: vi.fn(),
 }));
+const clipboard = vi.hoisted(() => ({ write: vi.fn() }));
+vi.mock('@/utils/clipboard', () => ({ writeTextToClipboard: clipboard.write }));
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (key: string) => key }));
 vi.mock('@/store/readerProgressStore', () => ({
   useBookProgress: () => ({
@@ -41,17 +46,25 @@ vi.mock('@/glossa/conversation/store', async (original) => ({
 vi.mock('@/glossa/conversation/generate', async (original) => ({
   ...(await original<typeof import('@/glossa/conversation/generate')>()),
   generateConversation: f.generate,
+  generateConversationTitle: f.title,
 }));
 vi.mock('@/glossa/ai/provider', async (original) => ({
   ...(await original<typeof import('@/glossa/ai/provider')>()),
   getActiveProviderConfig: () => ({
     id: 'fixture',
     name: 'Fixture',
-    baseUrl: 'http://localhost:1234/v1',
+    baseUrl: f.baseUrl,
     model: f.model,
+    ...(f.effort ? { reasoningEffort: f.effort } : {}),
   }),
   getSavedProviderConfigs: () => [
-    { id: 'fixture', name: 'Fixture', baseUrl: 'http://localhost:1234/v1', model: f.model },
+    {
+      id: 'fixture',
+      name: 'Fixture',
+      baseUrl: f.baseUrl,
+      model: f.model,
+      ...(f.effort ? { reasoningEffort: f.effort } : {}),
+    },
   ],
   getProviderStatus: f.status,
   listProviderModels: f.list,
@@ -65,14 +78,19 @@ beforeEach(() => {
   vi.clearAllMocks();
   f.location = 'one';
   f.model = 'fixture';
+  f.baseUrl = 'http://localhost:1234/v1';
+  f.effort = undefined;
   f.sectionHref = undefined;
   f.load.mockResolvedValue(null);
   f.save.mockResolvedValue(undefined);
   f.status.mockResolvedValue({ configured: true });
   f.generate.mockResolvedValue('The **explanation**.');
+  f.title.mockResolvedValue('');
+  clipboard.write.mockReset().mockResolvedValue(undefined);
   f.list.mockResolvedValue(['fixture', 'second-model']);
   f.saveConfig.mockImplementation(async (config) => {
     f.model = config.model;
+    f.effort = config.reasoningEffort;
     window.dispatchEvent(new Event(MODEL_SETTINGS_EVENT));
     return config;
   });
@@ -257,6 +275,7 @@ it('starts an empty conversation, restores per-session drafts, and deletes only 
     target: { value: oldId },
   });
   expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Unsent first draft');
+  fireEvent.click(screen.getByRole('button', { name: 'Conversation menu' }));
   fireEvent.click(screen.getByRole('button', { name: 'Delete conversation' }));
   fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
   expect(screen.queryByText('Explain this')).toBeNull();
@@ -326,6 +345,241 @@ it('a failed regeneration retains the previous valid answer', async () => {
   await answer();
   expect(f.save).toHaveBeenCalledTimes(1);
 });
+it('keeps regenerated answers as versions and sends only the selected one afterwards', async () => {
+  f.generate.mockResolvedValueOnce('First answer').mockResolvedValueOnce('Second answer');
+  mount();
+  await typeQuestion('First question');
+  send();
+  await waitFor(() =>
+    expect(document.querySelector('.glossa-chat-answer')?.textContent).toBe('First answer'),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Regenerate reply' }));
+  await waitFor(() =>
+    expect(document.querySelector('.glossa-chat-answer')?.textContent).toBe('Second answer'),
+  );
+  expect(document.querySelector('.glossa-chat-version-count')?.textContent).toBe('2/2');
+  fireEvent.click(screen.getByRole('button', { name: 'Previous answer' }));
+  await waitFor(() =>
+    expect(document.querySelector('.glossa-chat-answer')?.textContent).toBe('First answer'),
+  );
+  expect(document.querySelector('.glossa-chat-version-count')?.textContent).toBe('1/2');
+  await typeQuestion('Follow up');
+  send();
+  await waitFor(() => expect(f.generate).toHaveBeenCalledTimes(3));
+  const turns = f.generate.mock.calls[2]![0].turns;
+  expect(turns).toHaveLength(1);
+  expect(turns[0]!.question).toBe('First question');
+  expect(turns[0]!.blocks[0]!.text).toBe('First answer');
+});
+it('upgrades a legacy conversation turn when its answer is regenerated', async () => {
+  const b = book();
+  const legacy = {
+    id: 'legacy-turn',
+    question: 'Legacy question',
+    blocks: [{ kind: 'background', text: 'Legacy answer', sourceIds: [] }],
+    sources: [],
+    createdAt: 1,
+    provider: {
+      id: 'fixture',
+      name: 'Fixture',
+      baseUrl: 'http://localhost:1234/v1',
+      model: 'fixture',
+    },
+    promptVersion: 'conversation-2',
+  };
+  f.load.mockResolvedValueOnce({
+    version: 1,
+    bookId: b.hash,
+    activeId: 'a',
+    sessions: [{ id: 'a', turns: [legacy] }],
+  });
+  mount(b);
+  await waitFor(() =>
+    expect(document.querySelector('.glossa-chat-question')?.textContent).toBe('Legacy question'),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Regenerate reply' }));
+  await waitFor(() => expect(f.save).toHaveBeenCalledTimes(1));
+  const turn = f.save.mock.calls[0]![0].sessions[0].turns[0];
+  expect(turn.promptVersion).toBe('conversation-3');
+  expect(turn.versions).toHaveLength(2);
+  expect(turn.versions[0].text).toBe('Legacy answer');
+  expect(turn.blocks[0].text).toBe('The **explanation**.');
+});
+it('edits the last question, retains the previous answer as a version, and can switch back', async () => {
+  f.generate.mockResolvedValueOnce('First answer').mockResolvedValueOnce('Second answer');
+  mount();
+  await typeQuestion('First question');
+  send();
+  await waitFor(() =>
+    expect(document.querySelector('.glossa-chat-answer')?.textContent).toBe('First answer'),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Edit question' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Edit question' }), {
+    target: { value: 'Second question' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Resend' }));
+  await waitFor(() => expect(f.generate).toHaveBeenCalledTimes(2));
+  expect(f.generate.mock.calls[1]![0].question).toBe('Second question');
+  expect(f.generate.mock.calls[1]![0].turns).toEqual([]);
+  await waitFor(() =>
+    expect(document.querySelector('.glossa-chat-answer')?.textContent).toBe('Second answer'),
+  );
+  expect(document.querySelector('.glossa-chat-question')?.textContent).toBe('Second question');
+  expect(document.querySelector('.glossa-chat-version-count')?.textContent).toBe('2/2');
+  fireEvent.click(screen.getByRole('button', { name: 'Previous answer' }));
+  await waitFor(() =>
+    expect(document.querySelector('.glossa-chat-answer')?.textContent).toBe('First answer'),
+  );
+  expect(document.querySelector('.glossa-chat-question')?.textContent).toBe('First question');
+});
+it('cancels an edit without sending', async () => {
+  mount();
+  await typeQuestion('Kept question');
+  send();
+  await answer();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit question' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Edit question' }), {
+    target: { value: 'Discarded question' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.queryByRole('textbox', { name: 'Edit question' })).toBeNull();
+  expect(document.querySelector('.glossa-chat-question')?.textContent).toBe('Kept question');
+  expect(f.generate).toHaveBeenCalledTimes(1);
+});
+it('renames the active conversation and shows the name in the switcher', async () => {
+  mount();
+  await typeQuestion('A question');
+  send();
+  await answer();
+  fireEvent.click(screen.getByRole('button', { name: 'Conversation menu' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Rename conversation' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Conversation name' }), {
+    target: { value: 'Reading notes' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() =>
+    expect(
+      (screen.getByRole('combobox', { name: 'Conversation history' }) as HTMLSelectElement)
+        .selectedOptions[0]?.textContent,
+    ).toBe('Reading notes'),
+  );
+  expect(f.save.mock.calls.at(-1)![0].sessions[0].title).toBe('Reading notes');
+});
+it('searches the book history and switches to a matching conversation', async () => {
+  mount();
+  await typeQuestion('First subject');
+  send();
+  await answer();
+  fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
+  await typeQuestion('Second subject');
+  send();
+  await waitFor(() => expect(f.generate).toHaveBeenCalledTimes(2));
+  fireEvent.click(screen.getByRole('button', { name: 'Search conversations' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search conversations' }), {
+    target: { value: 'First subject' },
+  });
+  const result = document.querySelector('.glossa-chat-search-results button');
+  expect(result?.textContent).toContain('First subject');
+  fireEvent.click(result!);
+  await waitFor(() =>
+    expect(document.querySelector('.glossa-chat-question')?.textContent).toBe('First subject'),
+  );
+});
+it('grows the composer automatically and accepts a question up to the raised limit', async () => {
+  mount();
+  const input = screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement;
+  expect(input.maxLength).toBe(20000);
+  expect(screen.queryByRole('button', { name: 'Expand input' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Collapse input' })).toBeNull();
+  expect(document.querySelector('.glossa-chat-count')).toBeNull();
+  fireEvent.change(input, { target: { value: 'x'.repeat(20000) } });
+  expect(document.querySelector('.glossa-chat-count')?.textContent).toBe('20000/20000');
+  expect(Number.parseInt(input.style.height)).toBeLessThanOrEqual(180);
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Send message' }).hasAttribute('disabled')).toBe(
+      false,
+    ),
+  );
+  send();
+  await waitFor(() => expect(f.generate).toHaveBeenCalledOnce());
+  expect(f.generate.mock.calls[0]![0].question).toHaveLength(20000);
+});
+it('names a new conversation from its first completed reply only', async () => {
+  f.title.mockResolvedValue('阅读笔记：第一章');
+  mount();
+  await typeQuestion();
+  send();
+  await answer();
+  await waitFor(() =>
+    expect(
+      (screen.getByRole('combobox', { name: 'Conversation history' }) as HTMLSelectElement)
+        .selectedOptions[0]?.textContent,
+    ).toBe('阅读笔记：第一章'),
+  );
+  expect(f.title).toHaveBeenCalledTimes(1);
+  expect(f.title.mock.calls[0]![0]).toMatchObject({
+    question: 'Explain this',
+    answer: 'The **explanation**.',
+  });
+  expect(f.save.mock.calls.at(-1)![0].sessions[0].title).toBe('阅读笔记：第一章');
+  await typeQuestion('Follow up');
+  send();
+  await waitFor(() => expect(f.save.mock.calls.at(-1)![0].sessions[0].turns).toHaveLength(2));
+  expect(f.title).toHaveBeenCalledTimes(1);
+});
+it('keeps a manual name when the suggested title arrives later', async () => {
+  let resolveTitle!: (title: string) => void;
+  f.title.mockImplementation(
+    () =>
+      new Promise<string>((done) => {
+        resolveTitle = done;
+      }),
+  );
+  mount();
+  await typeQuestion();
+  send();
+  await answer();
+  await waitFor(() => expect(f.title).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByRole('button', { name: 'Conversation menu' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Rename conversation' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Conversation name' }), {
+    target: { value: 'My name' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await act(async () => resolveTitle('Suggested'));
+  expect(f.save.mock.calls.at(-1)![0].sessions[0].title).toBe('My name');
+});
+it('keeps the question label without an error when naming fails', async () => {
+  f.title.mockRejectedValue(new Error('offline'));
+  mount();
+  await typeQuestion('Why does this matter?');
+  send();
+  await answer();
+  await waitFor(() => expect(f.title).toHaveBeenCalledTimes(1));
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(
+    (screen.getByRole('combobox', { name: 'Conversation history' }) as HTMLSelectElement)
+      .selectedOptions[0]?.textContent,
+  ).toBe('Why does this matter?');
+});
+it('adjusts reasoning effort from the composer for capable models only', async () => {
+  mount();
+  expect(screen.queryByRole('combobox', { name: 'Reasoning effort' })).toBeNull();
+  cleanup();
+  f.baseUrl = 'https://api.openai.com/v1';
+  f.model = 'gpt-5';
+  mount();
+  const select = await screen.findByRole('combobox', { name: 'Reasoning effort' });
+  fireEvent.change(select, { target: { value: 'high' } });
+  await waitFor(() =>
+    expect(f.saveConfig).toHaveBeenCalledWith(expect.objectContaining({ reasoningEffort: 'high' })),
+  );
+  await waitFor(() =>
+    expect(
+      (screen.getByRole('combobox', { name: 'Reasoning effort' }) as HTMLSelectElement).value,
+    ).toBe('high'),
+  );
+});
 it('renders Markdown without executing HTML or loading remote images', async () => {
   f.generate.mockResolvedValue(
     '**Safe** ![alt](https://example.com/tracker.png) <script>evil()</script> [bad](javascript:evil())',
@@ -341,6 +595,96 @@ it('renders Markdown without executing HTML or loading remote images', async () 
       '.glossa-chat-answer img, .glossa-chat-answer script, .glossa-chat-answer a[href^="javascript:"]',
     ),
   ).toBeNull();
+});
+it('renders math formulas as MathML from a reply', async () => {
+  f.generate.mockResolvedValue('Mass is $E = mc^2$.\n\n$$a^2 + b^2 = c^2$$');
+  mount();
+  await typeQuestion();
+  send();
+  await waitFor(() => expect(document.querySelector('.glossa-chat-answer math')).toBeTruthy());
+  expect(document.querySelectorAll('.glossa-chat-answer math')).toHaveLength(2);
+  expect(
+    document.querySelector('.glossa-chat-answer annotation[encoding="application/x-tex"]')
+      ?.textContent,
+  ).toBe('E = mc^2');
+});
+it('copies a code block and confirms it', async () => {
+  f.generate.mockResolvedValue('```\nconst x = 1;\n```');
+  mount();
+  await typeQuestion();
+  send();
+  const button = await screen.findByRole('button', { name: 'Copy code' });
+  fireEvent.click(button);
+  await waitFor(() => expect(clipboard.write).toHaveBeenCalledWith('const x = 1;\n'));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Copied' })).toBeTruthy());
+});
+it('keeps text size inside the conversation menu and restores its selection', async () => {
+  mount();
+  expect(screen.queryByRole('button', { name: 'Text size' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Conversation menu' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Large' }));
+  expect(document.querySelector('.glossa-chat-panel')?.getAttribute('style')).toContain(
+    '--glossa-chat-answer-size: 16px',
+  );
+  expect(screen.queryByRole('dialog', { name: 'Conversation menu' })).toBeNull();
+  expect(localStorage.getItem('glossa.conversation-font.v1')).toBe('large');
+});
+it('shows a recoverable error when code copying fails', async () => {
+  clipboard.write.mockRejectedValueOnce(new Error('clipboard unavailable'));
+  f.generate.mockResolvedValue('```\nconst x = 1;\n```');
+  mount();
+  await typeQuestion();
+  send();
+  fireEvent.click(await screen.findByRole('button', { name: 'Copy code' }));
+  await screen.findByRole('alert');
+  fireEvent.click(screen.getByRole('button', { name: 'Copy code' }));
+  await screen.findByRole('button', { name: 'Copied' });
+});
+it('keeps code copying available while typing and changing text size', async () => {
+  f.generate.mockResolvedValue('```\nconst x = 1;\n```');
+  mount();
+  await typeQuestion();
+  send();
+  await screen.findByRole('button', { name: 'Copy code' });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+    target: { value: 'Next question' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Conversation menu' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Large' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Copy code' }));
+  await waitFor(() => expect(clipboard.write).toHaveBeenCalledWith('const x = 1;\n'));
+});
+it('keeps an edited question available when resending fails', async () => {
+  f.generate.mockResolvedValueOnce('Original answer').mockRejectedValueOnce(new Error('offline'));
+  mount();
+  await typeQuestion('Original question');
+  send();
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit question' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Edit question' }), {
+    target: { value: 'Revised question' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Resend' }));
+  await screen.findByText('The reply could not be completed. Try again.');
+  expect(
+    (screen.getByRole('textbox', { name: 'Edit question' }) as HTMLTextAreaElement).value,
+  ).toBe('Revised question');
+  expect(screen.getByText('Original answer')).toBeTruthy();
+});
+it('can find a retained answer even when another version is selected', async () => {
+  f.generate.mockResolvedValueOnce('FIRST_VERSION_SENTINEL').mockResolvedValueOnce('New answer');
+  mount();
+  await typeQuestion();
+  send();
+  fireEvent.click(await screen.findByRole('button', { name: 'Regenerate reply' }));
+  await screen.findByText('New answer');
+  fireEvent.click(screen.getByRole('button', { name: 'Search conversations' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search conversations' }), {
+    target: { value: 'FIRST_VERSION_SENTINEL' },
+  });
+  expect(screen.queryByText('No matches')).toBeNull();
+  expect(document.querySelector('.glossa-chat-search-snippet')?.textContent).toContain(
+    'FIRST_VERSION_SENTINEL',
+  );
 });
 it('restores an unsent first draft after closing and opens a genuinely empty new conversation', async () => {
   const b = book();

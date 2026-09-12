@@ -9,6 +9,8 @@ import {
   ConversationError,
   CONVERSATION_PROMPT_VERSION,
   chatIdentitySchema,
+  currentAnswerVersion,
+  MAX_QUESTION_CHARS,
   type ChatIdentity,
   type ConversationTurn,
 } from './schema';
@@ -29,12 +31,14 @@ export function conversationMessages(turns: ConversationTurn[]): CompletionMessa
   const messages: CompletionMessage[] = [];
   let size = 0;
   for (const turn of turns.slice().reverse()) {
-    if (turn.promptVersion !== CONVERSATION_PROMPT_VERSION || turn.status !== 'complete') continue;
-    const answer = turn.blocks.map((b) => b.text).join('\n\n');
-    size += turn.question.length + answer.length;
+    if (turn.promptVersion !== CONVERSATION_PROMPT_VERSION) continue;
+    const selected = currentAnswerVersion(turn);
+    if (selected.status !== 'complete') continue;
+    const answer = selected.text;
+    size += selected.question.length + answer.length;
     if (size > 48000 || messages.length >= 24) break;
     messages.unshift(
-      { role: 'user', content: turn.question },
+      { role: 'user', content: selected.question },
       { role: 'assistant', content: answer },
     );
   }
@@ -47,7 +51,7 @@ export async function generateConversation(
 ): Promise<string> {
   checkAborted(input.signal);
   const question = input.question.trim();
-  if (!question || question.length > 2000)
+  if (!question || question.length > MAX_QUESTION_CHARS)
     throw new ConversationError(_('Use a shorter question.'));
   // Pick fields explicitly: even an older caller cannot send a passage or reading position.
   const metadata = chatIdentitySchema.parse({
@@ -61,7 +65,7 @@ export async function generateConversation(
   const raw = await complete({
     config: input.config,
     signal: input.signal,
-    maxTokens: 16384,
+    maxTokens: input.config.maxTokens ?? 16384,
     messages: [
       ...(prompt ? [{ role: 'system' as const, content: prompt }] : []),
       { role: 'user', content: JSON.stringify(metadata) },
@@ -80,4 +84,43 @@ export async function generateConversation(
   if (!raw.trim() || raw.length > 32000)
     throw new ConversationError(_('The reply could not be completed. Try again.'));
   return raw;
+}
+
+interface TitleRequest {
+  question: string;
+  answer: string;
+  config: ProviderConfig;
+  signal?: AbortSignal;
+}
+
+/**
+ * A short session name from the first exchange, in the question's language.
+ * Returns '' when nothing usable comes back; callers keep the question label.
+ */
+export async function generateConversationTitle(
+  input: TitleRequest,
+  { complete = streamCompletion } = {},
+): Promise<string> {
+  const raw = await complete({
+    // A title never needs deliberate reasoning; let the service default apply.
+    config: { ...input.config, reasoningEffort: undefined },
+    signal: input.signal,
+    maxTokens: 256,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          'Name this conversation in at most 12 words, in the same language as the question. Reply with the name only, without quotes or trailing punctuation.',
+          `Question: ${input.question.slice(0, 1000)}`,
+          `Answer: ${input.answer.slice(0, 2000)}`,
+        ].join('\n\n'),
+      },
+    ],
+  });
+  return (raw.split('\n')[0] ?? '')
+    .replace(/^[\s"'“”‘’「『#*<>-]+|[\s"'“”‘’」』#*<>.,，。!！?？:：;；、-]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 48)
+    .trim();
 }

@@ -89,6 +89,14 @@ describe('reading passages', () => {
     const split = buildReadingPassages(content([...blocks, source('next', '乙')]));
     expect(split.map((p) => p.characterCount)).toEqual([20000, 1]);
   });
+  it('stores provider identity without capability parameters', async () => {
+    const complete = vi.fn().mockResolvedValue(JSON.stringify(body()));
+    const result = await generateReadingGuide(
+      { ...options(), config: { ...config, reasoningEffort: 'high', maxTokens: 2048 } },
+      { complete },
+    );
+    expect(result.provider).toEqual(config);
+  });
   it('keeps complete blocks and following headings together within the hard cap', () => {
     const blocks = [
       source('a', 'a'.repeat(4800)),

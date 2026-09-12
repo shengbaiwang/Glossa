@@ -4,12 +4,78 @@ import { isTauriAppPlatform } from '@/services/environment';
 import { clearSecureItem, getSecureItem, setSecureItem } from '@/utils/bridge';
 import { stubTranslation as _ } from '@/utils/misc';
 
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export const REASONING_EFFORTS: readonly ReasoningEffort[] = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+];
+
 export interface ProviderConfig {
   id: string;
   name: string;
   /** OpenAI-compatible API base, including /v1 when the service requires it. */
   baseUrl: string;
   model: string;
+  /** Only sent when the service and model are known to accept it. */
+  reasoningEffort?: ReasoningEffort;
+  /** Preferred output cap in tokens for conversation replies. */
+  maxTokens?: number;
+}
+
+export interface ProviderCapabilities {
+  /** Effort levels this service/model accepts; empty when unsupported. */
+  reasoningEfforts: ReasoningEffort[];
+  /** Sent when no explicit effort is chosen. */
+  defaultReasoningEffort?: ReasoningEffort;
+  maxTokensParam: 'max_tokens' | 'max_completion_tokens';
+}
+
+/** Keep capabilities in one place so no request sends a guessed vendor parameter. */
+export function providerCapabilities(config: ProviderConfig): ProviderCapabilities {
+  let host = '';
+  try {
+    host = new URL(config.baseUrl).hostname;
+  } catch {
+    host = '';
+  }
+  // GLM-5.3 requires thinking and supports low/high/max.
+  // https://docs.z.ai/guides/capabilities/thinking
+  if (
+    ['open.bigmodel.cn', 'api.z.ai'].includes(host) &&
+    /^glm-5\.3(?:-flash)?$/i.test(config.model)
+  ) {
+    return {
+      reasoningEfforts: ['low', 'high', 'max'],
+      defaultReasoningEffort: 'low',
+      maxTokensParam: 'max_tokens',
+    };
+  }
+  // Match verified model families and dated snapshots, never arbitrary suffixes
+  // (chat-latest, pro and codex variants have different API capabilities).
+  // https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.2
+  if (host === 'api.openai.com') {
+    const model = config.model.toLowerCase().replace(/-\d{4}-\d{2}-\d{2}$/, '');
+    let reasoningEfforts: ReasoningEffort[] = [];
+    if (['gpt-5', 'gpt-5-mini', 'gpt-5-nano'].includes(model))
+      reasoningEfforts = ['minimal', 'low', 'medium', 'high'];
+    else if (model === 'gpt-5.1') reasoningEfforts = ['none', 'low', 'medium', 'high'];
+    else if (model === 'gpt-5.2') reasoningEfforts = ['none', 'low', 'medium', 'high', 'xhigh'];
+    else if (['o1', 'o3', 'o3-mini', 'o4-mini'].includes(model))
+      reasoningEfforts = ['low', 'medium', 'high'];
+    return { reasoningEfforts, maxTokensParam: 'max_completion_tokens' };
+  }
+  return { reasoningEfforts: [], maxTokensParam: 'max_tokens' };
+}
+
+/** The plain identity stored with each reply; never persist capability fields. */
+export function providerIdentity(config: ProviderConfig): ProviderConfig {
+  const { id, name, baseUrl, model } = config;
+  return { id, name, baseUrl, model };
 }
 
 export interface CompletionMessage {
@@ -97,12 +163,28 @@ export function validateProviderConfig(value: unknown): ProviderConfig {
   ) {
     throw new ModelServiceError(_('The model settings are invalid.'));
   }
+  const reasoningEffort = value['reasoningEffort'];
+  if (reasoningEffort !== undefined && !REASONING_EFFORTS.includes(reasoningEffort as never)) {
+    throw new ModelServiceError(_('The model settings are invalid.'));
+  }
+  const maxTokens = value['maxTokens'];
+  if (
+    maxTokens !== undefined &&
+    (typeof maxTokens !== 'number' ||
+      !Number.isInteger(maxTokens) ||
+      maxTokens < 1 ||
+      maxTokens > 65536)
+  ) {
+    throw new ModelServiceError(_('The model settings are invalid.'));
+  }
   // Explicit field selection prevents accidental key persistence from a form object.
   return {
     id: value['id'],
     name: value['name'].trim(),
     baseUrl: normalizeBaseUrl(value['baseUrl']),
     model: value['model'].trim(),
+    ...(reasoningEffort ? { reasoningEffort: reasoningEffort as ReasoningEffort } : {}),
+    ...(maxTokens !== undefined ? { maxTokens: maxTokens as number } : {}),
   };
 }
 
@@ -366,12 +448,14 @@ export async function streamCompletion({
   messages,
   signal,
   onDelta,
-  maxTokens = 6000,
+  maxTokens,
 }: CompletionRequest): Promise<string> {
   if (!input)
     throw new ModelServiceError(_('Configure a model service before generating a reading guide.'));
   const config = validateProviderConfig(input);
   if (!config.model) throw new ModelServiceError(_('Enter a model name first.'));
+  const capabilities = providerCapabilities(config);
+  const budget = maxTokens ?? config.maxTokens ?? 6000;
   if (
     !messages.length ||
     messages.some(
@@ -379,25 +463,24 @@ export async function streamCompletion({
         !['system', 'user', 'assistant'].includes(message['role']) ||
         typeof message['content'] !== 'string',
     ) ||
-    !Number.isInteger(maxTokens) ||
-    maxTokens < 1 ||
-    maxTokens > 65536
+    !Number.isInteger(budget) ||
+    budget < 1 ||
+    budget > 65536
   ) {
     throw new ModelServiceError(_('The model request is invalid.'));
   }
+  // A stored effort is only sent when the current service/model accepts it.
+  const reasoningEffort =
+    config.reasoningEffort && capabilities.reasoningEfforts.includes(config.reasoningEffort)
+      ? config.reasoningEffort
+      : capabilities.defaultReasoningEffort;
   try {
     const response = await request(config, 'chat/completions', signal, {
       model: config.model,
       messages,
       stream: true,
-      max_tokens: maxTokens,
-      // GLM-5.3 requires thinking; low is its supported short-task setting.
-      // Scope vendor parameters to verified official endpoints, never guessed relays.
-      // https://docs.z.ai/guides/capabilities/thinking
-      ...(['open.bigmodel.cn', 'api.z.ai'].includes(new URL(config.baseUrl).hostname) &&
-      /^glm-5\.3(?:-flash)?$/i.test(config.model)
-        ? { reasoning_effort: 'low' }
-        : {}),
+      [capabilities.maxTokensParam]: budget,
+      ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
     });
     let output = '';
     let buffer = '';

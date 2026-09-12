@@ -11,6 +11,16 @@
 .glossa-chat-panel :is(button, select, input, textarea) {
   font: inherit;
 }
+/* The notebook container is select-none; conversation text stays selectable
+   so questions and answers can be copied freely. */
+.glossa-chat-panel :is(.glossa-chat-transcript, textarea, input) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.glossa-chat-transcript button {
+  -webkit-user-select: none;
+  user-select: none;
+}
 .glossa-chat-panel :is(button, select) {
   cursor: pointer;
 }
@@ -57,6 +67,65 @@
   color: var(--glossa-ink);
   background: var(--glossa-group);
 }
+.glossa-chat-rename {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 14px 2px;
+  padding: 6px 10px;
+  border: 1px solid var(--glossa-border);
+  border-radius: 12px;
+  background: var(--glossa-surface);
+}
+.glossa-chat-rename input {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 4px 2px;
+  outline: none;
+}
+.glossa-chat-search {
+  flex-shrink: 0;
+  padding: 6px 14px 2px;
+}
+.glossa-chat-search > input {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--glossa-border);
+  border-radius: 10px;
+  background: transparent;
+  padding: 6px 10px;
+}
+.glossa-chat-search-results {
+  margin-top: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.glossa-chat-search-results button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: start;
+  padding: 8px;
+  border-radius: 9px;
+}
+.glossa-chat-search-results button:hover {
+  background: var(--glossa-wash);
+}
+.glossa-chat-search-title {
+  font-size: 12px;
+  font-weight: 500;
+}
+.glossa-chat-search-snippet {
+  font-size: 11px;
+  color: var(--glossa-muted);
+  overflow-wrap: anywhere;
+}
 .glossa-chat-transcript {
   flex: 1;
   min-height: 0;
@@ -101,9 +170,23 @@
   border-radius: 16px 16px 16px 4px;
 }
 .glossa-chat-answer {
-  font-size: 14px;
+  font-size: var(--glossa-chat-answer-size, 14px);
   line-height: 1.85;
   overflow-wrap: anywhere;
+}
+.glossa-chat-question {
+  font-size: var(--glossa-chat-answer-size, 14px);
+}
+.glossa-chat-answer .katex {
+  font-size: 1.05em;
+}
+.glossa-chat-answer math {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+}
+.glossa-chat-answer math[display='block'] {
+  display: block;
 }
 .glossa-chat-answer > :first-child {
   margin-top: 0;
@@ -148,6 +231,34 @@
   font-family: ui-monospace, monospace;
   font-size: 0.9em;
 }
+.glossa-chat-code {
+  position: relative;
+  margin-block: 12px;
+}
+.glossa-chat-code pre {
+  margin: 0;
+}
+.glossa-chat-code-copy {
+  position: absolute;
+  top: 6px;
+  inset-inline-end: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--glossa-border);
+  border-radius: 7px;
+  color: var(--glossa-muted);
+  background: var(--glossa-surface);
+}
+.glossa-chat-code-copy:hover {
+  color: var(--glossa-ink);
+}
+.glossa-chat-code-copy.is-copied {
+  color: var(--glossa-ink);
+}
 .glossa-chat-answer table {
   display: block;
   max-width: 100%;
@@ -179,6 +290,65 @@
 .glossa-chat-answer-actions > span {
   min-width: 0;
 }
+.glossa-chat-versions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+  color: var(--glossa-muted);
+}
+.glossa-chat-versions .glossa-chat-text-button {
+  min-height: 26px;
+  min-width: 26px;
+  padding: 2px;
+}
+.glossa-chat-version-count {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  min-width: 26px;
+  text-align: center;
+}
+.glossa-chat-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 20px;
+  padding: 10px 12px;
+  border: 1px solid var(--glossa-border);
+  border-radius: 14px;
+  background: var(--glossa-surface);
+}
+.glossa-chat-edit:focus-within {
+  border-color: var(--glossa-focus);
+}
+.glossa-chat-edit textarea {
+  display: block;
+  width: 100%;
+  min-height: 64px;
+  max-height: 220px;
+  padding: 0;
+  border: 0;
+  resize: vertical;
+  background: transparent;
+  color: inherit;
+  line-height: 1.7;
+  outline: none;
+}
+.glossa-chat-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.glossa-chat-edit-actions .glossa-chat-text-button {
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--glossa-muted);
+  border: 1px solid var(--glossa-border);
+}
+.glossa-chat-edit-actions .glossa-chat-edit-send {
+  color: var(--glossa-ink);
+  font-weight: 500;
+}
 .glossa-chat-pending {
   display: block;
   color: var(--glossa-muted);
@@ -204,7 +374,7 @@
   display: block;
   width: 100%;
   min-height: 76px;
-  max-height: 180px;
+  max-height: 60vh;
   padding: 0 2px;
   border: 0;
   resize: none;
@@ -225,6 +395,68 @@
   justify-content: space-between;
   gap: 8px;
   padding-top: 8px;
+}
+.glossa-chat-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.glossa-chat-count {
+  font-size: 10px;
+  color: var(--glossa-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.glossa-chat-effort {
+  max-width: 110px;
+  min-height: 32px;
+  border: 0;
+  border-radius: 9px;
+  padding: 4px 2px;
+  background: transparent;
+  color: var(--glossa-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+.glossa-chat-effort:hover:not(:disabled) {
+  color: var(--glossa-ink);
+  background: var(--glossa-group);
+}
+.glossa-chat-menu-picker {
+  position: relative;
+  display: inline-flex;
+}
+.glossa-chat-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  inset-inline-end: 0;
+  min-width: 190px;
+  max-height: min(420px, 70vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--glossa-border);
+  border-radius: 12px;
+  background: var(--glossa-surface);
+  box-shadow: var(--glossa-shadow);
+}
+.glossa-chat-menu-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  text-align: start;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+.glossa-chat-menu-option:hover {
+  background: var(--glossa-wash);
 }
 .glossa-chat-model-picker {
   min-width: 0;
@@ -378,4 +610,16 @@
   .glossa-chat-send {
     min-width: 44px;
   }
+}
+
+.glossa-chat-font-group {
+  border: 0;
+  border-block: 1px solid var(--glossa-border);
+  padding-block: 6px;
+  margin-block: 4px;
+}
+.glossa-chat-font-group legend {
+  padding: 4px 8px;
+  color: var(--glossa-muted);
+  font-size: 11px;
 }
