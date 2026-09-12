@@ -158,7 +158,7 @@ it('chats beside a real EPUB using only identity, restores history, changes mode
   expect(f.complete).not.toHaveBeenCalled();
   await ask();
   const request = f.complete.mock.calls[0]![0] as CompletionRequest;
-  expect(JSON.parse(request.messages[1]!.content)).toEqual({
+  expect(JSON.parse(request.messages[0]!.content)).toEqual({
     bookTitle: book.title,
     author: book.author,
     chapterTitle: '第一章　从问题走向解释',
@@ -180,8 +180,8 @@ it('chats beside a real EPUB using only identity, restores history, changes mode
   await ask('能举一个例子吗？');
   const followup = f.complete.mock.calls[1]![0] as CompletionRequest;
   expect(followup.config?.model).toBe('second-model');
-  expect(followup.messages).toHaveLength(5);
-  expect(followup.messages[2]!.content).toBe('如何理解一个观点？');
+  expect(followup.messages).toHaveLength(4);
+  expect(followup.messages[1]!.content).toBe('如何理解一个观点？');
   for (const [theme, width, eink] of [
     ['default-light', 420, false],
     ['default-dark', 420, false],
@@ -207,7 +207,7 @@ it('chats beside a real EPUB using only identity, restores history, changes mode
   expect(f.complete).toHaveBeenCalledTimes(2);
   fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
   await ask('聊个新问题');
-  expect((f.complete.mock.calls[2]![0] as CompletionRequest).messages).toHaveLength(3);
+  expect((f.complete.mock.calls[2]![0] as CompletionRequest).messages).toHaveLength(2);
   const saved = await loadConversations(book.hash);
   expect(saved?.sessions).toHaveLength(2);
 });
@@ -247,6 +247,26 @@ it('keeps partial replies on stop and protects IndexedDB isolation', async () =>
     sessions: [{ id: 'a', turns: [] }],
   });
   expect((await loadConversations(book.hash))?.sessions[0]?.turns).toHaveLength(1);
+});
+it('sends the prompt chosen in the composer picker as the system message', async () => {
+  const { saveConversationPrompt } = await import('@/glossa/conversation/prompts');
+  saveConversationPrompt({ name: '逐句讲解', content: 'PROMPT_SENTINEL_A' });
+  saveConversationPrompt({ name: '只给结论', content: 'PROMPT_SENTINEL_B' });
+  f.complete.mockImplementation(async () => '好。');
+  await setup();
+  fireEvent.click(screen.getByRole('button', { name: 'Choose prompt' }));
+  fireEvent.click(await screen.findByRole('button', { name: '只给结论' }));
+  await page.screenshot({
+    path: '../../../../../.glossa-dev/qa/conversation-prompt-picker.png',
+  });
+  await ask('这条用哪个提示词？');
+  const request = f.complete.mock.calls[0]![0] as CompletionRequest;
+  expect(request.messages[0]).toEqual({ role: 'system', content: 'PROMPT_SENTINEL_B' });
+  fireEvent.click(screen.getByRole('button', { name: 'Choose prompt' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'No prompt' }));
+  await ask('这条不用提示词');
+  const plain = f.complete.mock.calls[1]![0] as CompletionRequest;
+  expect(plain.messages.some((message) => message.role === 'system')).toBe(false);
 });
 it('keeps the composer and model menu usable in a short narrow window', async () => {
   await setup();

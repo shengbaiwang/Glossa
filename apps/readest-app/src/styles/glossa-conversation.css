@@ -230,6 +230,10 @@
   min-width: 0;
   flex: 1;
 }
+.glossa-chat-prompt-picker {
+  min-width: 0;
+  flex-shrink: 1;
+}
 .glossa-chat-model {
   display: flex;
   align-items: center;

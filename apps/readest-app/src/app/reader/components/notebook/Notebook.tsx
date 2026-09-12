@@ -47,6 +47,7 @@ import EmptyState from '../EmptyState';
 const MIN_NOTEBOOK_WIDTH = 0.15;
 const MAX_NOTEBOOK_WIDTH = 0.45;
 const ReadingGuidePanel = lazy(() => import('@/glossa/ui/ReadingGuidePanel'));
+const MindmapPanel = lazy(() => import('@/glossa/ui/MindmapPanel'));
 const ConversationPanel = lazy(() => import('@/glossa/ui/ConversationPanel'));
 
 const Notebook: React.FC = ({}) => {
@@ -96,7 +97,9 @@ const Notebook: React.FC = ({}) => {
     const { isNotebookPinned, notebookActiveTab } = useNotebookStore.getState();
     const bookKey = useSidebarStore.getState().sideBarBookKey;
     const isReadingGuide =
-      (notebookActiveTab === 'guide' || notebookActiveTab === 'conversation') &&
+      (notebookActiveTab === 'guide' ||
+        notebookActiveTab === 'conversation' ||
+        notebookActiveTab === 'mindmap') &&
       bookKey &&
       getBookData(bookKey)?.book?.format === 'EPUB';
     // Sources and their return action belong to the reading guide session.
@@ -355,6 +358,7 @@ const Notebook: React.FC = ({}) => {
   const tabs = [
     { id: 'conversation' as const, label: _('Conversation') },
     { id: 'guide' as const, label: _('Guide') },
+    { id: 'mindmap' as const, label: _('Mind map') },
     { id: 'notes' as const, label: _('Excerpts') },
   ];
 
@@ -390,12 +394,13 @@ const Notebook: React.FC = ({}) => {
 
   return isNotebookVisible ? (
     <>
-      {(!isNotebookPinned || isMobile) && !(activeTab === 'conversation' && !isMobile) && (
-        <Overlay
-          className={clsx('z-[45]', viewSettings?.isEink ? '' : 'bg-black/50 sm:bg-black/20')}
-          onDismiss={handleClickOverlay}
-        />
-      )}
+      {(!isNotebookPinned || isMobile) &&
+        !((activeTab === 'conversation' || activeTab === 'mindmap') && !isMobile) && (
+          <Overlay
+            className={clsx('z-[45]', viewSettings?.isEink ? '' : 'bg-black/50 sm:bg-black/20')}
+            onDismiss={handleClickOverlay}
+          />
+        )}
       <div
         ref={notebookRef}
         className={clsx(
@@ -403,7 +408,7 @@ const Notebook: React.FC = ({}) => {
           'full-height font-sans text-base font-normal transition-[padding-top] duration-300 sm:text-sm',
           viewSettings?.isEink ? 'bg-base-100' : 'bg-base-200',
           appService?.hasRoundedWindow && 'rounded-se-[10px] rounded-ee-[10px]',
-          (isNotebookPinned || activeTab === 'conversation') && !isMobile
+          (isNotebookPinned || activeTab === 'conversation' || activeTab === 'mindmap') && !isMobile
             ? 'z-20'
             : 'z-[45] shadow-2xl',
           (!isNotebookPinned || isMobile) && viewSettings?.isEink && 'border-base-content border-s',
@@ -425,7 +430,7 @@ const Notebook: React.FC = ({}) => {
           maxWidth: isMobile ? '100%' : `${MAX_NOTEBOOK_WIDTH * 100}%`,
           position: isMobile
             ? 'fixed'
-            : isNotebookPinned || activeTab === 'conversation'
+            : isNotebookPinned || activeTab === 'conversation' || activeTab === 'mindmap'
               ? 'relative'
               : 'absolute',
           paddingTop: `${getPanelTopInset({
@@ -546,6 +551,25 @@ const Notebook: React.FC = ({}) => {
               }
             >
               <ConversationPanel book={book} bookDoc={bookDoc} bookKey={sideBarBookKey} />
+            </Suspense>
+          </div>
+        )}
+        {supportsReadingGuide && activeTab === 'mindmap' && (
+          <div
+            className='glossa-notebook-content min-h-0 flex-1 overflow-y-auto'
+            role='tabpanel'
+            id={`${tabId}-panel-mindmap`}
+            aria-labelledby={`${tabId}-tab-mindmap`}
+            tabIndex={0}
+          >
+            <Suspense
+              fallback={
+                <p className='glossa-reader-muted px-4 py-3' role='status'>
+                  {_('Loading...')}
+                </p>
+              }
+            >
+              <MindmapPanel book={book} bookDoc={bookDoc} bookKey={sideBarBookKey} />
             </Suspense>
           </div>
         )}

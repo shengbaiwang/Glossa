@@ -1194,3 +1194,10 @@ Cross-references that must stay in sync:
 - `src/styles/themes.ts` Palette type → §3 token table.
 
 If you change a rule here, search for the cross-reference and update both.
+
+
+### 14. Glossa reading mind maps
+
+The right-side mind map is a reading surface beside the document on desktop. Use the existing paper/ink theme tokens, 12px node corners, fine logical-direction connectors and short labels. Root emphasis comes from weight and border, without adding a color palette. Branch text navigates directly to its locally verified passage; the separate expand control only folds children. Do not add citation numbers, superscripts, annotation badges or explanation cards. A node's optional explanation belongs in its hover title, with interpretations explicitly named there.
+
+Keep model/range controls collapsed after generation. Use a reflowing tree in narrow panels instead of shrinking a canvas to unreadable text. Maintain visible keyboard focus, 44px action targets, RTL connectors and crisp borders in e-ink. Validation, cancellation and navigation failures stay actionable; successful save need not occupy visual space. See `src/glossa/ui/MindmapDocument.tsx` and `src/styles/glossa.css`.

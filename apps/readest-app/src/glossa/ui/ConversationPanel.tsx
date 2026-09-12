@@ -31,6 +31,10 @@ import {
 } from '@/glossa/conversation/schema';
 import { generateConversation } from '@/glossa/conversation/generate';
 import {
+  CONVERSATION_PROMPTS_EVENT,
+  getActiveConversationPrompt,
+} from '@/glossa/conversation/prompts';
+import {
   appendConversationTurn,
   hasUnsavedConversations,
   loadConversations,
@@ -40,6 +44,7 @@ import {
 import { chapterPathForHref } from '@/glossa/context/chapters';
 import { writeTextToClipboard } from '@/utils/clipboard';
 import ConversationModelPicker from './ConversationModelPicker';
+import ConversationPromptPicker from './ConversationPromptPicker';
 
 interface Props {
   book: Book;
@@ -96,6 +101,7 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
   const [draft, setDraft] = useState('');
   const draftBeforeLoad = useRef('');
   const [config, setConfig] = useState<ProviderConfig | null>(null);
+  const [prompt, setPrompt] = useState(() => getActiveConversationPrompt()?.content ?? '');
   const [ready, setReady] = useState(false);
   const [pending, setPending] = useState<{ question: string; text: string } | null>(null);
   const [error, setError] = useState('');
@@ -199,6 +205,11 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
     };
   }, []);
   useEffect(() => {
+    const refresh = () => setPrompt(getActiveConversationPrompt()?.content ?? '');
+    window.addEventListener(CONVERSATION_PROMPTS_EVENT, refresh);
+    return () => window.removeEventListener(CONVERSATION_PROMPTS_EVENT, refresh);
+  }, []);
+  useEffect(() => {
     if (atBottom && transcript.current)
       transcript.current.scrollTop = transcript.current.scrollHeight;
   }, [turns.length, pending?.text, busy, atBottom]);
@@ -218,6 +229,12 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
     const settings = useSettingsStore.getState();
     settings.setSettingsDialogBookKey(bookKey);
     settings.setRequestedPanel('Models');
+    settings.setSettingsDialogOpen(true);
+  };
+  const openPrompts = () => {
+    const settings = useSettingsStore.getState();
+    settings.setSettingsDialogBookKey(bookKey);
+    settings.setRequestedPanel('Conversation');
     settings.setSettingsDialogOpen(true);
   };
   const send = async (retryIndex?: number, retryQuestion?: string) => {
@@ -299,6 +316,7 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
         question,
         turns: before,
         config,
+        prompt,
         signal: controller.signal,
         onText: (value) => {
           if (!controller.signal.aborted && mounted.current && !settled) {
@@ -573,6 +591,7 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
           />
           <div className='glossa-chat-composer-footer'>
             <ConversationModelPicker config={config} ready={ready} openSettings={openModels} />
+            <ConversationPromptPicker openSettings={openPrompts} />
             {busy ? (
               <button
                 type='button'

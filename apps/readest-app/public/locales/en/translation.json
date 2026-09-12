@@ -398,5 +398,17 @@
   "Model settings": "Model settings",
   "Stopped": "Stopped",
   "Use a shorter question.": "Use a shorter question.",
-  "Retry reply": "Retry reply"
+  "Retry reply": "Retry reply",
+  "Prompts": "Prompts",
+  "New prompt": "New prompt",
+  "Prompt": "Prompt",
+  "No prompt": "No prompt",
+  "Choose prompt": "Choose prompt",
+  "Prompt settings": "Prompt settings",
+  "Delete?": "Delete?",
+  "Enter a prompt name.": "Enter a prompt name.",
+  "Enter the prompt content.": "Enter the prompt content.",
+  "Delete a prompt before adding another.": "Delete a prompt before adding another.",
+  "Prompts could not be saved on this device.": "Prompts could not be saved on this device.",
+  "Use a shorter prompt.": "Use a shorter prompt."
 }

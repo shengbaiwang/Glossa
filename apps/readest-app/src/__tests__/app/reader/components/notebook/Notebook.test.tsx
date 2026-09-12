@@ -72,6 +72,7 @@ vi.mock('@/glossa/ui/ReadingGuidePanel', () => ({
     );
   },
 }));
+vi.mock('@/glossa/ui/MindmapPanel', () => ({ default: () => <div>Mind map panel</div> }));
 vi.mock('@/glossa/ui/ConversationPanel', () => ({
   default: () => <div>Conversation panel</div>,
 }));
@@ -120,6 +121,18 @@ describe('Notebook reading guide integration', () => {
     expect(useNotebookStore.getState().isNotebookVisible).toBe(true);
     fireEvent.click(screen.getByRole('tab', { name: 'Guide' }));
     expect(screen.queryByText('Conversation panel')).toBeNull();
+  });
+
+  it('opens the mind map beside the book and keeps it visible during source navigation', async () => {
+    await openNotebook();
+    fireEvent.click(screen.getByRole('tab', { name: 'Mind map' }));
+    await screen.findByText('Mind map panel');
+    const panel = screen.getByRole('group', { name: 'Notebook' });
+    expect(panel.style.position).toBe('relative');
+    await act(() => eventDispatcher.dispatch('navigate'));
+    expect(useNotebookStore.getState().isNotebookVisible).toBe(true);
+    fireEvent.click(screen.getByRole('tab', { name: 'Conversation' }));
+    expect(screen.queryByText('Mind map panel')).toBeNull();
   });
 
   it('opens a new annotation in excerpts and preserves its draft when returning from the guide', async () => {
@@ -203,7 +216,7 @@ describe('Notebook reading guide integration', () => {
     await openNotebook();
     const reading = screen.getByRole('tab', { name: 'Guide' });
     fireEvent.keyDown(reading, { key: 'ArrowLeft' });
-    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Excerpts' }));
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Mind map' }));
     fireEvent.keyDown(document.activeElement!, { key: 'Home' });
     expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Conversation' }));
     fireEvent.keyDown(reading, { key: 'End' });

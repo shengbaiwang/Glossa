@@ -7,6 +7,34 @@ const config = {
   baseUrl: 'http://localhost:1234/v1',
   model: 'fixture',
 };
+it('sends no system instructions by default and prepends a saved custom prompt when selected', async () => {
+  const complete = vi.fn(async (_request: CompletionRequest) => 'OK');
+  const input = {
+    metadata: { bookTitle: '', author: '', chapterTitle: '' },
+    question: 'What does this concept mean?',
+    turns: [],
+    config,
+    signal: new AbortController().signal,
+  };
+  await generateConversation(input, { complete });
+  const plain = complete.mock.calls[0]![0].messages;
+  expect(plain.some((message) => message.role === 'system')).toBe(false);
+  expect(plain[0]).toEqual({
+    role: 'user',
+    content: JSON.stringify({ bookTitle: '', author: '', chapterTitle: '' }),
+  });
+  await generateConversation({ ...input, prompt: 'Answer in one sentence.' }, { complete });
+  const withPrompt = complete.mock.calls[1]![0].messages;
+  expect(withPrompt[0]).toEqual({ role: 'system', content: 'Answer in one sentence.' });
+  expect(JSON.parse(withPrompt[1]!.content)).toEqual({
+    bookTitle: '',
+    author: '',
+    chapterTitle: '',
+  });
+  await expect(
+    generateConversation({ ...input, prompt: ` ${'x'.repeat(8001)} ` }, { complete }),
+  ).rejects.toThrow();
+});
 it('sends only reading identity and normal messages, and streams plain Markdown', async () => {
   const complete = vi.fn(async (r: CompletionRequest) => {
     r.onDelta?.('**Hello**');
@@ -27,7 +55,7 @@ it('sends only reading identity and normal messages, and streams plain Markdown'
   expect(result).toBe('**Hello**');
   expect(onText).toHaveBeenCalledWith('**Hello**');
   const messages = complete.mock.calls[0]![0].messages;
-  expect(JSON.parse(messages[1]!.content)).toEqual({
+  expect(JSON.parse(messages[0]!.content)).toEqual({
     bookTitle: 'Book',
     author: 'Author',
     chapterTitle: 'Section',
@@ -91,7 +119,7 @@ it('ignores extra metadata fields from a stale caller and handles unknown identi
     { complete },
   );
   const request = complete.mock.calls[0] as unknown as [CompletionRequest];
-  expect(JSON.parse(request[0].messages[1]!.content)).toEqual({
+  expect(JSON.parse(request[0].messages[0]!.content)).toEqual({
     bookTitle: 'Book',
     author: '',
     chapterTitle: '',

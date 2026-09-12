@@ -40,6 +40,7 @@ const panels = [
   'Language',
   'Cloud Sync',
   'Model Services',
+  'Conversation',
   'Custom',
 ];
 afterEach(() => {
@@ -66,6 +67,11 @@ it('keeps every tab at the same desktop edge and supports RTL and narrow screens
       'rgba(0, 0, 0, 0)',
     );
   }
+  fireEvent.click(screen.getByRole('button', { name: 'Conversation' }));
+  await screen.findByRole('button', { name: 'New prompt' });
+  await page.screenshot({
+    path: '../../../../../../.glossa-dev/qa/settings-conversation-prompts.png',
+  });
   document.documentElement.dir = 'rtl';
   document.documentElement.setAttribute('data-eink', 'true');
   expect(sheet.getBoundingClientRect().left).toBe(20);

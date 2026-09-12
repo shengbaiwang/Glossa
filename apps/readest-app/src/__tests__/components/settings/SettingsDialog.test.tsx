@@ -43,6 +43,7 @@ vi.mock('@/components/settings/LangPanel', () => ({ default: () => null }));
 vi.mock('@/components/settings/IntegrationsPanel', () => ({ default: () => null }));
 vi.mock('@/components/settings/MiscPanel', () => ({ default: () => null }));
 vi.mock('@/glossa/ui/ModelSettingsPanel', () => ({ default: () => null }));
+vi.mock('@/glossa/ui/PromptSettingsPanel', () => ({ default: () => null }));
 
 const panels = [
   'Font',
@@ -52,6 +53,7 @@ const panels = [
   'Language',
   'Cloud Sync',
   'Model Services',
+  'Conversation',
   'Custom',
 ];
 beforeEach(() => {

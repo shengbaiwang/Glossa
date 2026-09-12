@@ -786,3 +786,112 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
   font-weight: 500;
   margin-block-start: 6px;
 }
+
+/* A reflowing concept tree keeps relationships readable in the trailing reading pane. */
+.glossa-mindmap {
+  margin-block-start: 18px;
+}
+.glossa-map-toolbar,
+.glossa-map-size {
+  display: flex;
+  align-items: center;
+}
+.glossa-map-toolbar {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.glossa-map-tree,
+.glossa-map-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.glossa-map-tree {
+  padding-block: 10px;
+}
+.glossa-map-children {
+  margin-inline-start: 12px;
+  padding-inline-start: 14px;
+  border-inline-start: 1px solid var(--glossa-border);
+}
+.glossa-map-branch {
+  position: relative;
+  padding-block: 5px;
+  min-inline-size: 0;
+}
+.glossa-map-children > .glossa-map-branch::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: -14px;
+  inset-block-start: 44px;
+  inline-size: 14px;
+  border-block-start: 1px solid var(--glossa-border);
+}
+.glossa-map-relation {
+  font-size: 11px;
+  color: var(--glossa-muted);
+  margin-block: 3px 5px;
+  padding-inline-start: 8px;
+  overflow-wrap: anywhere;
+}
+.glossa-map-node {
+  display: flex;
+  align-items: stretch;
+  min-inline-size: 0;
+  border: 1px solid var(--glossa-border);
+  border-radius: 12px;
+  background: var(--glossa-surface);
+}
+.glossa-map-node[data-selected='true'] {
+  border-color: var(--glossa-ink);
+  background: var(--glossa-wash);
+}
+.glossa-map-label {
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 44px;
+  padding: 10px 12px;
+  text-align: start;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  border-radius: 12px;
+}
+.glossa-map-tree > .glossa-map-branch > .glossa-map-node {
+  border-color: var(--glossa-ink);
+  font-weight: 600;
+}
+.glossa-map-toggle {
+  flex: 0 0 44px;
+  min-block-size: 44px;
+  border-inline-start: 1px solid var(--glossa-border);
+  border-start-end-radius: 12px;
+  border-end-end-radius: 12px;
+}
+.glossa-map-node button:hover {
+  background: var(--glossa-wash);
+}
+[data-eink='true'] :is(.glossa-map-node, .glossa-map-children, .glossa-map-toggle) {
+  border-color: var(--glossa-ink);
+  box-shadow: none;
+}
+[data-eink='true'] .glossa-map-children > .glossa-map-branch::before {
+  border-color: var(--glossa-ink);
+}
+[data-eink='true'] .glossa-map-relation {
+  color: var(--glossa-ink);
+}
+[data-eink='true'] .glossa-map-node[data-selected='true'] {
+  outline: 1px solid var(--glossa-ink);
+}
+
+.glossa-map-options > summary {
+  min-block-size: 44px;
+  padding-block: 10px;
+  font-size: 12px;
+  color: var(--glossa-muted);
+  cursor: pointer;
+}
+[data-eink='true'] .glossa-map-options > summary {
+  color: var(--glossa-ink);
+}

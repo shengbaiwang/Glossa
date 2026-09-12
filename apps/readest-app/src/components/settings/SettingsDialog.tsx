@@ -19,6 +19,7 @@ import {
   X,
   Search,
   Server,
+  MessageSquare,
 } from 'lucide-react';
 import { getDirFromUILanguage } from '@/utils/rtl';
 import { getCommandPaletteShortcut } from '@/services/environment';
@@ -33,6 +34,7 @@ import ControlPanel from './ControlPanel';
 import LangPanel from './LangPanel';
 import MiscPanel from './MiscPanel';
 const ModelSettingsPanel = lazy(() => import('@/glossa/ui/ModelSettingsPanel'));
+const PromptSettingsPanel = lazy(() => import('@/glossa/ui/PromptSettingsPanel'));
 
 export type SettingsPanelType =
   | 'Font'
@@ -42,6 +44,7 @@ export type SettingsPanelType =
   | 'Language'
   | 'Integrations'
   | 'Models'
+  | 'Conversation'
   | 'Custom';
 export type SettingsPanelPanelProp = {
   bookKey: string;
@@ -116,6 +119,11 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       label: _('Model Services'),
     },
     {
+      tab: 'Conversation',
+      icon: MessageSquare,
+      label: _('Conversation'),
+    },
+    {
       tab: 'Custom',
       icon: Accessibility,
       label: _('Custom'),
@@ -172,6 +180,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     Language: null,
     Integrations: null,
     Models: null,
+    Conversation: null,
     Custom: null,
   });
 
@@ -204,6 +213,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         control: 'Control',
         language: 'Language',
         integrations: 'Integrations',
+        conversation: 'Conversation',
         custom: 'Custom',
       };
       const panelKey = parts[1]?.toLowerCase();
@@ -469,6 +479,11 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         {activePanel === 'Models' && (
           <Suspense fallback={null}>
             <ModelSettingsPanel />
+          </Suspense>
+        )}
+        {activePanel === 'Conversation' && (
+          <Suspense fallback={null}>
+            <PromptSettingsPanel />
           </Suspense>
         )}
         {activePanel === 'Custom' && (
