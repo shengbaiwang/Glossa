@@ -2,10 +2,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, cleanup, fireEvent, screen } from '@testing-library/react';
 
 /**
- * Scope switcher for issue #5306: the Background Image picker edits either the
- * library's or the reader's background. The two scopes are an ARIA radiogroup
- * of two text segments in the section header, so the separation is visible
- * regardless of which page the settings dialog was opened from.
+ * The Background Image picker is linked by default (no scope switcher). The
+ * Library|Reader switcher only appears once the user turns on the separate
+ * reader background toggle.
  */
 
 vi.mock('@/hooks/useTranslation', () => ({
@@ -19,10 +18,12 @@ afterEach(() => cleanup());
 const baseProps = {
   predefinedTextures: [{ id: 'none' }, { id: 'paper', url: '/textures/paper.png' }],
   customTextures: [],
+  separateReader: false,
   scope: 'library' as const,
   selectedTextureId: 'none',
   backgroundTransparency: 0.4,
   backgroundSize: 'cover',
+  onSeparateReaderChange: vi.fn(),
   onScopeChange: vi.fn(),
   onTextureSelect: vi.fn(),
   onTransparencyChange: vi.fn(),
@@ -78,40 +79,38 @@ describe('BackgroundTextureSelector transparency', () => {
   });
 });
 
-describe('BackgroundTextureSelector scope switcher', () => {
-  it('renders Library and Reader as a radiogroup of two segments', () => {
-    render(<BackgroundTextureSelector {...baseProps} />);
+describe('BackgroundTextureSelector separate reader toggle', () => {
+  it('offers the separate reader background switch', () => {
+    const onSeparateReaderChange = vi.fn();
+    render(
+      <BackgroundTextureSelector {...baseProps} onSeparateReaderChange={onSeparateReaderChange} />,
+    );
+
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(onSeparateReaderChange).toHaveBeenCalledWith(true);
+  });
+
+  it('hides the Library|Reader switcher while linked', () => {
+    render(<BackgroundTextureSelector {...baseProps} separateReader={false} />);
+
+    expect(screen.queryByRole('radiogroup', { name: 'Background Image' })).toBeNull();
+  });
+
+  it('shows the Library|Reader switcher when separate', () => {
+    render(<BackgroundTextureSelector {...baseProps} separateReader scope='reader' />);
 
     expect(screen.getByRole('radiogroup', { name: 'Background Image' })).not.toBeNull();
     expect(screen.getAllByRole('radio')).toHaveLength(2);
-  });
-
-  it('marks the selected scope via aria-checked', () => {
-    render(<BackgroundTextureSelector {...baseProps} scope='reader' />);
-
     expect(screen.getByRole('radio', { name: 'Reader' }).getAttribute('aria-checked')).toBe('true');
-    expect(screen.getByRole('radio', { name: 'Library' }).getAttribute('aria-checked')).toBe(
-      'false',
-    );
   });
 
   it('fires onScopeChange with the clicked scope', () => {
     const onScopeChange = vi.fn();
-    render(<BackgroundTextureSelector {...baseProps} onScopeChange={onScopeChange} />);
+    render(
+      <BackgroundTextureSelector {...baseProps} separateReader onScopeChange={onScopeChange} />,
+    );
 
     fireEvent.click(screen.getByRole('radio', { name: 'Reader' }));
     expect(onScopeChange).toHaveBeenCalledWith('reader');
-  });
-
-  it('keeps ThemeModeSelector anatomy: h-9 segments, eink-bordered track, eink-inverted thumb', () => {
-    render(<BackgroundTextureSelector {...baseProps} />);
-
-    expect(screen.getByRole('radiogroup', { name: 'Background Image' }).className).toContain(
-      'eink-bordered',
-    );
-    for (const segment of screen.getAllByRole('radio')) {
-      expect(segment.className).toContain('h-9');
-    }
-    expect(screen.getByRole('radio', { name: 'Library' }).className).toContain('eink-inverted');
   });
 });

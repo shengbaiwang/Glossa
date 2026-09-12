@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, NotebookPen, Pin, X } from '@/components/GlossaIcons';
+import { Search, NotebookPen, MessageCircle, Pin, X } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 
@@ -10,6 +10,7 @@ const NotebookHeader: React.FC<{
   handleTogglePin: () => void;
   handleToggleSearchBar: () => void;
   showSearchButton?: boolean;
+  conversation?: boolean;
 }> = ({
   isPinned,
   isSearchBarVisible,
@@ -17,14 +18,19 @@ const NotebookHeader: React.FC<{
   handleTogglePin,
   handleToggleSearchBar,
   showSearchButton = true,
+  conversation = false,
 }) => {
   const _ = useTranslation();
   const iconSize18 = useResponsiveSize(18);
   return (
     <div className='notebook-header glossa-reader-panel-header flex h-11 items-center gap-2 px-3'>
-      <NotebookPen size={iconSize18} className='shrink-0' aria-hidden='true' />
+      {conversation ? (
+        <MessageCircle size={iconSize18} className='shrink-0' />
+      ) : (
+        <NotebookPen size={iconSize18} className='shrink-0' aria-hidden='true' />
+      )}
       <h2 className='notebook-title min-w-0 flex-1 truncate text-sm font-semibold'>
-        {_('Notebook')}
+        {_(conversation ? 'Conversation' : 'Notebook')}
       </h2>
       <button
         type='button'

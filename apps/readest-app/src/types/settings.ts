@@ -438,6 +438,15 @@ export interface SystemSettings {
   libraryBackgroundTextureId?: string;
   libraryBackgroundTransparency?: number;
   libraryBackgroundSize?: string;
+  /**
+   * When false (default) the library page and the reader share one linked
+   * background: the picker edits the reader/global value and the library
+   * inherits it. When true the reader keeps its own background and the
+   * library resolves the `libraryBackground*` values above (falling back to
+   * the global default when unset), with a Library|Reader scope switcher in
+   * the picker. Device-local.
+   */
+  readerBackgroundSeparate?: boolean;
   customFonts: CustomFont[];
   customTextures: CustomTexture[];
   customDictionaries: ImportedDictionary[];

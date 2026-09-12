@@ -8,13 +8,7 @@ import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { eventDispatcher } from '@/utils/event';
 
-import {
-  buildTOCDisplayItems,
-  CurrentPositionRow,
-  FlatTOCItem,
-  isCurrentPositionItem,
-  StaticListRow,
-} from './TOCItem';
+import { FlatTOCItem, StaticListRow } from './TOCItem';
 import { computeExpandedSet, getItemIdentifier } from './tocTree';
 
 const flattenTOC = (items: TOCItem[], expandedItems: Set<string>, depth = 0): FlatTOCItem[] => {
@@ -181,13 +175,6 @@ const TOCView: React.FC<{
 
   const activeHref = progress?.sectionHref ?? null;
   const flatItems = useMemo(() => flattenTOC(toc, expandedItems), [toc, expandedItems]);
-  // Inject a "current position" row under the active item showing the current
-  // reading page. It sits after the active item, so flatItems indices (used by
-  // the auto-scroll effects) stay valid against this rendered list.
-  const displayItems = useMemo(
-    () => buildTOCDisplayItems(flatItems, activeHref, progress?.page),
-    [flatItems, activeHref, progress?.page],
-  );
   // Keep the refs read by the OverlayScrollbars `initialized` callback current.
   activeHrefRef.current = activeHref;
   flatItemsRef.current = flatItems;
@@ -214,13 +201,6 @@ const TOCView: React.FC<{
     },
     [bookKey, getView],
   );
-
-  const handleCurrentPositionClick = useCallback(() => {
-    const location = getProgress(bookKey)?.location;
-    if (!location) return;
-    eventDispatcher.dispatch('navigate', { bookKey, cfi: location });
-    getView(bookKey)?.goTo(location);
-  }, [bookKey, getView, getProgress]);
 
   useEffect(() => {
     if (!isSideBarVisible || sideBarBookKey !== bookKey) {
@@ -305,22 +285,13 @@ const TOCView: React.FC<{
             }, 10000);
           }}
           style={{ height: containerHeight }}
-          totalCount={displayItems.length}
+          totalCount={flatItems.length}
           itemContent={(index) => {
-            const row = displayItems[index]!;
-            if (isCurrentPositionItem(row)) {
-              return (
-                <CurrentPositionRow
-                  depth={row.depth}
-                  page={row.page}
-                  onClick={handleCurrentPositionClick}
-                />
-              );
-            }
+            const flatItem = flatItems[index]!;
             return (
               <StaticListRow
                 bookKey={bookKey}
-                flatItem={row}
+                flatItem={flatItem}
                 activeHref={activeHref}
                 onToggleExpand={handleToggleExpand}
                 onItemClick={handleItemClick}

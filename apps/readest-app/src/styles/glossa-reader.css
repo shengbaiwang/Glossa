@@ -39,6 +39,15 @@
   color: var(--glossa-muted);
 }
 
+/* TOC page numbers sit one step below the muted chrome: fainter, smaller,
+   regular weight (never the active row's bold), with tabular digits. */
+.glossa-reader-toc-page {
+  color: var(--glossa-faint);
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
 .glossa-reader-sidebar-content {
   padding-block: 8px;
 }
@@ -61,15 +70,9 @@
 }
 
 .glossa-reader-toc-item:focus-visible,
-.glossa-reader-position:focus-visible,
 .glossa-reader-tab:focus-visible {
   outline: 2px solid var(--glossa-focus);
   outline-offset: -2px;
-}
-
-.glossa-reader-position {
-  color: var(--glossa-ink);
-  font-size: 12px;
 }
 
 .glossa-reader-tabs {

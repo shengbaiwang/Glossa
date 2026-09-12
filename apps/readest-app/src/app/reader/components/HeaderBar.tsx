@@ -25,6 +25,7 @@ import QuickActionMenu from './annotator/QuickActionMenu';
 import SidebarToggler from './SidebarToggler';
 import BookmarkToggler from './BookmarkToggler';
 import NotebookToggler from './NotebookToggler';
+import ConversationToggler from './ConversationToggler';
 import SettingsToggler from './SettingsToggler';
 
 import ViewMenu from './ViewMenu';
@@ -290,6 +291,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
           {!isHeaderCompact && <SettingsToggler bookKey={bookKey} />}
           <BookmarkToggler bookKey={bookKey} />
           <NotebookToggler bookKey={bookKey} />
+          {bookData?.book?.format === 'EPUB' && <ConversationToggler bookKey={bookKey} />}
           <Dropdown
             label={_('View Options')}
             containerClassName='h-8'

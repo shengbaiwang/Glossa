@@ -90,7 +90,7 @@ it('renders Chinese model settings with real Glossa styles and usable controls w
   fireEvent.change(modelPicker, { target: { value: 'notes-fixture' } });
   expect((screen.getByLabelText('模型名称') as HTMLInputElement).value).toBe('notes-fixture');
   fireEvent.click(screen.getByRole('button', { name: '检测连接' }));
-  await screen.findByText('连接成功，可以使用此模型生成学习笔记。');
+  await screen.findByText('连接成功，可以使用此模型生成导读。');
   expect(fixture.test).toHaveBeenCalledOnce();
   expect(fixture.test.mock.calls[0]![0].model).toBe('notes-fixture');
   expect(keyInput.value).toBe('');

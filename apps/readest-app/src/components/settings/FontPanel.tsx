@@ -384,7 +384,7 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
   return (
     <div className='glossa-font-panel'>
       <div data-setting-id='settings.font.overrideBookFont'>
-        <BoxedList innerClassName='!ps-0' cardClassName='glossa-font-card'>
+        <BoxedList innerClassName='!ps-0'>
           {isCJK && (
             <FontPicker
               label={cjkLabel}
@@ -459,7 +459,7 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
           )}
         </div>
       )}
-      <BoxedList innerClassName='!ps-0' cardClassName='glossa-font-card'>
+      <BoxedList innerClassName='!ps-0'>
         <FontNumber
           label={_('Font Size')}
           value={values.defaultFontSize}
@@ -525,7 +525,7 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
       </div>
       {more && (
         <div id={advancedId} className='glossa-font-advanced'>
-          <BoxedList innerClassName='!ps-0' cardClassName='glossa-font-card'>
+          <BoxedList innerClassName='!ps-0'>
             <FontPicker
               label={_('Monospace Font')}
               selected={values.monospaceFont}

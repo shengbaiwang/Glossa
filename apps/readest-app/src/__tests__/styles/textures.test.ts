@@ -8,9 +8,9 @@ afterEach(() => {
 describe('mountBackgroundTexture', () => {
   it('covers the scrolled-mode notch mask so the top inset strip is textured (#4486)', () => {
     mountBackgroundTexture(document, {
-      id: 'paper',
-      name: 'Paper',
-      url: '/images/paper-texture.png',
+      id: 'background-1',
+      name: 'Background 1',
+      url: '/images/background-1.png',
     });
 
     const style = document.getElementById('background-texture');

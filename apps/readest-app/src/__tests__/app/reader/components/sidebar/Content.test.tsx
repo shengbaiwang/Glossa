@@ -52,6 +52,14 @@ afterEach(() => {
 });
 
 describe('Reader sidebar content', () => {
+  it('keeps chapter learning notes out of the left navigation and restores old study tabs to contents', () => {
+    mocks.config.viewSettings.sideBarTab = 'study';
+    render(<SidebarContent bookDoc={bookDoc} sideBarBookKey='book-0' />);
+    expect(screen.queryByRole('tab', { name: 'Study' })).toBeNull();
+    expect(screen.getByRole('tab', { selected: true }).getAttribute('aria-label')).toBe('Contents');
+    expect(screen.getByText('Chapter list')).toBeTruthy();
+  });
+
   it('changes panels and saves the tab immediately without a blank transition', () => {
     const { rerender } = render(<SidebarContent bookDoc={bookDoc} sideBarBookKey='book-0' />);
     fireEvent.click(screen.getByRole('tab', { name: 'Bookmarks' }));

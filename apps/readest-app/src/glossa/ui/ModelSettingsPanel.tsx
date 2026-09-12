@@ -126,7 +126,7 @@ const ModelSettingsPanel: React.FC = () => {
       } else if (action === 'test') {
         await testProviderConnection(saved, controller.signal);
         if (mounted.current && !controller.signal.aborted)
-          setMessage(_('Connection successful. This model is ready for study notes.'));
+          setMessage(_('Connection successful. This model is ready for reading guides.'));
       } else {
         setMessage(_('Model service saved.'));
       }
@@ -149,7 +149,7 @@ const ModelSettingsPanel: React.FC = () => {
       <div>
         <SectionTitle>{_('Model Service')}</SectionTitle>
         <p className='text-base-content/65 mt-2 text-sm leading-relaxed'>
-          {_('Connect an OpenAI-compatible service for chapter study notes.')}
+          {_('Connect an OpenAI-compatible service for reading guides.')}
         </p>
       </div>
 

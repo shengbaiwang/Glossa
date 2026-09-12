@@ -1,4 +1,7 @@
 import { getReadingQuickAction } from '@/utils/annotationToolbar';
+import { MessageCircle } from '@/components/GlossaIcons';
+import { useConversationSelection } from '@/glossa/conversation/selection';
+import { conversationSelectionCfi } from '@/glossa/context/conversation';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { RiDeleteBinLine } from 'react-icons/ri';
 
@@ -192,7 +195,9 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   // since they show the wider highlight options / notes instead of the buttons.
   const annotPopupMaxWidth = Math.min(useResponsiveSize(300), maxWidth);
   const annotPopupToolSize = useResponsiveSize(44);
-  const visibleToolCount = getToolbarToolTypes(viewSettings.annotationToolbarItems).length;
+  const visibleToolCount =
+    getToolbarToolTypes(viewSettings.annotationToolbarItems).length +
+    (bookData.book?.format === 'EPUB' ? 1 : 0);
   const annotPopupWidth = selection?.annotated
     ? annotPopupMaxWidth
     : Math.min(Math.max(visibleToolCount, 1) * annotPopupToolSize, annotPopupMaxWidth);
@@ -982,6 +987,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
       saveConfig(envConfig, bookKey, updatedConfig, settings);
     }
     if (!appService?.isMobile) {
+      useNotebookStore.getState().setNotebookActiveTab('notes');
       setNotebookVisible(true);
     }
   };
@@ -1631,6 +1637,37 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   const toolButtons = getToolbarToolTypes(viewSettings.annotationToolbarItems)
     .map(buildToolButton)
     .filter((button): button is NonNullable<typeof button> => button !== null);
+
+  const attachToConversation = () => {
+    if (!selection?.text || !view) return;
+    const cfi = conversationSelectionCfi(view, selection.index, selection.range);
+    if (!cfi) return;
+    useConversationSelection.getState().attach(bookKey, cfi);
+    useSidebarStore.getState().setSideBarBookKey(bookKey);
+    useNotebookStore.getState().setNotebookActiveTab('conversation');
+    useNotebookStore.getState().setNotebookVisible(true);
+    handleDismissPopupAndSelection();
+  };
+  if (bookData.book?.format === 'EPUB')
+    toolButtons.push({
+      tooltipText: _('Conversation'),
+      Icon: MessageCircle,
+      onClick: attachToConversation,
+    });
+
+  useEffect(() => {
+    const notebook = useNotebookStore.getState();
+    if (
+      selection?.text &&
+      view &&
+      bookData.book?.format === 'EPUB' &&
+      notebook.isNotebookVisible &&
+      notebook.notebookActiveTab === 'conversation'
+    ) {
+      const cfi = conversationSelectionCfi(view, selection.index, selection.range);
+      if (cfi) useConversationSelection.getState().attach(bookKey, cfi);
+    }
+  }, [selection, view, bookKey, bookData.book?.format]);
 
   // The lookup popups never deselect (handleDictionary / handleTranslation /
   // handleProofread only flip popup flags), so a genuine selection is still

@@ -50,19 +50,22 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
   const { getView, getViewSettings } = useReaderStore();
   const viewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
 
-  // The Background Image picker edits one of two scopes (issue #5306): the
-  // library's own texture (#4743 fields, per-field fallback to reader/global)
-  // or the reader's. The scope defaults to the page the dialog was opened
-  // from but is switchable in place, so either can be edited from anywhere.
+  // The Background Image picker is linked by default: one texture drives both
+  // the library page and the reader. Turning on "Use Separate Reader
+  // Background" decouples them and exposes a Library|Reader scope switcher.
   const isLibraryContext = !bookKey;
+  const separateReader = settings.readerBackgroundSeparate === true;
   const [textureScope, setTextureScope] = useState<BackgroundTextureScope>(
     isLibraryContext ? 'library' : 'reader',
   );
-  const currentBackground = getBackgroundTextureSettings(
-    textureScope,
-    settings,
-    bookKey ? viewSettings : undefined,
-  );
+  const sharedBackground = {
+    backgroundTextureId: settings.globalViewSettings?.backgroundTextureId ?? 'none',
+    backgroundTransparency: settings.globalViewSettings?.backgroundTransparency ?? 0.4,
+    backgroundSize: settings.globalViewSettings?.backgroundSize ?? 'cover',
+  };
+  const currentBackground = separateReader
+    ? getBackgroundTextureSettings(textureScope, settings, bookKey ? viewSettings : undefined)
+    : sharedBackground;
   const currentTextureId = currentBackground.backgroundTextureId;
   const currentBackgroundTransparency = currentBackground.backgroundTransparency;
   const currentBackgroundSize = currentBackground.backgroundSize;
@@ -144,12 +147,48 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
     }
   };
 
+  const handleSeparateReaderChange = (separate: boolean) => {
+    saveSysSettings(envConfig, 'readerBackgroundSeparate', separate);
+    if (separate) {
+      // Seed the library's independent values from the current shared look so
+      // both pages start equal and the library can then diverge on its own.
+      const shared = useSettingsStore.getState().settings.globalViewSettings;
+      saveSysSettings(
+        envConfig,
+        'libraryBackgroundTextureId',
+        shared?.backgroundTextureId ?? 'none',
+      );
+      saveSysSettings(
+        envConfig,
+        'libraryBackgroundTransparency',
+        shared?.backgroundTransparency ?? 0.4,
+      );
+      saveSysSettings(envConfig, 'libraryBackgroundSize', shared?.backgroundSize ?? 'cover');
+      const next = getBackgroundTextureSettings(
+        textureScope,
+        useSettingsStore.getState().settings,
+        bookKey ? viewSettings : undefined,
+      );
+      setSelectedTextureId(next.backgroundTextureId);
+      setBackgroundTransparency(next.backgroundTransparency);
+      setBackgroundSize(next.backgroundSize);
+    } else {
+      // Back to linked: re-seed the editor from the shared value so the picker
+      // highlights what both pages now show.
+      const shared = useSettingsStore.getState().settings.globalViewSettings;
+      setSelectedTextureId(shared?.backgroundTextureId ?? 'none');
+      setBackgroundTransparency(shared?.backgroundTransparency ?? 0.4);
+      setBackgroundSize(shared?.backgroundSize ?? 'cover');
+    }
+    // Repaint the open page: decoupling/relinking changes what the library
+    // resolves even when the edited values themselves are unchanged.
+    applyPageBackgroundTexture();
+  };
+
   const handleScopeChange = (scope: BackgroundTextureScope) => {
     if (scope === textureScope) return;
     // Re-seed the editing state from the new scope's stored values; the
-    // equality guards in the save effects keep this from writing anything,
-    // and bypassing handleTextureSelect keeps atmosphere activation a
-    // click-only side effect.
+    // equality guards in the save effects keep this from writing anything.
     const next = getBackgroundTextureSettings(scope, settings, bookKey ? viewSettings : undefined);
     setTextureScope(scope);
     setSelectedTextureId(next.backgroundTextureId);
@@ -204,7 +243,11 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
 
   useEffect(() => {
     if (selectedTextureId === currentTextureId) return;
-    if (textureScope === 'library') {
+    if (!separateReader) {
+      // Linked: the shared value lives in the global view settings so every
+      // book and the library follow it.
+      saveViewSettings(envConfig, '', 'backgroundTextureId', selectedTextureId);
+    } else if (textureScope === 'library') {
       saveSysSettings(envConfig, 'libraryBackgroundTextureId', selectedTextureId);
     } else {
       saveViewSettings(envConfig, bookKey, 'backgroundTextureId', selectedTextureId);
@@ -215,7 +258,9 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
 
   useEffect(() => {
     if (backgroundTransparency === currentBackgroundTransparency) return;
-    if (textureScope === 'library') {
+    if (!separateReader) {
+      saveViewSettings(envConfig, '', 'backgroundTransparency', backgroundTransparency);
+    } else if (textureScope === 'library') {
       saveSysSettings(envConfig, 'libraryBackgroundTransparency', backgroundTransparency);
     } else {
       saveViewSettings(envConfig, bookKey, 'backgroundTransparency', backgroundTransparency);
@@ -226,7 +271,9 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
 
   useEffect(() => {
     if (backgroundSize === currentBackgroundSize) return;
-    if (textureScope === 'library') {
+    if (!separateReader) {
+      saveViewSettings(envConfig, '', 'backgroundSize', backgroundSize);
+    } else if (textureScope === 'library') {
       saveSysSettings(envConfig, 'libraryBackgroundSize', backgroundSize);
     } else {
       saveViewSettings(envConfig, bookKey, 'backgroundSize', backgroundSize);
@@ -262,18 +309,16 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readingRulerColor]);
 
-  // Re-apply the CURRENT page's resolved texture rather than the edited
-  // values: editing the other page's scope must not repaint this page (the
-  // shared #background-texture style element belongs to the mounted page,
-  // #4743). When the library still inherits the reader value, its resolved
-  // look follows reader edits live, which getLibraryViewSettings captures.
+  // Repaint the page the settings dialog is open on. The library resolves
+  // through getLibraryViewSettings (linked to the reader unless decoupled);
+  // the reader path passes the edited values straight through.
   const applyPageBackgroundTexture = () => {
     if (isLibraryContext) {
       applyBackgroundTexture(
         envConfig,
         getLibraryViewSettings(useSettingsStore.getState().settings),
       );
-    } else if (textureScope === 'reader') {
+    } else {
       applyBackgroundTexture(envConfig, {
         ...viewSettings,
         backgroundTextureId: selectedTextureId,
@@ -422,7 +467,7 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
             data-setting-id='settings.color.themeColor'
           />
 
-          <BoxedList title={_('Reading colors')} cardClassName='glossa-font-card'>
+          <BoxedList title={_('Reading colors')}>
             <SettingsSwitchRow
               data-setting-id='settings.color.overrideBookColor'
               label={_('Override Book Color')}
@@ -441,6 +486,8 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
           <BackgroundTextureSelector
             predefinedTextures={PREDEFINED_TEXTURES}
             customTextures={customTextures.filter((t) => !t.deletedAt)}
+            separateReader={separateReader}
+            onSeparateReaderChange={handleSeparateReaderChange}
             scope={textureScope}
             onScopeChange={handleScopeChange}
             selectedTextureId={selectedTextureId}

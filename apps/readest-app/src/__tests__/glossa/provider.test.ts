@@ -57,7 +57,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', mocks.fetch);
 });
 
-describe('study model configuration', () => {
+describe('reading model configuration', () => {
   it('preserves every saved service when the list grows past thirty entries', async () => {
     for (let index = 0; index < 31; index++) {
       await saveProviderConfig({ ...config, id: `custom-${index}` });
@@ -161,6 +161,65 @@ describe('OpenAI-compatible transport', () => {
     );
   });
 
+  it.each([
+    ['data: [DO', 'NE]\n\n'],
+    ['data: {"choices":[],"usage":', '{"total_tokens":5}}\n\ndata: [DONE]\n\n'],
+  ])('accepts a completed response when the following event is split at %s', async (tail, rest) => {
+    const onDelta = vi.fn();
+    mocks.fetch.mockResolvedValue(
+      sse([
+        'data: {"choices":[{"delta":{"content":"complete"},"finish_reason":"stop"}]}\n\n' + tail,
+        rest,
+      ]),
+    );
+    expect(await streamCompletion({ config, messages, onDelta })).toBe('complete');
+    expect(onDelta.mock.calls).toEqual([['complete']]);
+  });
+
+  it.each(['stop', 'done'])('does not parse or deliver events after %s', async (terminal) => {
+    const onDelta = vi.fn();
+    const completion =
+      terminal === 'stop'
+        ? 'data: {"choices":[{"delta":{"content":"complete"},"finish_reason":"stop"}]}\n\n'
+        : 'data: {"choices":[{"delta":{"content":"complete"}}]}\n\ndata: [DONE]\n\n';
+    mocks.fetch.mockResolvedValue(
+      sse([
+        completion +
+          'data: {"choices":[{"delta":{"content":"post-terminal garbage"}}]}\n\ndata: {"error":{"message":"post-terminal error"}}\n\n',
+      ]),
+    );
+    expect(await streamCompletion({ config, messages, onDelta })).toBe('complete');
+    expect(onDelta.mock.calls).toEqual([['complete']]);
+  });
+
+  it.each([
+    ['', 'The model connection ended before the response was complete. Try again.'],
+    ['data: {"choices":[{"finish_reason":', 'The model service returned an invalid response.'],
+    [
+      'data: {"error":{"message":"synthetic server error"}}\n\ndata: [DONE]\n\n',
+      'The model service returned an invalid response.',
+    ],
+    [
+      'data: {"choices":[{"delta":{},"finish_reason":"content_filter"}]}\n\ndata: [DONE]\n\n',
+      'The model service declined to generate these notes.',
+    ],
+  ])('rejects incomplete or failed streams before a successful terminal event: %s', async (tail, error) => {
+    mocks.fetch.mockResolvedValue(
+      sse(['data: {"choices":[{"delta":{"content":"partial"}}]}\n\n' + tail]),
+    );
+    await expect(streamCompletion({ config, messages })).rejects.toThrow(error);
+  });
+
+  it('recognizes an event stream media type regardless of case', async () => {
+    mocks.fetch.mockResolvedValue(
+      new Response(
+        'data: {"choices":[{"delta":{"content":"complete"},"finish_reason":"stop"}]}\n\n',
+        { headers: { 'Content-Type': 'Text/Event-Stream; charset=utf-8' } },
+      ),
+    );
+    expect(await streamCompletion({ config, messages })).toBe('complete');
+  });
+
   it('does not start a request after cancellation', async () => {
     await saveProviderConfig(config, 'synthetic-secret');
     const controller = new AbortController();
@@ -214,5 +273,75 @@ describe('OpenAI-compatible transport', () => {
       streamCompletion({ messages, signal: controller.signal, onDelta: () => controller.abort() }),
     ).rejects.toMatchObject({ name: 'AbortError' });
     expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('honors cancellation from the final delta and releases the stream', async () => {
+    const controller = new AbortController();
+    const cancel = vi.fn();
+    mocks.fetch.mockResolvedValue(
+      new Response(
+        new ReadableStream({
+          start(stream) {
+            stream.enqueue(
+              new TextEncoder().encode(
+                'data: {"choices":[{"delta":{"content":"complete"},"finish_reason":"stop"}]}\n\n',
+              ),
+            );
+          },
+          cancel,
+        }),
+        { headers: { 'Content-Type': 'text/event-stream' } },
+      ),
+    );
+    await expect(
+      streamCompletion({
+        config,
+        messages,
+        signal: controller.signal,
+        onDelta: () => controller.abort(),
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+});
+
+describe('reasoning model completion budget', () => {
+  it('allows a 65536 token ceiling and rejects requests above it locally', async () => {
+    mocks.fetch.mockResolvedValue(
+      sse(['data: {"choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\n']),
+    );
+    await expect(streamCompletion({ config, messages, maxTokens: 65536 })).resolves.toBe('OK');
+    expect(JSON.parse(mocks.fetch.mock.calls[0]![1].body).max_tokens).toBe(65536);
+    mocks.fetch.mockClear();
+    await expect(streamCompletion({ config, messages, maxTokens: 65537 })).rejects.toThrow();
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+  it.each([
+    'text/event-stream',
+    'application/json',
+  ])('classifies length exhaustion for %s', async (type) => {
+    const payload = {
+      choices: [{ finish_reason: 'length', delta: {}, message: { content: 'partial' } }],
+    };
+    mocks.fetch.mockResolvedValue(
+      type === 'text/event-stream'
+        ? sse([`data: ${JSON.stringify(payload)}\n\n`])
+        : new Response(JSON.stringify(payload), { headers: { 'Content-Type': type } }),
+    );
+    await expect(streamCompletion({ config, messages })).rejects.toMatchObject({ code: 'length' });
+  });
+  it.each([
+    ['https://open.bigmodel.cn/api/paas/v4', 'glm-5.3-flash', 'low'],
+    ['https://api.z.ai/api/paas/v4', 'GLM-5.3', 'low'],
+    ['https://models.example/v1', 'glm-5.3-flash', undefined],
+    ['https://open.bigmodel.cn/api/paas/v4', 'glm-4.7', undefined],
+  ])('scopes short-task reasoning parameters to supported endpoints and models', async (baseUrl, model, effort) => {
+    mocks.fetch.mockResolvedValue(
+      sse(['data: {"choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\n']),
+    );
+    await streamCompletion({ config: { ...config, baseUrl, model }, messages });
+    const request = JSON.parse(mocks.fetch.mock.calls[0]![1].body);
+    expect(request.reasoning_effort).toBe(effort);
+    expect(request.thinking).toBeUndefined();
   });
 });

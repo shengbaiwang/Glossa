@@ -45,7 +45,10 @@ export const PROVIDER_PRESETS: readonly ProviderConfig[] = [
 ];
 
 export class ModelServiceError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    public readonly code: 'length' | 'service' = 'service',
+  ) {
     super(message);
     this.name = 'ModelServiceError';
   }
@@ -366,7 +369,7 @@ export async function streamCompletion({
   maxTokens = 6000,
 }: CompletionRequest): Promise<string> {
   if (!input)
-    throw new ModelServiceError(_('Configure a model service before generating study notes.'));
+    throw new ModelServiceError(_('Configure a model service before generating a reading guide.'));
   const config = validateProviderConfig(input);
   if (!config.model) throw new ModelServiceError(_('Enter a model name first.'));
   if (
@@ -378,7 +381,7 @@ export async function streamCompletion({
     ) ||
     !Number.isInteger(maxTokens) ||
     maxTokens < 1 ||
-    maxTokens > 32768
+    maxTokens > 65536
   ) {
     throw new ModelServiceError(_('The model request is invalid.'));
   }
@@ -388,6 +391,13 @@ export async function streamCompletion({
       messages,
       stream: true,
       max_tokens: maxTokens,
+      // GLM-5.3 requires thinking; low is its supported short-task setting.
+      // Scope vendor parameters to verified official endpoints, never guessed relays.
+      // https://docs.z.ai/guides/capabilities/thinking
+      ...(['open.bigmodel.cn', 'api.z.ai'].includes(new URL(config.baseUrl).hostname) &&
+      /^glm-5\.3(?:-flash)?$/i.test(config.model)
+        ? { reasoning_effort: 'low' }
+        : {}),
     });
     let output = '';
     let buffer = '';
@@ -406,6 +416,7 @@ export async function streamCompletion({
       if (choice['finish_reason'] === 'length')
         throw new ModelServiceError(
           _('The model response was cut short. Try a smaller chapter or another model.'),
+          'length',
         );
       if (choice['finish_reason'] === 'content_filter')
         throw new ModelServiceError(_('The model service declined to generate these notes.'));
@@ -425,18 +436,22 @@ export async function streamCompletion({
       }
       consumeChoice(parseJson(data), true);
     };
-    if (response.headers.get('content-type')?.includes('text/event-stream')) {
+    if (response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
       await consumeText(response, signal, (part) => {
+        if (finished) return false;
         buffer += part;
         let boundary = /\r?\n\r?\n/.exec(buffer);
         while (boundary) {
           event(buffer.slice(0, boundary.index));
           buffer = buffer.slice(boundary.index + boundary[0].length);
+          // A terminal event may share a network chunk with a partial trailer.
+          // The completed response ends here; do not parse or emit that trailer.
+          if (finished) return false;
           boundary = /\r?\n\r?\n/.exec(buffer);
         }
-        return !finished;
+        return true;
       });
-      if (buffer.trim()) event(buffer);
+      if (!finished && buffer.trim()) event(buffer);
       if (!finished)
         throw new ModelServiceError(
           _('The model connection ended before the response was complete. Try again.'),
@@ -447,6 +462,7 @@ export async function streamCompletion({
       });
       consumeChoice(parseJson(buffer), false);
     }
+    checkAbort(signal);
     if (!output.trim())
       throw new ModelServiceError(_('The model service returned an empty response.'));
     return output;

@@ -18,14 +18,13 @@ const Tabs = ({ dir = 'ltr' }: { dir?: 'ltr' | 'rtl' }) => {
 };
 
 describe('Reader sidebar tabs', () => {
-  it('adds an accessible learning tab only when chapter notes are supported', () => {
-    const onTabChange = vi.fn();
-    render(<TabNavigation activeTab='toc' onTabChange={onTabChange} showStudyNotes />);
-    const study = screen.getByRole('tab', { name: 'Study' });
-    fireEvent.click(study);
-    expect(onTabChange).toHaveBeenCalledWith('study');
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Contents' }), { key: 'End' });
-    expect(document.activeElement).toBe(study);
+  it('keeps the left navigation limited to contents, annotations and bookmarks', () => {
+    render(<Tabs />);
+    expect(screen.getAllByRole('tab').map((tab) => tab.getAttribute('aria-label'))).toEqual([
+      'Contents',
+      'Notes',
+      'Bookmarks',
+    ]);
   });
 
   it('keeps one tab stop and activates tabs immediately with arrows, Home and End', () => {

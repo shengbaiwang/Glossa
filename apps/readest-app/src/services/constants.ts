@@ -208,6 +208,7 @@ export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
   libraryColumns: 6,
   librarySkeuomorphicCovers: false,
   libraryRecentShelfEnabled: true,
+  readerBackgroundSeparate: false,
 
   metadataSeriesCollapsed: false,
   metadataOthersCollapsed: false,

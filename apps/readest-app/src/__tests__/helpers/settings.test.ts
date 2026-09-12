@@ -89,9 +89,26 @@ describe('getLibraryViewSettings', () => {
     expect(result.backgroundSize).toBe('cover');
   });
 
-  test('uses the library overrides when they are set', () => {
+  test('ignores the library overrides while the reader is linked', () => {
+    // Default mode: the library shares the reader/global background even when
+    // stale `libraryBackground*` values are present on disk.
     const result = getLibraryViewSettings(
       makeTextureSettings({
+        libraryBackgroundTextureId: 'none',
+        libraryBackgroundTransparency: 0.7,
+        libraryBackgroundSize: 'contain',
+      }),
+    );
+
+    expect(result.backgroundTextureId).toBe('paper');
+    expect(result.backgroundTransparency).toBe(0.4);
+    expect(result.backgroundSize).toBe('cover');
+  });
+
+  test('uses the library overrides when the reader background is separate', () => {
+    const result = getLibraryViewSettings(
+      makeTextureSettings({
+        readerBackgroundSeparate: true,
         libraryBackgroundTextureId: 'none',
         libraryBackgroundTransparency: 0.7,
         libraryBackgroundSize: 'contain',
@@ -116,7 +133,7 @@ describe('getLibraryViewSettings', () => {
     // Only the texture id is decoupled; transparency/size were never touched and
     // must keep tracking the reader/global values.
     const result = getLibraryViewSettings(
-      makeTextureSettings({ libraryBackgroundTextureId: 'sand' }),
+      makeTextureSettings({ readerBackgroundSeparate: true, libraryBackgroundTextureId: 'sand' }),
     );
 
     expect(result.backgroundTextureId).toBe('sand');
@@ -126,16 +143,22 @@ describe('getLibraryViewSettings', () => {
 });
 
 describe('getBackgroundTextureSettings', () => {
-  test('library scope resolves like the library page, inheriting until decoupled', () => {
+  test('library scope resolves like the library page, inheriting while linked', () => {
     expect(getBackgroundTextureSettings('library', makeTextureSettings())).toEqual({
       backgroundTextureId: 'paper',
       backgroundTransparency: 0.4,
       backgroundSize: 'cover',
     });
+  });
+
+  test('library scope uses the library override when the reader is separate', () => {
     expect(
       getBackgroundTextureSettings(
         'library',
-        makeTextureSettings({ libraryBackgroundTextureId: 'sand' }),
+        makeTextureSettings({
+          readerBackgroundSeparate: true,
+          libraryBackgroundTextureId: 'sand',
+        }),
       ).backgroundTextureId,
     ).toBe('sand');
   });

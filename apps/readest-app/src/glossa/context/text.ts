@@ -32,7 +32,7 @@ const blockTags = new Set([
   'h6',
 ]);
 
-const isReadable = (node: Text): boolean => {
+export const isReadable = (node: Text): boolean => {
   let element = node.parentElement;
   while (element) {
     if (
@@ -48,6 +48,44 @@ const isReadable = (node: Text): boolean => {
   }
   return true;
 };
+
+/** Exact, readable text inside a range, including partially visible text nodes. */
+export function readRangeText(doc: Document, range: Range): string {
+  const walker = doc.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
+  const parts: string[] = [];
+  const append = (node: Text) => {
+    if (!isReadable(node) || !range.intersectsNode(node)) return;
+    const start = node === range.startContainer ? range.startOffset : 0;
+    const end = node === range.endContainer ? range.endOffset : node.length;
+    parts.push(node.data.slice(start, end));
+  };
+  if (range.commonAncestorContainer.nodeType === Node.TEXT_NODE)
+    append(range.commonAncestorContainer as Text);
+  else {
+    let node: Node | null;
+    while ((node = walker.nextNode())) append(node as Text);
+  }
+  return normalizeSourceText(parts.join(''));
+}
+
+/** Intersect with the visible/selected range; never expand to the unread end of a paragraph. */
+export function collectRangeBlocks(doc: Document, within: Range): TextBlock[] {
+  if (within.collapsed) return [];
+  return collectTextBlocks(doc).flatMap((block) => {
+    const range = block.range.cloneRange();
+    if (
+      range.compareBoundaryPoints(Range.END_TO_START, within) >= 0 ||
+      range.compareBoundaryPoints(Range.START_TO_END, within) <= 0
+    )
+      return [];
+    if (range.compareBoundaryPoints(Range.START_TO_START, within) < 0)
+      range.setStart(within.startContainer, within.startOffset);
+    if (range.compareBoundaryPoints(Range.END_TO_END, within) > 0)
+      range.setEnd(within.endContainer, within.endOffset);
+    const text = readRangeText(doc, range);
+    return text ? [{ ...block, range, text }] : [];
+  });
+}
 
 const owningBlock = (node: Text, root: Element): Element => {
   let element = node.parentElement;

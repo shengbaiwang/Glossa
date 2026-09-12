@@ -119,6 +119,16 @@ it('previews and selects fonts with real Glossa styles across desktop, narrow, d
   // delegation; picker/input capture handlers must take precedence over it.
   settingsHost.addEventListener('keydown', onSettingsKeyDown);
   const sheet = view.container.querySelector('main')!;
+  // Grouped lists read from a faint raised fill, not an outline, and the row
+  // dividers only run under the text column. See DESIGN.md §5.
+  const groupCard = sheet.querySelector('.glossa-group-card') as HTMLElement;
+  const groupStyle = getComputedStyle(groupCard);
+  expect(groupStyle.borderTopWidth).toBe('0px');
+  expect(groupStyle.borderRadius).toBe('12px');
+  const groupRows = groupCard.querySelectorAll('.glossa-group > *');
+  const divider = getComputedStyle(groupRows[1]!, '::before');
+  expect(divider.insetInlineStart).toBe('16px');
+  expect(divider.height).toBe('1px');
   const expectSaved = async (key: string, value: string | number | boolean) => {
     await waitFor(() =>
       expect(fixture.save).toHaveBeenCalledWith(
@@ -240,6 +250,8 @@ it('previews and selects fonts with real Glossa styles across desktop, narrow, d
   document.documentElement.dir = 'rtl';
   document.documentElement.setAttribute('data-eink', 'true');
   assertNoOverflow();
+  // E-ink swaps the faint fill for a crisp 1px outline.
+  expect(getComputedStyle(groupCard).borderTopWidth).toBe('1px');
   for (const selected of sheet.querySelectorAll('.glossa-font-segments [aria-pressed="true"]')) {
     const style = getComputedStyle(selected);
     expect(style.color).not.toBe(style.backgroundColor);

@@ -160,7 +160,7 @@ export const extractChapter = async (
     checkAborted(signal);
     const section = book.sections[sectionIndex];
     if (!section || section.linear === 'no') continue;
-    // Yield between spine reads so opening notes does not monopolize the reader.
+    // Yield between spine reads so preparing a reading passage does not monopolize the reader.
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     checkAborted(signal);
     const doc = await section.createDocument();

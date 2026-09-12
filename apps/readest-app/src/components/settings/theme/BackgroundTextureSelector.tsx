@@ -3,7 +3,13 @@ import React from 'react';
 import { MdClose, MdPlayCircleOutline } from 'react-icons/md';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
-import { BoxedList, SectionTitle, SettingsRow, SettingsSelect } from '../primitives';
+import {
+  BoxedList,
+  SectionTitle,
+  SettingsRow,
+  SettingsSelect,
+  SettingsSwitchRow,
+} from '../primitives';
 import { PiPlus } from 'react-icons/pi';
 import type { BackgroundTextureScope } from '@/helpers/settings';
 
@@ -18,7 +24,10 @@ interface Texture {
 interface BackgroundTextureSelectorProps {
   predefinedTextures: Texture[];
   customTextures: Texture[];
-  /** Which page's background is being edited (issue #5306). */
+  /** True when the reader uses its own background instead of sharing. */
+  separateReader: boolean;
+  onSeparateReaderChange: (separate: boolean) => void;
+  /** Which page's background is being edited — only relevant when separate. */
   scope: BackgroundTextureScope;
   onScopeChange: (scope: BackgroundTextureScope) => void;
   selectedTextureId: string;
@@ -34,6 +43,8 @@ interface BackgroundTextureSelectorProps {
 const BackgroundTextureSelector: React.FC<BackgroundTextureSelectorProps> = ({
   predefinedTextures,
   customTextures,
+  separateReader,
+  onSeparateReaderChange,
   scope,
   onScopeChange,
   selectedTextureId,
@@ -54,44 +65,42 @@ const BackgroundTextureSelector: React.FC<BackgroundTextureSelectorProps> = ({
     <div>
       <div className='mb-2 flex items-center justify-between gap-2'>
         <SectionTitle>{_('Background Image')}</SectionTitle>
-        {/* Same segmented-control anatomy as ThemeModeSelector (44px targets,
-            eink-bordered track + eink-inverted active thumb), with text labels:
-            the visible Library|Reader pair is what tells users the two pages
-            have separate backgrounds (issue #5306). */}
-        <div
-          role='radiogroup'
-          aria-label={_('Background Image')}
-          className='bg-base-200 eink-bordered inline-flex items-center rounded-full p-0.5'
-        >
-          {(
-            [
-              { scope: 'library', label: _('Library') },
-              { scope: 'reader', label: _('Reader') },
-            ] as const
-          ).map(({ scope: segScope, label }) => {
-            const active = scope === segScope;
-            return (
-              <button
-                key={segScope}
-                type='button'
-                role='radio'
-                aria-checked={active}
-                onClick={() => onScopeChange(segScope)}
-                className={clsx(
-                  // em-based like SectionTitle, not rem-based text-sm — the
-                  // settings-content wrapper scales 14/16px (DESIGN.md §5).
-                  'flex h-9 items-center justify-center rounded-full px-3 text-[0.85em] font-medium transition-colors',
-                  'focus-visible:ring-base-content/15 focus-visible:outline-none focus-visible:ring-2',
-                  active
-                    ? 'bg-base-300 text-base-content eink-inverted shadow-sm'
-                    : 'text-base-content/60 hover:text-base-content',
-                )}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
+        {/* Scope switcher only appears once the reader is decoupled; while
+            linked, one background drives both pages. */}
+        {separateReader && (
+          <div
+            role='radiogroup'
+            aria-label={_('Background Image')}
+            className='bg-base-200 eink-bordered inline-flex items-center rounded-full p-0.5'
+          >
+            {(
+              [
+                { scope: 'library', label: _('Library') },
+                { scope: 'reader', label: _('Reader') },
+              ] as const
+            ).map(({ scope: segScope, label }) => {
+              const active = scope === segScope;
+              return (
+                <button
+                  key={segScope}
+                  type='button'
+                  role='radio'
+                  aria-checked={active}
+                  onClick={() => onScopeChange(segScope)}
+                  className={clsx(
+                    'flex h-9 items-center justify-center rounded-full px-3 text-[0.85em] font-medium transition-colors',
+                    'focus-visible:ring-base-content/15 focus-visible:outline-none focus-visible:ring-2',
+                    active
+                      ? 'bg-base-300 text-base-content eink-inverted shadow-sm'
+                      : 'text-base-content/60 hover:text-base-content',
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
       <div className='mb-4 grid grid-cols-3 gap-4'>
         {allTextures.map((texture) => (
@@ -155,40 +164,46 @@ const BackgroundTextureSelector: React.FC<BackgroundTextureSelectorProps> = ({
         </button>
       </div>
 
-      {/* Background Image Settings — boxed list once a texture is selected */}
-      {selectedTextureId !== 'none' && (
-        <BoxedList>
-          <SettingsRow label={_('Transparency')}>
-            <div className='flex items-center gap-2'>
-              <input
-                type='range'
-                aria-label={_('Transparency')}
-                min='0'
-                max='100'
-                step='5'
-                value={Math.round(backgroundTransparency * 100)}
-                onChange={(e) => onTransparencyChange(Number(e.target.value) / 100)}
-                className='range range-sm w-32'
+      <BoxedList>
+        {selectedTextureId !== 'none' && (
+          <>
+            <SettingsRow label={_('Transparency')}>
+              <div className='flex items-center gap-2'>
+                <input
+                  type='range'
+                  aria-label={_('Transparency')}
+                  min='0'
+                  max='100'
+                  step='5'
+                  value={Math.round(backgroundTransparency * 100)}
+                  onChange={(e) => onTransparencyChange(Number(e.target.value) / 100)}
+                  className='range range-sm w-32'
+                />
+                <span className='text-base-content/70 w-12 text-end text-sm'>
+                  {Math.round(backgroundTransparency * 100)}%
+                </span>
+              </div>
+            </SettingsRow>
+            <SettingsRow label={_('Size')}>
+              <SettingsSelect
+                value={backgroundSize}
+                onChange={(e) => onSizeChange(e.target.value)}
+                ariaLabel={_('Size')}
+                options={[
+                  { value: 'auto', label: _('Auto') },
+                  { value: 'cover', label: _('Cover') },
+                  { value: 'contain', label: _('Contain') },
+                ]}
               />
-              <span className='text-base-content/70 w-12 text-end text-sm'>
-                {Math.round(backgroundTransparency * 100)}%
-              </span>
-            </div>
-          </SettingsRow>
-          <SettingsRow label={_('Size')}>
-            <SettingsSelect
-              value={backgroundSize}
-              onChange={(e) => onSizeChange(e.target.value)}
-              ariaLabel={_('Size')}
-              options={[
-                { value: 'auto', label: _('Auto') },
-                { value: 'cover', label: _('Cover') },
-                { value: 'contain', label: _('Contain') },
-              ]}
-            />
-          </SettingsRow>
-        </BoxedList>
-      )}
+            </SettingsRow>
+          </>
+        )}
+        <SettingsSwitchRow
+          label={_('Separate Background')}
+          checked={separateReader}
+          onChange={() => onSeparateReaderChange(!separateReader)}
+        />
+      </BoxedList>
     </div>
   );
 };

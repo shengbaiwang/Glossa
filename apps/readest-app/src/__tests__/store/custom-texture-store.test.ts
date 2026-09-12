@@ -446,7 +446,7 @@ describe('customTextureStore', () => {
     test('calls mountBackgroundTexture for predefined texture', async () => {
       const { mountBackgroundTexture } = await import('@/styles/textures');
       const envConfig = createMockEnvConfig();
-      await useCustomTextureStore.getState().applyTexture(envConfig, 'concrete');
+      await useCustomTextureStore.getState().applyTexture(envConfig, 'background-1');
       expect(mountBackgroundTexture).toHaveBeenCalled();
     });
   });

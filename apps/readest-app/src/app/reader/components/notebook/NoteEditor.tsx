@@ -8,11 +8,13 @@ import useShortcuts from '@/hooks/useShortcuts';
 import TextEditor, { TextEditorRef } from '@/components/TextEditor';
 
 interface NoteEditorProps {
-  onSave: (selection: TextSelection, note: string) => void;
-  onEdit: (annotation: BookNote) => void;
+  bookKey: string;
+  active: boolean;
+  onSave: (selection: TextSelection, note: string) => boolean;
+  onEdit: (annotation: BookNote) => boolean;
 }
 
-const NoteEditor: React.FC<NoteEditorProps> = ({ onSave, onEdit }) => {
+const NoteEditor: React.FC<NoteEditorProps> = ({ bookKey, active, onSave, onEdit }) => {
   const _ = useTranslation();
   const {
     notebookNewAnnotation,
@@ -20,29 +22,25 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ onSave, onEdit }) => {
     setNotebookNewAnnotation,
     setNotebookEditAnnotation,
     saveNotebookAnnotationDraft,
+    clearNotebookAnnotationDraft,
     getNotebookAnnotationDraft,
   } = useNotebookStore();
 
   const editorRef = useRef<TextEditorRef>(null);
   const [note, setNote] = useState('');
+  const draftKey = notebookEditAnnotation
+    ? `${bookKey}:note:${notebookEditAnnotation.id}`
+    : `${bookKey}:selection:${notebookNewAnnotation?.cfi ?? `${notebookNewAnnotation?.index}:${notebookNewAnnotation?.href ?? ''}:${md5Fingerprint(notebookNewAnnotation?.text ?? '')}`}`;
 
   useEffect(() => {
-    if (notebookEditAnnotation) {
-      const noteText = notebookEditAnnotation.note;
-      setNote(noteText);
-      editorRef.current?.setValue(noteText);
-      editorRef.current?.focus();
-    } else if (notebookNewAnnotation) {
-      const noteText = getAnnotationText();
-      if (noteText) {
-        const draftNote = getNotebookAnnotationDraft(md5Fingerprint(noteText)) || '';
-        setNote(draftNote);
-        editorRef.current?.setValue(draftNote);
-        editorRef.current?.focus();
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notebookNewAnnotation, notebookEditAnnotation]);
+    const draft = getNotebookAnnotationDraft(draftKey) ?? notebookEditAnnotation?.note ?? '';
+    setNote(draft);
+    editorRef.current?.setValue(draft);
+  }, [draftKey, notebookEditAnnotation, getNotebookAnnotationDraft]);
+
+  useEffect(() => {
+    if (active) editorRef.current?.focus();
+  }, [active, draftKey]);
 
   const getAnnotationText = () => {
     return notebookEditAnnotation?.text || notebookNewAnnotation?.text || '';
@@ -50,31 +48,26 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ onSave, onEdit }) => {
 
   const handleNoteChange = (value: string) => {
     setNote(value);
-  };
-
-  const handleBlur = () => {
-    const currentValue = editorRef.current?.getValue();
-    if (currentValue) {
-      const noteText = getAnnotationText();
-      if (noteText) {
-        saveNotebookAnnotationDraft(md5Fingerprint(noteText), currentValue);
-      }
-    }
+    // React does not guarantee blur on unmount. Preserve every edit in memory,
+    // including an intentionally empty draft, scoped to this book and anchor.
+    saveNotebookAnnotationDraft(draftKey, value);
   };
 
   const handleSaveNote = () => {
     const currentValue = editorRef.current?.getValue();
-    if (currentValue) {
+    if (active && currentValue?.trim()) {
+      let saved = false;
       if (notebookNewAnnotation) {
-        onSave(notebookNewAnnotation, currentValue);
+        saved = onSave(notebookNewAnnotation, currentValue);
       } else if (notebookEditAnnotation) {
-        notebookEditAnnotation.note = currentValue;
-        onEdit(notebookEditAnnotation);
+        saved = onEdit({ ...notebookEditAnnotation, note: currentValue });
       }
+      if (saved) clearNotebookAnnotationDraft(draftKey);
     }
   };
 
   const handleEscape = () => {
+    if (!active) return;
     if (notebookNewAnnotation) {
       // Clearing the selection ends the creation flow; Notebook reacts to that
       // and tears down the empty placeholder highlight it created (#4791).
@@ -85,15 +78,18 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ onSave, onEdit }) => {
     }
   };
 
-  useShortcuts({
-    onSaveNote: () => {
-      const currentValue = editorRef.current?.getValue();
-      if (currentValue) {
-        handleSaveNote();
-      }
+  useShortcuts(
+    {
+      onSaveNote: () => {
+        const currentValue = editorRef.current?.getValue();
+        if (currentValue) {
+          handleSaveNote();
+        }
+      },
+      onEscape: handleEscape,
     },
-    onEscape: handleEscape,
-  });
+    [active, draftKey, notebookNewAnnotation, notebookEditAnnotation],
+  );
 
   const canSave = Boolean(note.trim());
 
@@ -104,7 +100,6 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ onSave, onEdit }) => {
           ref={editorRef}
           value={note}
           onChange={handleNoteChange}
-          onBlur={handleBlur}
           onSave={handleSaveNote}
           onEscape={handleEscape}
           placeholder={_('Add your notes here...')}

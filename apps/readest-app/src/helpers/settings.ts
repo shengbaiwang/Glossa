@@ -8,24 +8,32 @@ import { getStyles } from '@/utils/style';
 
 /**
  * Resolve the effective background texture for the library page (issue #4743).
- * The library texture is stored separately from the reader's, but each field
- * falls back to the reader/global value when unset — so the bookshelf inherits
- * the current look until the user explicitly picks a library texture, then
- * decouples per-field. Returns a `ViewSettings` so it can be handed straight to
- * `useBackgroundTexture().applyBackgroundTexture`.
+ * By default the library and the reader share one linked background, so the
+ * library simply inherits the reader/global value. When the user opts into a
+ * separate reader background (`readerBackgroundSeparate`), the library falls
+ * back to its own `libraryBackground*` values, per-field, and only inherits a
+ * field that was never decoupled. Returns a `ViewSettings` so it can be handed
+ * straight to `useBackgroundTexture().applyBackgroundTexture`.
  */
 export const getLibraryViewSettings = (settings: SystemSettings): ViewSettings => {
   // globalViewSettings can be absent on the very first renders — the store
   // starts as `{} as SystemSettings` until appService.loadSettings() runs — so
   // every read is optional and falls back to a no-texture default.
   const globalViewSettings = settings.globalViewSettings;
+  const separate = settings.readerBackgroundSeparate === true;
   return {
     ...globalViewSettings,
-    backgroundTextureId:
-      settings.libraryBackgroundTextureId ?? globalViewSettings?.backgroundTextureId ?? 'none',
-    backgroundTransparency:
-      settings.libraryBackgroundTransparency ?? globalViewSettings?.backgroundTransparency ?? 0.4,
-    backgroundSize: settings.libraryBackgroundSize ?? globalViewSettings?.backgroundSize ?? 'cover',
+    backgroundTextureId: separate
+      ? (settings.libraryBackgroundTextureId ?? globalViewSettings?.backgroundTextureId ?? 'none')
+      : (globalViewSettings?.backgroundTextureId ?? 'none'),
+    backgroundTransparency: separate
+      ? (settings.libraryBackgroundTransparency ??
+        globalViewSettings?.backgroundTransparency ??
+        0.4)
+      : (globalViewSettings?.backgroundTransparency ?? 0.4),
+    backgroundSize: separate
+      ? (settings.libraryBackgroundSize ?? globalViewSettings?.backgroundSize ?? 'cover')
+      : (globalViewSettings?.backgroundSize ?? 'cover'),
   };
 };
 
@@ -33,9 +41,8 @@ export type BackgroundTextureScope = 'library' | 'reader';
 
 /**
  * Resolve the three background-texture fields for one scope of the Settings →
- * Theme picker (issue #5306). 'library' resolves exactly like the library page
- * (per-field inheritance, see getLibraryViewSettings); 'reader' reads the open
- * book's view settings when provided, else the global defaults.
+ * Theme picker. 'library' resolves exactly like the library page; 'reader'
+ * reads the open book's view settings when provided, else the global defaults.
  */
 export const getBackgroundTextureSettings = (
   scope: BackgroundTextureScope,

@@ -1,11 +1,14 @@
+@import './glossa-conversation.css';
 /* Glossa: the icon's rounded ink strokes, carried through the application.
    All surfaces derive from the selected theme, including custom palettes. */
 :root {
   --glossa-ink: theme('colors.base-content');
   --glossa-muted: theme('colors.neutral-content');
+  --glossa-faint: theme('colors.base-content / 0.55');
   --glossa-border: theme('colors.base-content / 0.13');
   --glossa-surface: theme('colors.base-100');
   --glossa-wash: theme('colors.base-200');
+  --glossa-group: color-mix(in srgb, theme('colors.base-200') 96%, white 4%);
   --glossa-focus: theme('colors.base-content / 0.65');
   --glossa-radius: 12px;
   --glossa-radius-lg: 20px;
@@ -141,6 +144,7 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
 
 [data-eink='true'] {
   --glossa-muted: theme('colors.base-content');
+  --glossa-faint: theme('colors.base-content');
   --glossa-border: theme('colors.base-content');
   --glossa-shadow: none;
   --glossa-focus: theme('colors.base-content');
@@ -165,151 +169,15 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
   }
 }
 
-/* Chapter notes use the same paper, ink and quiet controls as the reader. */
-.glossa-study-panel {
-  color: var(--glossa-ink);
-  overflow-wrap: anywhere;
+/* The guide and excerpts share the reader's notebook chrome. */
+.glossa-notebook-content {
+  overscroll-behavior: contain;
 }
 
-.glossa-study-muted,
-.glossa-study-label {
-  color: var(--glossa-muted);
-}
-
-.glossa-study-label {
-  display: block;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.glossa-study-input {
-  min-height: 40px;
-  border: 1px solid var(--glossa-border);
-  border-radius: var(--glossa-radius);
-  padding: 10px 12px;
+.glossa-notebook-tabs .glossa-reader-tab[aria-selected='true'] {
   background: var(--glossa-surface);
   color: var(--glossa-ink);
-  font-size: 0.8125rem;
-  line-height: 1.6;
-}
-
-.glossa-study-input:disabled {
-  opacity: 0.55;
-}
-
-.glossa-study-text-button {
-  min-height: 32px;
-  border-radius: 6px;
-  color: var(--glossa-ink);
-  font-size: 0.75rem;
-  text-decoration: underline;
-  text-decoration-color: var(--glossa-border);
-  text-underline-offset: 4px;
-}
-
-.glossa-study-callout,
-.glossa-study-source {
-  padding: 12px;
-  border: 1px solid var(--glossa-border);
-  border-radius: var(--glossa-radius);
-  background: var(--glossa-surface);
-}
-
-.glossa-study-source blockquote {
-  max-height: 180px;
-  overflow-y: auto;
-  padding-inline-start: 10px;
-  border-inline-start: 2px solid var(--glossa-border);
-  font-size: 0.8125rem;
-  line-height: 1.9;
-  white-space: pre-wrap;
-}
-
-.glossa-study-progress {
-  height: 3px;
-  accent-color: var(--glossa-ink);
-}
-
-.glossa-study-empty > svg {
-  color: var(--glossa-muted);
-}
-
-.glossa-study-document {
-  font-size: 0.875rem;
-  line-height: 1.95;
-}
-
-.glossa-study-document h3 {
-  margin-block: 8px 16px;
-  font-size: 1.125rem;
-  font-weight: 600;
-  line-height: 1.6;
-}
-
-.glossa-study-document h4 {
-  margin-block: 24px 10px;
-  font-size: 0.875rem;
-  font-weight: 600;
-  line-height: 1.6;
-}
-
-.glossa-study-document p {
-  margin-block: 10px;
-  white-space: pre-wrap;
-}
-
-.glossa-study-references {
-  display: inline;
-  margin-inline-start: 3px;
-}
-
-.glossa-study-reference {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 24px;
-  min-height: 28px;
-  margin-inline: 2px;
-  padding-inline: 5px;
-  border: 1px solid var(--glossa-border);
-  border-radius: 6px;
-  color: var(--glossa-ink);
-  background: var(--glossa-surface);
-  font-size: 0.6875rem;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-  vertical-align: middle;
-}
-
-.glossa-study-inference {
-  margin-inline-end: 6px;
-  color: var(--glossa-muted);
-  font-size: 0.6875rem;
-  font-weight: 600;
-}
-
-.glossa-study-questions details {
-  padding-block: 12px;
-  border-bottom: 1px solid var(--glossa-border);
-}
-
-.glossa-study-questions summary {
-  cursor: pointer;
-  font-size: 0.8125rem;
-  font-weight: 500;
-}
-
-.glossa-study-personal {
-  padding-top: 20px;
-  border-top: 1px solid var(--glossa-border);
-}
-
-@media (pointer: coarse) {
-  .glossa-study-reference,
-  .glossa-study-text-button {
-    min-height: 44px;
-    min-width: 44px;
-  }
+  box-shadow: none;
 }
 
 /* Reading colors: rounded paper tiles, borrowing the app icon's shape and space. */
@@ -552,12 +420,31 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
 .glossa-font-preview-latin {
   color: var(--glossa-muted);
 }
-.glossa-font-card {
-  border-radius: var(--glossa-radius);
-  border-color: var(--glossa-border);
+/* Grouped settings lists: a faint raised surface with text-aligned dividers.
+   The panel behind is base-200, so the group lifts ~4% toward white and drops
+   the outline — grouping reads from fill and rhythm, not a border. Dividers
+   start at the text column (16px) rather than the card edge. */
+.glossa-group-card {
+  background: var(--glossa-group);
 }
-.glossa-font-card > div {
-  border-radius: inherit;
+
+.glossa-group > :not(:first-child) {
+  position: relative;
+}
+
+.glossa-group > :not(:first-child)::before {
+  content: '';
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 16px;
+  inset-inline-end: 0;
+  block-size: 1px;
+  background: color-mix(in srgb, var(--glossa-ink) 9%, transparent);
+  pointer-events: none;
+}
+
+[data-eink='true'] .glossa-group > :not(:first-child)::before {
+  background: var(--glossa-ink);
 }
 .glossa-font-trigger {
   border-radius: var(--glossa-radius);
@@ -714,4 +601,188 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
   .glossa-font-number {
     flex-wrap: wrap;
   }
+}
+
+/* Passage guides keep the reading rhythm in one quiet, text-led column. */
+.glossa-guide-panel {
+  padding: 16px 18px 32px;
+  color: var(--glossa-ink);
+  font-size: 14px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.glossa-guide-intro,
+.glossa-guide-message,
+.glossa-guide-range {
+  font-size: 12px;
+  color: var(--glossa-muted);
+}
+.glossa-guide-intro {
+  margin-block-end: 18px;
+}
+.glossa-guide-label {
+  display: block;
+  margin-block-end: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.glossa-guide-select {
+  display: block;
+  inline-size: 100%;
+  min-block-size: 44px;
+  min-inline-size: 0;
+  border: 1px solid var(--glossa-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: var(--glossa-ink);
+  background: var(--glossa-surface);
+  font: inherit;
+  font-size: 13px;
+  text-overflow: ellipsis;
+}
+.glossa-guide-chapter,
+.glossa-guide-passage {
+  margin-block-start: 16px;
+}
+.glossa-guide-range p {
+  margin-block-start: 4px;
+}
+.glossa-guide-range summary {
+  min-block-size: 44px;
+  padding-block: 10px;
+  color: var(--glossa-ink);
+  font-weight: 500;
+  cursor: pointer;
+}
+.glossa-guide-actions {
+  margin-block: 14px;
+}
+.glossa-guide-text-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-block-size: 44px;
+  min-inline-size: 44px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  color: var(--glossa-ink);
+  font-size: 12px;
+  text-align: start;
+}
+.glossa-guide-text-button:hover:not(:disabled),
+.glossa-guide-reference:hover:not(:disabled) {
+  background: var(--glossa-wash);
+}
+.glossa-guide-text-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.glossa-guide-model {
+  justify-content: flex-start;
+  max-inline-size: 100%;
+}
+.glossa-guide-generate {
+  inline-size: 100%;
+  min-block-size: 44px;
+  margin-block-start: 12px;
+}
+.glossa-guide-message {
+  margin-block: 10px;
+}
+.glossa-guide-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+.glossa-guide-document {
+  padding-block-start: 8px;
+  margin-block-start: 14px;
+  font-size: 14px;
+  line-height: 1.85;
+}
+.glossa-guide-document p {
+  margin-block: 0 14px;
+  white-space: pre-line;
+}
+.glossa-guide-document h3 {
+  font-size: 12px;
+  font-weight: 600;
+  margin-block-end: 6px;
+}
+.glossa-guide-cue {
+  margin-block: 18px;
+}
+.glossa-guide-difficulty {
+  border-block-start: 1px solid var(--glossa-border);
+}
+.glossa-guide-difficulty summary {
+  min-block-size: 44px;
+  padding-block: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.glossa-guide-difficulty > p {
+  padding-block-end: 8px;
+}
+.glossa-guide-inference {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+}
+.glossa-guide-references {
+  display: inline;
+  white-space: normal;
+}
+.glossa-guide-reference {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  vertical-align: middle;
+}
+.glossa-guide-source {
+  margin-block-start: 14px;
+  border: 1px solid var(--glossa-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.glossa-guide-source blockquote {
+  margin-block-start: 8px;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+.glossa-guide-panel :is(button, select, summary):focus-visible {
+  outline: 2px solid var(--glossa-focus);
+  outline-offset: 2px;
+}
+[data-eink='true'] :is(.glossa-guide-intro, .glossa-guide-message, .glossa-guide-range) {
+  color: var(--glossa-ink);
+}
+[data-eink='true'] .glossa-guide-difficulty {
+  border-color: var(--glossa-ink);
+}
+[data-eink='true'] .glossa-guide-panel :is(button, select) {
+  box-shadow: none;
+  transition: none;
+}
+[data-eink='true'] .glossa-guide-text-button:disabled {
+  opacity: 1;
+  text-decoration: line-through;
+}
+
+.glossa-guide-related {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  margin-block-start: 6px;
 }

@@ -66,6 +66,29 @@ export function NotebookPen(props: GlossaIconProps) {
   );
 }
 
+export function MessageCircle(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <path d='M20 11.5a7.5 7.5 0 0 1-7.5 7.5H8l-4 2v-5a7.5 7.5 0 0 1 1-10.5A8.5 8.5 0 0 1 20 11.5Z' />
+      <path d='M8 9h8M9.5 13h5' />
+    </Icon>
+  );
+}
+export function ArrowUp(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <path d='M12 19V5m-6 6 6-6 6 6' />
+    </Icon>
+  );
+}
+export function Square(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <rect x='6' y='6' width='12' height='12' rx='2' fill='currentColor' />
+    </Icon>
+  );
+}
+
 export function Type(props: GlossaIconProps) {
   return (
     <Icon {...props}>

@@ -50,14 +50,13 @@ export type CustomTextureInfo = Partial<BackgroundTexture> &
 
 export const PREDEFINED_TEXTURES: BackgroundTexture[] = [
   { id: 'none', name: 'None', url: '', loaded: true },
-  { id: 'concrete', name: 'Concrete', url: '/images/concrete-texture.png', loaded: true },
-  { id: 'paper', name: 'Paper', url: '/images/paper-texture.png', loaded: true },
-  { id: 'sand', name: 'Sand', url: '/images/sand-texture.jpg', loaded: true },
-  { id: 'parchment', name: 'Parchment', url: '/images/parchment-paper.jpg', loaded: true },
-  { id: 'scrapbook', name: 'Scrapbook', url: '/images/scrapbook-texture.jpg', loaded: true },
-  { id: 'leaves', name: 'Leaves', url: '/images/leaves-pattern.jpg', loaded: true },
-  { id: 'moon', name: 'Moon Sky', url: '/images/moon-sky.jpg', loaded: true },
-  { id: 'night-sky', name: 'Night Sky', url: '/images/night-sky.jpg', loaded: true },
+  { id: 'background-1', name: 'Background 1', url: '/images/background-1.png', loaded: true },
+  { id: 'background-2', name: 'Background 2', url: '/images/background-2.png', loaded: true },
+  { id: 'background-3', name: 'Background 3', url: '/images/background-3.png', loaded: true },
+  { id: 'background-4', name: 'Background 4', url: '/images/background-4.png', loaded: true },
+  { id: 'background-5', name: 'Background 5', url: '/images/background-5.png', loaded: true },
+  { id: 'background-6', name: 'Background 6', url: '/images/background-6.png', loaded: true },
+  { id: 'background-7', name: 'Background 7', url: '/images/background-7.png', loaded: true },
 ];
 
 export function getTextureName(path: string): string {

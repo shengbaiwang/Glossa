@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { BookNote } from '@/types/book';
 import { TextSelection } from '@/utils/sel';
 
-export type NotebookTab = 'notes' | 'ai';
+export type NotebookTab = 'notes' | 'guide' | 'conversation';
 
 interface NotebookState {
   notebookWidth: string;
@@ -28,6 +28,7 @@ interface NotebookState {
   setNotebookNewHighlightId: (id: string | null) => void;
   setNotebookEditAnnotation: (note: BookNote | null) => void;
   saveNotebookAnnotationDraft: (key: string, note: string) => void;
+  clearNotebookAnnotationDraft: (key: string) => void;
   getNotebookAnnotationDraft: (key: string) => string | undefined;
 }
 
@@ -35,7 +36,7 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
   notebookWidth: '',
   isNotebookVisible: false,
   isNotebookPinned: false,
-  notebookActiveTab: 'notes',
+  notebookActiveTab: 'guide',
   notebookNewAnnotation: null,
   notebookNewHighlightId: null,
   notebookEditAnnotation: null,
@@ -49,12 +50,25 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
   setNotebookPin: (pinned: boolean) => set({ isNotebookPinned: pinned }),
   setNotebookActiveTab: (tab: NotebookTab) => set({ notebookActiveTab: tab }),
   setNotebookNewAnnotation: (selection: TextSelection | null) =>
-    set({ notebookNewAnnotation: selection }),
+    set((state) => ({
+      notebookNewAnnotation: selection,
+      notebookActiveTab: selection ? 'notes' : state.notebookActiveTab,
+    })),
   setNotebookNewHighlightId: (id: string | null) => set({ notebookNewHighlightId: id }),
-  setNotebookEditAnnotation: (note: BookNote | null) => set({ notebookEditAnnotation: note }),
+  setNotebookEditAnnotation: (note: BookNote | null) =>
+    set((state) => ({
+      notebookEditAnnotation: note,
+      notebookActiveTab: note ? 'notes' : state.notebookActiveTab,
+    })),
   saveNotebookAnnotationDraft: (key: string, note: string) =>
     set((state) => ({
       notebookAnnotationDrafts: { ...state.notebookAnnotationDrafts, [key]: note },
     })),
+  clearNotebookAnnotationDraft: (key: string) =>
+    set((state) => {
+      const drafts = { ...state.notebookAnnotationDrafts };
+      delete drafts[key];
+      return { notebookAnnotationDrafts: drafts };
+    }),
   getNotebookAnnotationDraft: (key: string) => get().notebookAnnotationDrafts[key],
 }));

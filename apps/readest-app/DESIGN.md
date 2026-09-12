@@ -51,6 +51,37 @@ Implementation: `src/styles/glossa.css`, `glossa-library.css`, `glossa-reader.cs
 
 ### Glossa reading interactions — 2026-09-09
 
+Reading guidance lives in the independent trailing Notebook pane. Use the short
+Conversation / Guide / Excerpts tabs and the existing book identity. The guide starts with the local table
+of contents; after a chapter choice, offer bounded passages with an original-text
+preview. Only an explicit generate action sends the selected passage to the model.
+Show a compact orientation and one reading cue; at most two difficulties use native,
+initially closed disclosures. Distinguish original claims, interpretations and
+minimal background explanations. Sources reveal locally verified text and support
+navigation back to the reading position. Keep model setup secondary and preserve
+valid results through retryable errors. Closing or switching away cancels work;
+there is no automatic next passage, whole-book report, quiz or AI notes version UI.
+Use the existing paper/ink tokens, quiet controls and readable spacing. Preserve
+keyboard, narrow-screen, RTL, e-ink, source-return and resize behavior.
+
+Conversation (2026-09-11) uses the same paper/ink system and a persistent bottom
+composer. Its desktop pane sits beside the book even when unpinned. A visible,
+context area shows the book title, author, current chapter and reading position at
+all times. A collapsed materials control selects scope and a 2k/4k/8k character
+budget (2k default); an excerpt checklist shows exact included/excluded materials.
+The input stays visible while the materials area scrolls. Default to the actual visible page; allow a paragraph, a user-chosen
+section/article/chapter from the book's own outline, or whole-book local retrieval.
+Allow up to four outline entries together. Preserve the sent materials after a
+successful reply for follow-ups until the reader changes them; show and allow
+disabling the bounded summary, and retain a per-reply materials receipt.
+Show the exact excerpts before sending, and label sampled evidence and expanded
+unread scope. Choosing context does not start the model. Distinguish source-backed
+paragraphs, interpretations, background and insufficient evidence; verify quotes
+locally before source navigation. Keep suggestions optional, replies short, stop
+and retry available, and per-book conversation history on this device. Do not
+silently treat whole-book scope as proof of complete coverage. See
+`../../docs/design/conversation.md` for boundaries and the Gemini reference.
+
 - Draw core icons on a 24-unit grid with consistent 1.8-unit rounded ink strokes.
   Use open silhouettes and the mark's interlinear rhythm; avoid decorated notebooks,
   starred bookmarks or pictorial empty-state badges. Reuse `GlossaIcons` across
@@ -506,15 +537,19 @@ rather than inlining the chassis classes:
 The primitive renders:
 
 ```tsx
-<div className='card eink-bordered border-base-200 bg-base-100 border'>
-  <div className='divide-base-200 divide-y'>{children}</div>
+<div className='card eink-bordered glossa-group-card rounded-xl'>
+  <div className='glossa-group ps-4'>{children}</div>
 </div>
 ```
 
-- `card` for the radius
-- `border border-base-200` for the boundary (eink upgrades this automatically)
+- `card` for the flex-column chassis
+- `rounded-xl` for the 12px radius, matching `--glossa-radius`
+- `glossa-group-card` for the faint raised fill (`base-200` lifted ~4% toward
+  white via `--glossa-group`) — **no outline in normal mode**
 - `eink-bordered` for the e-ink-mode contrast border
-- `divide-base-200 divide-y` for inter-row separators
+- `glossa-group ps-4` for the text-aligned hairline separators: a 1px rule at
+  9% ink that starts at the 16px text column (`inset-inline-start: 16px`), not
+  the card edge
 
 > **No `overflow-hidden` on the card.** Children may host popovers (color
 > pickers, dropdowns, tooltips) that need to escape the card bounds. The
