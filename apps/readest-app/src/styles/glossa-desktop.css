@@ -134,14 +134,15 @@
   }
 
   .glossa-library-heading h1 {
-    font-size: 26px;
-    font-weight: 650;
+    font-size: var(--glossa-text-page-title);
+    line-height: var(--glossa-leading-title);
+    font-weight: var(--glossa-weight-title);
     letter-spacing: -0.6px;
   }
 
   .glossa-recent-heading h2,
   .glossa-collection-heading h2 {
-    font-size: 15px;
+    font-size: var(--glossa-text-subheading);
     letter-spacing: -0.2px;
   }
 

@@ -1,0 +1,390 @@
+/* Shared app chrome roles. Book typography, reading insets, previews and
+   user-sized chat/map content remain owned by their respective surfaces. */
+:root {
+  --glossa-text-page-title: 26px;
+  --glossa-text-dialog-title: 16px;
+  --glossa-text-section: 12px;
+  --glossa-text-subheading: 15px;
+  --glossa-text-body: 14px;
+  --glossa-text-compact: 13px;
+  --glossa-text-caption: 12px;
+  --glossa-leading-title: 1.35;
+  --glossa-leading-ui: 1.5;
+  --glossa-weight-title: 600;
+  --glossa-weight-label: 500;
+  --glossa-space-inline: 8px;
+  --glossa-space-row: 12px;
+  --glossa-inset-panel: 16px;
+  --glossa-inset-dialog: 24px;
+  --glossa-space-section: 24px;
+  --glossa-row-settings: 56px;
+  --glossa-row-menu: 36px;
+  --glossa-field-height: 36px;
+  --glossa-field-compact: 32px;
+  --glossa-hover: color-mix(in srgb, var(--glossa-ink) 7%, transparent);
+  --glossa-selected: color-mix(in srgb, var(--glossa-ink) 13%, transparent);
+  --glossa-disabled-opacity: 0.45;
+}
+
+.settings-content {
+  color: var(--glossa-ink);
+  font-size: var(--glossa-text-body);
+  line-height: var(--glossa-leading-ui);
+}
+.glossa-setting-label {
+  color: var(--glossa-ink);
+  font-size: inherit;
+  font-weight: 400;
+  line-height: var(--glossa-leading-ui);
+}
+.glossa-section-title {
+  color: var(--glossa-muted);
+  font-size: var(--glossa-text-section);
+  font-weight: var(--glossa-weight-label);
+  line-height: var(--glossa-leading-ui);
+  letter-spacing: normal;
+}
+.glossa-supporting-text {
+  color: var(--glossa-muted);
+  font-size: var(--glossa-text-caption);
+  font-weight: 400;
+  line-height: var(--glossa-leading-ui);
+}
+.glossa-dialog-title {
+  color: var(--glossa-ink);
+  font-size: var(--glossa-text-dialog-title);
+  font-weight: var(--glossa-weight-title);
+  line-height: var(--glossa-leading-title);
+}
+.glossa-settings-row {
+  min-height: var(--glossa-row-settings);
+  column-gap: var(--glossa-space-row);
+  padding-inline-end: var(--glossa-inset-panel);
+  padding-block: 8px;
+}
+.glossa-settings-row.glossa-navigation-row {
+  min-height: 64px;
+  border-radius: var(--glossa-radius-nested);
+}
+.glossa-settings-row > :last-child {
+  min-width: 0;
+}
+
+/* Menu rows remain full-width targets; checkmarks identify choices. Opening
+   a submenu may highlight its trigger, but executing an action never selects it. */
+.glossa-menu-surface,
+.glossa-chat-panel :is(.glossa-chat-menu, .glossa-chat-session-menu, .glossa-chat-model-menu),
+.glossa-workmap .glossa-workmap-menu-items {
+  padding: 6px;
+  border: 1px solid var(--glossa-border);
+  border-radius: var(--glossa-radius);
+  background: var(--glossa-surface);
+  color: var(--glossa-ink);
+  box-shadow: var(--glossa-shadow);
+  font-size: var(--glossa-text-body);
+  line-height: var(--glossa-leading-ui);
+}
+.glossa-menu-item.glossa-menu-item,
+.glossa-choice-row {
+  min-height: var(--glossa-row-menu);
+  padding-block: 7px;
+  border-radius: var(--glossa-radius-nested);
+  color: var(--glossa-ink);
+  font-size: var(--glossa-text-body);
+  font-weight: 400;
+  line-height: var(--glossa-leading-ui);
+  text-align: start;
+}
+.glossa-menu-label {
+  font: inherit;
+}
+.glossa-menu-item kbd {
+  border: 0;
+  background: transparent;
+  color: var(--glossa-muted);
+  box-shadow: none;
+  font-size: var(--glossa-text-caption);
+  font-weight: 400;
+}
+.glossa-menu-separator,
+:is(.menu-container, .dropdown-content) hr {
+  height: 1px;
+  border: 0;
+  background: var(--glossa-border);
+  margin-block: 6px;
+}
+.glossa-choice-row:is([data-state='checked'], [aria-selected='true']),
+.glossa-menu-item[aria-checked='true'] {
+  background: var(--glossa-selected);
+}
+@media (hover: hover) {
+  .glossa-menu-item:not(:disabled):not([aria-disabled='true']):hover,
+  .glossa-choice-row:not([data-disabled]):hover,
+  .glossa-navigation-row:not(:disabled):hover {
+    background: var(--glossa-hover);
+  }
+  .glossa-menu-item[aria-checked='true']:not(:disabled):hover,
+  .glossa-choice-row[data-state='checked']:not([data-disabled]):hover {
+    background: var(--glossa-selected);
+  }
+}
+.glossa-choice-row[data-highlighted] {
+  background: var(--glossa-hover);
+  outline: 2px solid var(--glossa-focus);
+  outline-offset: -2px;
+}
+
+/* Complete forms have framed fields; values attached to settings rows stay
+   transparent. Both roles have a visible keyboard boundary. */
+.glossa-field,
+:is(.settings-content, .modal-box)
+  :is(.input, .select, .textarea):not(.glossa-value-input):not([type='color']) {
+  min-height: var(--glossa-field-height);
+  border: 1px solid var(--glossa-border);
+  border-radius: var(--glossa-radius-nested);
+  background-color: var(--glossa-surface);
+  color: var(--glossa-ink);
+  font-size: var(--glossa-text-body);
+  font-weight: 400;
+  line-height: var(--glossa-leading-ui);
+  box-shadow: none;
+}
+:is(.settings-content, .modal-box) :is(input, textarea)::placeholder,
+.glossa-field::placeholder {
+  color: var(--glossa-muted);
+  opacity: 1;
+}
+.glossa-value-select {
+  border-radius: var(--glossa-radius-nested);
+  min-height: var(--glossa-field-height);
+  color: var(--glossa-muted);
+}
+.glossa-value-input {
+  height: var(--glossa-field-height);
+  min-height: var(--glossa-field-height);
+  border-radius: var(--glossa-radius-nested);
+  color: var(--glossa-ink);
+  font-size: var(--glossa-text-body);
+  line-height: var(--glossa-leading-ui);
+}
+.glossa-value-select:has(select:focus-visible),
+.glossa-slider:has(input:focus-visible) {
+  outline: 2px solid var(--glossa-focus);
+  outline-offset: 2px;
+}
+/* The wrapper owns a select/slider's focus ring, so it cannot be clipped by
+   the value cell or made invisible by the slider input's opacity. */
+.glossa-value-select select:focus-visible {
+  outline: none !important;
+}
+.glossa-toggle.toggle {
+  color: var(--glossa-ink);
+  border-color: var(--glossa-border);
+  --tglbg: var(--glossa-surface);
+}
+.glossa-toggle.toggle:checked {
+  border-color: var(--glossa-ink);
+  background-color: var(--glossa-ink);
+  --tglbg: var(--glossa-surface);
+}
+.glossa-slider.slider {
+  color: var(--glossa-ink);
+  border-radius: var(--glossa-radius);
+}
+
+/* One visible focus treatment. Scoped to chrome and shared controls; never
+   apply app typography or control dimensions to the book's document. */
+:is(.settings-content, .glossa-dialog-card, .glossa-menu-surface)
+  :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible,
+:is(
+  .glossa-field,
+  .glossa-action,
+  .glossa-value-input,
+  .glossa-menu-item,
+  .glossa-toggle,
+  .glossa-navigation-row
+):focus-visible {
+  outline: 2px solid var(--glossa-focus);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+:is(.glossa-menu-item, .glossa-navigation-row):focus-visible {
+  outline-offset: -2px;
+}
+:is(.glossa-action, .glossa-field, .glossa-value-input, .glossa-toggle, .glossa-menu-item):disabled,
+.glossa-choice-row[data-disabled],
+.glossa-menu-item[aria-disabled='true'] {
+  opacity: var(--glossa-disabled-opacity);
+  cursor: default;
+}
+/* A disabled settings row dims as a unit, without multiplying child opacity. */
+.glossa-settings-row:has(:disabled) .glossa-toggle:disabled {
+  opacity: 1;
+}
+:is(.glossa-field, .glossa-value-input, .input, .textarea, .select)[aria-invalid='true'] {
+  border-color: theme('colors.error');
+}
+
+.glossa-dialog-card {
+  padding: var(--glossa-inset-dialog);
+  gap: 16px;
+  max-width: min(32rem, calc(100vw - 32px));
+  border: 1px solid var(--glossa-border);
+  border-radius: var(--glossa-radius-lg);
+  background: var(--glossa-surface);
+  color: var(--glossa-ink);
+  box-shadow: var(--glossa-shadow);
+  font-size: var(--glossa-text-body);
+  line-height: var(--glossa-leading-ui);
+}
+.glossa-dialog-card .glossa-dialog-heading {
+  padding-inline-end: 28px;
+}
+.glossa-dialog-surface .glossa-dialog-body {
+  padding-inline: var(--glossa-inset-dialog);
+}
+.glossa-dialog-actions,
+.modal-action {
+  gap: var(--glossa-space-inline);
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.glossa-action {
+  min-height: var(--glossa-field-height);
+  border-radius: var(--glossa-radius-nested);
+  gap: var(--glossa-space-inline);
+  font-size: var(--glossa-text-body);
+  font-weight: var(--glossa-weight-label);
+  line-height: var(--glossa-leading-ui);
+  box-shadow: none;
+}
+.glossa-action[data-variant='default'] {
+  background: var(--glossa-ink);
+  color: var(--glossa-surface);
+}
+.glossa-action:is([data-variant='secondary'], [data-variant='outline'], [data-variant='ghost']) {
+  background: transparent;
+  color: var(--glossa-ink);
+}
+.glossa-action[data-variant='outline'] {
+  border-color: var(--glossa-border);
+}
+.glossa-action[data-size='sm'] {
+  min-height: var(--glossa-field-compact);
+  font-size: var(--glossa-text-compact);
+}
+.glossa-action[data-size='icon-sm'] {
+  min-height: var(--glossa-target-tool);
+}
+@media (hover: hover) {
+  .glossa-action:not(:disabled):is(
+    [data-variant='secondary'],
+    [data-variant='outline'],
+    [data-variant='ghost']
+  ):hover {
+    background: var(--glossa-hover);
+  }
+}
+@media (max-width: 768px) {
+  :root {
+    --glossa-text-body: 16px;
+  }
+}
+@media (pointer: coarse) {
+  :root {
+    --glossa-row-menu: 44px;
+    --glossa-field-height: 44px;
+    --glossa-field-compact: 44px;
+  }
+  .glossa-action,
+  .glossa-action[data-size='icon-sm'] {
+    min-height: 44px;
+  }
+}
+[data-eink='true']
+  :is(
+    .glossa-dialog-card,
+    .glossa-menu-surface,
+    .glossa-field,
+    .glossa-value-select,
+    .glossa-slider
+  ) {
+  border: 1px solid var(--glossa-ink);
+  box-shadow: none;
+}
+[data-eink='true']
+  :is(.glossa-choice-row[data-state='checked'], .glossa-menu-item[aria-checked='true']) {
+  outline: 1px solid var(--glossa-ink);
+  outline-offset: -1px;
+}
+[data-eink='true'] :is(.glossa-action, .glossa-toggle, .glossa-choice-row) {
+  transition: none;
+}
+
+/* Same menu role inside compact workspaces; surrounding toolbar typography
+   stays 13px, independently of the menu's 14/16px text. */
+.glossa-chat-panel
+:is(.glossa-chat-menu-option, .glossa-chat-session-menu button, .glossa-chat-model-options button),
+.glossa-workmap .glossa-workmap-menu-items > button {
+  min-height: var(--glossa-row-menu);
+  border-radius: var(--glossa-radius-nested);
+  font-size: var(--glossa-text-body);
+  line-height: var(--glossa-leading-ui);
+  gap: var(--glossa-space-inline);
+  padding-block: 7px;
+}
+.glossa-chat-panel .glossa-chat-model-menu {
+  padding: 12px;
+}
+.glossa-chat-panel .glossa-chat-toolbar,
+.glossa-workmap
+  :is(
+    .glossa-workmap-header,
+    .glossa-workmap-toolbar,
+    .glossa-workmap-footer,
+    .glossa-workmap-context
+  ) {
+  padding-inline: var(--glossa-inset-panel);
+}
+.glossa-dialog-surface .dialog-header {
+  padding-inline: var(--glossa-inset-panel);
+}
+.modal-action > .btn:not(.btn-circle):not(.glossa-icon-button) {
+  min-height: var(--glossa-field-height);
+  height: auto;
+  padding: 8px 16px;
+  border-radius: var(--glossa-radius-nested);
+  font-size: var(--glossa-text-body);
+  line-height: var(--glossa-leading-ui);
+  font-weight: var(--glossa-weight-label);
+  box-shadow: none;
+}
+@media (hover: hover) {
+  .glossa-chat-panel
+    :is(
+      .glossa-chat-menu-option,
+      .glossa-chat-session-menu button,
+      .glossa-chat-model-options button
+    ):not(:disabled):hover,
+  .glossa-workmap .glossa-workmap-menu-items > button:not(:disabled):hover {
+    background: var(--glossa-hover);
+  }
+}
+.glossa-value-input[aria-invalid='true'] {
+  outline: 1px solid theme('colors.error');
+  outline-offset: 1px;
+}
+/* Full-height task sheets retain their scrolling chassis and safe areas. */
+.glossa-dialog-surface.modal-box {
+  border: 1px solid var(--glossa-border);
+  box-shadow: var(--glossa-shadow);
+}
+@media (min-width: 640px) {
+  .glossa-dialog-surface.modal-box {
+    border-radius: var(--glossa-radius-lg);
+  }
+}
+[data-eink='true'] .glossa-dialog-surface.modal-box {
+  box-shadow: none;
+}

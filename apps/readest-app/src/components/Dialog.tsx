@@ -219,7 +219,7 @@ const Dialog: React.FC<DialogProps> = ({
       />
       <div
         className={clsx(
-          'modal-box settings-content absolute z-20 flex flex-col rounded-none rounded-tl-2xl rounded-tr-2xl p-0 sm:rounded-2xl',
+          'glossa-dialog-surface modal-box settings-content absolute z-20 flex flex-col rounded-none rounded-tl-2xl rounded-tr-2xl p-0 sm:rounded-2xl',
           'h-full max-h-full w-full max-w-full',
           window.innerWidth < window.innerHeight
             ? 'sm:h-[50%] sm:w-3/4'
@@ -270,14 +270,14 @@ const Dialog: React.FC<DialogProps> = ({
                 )}
               </button>
               <div className='z-15 pointer-events-none absolute inset-0 flex h-11 items-center justify-center'>
-                <span className='line-clamp-1 text-center font-bold'>{title ?? ''}</span>
+                <span className='glossa-dialog-title line-clamp-1 text-center'>{title ?? ''}</span>
               </div>
               <button
                 aria-label={_('Close')}
                 aria-hidden={!isOpen}
                 onClick={onClose}
                 disabled={!dismissible}
-                className={'glossa-icon-button glossa-tool-icon ml-auto hidden sm:flex'}
+                className={'glossa-icon-button glossa-tool-icon ms-auto hidden sm:flex'}
               >
                 <X className='h-4 w-4' />
               </button>
@@ -291,7 +291,10 @@ const Dialog: React.FC<DialogProps> = ({
           // padding chassis so the body still occupies remaining height
           // and the children's horizontal rhythm is unchanged.
           <OverlayScrollbarsComponent
-            className={clsx('text-base-content my-2 flex-grow px-6 sm:px-[10%]', contentClassName)}
+            className={clsx(
+              'glossa-dialog-body text-base-content my-2 flex-grow px-6 sm:px-[10%]',
+              contentClassName,
+            )}
             options={{
               scrollbars: { autoHide: 'scroll', clickScroll: true },
               showNativeOverlaidScrollbars: false,
@@ -303,7 +306,7 @@ const Dialog: React.FC<DialogProps> = ({
         ) : (
           <div
             className={clsx(
-              'text-base-content my-2 flex-grow overflow-y-auto px-6 sm:px-[10%]',
+              'glossa-dialog-body text-base-content my-2 flex-grow overflow-y-auto px-6 sm:px-[10%]',
               contentClassName,
             )}
           >

@@ -253,13 +253,13 @@ const TransferQueuePanel: React.FC = () => {
       <div
         ref={divRef}
         className={clsx(
-          'modal-box bg-base-100 relative flex max-h-[85%] min-h-[65%] w-[95%] flex-col rounded-2xl p-0 shadow-xl',
+          'glossa-dialog-surface modal-box bg-base-100 relative flex max-h-[85%] min-h-[65%] w-[95%] flex-col rounded-2xl p-0 shadow-xl',
           'min-w-64 max-w-lg overflow-hidden',
         )}
       >
         {/* Header */}
         <div className='border-base-300 flex items-center justify-between border-b p-4'>
-          <h2 className='text-lg font-semibold'>{_('Transfer Queue')}</h2>
+          <h2 className='glossa-dialog-title'>{_('Transfer Queue')}</h2>
           <div className='flex items-center gap-2'>
             {readestStorageActive && booksToUpload.length > 0 && (
               <button

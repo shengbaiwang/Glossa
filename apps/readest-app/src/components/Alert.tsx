@@ -41,20 +41,20 @@ const Alert: React.FC<{
         // defeating `justify-end`. We want a plain flex-column surface.
         className={clsx(
           'flex flex-col gap-3',
-          'bg-base-300 rounded-lg p-4 shadow-2xl',
+          'glossa-dialog-card',
           'w-full max-w-md sm:max-w-lg md:max-w-xl',
         )}
       >
         <div className='labels flex items-start gap-3'>
           <Info className='text-info mt-0.5 h-6 w-6 shrink-0' />
           <div className='flex min-w-0 flex-col gap-1'>
-            <h3 className='text-start text-sm font-medium'>{title}</h3>
-            <div className='text-start text-sm'>{message}</div>
+            <h3 className='glossa-dialog-title text-start'>{title}</h3>
+            <div className='text-start'>{message}</div>
           </div>
         </div>
         {children}
-        <div className='buttons flex items-center justify-end gap-2'>
-          <button className='btn btn-sm btn-neutral' onClick={onCancel}>
+        <div className='buttons modal-action flex items-center justify-end gap-2'>
+          <button className='btn btn-sm btn-ghost' onClick={onCancel}>
             {_('Cancel')}
           </button>
           <button

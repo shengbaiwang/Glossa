@@ -16,15 +16,8 @@ interface SettingsSelectProps {
 }
 
 /**
- * Chromeless trailing-edge select for use inside `<SettingsRow>` /
- * `<BoxedList>`. Renders the daisyui `<select>` element with all chrome
- * suppressed (`!border-0 !bg-transparent !bg-none focus:!outline-none ...`)
- * plus a real `<MdArrowDropDown>` icon at the cell's trailing edge so the
- * chevron lands at the same X as toggles in adjacent rows.
- *
- * Hover / focus state is signaled by a wrapper bg-shift
- * (`hover:bg-base-200/60 focus-within:bg-base-200/60`) — no rings, per
- * DESIGN.md §5's "Why no ring?" rule.
+ * Trailing settings value: transparent at rest, 36px desktop / 44px touch.
+ * The shared wrapper draws a visible keyboard ring around value and chevron.
  */
 const SettingsSelect: React.FC<SettingsSelectProps> = ({
   value,
@@ -34,14 +27,14 @@ const SettingsSelect: React.FC<SettingsSelectProps> = ({
   ariaLabel,
 }) => {
   return (
-    <div className='flex max-w-[60%] items-center rounded-md focus-within:bg-transparent hover:bg-transparent'>
+    <div className='glossa-value-select flex max-w-[60%] items-center'>
       <select
         value={value}
         onChange={onChange}
         onKeyDown={(e) => e.stopPropagation()}
         disabled={disabled}
         aria-label={ariaLabel}
-        className='select settings-content h-9 min-w-0 cursor-pointer !appearance-none truncate !border-0 !bg-transparent !bg-none !pe-1 !ps-2 text-end focus:!border-0 focus:!shadow-none focus:!outline-none focus:!ring-0'
+        className='glossa-value-input select settings-content h-9 min-w-0 cursor-pointer !appearance-none truncate !border-0 !bg-transparent !bg-none !pe-1 !ps-2 text-end focus:!border-0 focus:!shadow-none focus:!ring-0'
         style={{
           textAlignLast: 'end',
         }}

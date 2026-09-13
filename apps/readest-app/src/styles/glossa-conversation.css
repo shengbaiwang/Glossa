@@ -6,7 +6,7 @@
   min-width: 0;
   color: var(--glossa-ink);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 13px;
+  font-size: var(--glossa-text-compact);
 }
 .glossa-chat-panel :is(button, select, input, textarea) {
   font: inherit;
@@ -29,7 +29,7 @@
   outline-offset: 2px;
 }
 .glossa-chat-panel button:disabled {
-  opacity: 0.4;
+  opacity: var(--glossa-disabled-opacity);
   cursor: default;
 }
 .glossa-chat-toolbar {
@@ -53,7 +53,7 @@
   min-width: 0;
   min-height: 32px;
   padding: 6px 8px;
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-nested);
   color: inherit;
   font-weight: 500;
   text-align: start;
@@ -85,7 +85,7 @@
   gap: 2px;
   padding: 6px;
   border: 1px solid var(--glossa-border);
-  border-radius: 12px;
+  border-radius: var(--glossa-radius);
   background: var(--glossa-surface);
   box-shadow: var(--glossa-shadow);
 }
@@ -97,7 +97,7 @@
   width: 100%;
   min-height: 36px;
   padding: 6px 8px;
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-nested);
   text-align: start;
 }
 .glossa-chat-session-menu button:hover {
@@ -148,7 +148,7 @@
   margin: 6px 16px 2px;
   padding: 6px 10px;
   border: 1px solid var(--glossa-border);
-  border-radius: 12px;
+  border-radius: var(--glossa-radius);
   background: var(--glossa-surface);
 }
 .glossa-chat-rename input {
@@ -186,13 +186,13 @@
   width: 100%;
   text-align: start;
   padding: 8px;
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-nested);
 }
 .glossa-chat-search-results button:hover {
   background: var(--glossa-wash);
 }
 .glossa-chat-search-title {
-  font-size: 12px;
+  font-size: var(--glossa-text-caption);
   font-weight: 500;
 }
 .glossa-chat-search-snippet {
@@ -303,10 +303,10 @@
 .glossa-chat-answer pre {
   white-space: pre;
   overflow-x: auto;
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-nested);
   padding: 12px;
   background: var(--glossa-group);
-  font-size: 12px;
+  font-size: var(--glossa-text-caption);
 }
 .glossa-chat-answer code {
   font-family: ui-monospace, monospace;
@@ -425,7 +425,7 @@
 }
 .glossa-chat-edit-actions .glossa-chat-text-button {
   padding: 5px 12px;
-  font-size: 12px;
+  font-size: var(--glossa-text-caption);
   color: var(--glossa-muted);
   border: 1px solid var(--glossa-border);
 }
@@ -436,7 +436,7 @@
 .glossa-chat-pending {
   display: block;
   color: var(--glossa-muted);
-  font-size: 12px;
+  font-size: var(--glossa-text-caption);
   padding: 8px 0;
   letter-spacing: 2px;
 }
@@ -522,7 +522,7 @@
   max-width: 110px;
   min-height: 32px;
   border: 0;
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-nested);
   padding: 4px 2px;
   background: transparent;
   color: var(--glossa-muted);
@@ -550,7 +550,7 @@
   gap: 2px;
   padding: 6px;
   border: 1px solid var(--glossa-border);
-  border-radius: 12px;
+  border-radius: var(--glossa-radius);
   background: var(--glossa-surface);
   box-shadow: var(--glossa-shadow);
 }
@@ -583,7 +583,7 @@
   min-height: 32px;
   gap: 6px;
   padding: 4px 6px;
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-nested);
   color: var(--glossa-muted);
   background: transparent;
   font-size: 11px !important;
@@ -623,7 +623,7 @@
   gap: 8px;
   padding: 10px;
   border: 1px solid var(--glossa-border);
-  border-radius: 12px;
+  border-radius: var(--glossa-radius);
   background: var(--glossa-surface);
   box-shadow: var(--glossa-shadow);
 }
@@ -639,13 +639,13 @@
   background: transparent;
   color: inherit;
   padding: 6px;
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-nested);
 }
 .glossa-chat-model-menu input {
   min-height: 36px;
   width: 100%;
   border: 1px solid var(--glossa-border);
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-nested);
   background: transparent;
   padding: 8px 10px;
 }
@@ -663,7 +663,7 @@
   min-height: 36px;
   text-align: start;
   padding: 8px;
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-nested);
 }
 .glossa-chat-model-options button span {
   min-width: 0;
@@ -687,7 +687,7 @@
 .glossa-chat-message {
   flex-shrink: 0;
   padding: 8px 16px;
-  font-size: 12px;
+  font-size: var(--glossa-text-caption);
   line-height: 1.6;
   overflow-wrap: anywhere;
 }

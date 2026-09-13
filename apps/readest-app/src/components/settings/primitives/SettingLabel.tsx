@@ -10,21 +10,8 @@ type SettingLabelProps<T extends React.ElementType = 'span'> = {
 } & Omit<React.ComponentPropsWithoutRef<T>, 'as' | 'children' | 'className'>;
 
 /**
- * Canonical primary label for a settings row / nav row / form field —
- * the per-item counterpart to `<SectionTitle>` (which labels the group).
- *
- * Sizing rules (see DESIGN.md §5):
- *  - Cased scripts (Latin / Cyrillic / Greek): adds `font-medium`.
- *    The medium weight gives the label a quiet hierarchy lift over body
- *    text without the loudness of `font-semibold`, matching Adwaita
- *    AdwActionRow titles.
- *  - Caseless scripts (CJK / Arabic / Hebrew / Indic / Thai / Tibetan):
- *    no weight class. Han / Hangul / Devanagari etc. don't bold cleanly
- *    at body size — strokes thicken unevenly and rendering varies wildly
- *    across system fonts. Plain inherited weight reads cleaner.
- *
- * No font-size is set so the label inherits the `.settings-content`
- * 14px-desktop / 16px-mobile cascade.
+ * Primary settings label, inheriting the 14px desktop / 16px narrow-screen
+ * body size. Regular weight keeps dense multilingual rows readable.
  */
 function SettingLabel<T extends React.ElementType = 'span'>({
   as,
@@ -34,7 +21,7 @@ function SettingLabel<T extends React.ElementType = 'span'>({
 }: SettingLabelProps<T>) {
   const Tag = (as ?? 'span') as React.ElementType;
   return (
-    <Tag className={clsx('text-base-content line-clamp-2', className)} {...rest}>
+    <Tag className={clsx('glossa-setting-label line-clamp-2', className)} {...rest}>
       {children}
     </Tag>
   );

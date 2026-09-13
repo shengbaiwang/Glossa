@@ -262,17 +262,17 @@ const GroupingModal: React.FC<GroupingModalProps> = ({
       <div
         ref={divRef}
         className={clsx(
-          'modal-box bg-base-100 overflow-y-auto rounded-2xl shadow-xl',
+          'glossa-dialog-card modal-box bg-base-100 overflow-y-auto rounded-2xl shadow-xl',
           'max-h-[85%] w-[95%] min-w-64 max-w-[440px] p-6 sm:w-[70%]',
         )}
       >
-        <h2 className='text-center text-lg font-bold'>{_('Group Books')}</h2>
+        <h2 className='glossa-dialog-title text-start'>{_('Group Books')}</h2>
 
         {/* Action buttons */}
         <div className={clsx('mt-4 grid grid-cols-1 gap-2 text-base md:grid-cols-2')}>
           <button
             onClick={handleRemoveFromGroup}
-            className='flex items-center space-x-2 p-2 text-blue-500 disabled:text-gray-400'
+            className='glossa-button flex items-center gap-2 p-2 disabled:text-neutral-content'
             disabled={!isSelectedBooksHasGroup}
           >
             <HiOutlineFolderRemove size={iconSize} />
@@ -280,14 +280,14 @@ const GroupingModal: React.FC<GroupingModalProps> = ({
           </button>
           <button
             onClick={handleCreateGroup}
-            className='flex items-center space-x-2 p-2 text-blue-500 disabled:text-gray-400'
+            className='glossa-button flex items-center gap-2 p-2 disabled:text-neutral-content'
           >
             <HiOutlineFolderAdd size={iconSize} />
             <span className='truncate'>{_('Create New Group')}</span>
           </button>
           <button
             onClick={handleRenameGroup}
-            className='flex items-center space-x-2 p-2 text-blue-500 disabled:text-gray-400'
+            className='glossa-button flex items-center gap-2 p-2 disabled:text-neutral-content'
             disabled={!canRenameGroup}
           >
             <MdEdit size={iconSize} />

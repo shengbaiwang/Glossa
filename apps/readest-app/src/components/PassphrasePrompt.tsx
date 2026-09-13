@@ -94,18 +94,18 @@ export default function PassphrasePrompt() {
   // Input pill — modern style for color themes; eink-bordered swaps to
   // 1px border + base-100 bg under [data-eink='true'].
   const inputClass =
-    'eink-bordered w-full rounded-xl bg-base-300/60 px-4 py-3 text-sm placeholder:text-base-content/40 ' +
+    'glossa-field eink-bordered w-full rounded-xl bg-base-300/60 px-4 py-3 text-sm placeholder:text-base-content/40 ' +
     'border border-transparent transition-colors focus:border-base-content/20 focus:bg-base-300 ' +
     'disabled:opacity-60';
 
   return (
     <ModalPortal>
       <dialog className='modal modal-open'>
-        <div className='modal-box bg-base-200 max-w-md rounded-2xl p-6 shadow-2xl'>
-          <h3 className='mb-1.5 text-lg font-semibold tracking-tight'>
+        <div className='glossa-dialog-card modal-box bg-base-200 max-w-md rounded-2xl p-6 shadow-2xl'>
+          <h3 className='glossa-dialog-title mb-1.5'>
             {isSetup ? _('Set sync passphrase') : _('Enter sync passphrase')}
           </h3>
-          <p className='text-base-content/60 mb-5 text-sm leading-relaxed'>
+          <p className='glossa-supporting-text mb-5'>
             {isSetup
               ? _(
                   'A sync passphrase encrypts your sensitive fields (like OPDS catalog credentials) before they sync. We never see this passphrase. Pick something memorable — there is no recovery without it.',
@@ -145,7 +145,7 @@ export default function PassphrasePrompt() {
               />
             )}
             {error && <p className='text-error pt-0.5 text-xs'>{error}</p>}
-            <div className='flex justify-end gap-2 pt-4'>
+            <div className='modal-action flex justify-end gap-2 pt-4'>
               {/*
                * Cancel: ghost in color themes, eink-bordered (white bg
                * + base-content border) under eink. Submit: btn-contrast —

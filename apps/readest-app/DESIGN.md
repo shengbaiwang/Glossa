@@ -1,5 +1,121 @@
 ## Glossa Design Language
 
+### Shared interface foundations — 2026-09-14
+
+Unify controls with the same role; preserve the difference between a full page,
+a settings sheet, a compact reading pane and document content. These rules supersede
+older typography, spacing, focus and form-chrome guidance below. Implementation lives
+in `src/styles/glossa-foundations.css`, imported by `glossa.css`, and the shared
+settings, menu, dialog and form primitives. Use semantic classes and tokens, never
+blanket `h1`, `button`, `input` or `svg` overrides across the reader document.
+
+#### Typography and color
+
+| Role | Size / line height / weight | Usage |
+| --- | --- | --- |
+| Desktop page title | 26px / 1.35 / 600 | Library page heading; compact/narrow library keeps its responsive scale |
+| Dialog or settings subpage title | 16px / 1.35 / 600 | `glossa-dialog-title`; one title per surface |
+| Collection heading | 15px / 1.5 / 500–600 | Groups within the library |
+| Standard UI body and menus | 14px / 1.5 / 400 | Settings labels, forms, menu rows; 16px at widths ≤768px |
+| Compact pane chrome | 13px / 1.5 / 400–500 | Conversation/map toolbar labels; menus still use the standard menu role |
+| Group heading | 12px / 1.5 / 500 | `SectionTitle` / `glossa-section-title`; no forced uppercase or letter spacing |
+| Supporting text | 12px / 1.5 / 400 | `glossa-supporting-text`: status, descriptions, keyboard shortcuts |
+
+Tokens: `--glossa-text-page-title/dialog-title/subheading/body/compact/section/caption`,
+`--glossa-leading-title/ui`, `--glossa-weight-title/label`. Main text uses
+`--glossa-ink`, secondary text uses `--glossa-muted`; disabled styling is a state,
+not a third arbitrary gray palette. Keep meaningful error/warning/success colors.
+Book text, font previews, user-sized chat answers, map nodes, PIN digits and artwork
+retain their own typography. Avoid shrinking essential instructions into captions.
+
+#### Spacing and alignment
+
+- Reuse 8px icon/text and action gaps, 12px between settings label and value,
+  16px pane insets, 24px dialog body insets and section separation. Tokens are
+  `--glossa-space-inline/row/section` and `--glossa-inset-panel/dialog`.
+- Standard settings rows are at least 56px; navigation rows with an icon/status
+  are at least 64px. Allow wrapped labels to grow. Use `BoxedList`, `SettingsRow`,
+  `NavigationRow`, `SettingsSwitchRow`; do not duplicate their chassis.
+- Group dividers start at the label column and stop at the trailing value inset.
+  Text values, chevrons and switches share the same trailing edge. Use logical
+  `start/end`, `ps/pe`, `gap`, and `text-start`; mirror directional chevrons in RTL.
+- Menus use 6px surface padding, 36px minimum rows, 7px block padding, 8px icon/text
+  spacing and 9px row corners. Multiline descriptions grow the row. Do not compress
+  text menus to the 28px icon-only tool target.
+- Preserve existing 2px pane-icon gaps, 4px library-icon gaps, safe areas, measured
+  reading insets and settings' explicitly compact 20px reader-sheet inset.
+
+#### Interaction states
+
+- Resting actions are neutral. Hover uses `--glossa-hover` (7% theme ink); a selected
+  destination or checked choice uses `--glossa-selected` (13%). Hovering the selected
+  choice retains that state. An action such as Import does not stay selected.
+- Pane destinations use the existing exclusive `ReaderPaneTabs`. Menu switches use
+  `menuitemcheckbox` + `aria-checked`; ordinary commands use `menuitem`. Radix radio
+  and checkbox items keep their native semantics and visible check indicators.
+- Keyboard focus is a 2px theme-ink outline. Use a 2px outside offset on standalone
+  controls and an inset outline on menu/navigation rows that could clip. A settings
+  select draws the ring on its value+chevron wrapper; a translucent custom slider
+  draws it on the visible slider wrapper. Never hide focus on both wrapper and input.
+- Disabled actions use native `disabled` and 0.45 opacity. Do not simulate disabled
+  behavior solely with CSS or tabIndex. A disabled row dims once, not twice. Number
+  steppers disable unavailable directions at their limits. Invalid fields keep a
+  semantic error boundary; error text must remain available beside the field.
+
+#### Menus, dialogs and actions
+
+- Menus/popovers: 12px surface corners, one theme border and shared elevation.
+  Use `glossa-menu-surface` for portaled primitives; full menu containers own their
+  border/shadow so nested containers do not produce double frames.
+- Short form/confirmation dialogs: `glossa-dialog-card`, 20px corners, 24px padding,
+  16px content rhythm and the shared shadow. Long task sheets keep their scrolling
+  chassis through `glossa-dialog-surface` and `glossa-dialog-body`; mobile sheets
+  retain their edge geometry, drag handle and safe-area treatment.
+- Actions sit at the trailing edge: Cancel first, primary action last, 8px gap,
+  wrapping when needed. Ordinary primary actions use solid theme ink; Cancel is
+  quiet. Keep destructive operations labeled and semantically colored.
+- Desktop close stays at the trailing top edge. Mobile navigation sheets retain
+  their leading Back control. Keep the existing Escape, overlay-dismiss, focus
+  return, native-window and busy/protected-flow behavior; styling must not make a
+  protected dialog dismissible or introduce a second close action.
+
+#### Forms and reuse
+
+- Framed forms use `Input` / `glossa-field`, native `.input/.select/.textarea` in
+  settings/dialogs, or the shared Radix Select. Standard height is 36px, border
+  is 1px theme ink, radius 9px. Textareas grow; color swatches and PIN cells keep
+  their specialized geometry. Do not wrap a row value in another framed field.
+- Attached settings values use `SettingsInput` / `SettingsSelect`, transparent at
+  rest, with the same 36px height and visible keyboard focus. Values align to the
+  trailing edge; fields intended for entry align with their labels.
+- `Toggle` retains the switch silhouette and explicit thumb position. `Slider`
+  retains its continuous track, value bubble and existing drag/keyboard mapping;
+  the reader progress slider remains a separate navigation control.
+- Shared `Button` uses neutral primary/secondary/outline/ghost roles. Standard form
+  actions are 36px, compact text actions 32px; page-level `glossa-button` remains
+  40px and icon controls follow the icon table. Touch fields/menu rows/actions have
+  at least 44px targets; switches retain their enclosing 56px label target.
+- E-ink removes elevation, keeps explicit borders/checks and full-contrast text.
+  Reduced motion retains the existing app-wide policy. Test light/dark, keyboard,
+  disabled/selected states, narrow width and RTL when changing shared roles.
+
+```tsx
+<BoxedList title={_('Display')}>
+  <SettingsRow label={_('Name')}>
+    <SettingsInput aria-label={_('Name')} value={name} onChange={handleName} />
+  </SettingsRow>
+</BoxedList>
+
+<DialogContent>
+  <DialogTitle>{_('Edit')}</DialogTitle>
+  <Input aria-label={_('Title')} />
+  <DialogFooter>
+    <Button variant='ghost' onClick={close}>{_('Cancel')}</Button>
+    <Button onClick={save}>{_('Save')}</Button>
+  </DialogFooter>
+</DialogContent>
+```
+
 ### Icon hierarchy — 2026-09-14
 
 Use `GlossaIcons.tsx` for app navigation, reading controls, selection tools and
@@ -182,8 +298,7 @@ precedence over the upstream Adwaita identity and radius choices below; the exis
 interaction, safe-area, RTL, theme and e-ink rules still apply.
 
 - Use the existing Glossa mark (`GlossaMark`) and the shared `GlossaIcons` family in
-  the library header, category navigation and reader chrome. Other settings icons
-  retain Lucide until their surfaces are revised. Book cover artwork supplies
+  the library header, category navigation and reader chrome. All functional icons use the shared family; preserve third-party brand marks. Book cover artwork supplies
   the main color; interface chrome stays neutral.
 - Use `glossa.css` theme-derived tokens for ink, muted text, surfaces, borders, focus
   and elevation. The default palette is paper/ink in light mode and charcoal/paper in
@@ -921,43 +1036,12 @@ boxed list — focus state is signaled by a subtle wrapper bg-shift instead
 (hover and focus-within both lift to `bg-base-200/60`). Rings would compete
 with the card's own border and double-stack with adjacent rows.
 
-```tsx
-<div className='hover:bg-base-200/60 focus-within:bg-base-200/60 flex max-w-[60%] items-center rounded-md'>
-  <select className='select h-9 min-w-0 cursor-pointer !appearance-none truncate !border-0 !bg-transparent !bg-none !pe-1 !ps-2 text-end text-sm focus:!border-0 focus:!shadow-none focus:!outline-none focus:!ring-0'>
-    {/* options */}
-  </select>
-  <MdArrowDropDown
-    aria-hidden='true'
-    className='text-base-content/55 pointer-events-none h-5 w-5 flex-shrink-0'
-  />
-</div>
-```
-
-> **Why so many `!` overrides?** daisyui's `.select` and `.input` apply
-> `border-width: 1px` + `border-color` (transparent at rest, `var(--bc)` on
-> focus), plus `outline`, `box-shadow`, and `ring` chrome on focus. To make
-> the control truly chromeless inside a boxed list, you need to kill all
-> four properties. Missing any of them — especially `border-0` — leaves a
-> visible focus border leaking through.
-
-The `<MdArrowDropDown>` icon's trailing edge now lives at the same X as the
-toggle's trailing edge in adjacent rows, because both are flush with the
-row's `pe-4` padding.
-
-For inputs, no wrapper is needed — the input is one element, so put the
-hover/focus bg directly on it. Suppress daisyui's own focus chrome the
-same way:
-
-```tsx
-<input className='input hover:!bg-base-200/60 focus:!bg-base-200/60 h-9 max-w-[60%] rounded-md !border-0 !bg-transparent !pe-0 !ps-2 text-end text-sm focus:!border-0 focus:!shadow-none focus:!outline-none focus:!ring-0' />
-```
-
-> **Why no ring here when §2.7 says "focus needs a visible ring"?** §2.7 is
-> for standalone custom buttons (Submit, Cancel, ListExtension, etc.). In a
-> boxed list, the row already provides strong visual containment via the
-> card border + dividers, and stacking a per-control ring inside that
-> creates double chrome. The bg-shift IS the focus indicator — keyboard
-> users still get clear feedback; the surface stays calm.
+Use `SettingsSelect` and `SettingsInput` rather than copying their underlying
+classes. They share 36px desktop / 44px touch height, transparent resting surfaces,
+logical trailing alignment, and an explicit keyboard outline. The select wrapper
+owns its outline so the chevron is included; the text input draws its own. The
+previous no-ring/background-shift-only rule is superseded by the 2026-09-14
+interface foundations above.
 
 ---
 

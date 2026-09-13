@@ -42,7 +42,7 @@ const NavigationRow: React.FC<NavigationRowProps> = ({
       disabled={disabled}
       data-setting-id={dataSettingId}
       className={clsx(
-        'group flex w-full items-center gap-3 py-4 pe-4 text-left',
+        'glossa-settings-row glossa-navigation-row group flex w-full items-center gap-3 py-3 pe-4 text-start',
         'transition-colors duration-150',
         'focus-visible:ring-base-content/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset',
         disabled && 'cursor-not-allowed opacity-50',
@@ -56,9 +56,9 @@ const NavigationRow: React.FC<NavigationRowProps> = ({
       )}
       <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
         <SettingLabel>{title}</SettingLabel>
-        {status && <span className='text-base-content/65 truncate text-[0.85em]'>{status}</span>}
+        {status && <span className='glossa-supporting-text truncate'>{status}</span>}
       </div>
-      <MdChevronRight className='text-base-content/50 h-4 w-4 flex-shrink-0' />
+      <MdChevronRight className='text-base-content/50 h-4 w-4 flex-shrink-0 rtl:rotate-180' />
     </button>
   );
 };

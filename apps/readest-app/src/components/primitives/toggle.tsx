@@ -7,7 +7,7 @@ const Toggle = React.forwardRef<
   <input
     ref={ref}
     type='checkbox'
-    className={`toggle checked:[--tglbg:theme(colors.base-300)] ${className}`}
+    className={`glossa-toggle toggle checked:[--tglbg:theme(colors.base-300)] ${className}`}
     {...props}
   />
 ));

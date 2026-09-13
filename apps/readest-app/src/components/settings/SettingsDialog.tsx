@@ -371,13 +371,11 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
               tabIndex={-1}
               aria-label={_('Close')}
               onClick={handleClose}
-              className={'glossa-icon-button absolute left-3'}
+              className={'glossa-icon-button absolute start-3'}
             >
               {isRtl ? <ChevronRight /> : <ChevronLeft />}
             </button>
-            <div className='tab-title flex text-base font-semibold'>
-              {currentPanel?.label || ''}
-            </div>
+            <div className='glossa-dialog-title tab-title flex'>{currentPanel?.label || ''}</div>
             <div className='absolute right-3'>{windowControls}</div>
           </div>
           <div className='flex w-full flex-row items-center justify-between'>

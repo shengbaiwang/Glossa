@@ -17,7 +17,7 @@
   border: 0;
   background: var(--glossa-surface);
   color: var(--glossa-ink);
-  font-size: 13px;
+  font-size: var(--glossa-text-compact);
   text-align: start;
   overflow: hidden;
 }
@@ -39,7 +39,7 @@
 .glossa-workmap summary,
 .glossa-workmap select {
   min-height: 32px;
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-nested);
   cursor: pointer;
 }
 .glossa-workmap button {
@@ -49,7 +49,7 @@
   gap: 5px;
 }
 .glossa-workmap button:disabled {
-  opacity: 0.35;
+  opacity: var(--glossa-disabled-opacity);
   cursor: default;
 }
 .glossa-workmap button:not(:disabled):hover,
@@ -110,7 +110,7 @@
 .glossa-workmap-views {
   gap: 2px;
   padding: 2px;
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-nested);
   background: var(--glossa-wash);
 }
 .glossa-workmap-views button {
@@ -120,7 +120,7 @@
   color: var(--glossa-muted);
   border: 1px solid transparent;
   border-radius: 7px;
-  font-size: 12px;
+  font-size: var(--glossa-text-caption);
 }
 .glossa-workmap-views button[aria-pressed='true'] {
   color: var(--glossa-ink);
@@ -150,7 +150,7 @@
   display: flex;
   align-items: center;
   position: relative;
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-nested);
   border: 1px solid transparent;
 }
 .glossa-workmap-node[data-selected='true'] {
@@ -263,14 +263,14 @@
 .glossa-workmap-viewport[data-view='map'] .glossa-workmap-node[data-root='true'] {
   width: 216px;
   border-color: var(--glossa-ink);
-  border-radius: 12px;
+  border-radius: var(--glossa-radius);
   background: var(--glossa-ink);
   color: var(--glossa-surface);
   padding: 8px 4px;
 }
 .glossa-workmap-viewport[data-view='map'] .glossa-workmap-node[data-selected='true'] {
   border-color: var(--glossa-ink);
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-nested);
   background: var(--glossa-wash);
 }
 .glossa-workmap-edit {
@@ -322,7 +322,7 @@
 .glossa-workmap-zoom button {
   min-width: 32px;
   width: auto;
-  font-size: 12px;
+  font-size: var(--glossa-text-caption);
 }
 .glossa-workmap-status {
   margin-inline-start: auto;
@@ -346,7 +346,7 @@
   overflow: auto;
   background: var(--glossa-surface);
   border: 1px solid var(--glossa-border);
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-nested);
   z-index: 5;
   padding: 6px;
 }
@@ -428,7 +428,7 @@
 .glossa-workmap-header .glossa-workmap-generate {
   padding-inline: 10px;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: var(--glossa-text-caption);
   font-weight: 500;
   border: 1px solid var(--glossa-border);
 }
@@ -450,7 +450,7 @@
   overflow-y: auto;
   padding: 6px;
   border: 1px solid var(--glossa-border);
-  border-radius: 12px;
+  border-radius: var(--glossa-radius);
   background: var(--glossa-surface);
   color: var(--glossa-ink);
   box-shadow: 0 6px 24px rgb(0 0 0 / 0.06);
@@ -515,7 +515,7 @@
   gap: 4px 8px;
 }
 .glossa-workmap-source strong {
-  font-size: 12px;
+  font-size: var(--glossa-text-caption);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -537,7 +537,7 @@
   border-inline-start: 2px solid var(--glossa-border);
   overflow: auto;
   overscroll-behavior: contain;
-  font-size: 13px;
+  font-size: var(--glossa-text-compact);
   line-height: 1.9;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -547,7 +547,7 @@
   flex-shrink: 0;
 }
 .glossa-workmap-return button {
-  font-size: 12px;
+  font-size: var(--glossa-text-caption);
   gap: 6px;
   padding-inline: 4px;
   color: var(--glossa-muted);
@@ -570,7 +570,7 @@
   padding: 8px 0;
 }
 .glossa-workmap-generation .glossa-passage-range {
-  font-size: 12px;
+  font-size: var(--glossa-text-caption);
 }
 .glossa-workmap-viewport[data-view='map']
   .glossa-workmap-node[data-root='true'][data-selected='true'] {

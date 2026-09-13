@@ -45,11 +45,7 @@ const BoxedList: React.FC<BoxedListProps> = ({
       <div className={clsx('card eink-bordered glossa-group-card rounded-xl', cardClassName)}>
         <div className={clsx('glossa-group ps-4', innerClassName)}>{children}</div>
       </div>
-      {description && (
-        <p className='text-base-content/65 mb-2 mt-1 ps-4 text-[0.8em] leading-relaxed'>
-          {description}
-        </p>
-      )}
+      {description && <p className='glossa-supporting-text mb-2 mt-1 ps-4'>{description}</p>}
     </div>
   );
 };

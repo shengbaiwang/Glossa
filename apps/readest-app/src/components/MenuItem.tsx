@@ -70,7 +70,10 @@ const MenuItem: React.FC<MenuItemProps> = ({
             <span style={{ minWidth: `${iconSize}px` }}>
               {typeof IconType === 'function' ? (
                 <IconType
-                  className={clsx(disabled ? 'text-gray-400' : 'text-base-content', iconClassName)}
+                  className={clsx(
+                    disabled ? 'text-neutral-content' : 'text-base-content',
+                    iconClassName,
+                  )}
                   size={iconSize}
                 />
               ) : (
@@ -80,7 +83,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
           )}
           <span
             className={clsx(
-              'mx-2 flex-1 break-words text-pretty text-start text-base sm:text-sm',
+              'glossa-menu-label mx-2 flex-1 break-words text-pretty text-start',
               labelClass,
             )}
             style={{ minWidth: 0 }}
@@ -93,7 +96,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
             className={clsx(
               'border-base-300/40 bg-base-300/75 hidden rounded-md border shadow-sm sm:flex',
               'shrink-0 px-1.5 py-0.5 text-xs font-medium',
-              disabled ? 'text-gray-400' : 'text-neutral-content',
+              disabled ? 'text-neutral-content' : 'text-neutral-content',
             )}
           >
             {shortcut}
@@ -103,7 +106,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
       <div className='flex w-full'>
         {description && (
           <span
-            className='mt-1 truncate text-start text-xs text-gray-500'
+            className='mt-1 truncate text-start text-xs text-neutral-content'
             style={{ minWidth: 0, paddingInlineStart: noIcon ? '0' : `${iconSize + 8}px` }}
           >
             {description}
@@ -120,11 +123,15 @@ const MenuItem: React.FC<MenuItemProps> = ({
           <details open={detailsOpen} onToggle={(e) => setIsDetailsOpen(e.currentTarget.open)}>
             <summary
               role='button'
-              tabIndex={0}
+              tabIndex={disabled ? -1 : 0}
+              aria-disabled={disabled || undefined}
+              onClick={(event) => {
+                if (disabled) event.preventDefault();
+              }}
               aria-expanded={isDetailsOpen}
               className={clsx(
-                'glossa-menu-item hover:bg-base-300 text-base-content cursor-pointer rounded-md p-1 py-[10px] pr-3',
-                disabled && 'btn-disabled cursor-not-allowed text-gray-400',
+                'glossa-menu-item hover:bg-base-300 text-base-content cursor-pointer rounded-md p-1 py-[10px] pe-3',
+                disabled && 'btn-disabled cursor-not-allowed text-neutral-content',
                 buttonClass,
               )}
               title={tooltip ? tooltip : ''}
@@ -141,7 +148,9 @@ const MenuItem: React.FC<MenuItemProps> = ({
   return (
     <div className='flex'>
       <button
-        role={disabled ? 'none' : 'menuitem'}
+        role={toggled === undefined ? 'menuitem' : 'menuitemcheckbox'}
+        aria-checked={toggled}
+        aria-disabled={disabled || undefined}
         aria-label={
           toggled !== undefined ? `${label} - ${toggled ? _('ON') : _('OFF')}` : undefined
         }
@@ -149,7 +158,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
         tabIndex={disabled ? -1 : 0}
         className={clsx(
           'glossa-menu-item hover:bg-base-300 text-base-content flex w-full flex-col items-center justify-center rounded-md p-1 py-[10px]',
-          disabled && 'btn-disabled text-gray-400',
+          disabled && 'btn-disabled text-neutral-content',
           buttonClass,
         )}
         title={tooltip ? tooltip : ''}

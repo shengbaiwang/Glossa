@@ -58,7 +58,7 @@ const SettingsRow: React.FC<SettingsRowProps> = ({
     <Wrapper
       data-setting-id={dataSettingId}
       className={clsx(
-        'flex min-h-14 justify-between gap-3 pe-4',
+        'glossa-settings-row flex min-h-14 justify-between gap-3 pe-4',
         align === 'start' ? 'items-start py-3.5' : 'items-center',
         disabled && 'cursor-not-allowed opacity-50',
         asLabel && !disabled && 'cursor-pointer',
@@ -67,11 +67,7 @@ const SettingsRow: React.FC<SettingsRowProps> = ({
     >
       <div className='flex min-w-0 flex-col'>
         <SettingLabel>{label}</SettingLabel>
-        {description && (
-          <span className='text-base-content/65 line-clamp-1 text-[0.8em] leading-snug'>
-            {description}
-          </span>
-        )}
+        {description && <span className='glossa-supporting-text line-clamp-1'>{description}</span>}
       </div>
       {children}
     </Wrapper>

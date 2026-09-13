@@ -111,7 +111,7 @@
 .glossa-recent-heading h2,
 .glossa-collection-heading h2 {
   color: var(--glossa-ink);
-  font-size: 17px;
+  font-size: var(--glossa-text-subheading);
   line-height: 1.4;
   font-weight: 600;
   letter-spacing: -0.3px;
@@ -120,7 +120,7 @@
 .glossa-recent-heading p,
 .glossa-collection-heading > span {
   color: var(--glossa-muted);
-  font-size: 12px;
+  font-size: var(--glossa-text-caption);
   line-height: 1.6;
 }
 
@@ -241,7 +241,7 @@
 }
 
 .glossa-book-title {
-  font-size: 14px;
+  font-size: var(--glossa-text-body);
   line-height: 1.45;
   letter-spacing: -0.1px;
 }
@@ -252,7 +252,7 @@
 
 .glossa-book-author {
   margin-top: 4px;
-  font-size: 12px;
+  font-size: var(--glossa-text-caption);
   line-height: 1.5;
   color: var(--glossa-muted);
 }
@@ -359,7 +359,7 @@
   max-width: 330px;
   margin-bottom: 32px;
   color: var(--glossa-muted);
-  font-size: 14px;
+  font-size: var(--glossa-text-body);
   line-height: 1.8;
 }
 
@@ -382,7 +382,7 @@
 }
 
 .glossa-library-no-results p {
-  font-size: 14px;
+  font-size: var(--glossa-text-body);
 }
 
 .glossa-status-badge {

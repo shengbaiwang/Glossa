@@ -42,25 +42,25 @@ const SubPageHeader: React.FC<SubPageHeaderProps> = ({
   return (
     <div className={clsx(description ? 'mb-6' : 'mb-4', 'px-4')}>
       <div className='mb-1.5 flex w-full items-center justify-between gap-2'>
-        <div className='flex min-w-0 items-center gap-2 text-lg font-semibold tracking-tight'>
+        <div className='glossa-dialog-title flex min-w-0 items-center gap-2'>
           <button
             type='button'
             onClick={onBack}
-            className='hover:text-primary transition-colors duration-150 focus-visible:underline focus-visible:outline-none'
+            className='transition-colors duration-150 hover:underline focus-visible:underline'
           >
             {parentLabel}
           </button>
           <MdChevronRight
             aria-hidden='true'
-            className='text-base-content/40 h-5 w-5 flex-shrink-0'
+            className='text-neutral-content h-5 w-5 flex-shrink-0 rtl:rotate-180'
           />
-          <span className='text-base-content/70 truncate'>{currentLabel}</span>
+          <span className='text-neutral-content truncate'>{currentLabel}</span>
         </div>
         {rightSlot}
       </div>
       {/* No explicit text-sm — description inherits .settings-content
           font-size (14px desktop / 16px mobile per src/styles/globals.css). */}
-      {description && <p className='text-base-content/70 leading-relaxed'>{description}</p>}
+      {description && <p className='glossa-supporting-text'>{description}</p>}
     </div>
   );
 };

@@ -66,7 +66,10 @@ const NumberInput: React.FC<NumberInputProps> = ({
 
   return (
     <div
-      className={clsx('flex h-14 items-center justify-between pe-4', className)}
+      className={clsx(
+        'glossa-settings-row flex min-h-14 items-center justify-between gap-3 pe-4',
+        className,
+      )}
       data-setting-id={settingId}
     >
       <SettingLabel>{label}</SettingLabel>
@@ -82,7 +85,7 @@ const NumberInput: React.FC<NumberInputProps> = ({
             onChange={handleChange}
             onBlur={handleOnBlur}
             className={clsx(
-              'input input-ghost settings-content text-base-content w-16 max-w-xs rounded border-0 bg-transparent pe-3 !outline-none',
+              'glossa-value-input input input-ghost settings-content text-base-content w-16 max-w-xs rounded border-0 bg-transparent pe-3',
               label && 'py-1 ps-1 text-right',
               disabled && 'input-disabled cursor-not-allowed disabled:bg-transparent',
               inputClassName,
@@ -94,6 +97,7 @@ const NumberInput: React.FC<NumberInputProps> = ({
           tabIndex={disabled ? -1 : 0}
           aria-label={_('Decrease')}
           onClick={decrement}
+          disabled={disabled || currentNumericValue <= min}
           className={`glossa-icon-button glossa-tool-icon ${currentNumericValue <= min || disabled ? 'btn-disabled !bg-opacity-5' : ''}`}
         >
           <FiMinus className='h-4 w-4' />
@@ -102,6 +106,7 @@ const NumberInput: React.FC<NumberInputProps> = ({
           tabIndex={disabled ? -1 : 0}
           aria-label={_('Increase')}
           onClick={increment}
+          disabled={disabled || currentNumericValue >= max}
           className={`glossa-icon-button glossa-tool-icon ${currentNumericValue >= max || disabled ? 'btn-disabled !bg-opacity-5' : ''}`}
         >
           <FiPlus className='h-4 w-4' />

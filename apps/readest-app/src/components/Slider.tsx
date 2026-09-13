@@ -90,7 +90,7 @@ const Slider: React.FC<SliderProps> = ({
     <div
       ref={sliderRef}
       aria-label={label}
-      className={`slider bg-base-200 mx-auto w-full rounded-xl ${className}`}
+      className={`glossa-slider slider bg-base-200 mx-auto w-full rounded-xl ${className}`}
       dir={isRtl ? 'rtl' : undefined}
     >
       <div className='relative' style={{ height: `${heightPx}px` }}>

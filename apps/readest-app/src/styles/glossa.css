@@ -1,6 +1,7 @@
 @import './glossa-mindmap.css';
 @import './glossa-conversation.css';
 @import './glossa-icons.css';
+@import './glossa-foundations.css';
 /* Glossa: the icon's rounded ink strokes, carried through the application.
    All surfaces derive from the selected theme, including custom palettes. */
 :root {
@@ -101,7 +102,7 @@
 @media (hover: hover) {
   .glossa-icon-button:not(:disabled):hover,
   .glossa-button:not(:disabled):not(.glossa-button-primary):hover {
-    background: color-mix(in srgb, var(--glossa-ink) 7%, transparent);
+    background: var(--glossa-hover);
   }
 
   .glossa-button-primary:not(:disabled):hover {
@@ -116,13 +117,13 @@
 .glossa-icon-button[aria-pressed='true']:hover,
 .glossa-icon-button[aria-expanded='true']:hover,
 .glossa-button[aria-pressed='true']:hover {
-  background: color-mix(in srgb, var(--glossa-ink) 13%, transparent);
+  background: var(--glossa-selected);
 }
 
 .glossa-icon-button:disabled,
 .glossa-button:disabled {
   cursor: default;
-  opacity: 0.45;
+  opacity: var(--glossa-disabled-opacity);
 }
 
 .glossa-eyebrow {
@@ -467,8 +468,8 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
   content: '';
   position: absolute;
   inset-block-start: 0;
-  inset-inline-start: 16px;
-  inset-inline-end: 0;
+  inset-inline-start: 0;
+  inset-inline-end: 16px;
   block-size: 1px;
   background: color-mix(in srgb, var(--glossa-ink) 9%, transparent);
   pointer-events: none;

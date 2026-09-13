@@ -206,9 +206,9 @@ export default function AppLockDialog() {
   return (
     <ModalPortal>
       <dialog className='modal modal-open'>
-        <div className='modal-box bg-base-100 max-w-md rounded-2xl p-6 shadow-2xl'>
-          <h3 className='mb-1.5 text-lg font-semibold tracking-tight'>{title}</h3>
-          <p className='text-base-content/70 mb-6 text-sm leading-relaxed'>{description}</p>
+        <div className='glossa-dialog-card modal-box bg-base-100 max-w-md rounded-2xl p-6 shadow-2xl'>
+          <h3 className='glossa-dialog-title mb-1.5'>{title}</h3>
+          <p className='glossa-supporting-text mb-6'>{description}</p>
           <form onSubmit={handleSubmit} className='flex flex-col gap-5'>
             {(mode === 'change' || mode === 'disable') && (
               <div className='flex flex-col items-center gap-2'>
