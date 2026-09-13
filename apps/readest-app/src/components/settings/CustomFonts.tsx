@@ -1,7 +1,8 @@
+import { LoaderCircle } from '@/components/GlossaIcons';
 import clsx from 'clsx';
 import React, { useState } from 'react';
-import { MdAdd, MdDelete } from 'react-icons/md';
-import { IoMdCloseCircleOutline } from 'react-icons/io';
+import { Plus as MdAdd, Trash2 as MdDelete } from '@/components/GlossaIcons';
+import { CircleX as IoMdCloseCircleOutline } from '@/components/GlossaIcons';
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -243,21 +244,7 @@ const CustomFonts: React.FC<CustomFontsProps> = ({ bookKey, onBack }) => {
                 </div>
               ) : (
                 <div className='flex items-center gap-2 text-sm text-base-content/60'>
-                  <svg className='h-4 w-4 animate-spin' viewBox='0 0 24 24' fill='none'>
-                    <circle
-                      className='opacity-25'
-                      cx='12'
-                      cy='12'
-                      r='10'
-                      stroke='currentColor'
-                      strokeWidth='4'
-                    />
-                    <path
-                      className='opacity-75'
-                      fill='currentColor'
-                      d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z'
-                    />
-                  </svg>
+                  <LoaderCircle className='h-4 w-4 animate-spin' />
                   <span>{_('Importing...')}</span>
                 </div>
               )}

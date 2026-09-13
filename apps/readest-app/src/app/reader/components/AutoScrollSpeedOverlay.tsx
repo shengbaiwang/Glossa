@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import React from 'react';
-import { MdSpeed } from 'react-icons/md';
+import { Gauge as MdSpeed } from '@/components/GlossaIcons';
 import { speedToPosition } from '@/app/reader/utils/autoScrollSpeedGesture';
 
 interface AutoScrollSpeedOverlayProps {

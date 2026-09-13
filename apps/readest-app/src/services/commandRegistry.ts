@@ -1,12 +1,18 @@
 import { Fzf, FzfResultItem, byLengthAsc } from 'fzf';
 import { SettingsPanelType } from '@/components/settings/SettingsDialog';
-import { RiFontSize, RiDashboardLine, RiTranslate, RiShareLine, RiChat1Line } from 'react-icons/ri';
-import { VscSymbolColor } from 'react-icons/vsc';
-import { LiaHandPointerSolid } from 'react-icons/lia';
-import { IoAccessibilityOutline } from 'react-icons/io5';
-import { PiSun, PiMoon } from 'react-icons/pi';
-import { TbSunMoon } from 'react-icons/tb';
-import { MdRefresh } from 'react-icons/md';
+import {
+  Type as RiFontSize,
+  PanelsTopLeft as RiDashboardLine,
+  Languages as RiTranslate,
+  Share2 as RiShareLine,
+  MessageCircle as RiChat1Line,
+} from '@/components/GlossaIcons';
+import { Palette as VscSymbolColor } from '@/components/GlossaIcons';
+import { Hand as LiaHandPointerSolid } from '@/components/GlossaIcons';
+import { Accessibility as IoAccessibilityOutline } from '@/components/GlossaIcons';
+import { Sun as PiSun, Moon as PiMoon } from '@/components/GlossaIcons';
+import { SunMoon as TbSunMoon } from '@/components/GlossaIcons';
+import { RefreshCw as MdRefresh } from '@/components/GlossaIcons';
 import { IconType } from 'react-icons';
 import { stubTranslation as _ } from '@/utils/misc';
 

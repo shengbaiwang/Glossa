@@ -2,8 +2,8 @@
 
 import clsx from 'clsx';
 import React, { useEffect, useRef, useCallback, useMemo, useState } from 'react';
-import { FiSearch } from 'react-icons/fi';
-import { MdClose } from 'react-icons/md';
+import { Search as FiSearch } from '@/components/GlossaIcons';
+import { X as MdClose } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useCommandPalette } from './CommandPaletteProvider';
 import { CommandSearchResult, getCategoryLabel, CommandCategory } from '@/services/commandRegistry';

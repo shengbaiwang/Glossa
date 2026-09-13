@@ -1,6 +1,6 @@
 import * as React from 'react';
 import clsx from 'clsx';
-import { Plus } from 'lucide-react';
+import { Plus } from '@/components/GlossaIcons';
 import GlossaMark from '@/components/GlossaMark';
 
 import { useEnv } from '@/context/EnvContext';

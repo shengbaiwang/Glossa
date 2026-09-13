@@ -437,3 +437,96 @@ export function Pause(props: GlossaIconProps) {
     </Icon>
   );
 }
+
+/** Insets and direction are reading-specific, so retain explicit visual semantics. */
+export function Margins(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <rect x='3.5' y='4.5' width='17' height='15' rx='3' />
+      <path d='M7.5 8v8M16.5 8v8M10.5 10h3M10.5 14h3' />
+    </Icon>
+  );
+}
+export function ScreenRotation(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <rect x='8' y='6' width='8' height='12' rx='2' transform='rotate(30 12 12)' />
+      <path d='M3.5 10A9 9 0 0 1 16 3.8M16 3.8h-4M16 3.8v3M20.5 14A9 9 0 0 1 8 20.2M8 20.2h4M8 20.2v-3' />
+    </Icon>
+  );
+}
+export function TextDirectionRtl(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <path d='M20 5H9M20 9H6M20 13H9M18 18H4m4-3-4 3 4 3' />
+    </Icon>
+  );
+}
+
+export {
+  Accessibility,
+  ArrowLeft,
+  ArrowRight,
+  Braces,
+  ChevronUp,
+  Circle,
+  CircleAlert,
+  CircleCheck,
+  CirclePlay,
+  CircleUserRound,
+  CircleX,
+  Cloud,
+  CloudAlert,
+  CloudDownload,
+  CloudOff,
+  CloudSync,
+  CloudUpload,
+  Columns2,
+  Contrast,
+  CopyCheck,
+  Database,
+  Download,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  File,
+  FilePlus2,
+  FolderMinus,
+  FolderOpen,
+  FolderPlus,
+  FolderX,
+  GalleryHorizontal,
+  GalleryVertical,
+  Gauge,
+  GripVertical,
+  Hand,
+  Headphones,
+  ListX,
+  LoaderCircle,
+  Lock,
+  LockOpen,
+  MessageSquare,
+  Minus,
+  Moon,
+  MoveHorizontal,
+  MoveVertical,
+  Palette,
+  PanelsTopLeft,
+  Pipette,
+  Radio,
+  RectangleHorizontal,
+  RectangleVertical,
+  RotateCcw,
+  RotateCw,
+  SearchX,
+  Send,
+  Server,
+  Settings2,
+  Share2,
+  Smartphone,
+  SunMoon,
+  ZoomIn,
+  ZoomOut,
+} from './GlossaIconsSupplement';
+
+export { Clock, TriangleAlert } from './GlossaIconsSupplement';

@@ -59,6 +59,7 @@ const WindowButtons: React.FC<WindowButtonsProps> = ({
 
   const isExcludedElement = (target: HTMLElement) => {
     return (
+      target.closest('button') ||
       target.closest('.btn') ||
       target.closest('.window-button') ||
       target.closest('.dropdown-container') ||

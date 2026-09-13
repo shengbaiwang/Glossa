@@ -1,5 +1,5 @@
 import React from 'react';
-import { MdDataObject, MdNightlightRound } from 'react-icons/md';
+import { Braces as MdDataObject, Moon as MdNightlightRound } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import { BoxedList, NavigationRow } from '@/components/settings/primitives';
 import Dialog from '@/components/Dialog';

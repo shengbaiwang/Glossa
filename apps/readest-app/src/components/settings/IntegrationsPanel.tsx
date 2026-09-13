@@ -1,15 +1,13 @@
 import clsx from 'clsx';
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { MdChevronRight } from 'react-icons/md';
+import { ChevronRight as MdChevronRight } from '@/components/GlossaIcons';
 import {
-  RiCloudLine,
-  RiCloudFill,
-  RiDatabase2Line,
-  RiGoogleLine,
-  RiMicrosoftLine,
-  RiAppleLine,
-} from 'react-icons/ri';
+  Cloud as RiCloudLine,
+  Cloud as RiCloudFill,
+  Database as RiDatabase2Line,
+} from '@/components/GlossaIcons';
+import { RiGoogleLine, RiMicrosoftLine, RiAppleLine } from 'react-icons/ri';
 import { useEnv } from '@/context/EnvContext';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/hooks/useTranslation';

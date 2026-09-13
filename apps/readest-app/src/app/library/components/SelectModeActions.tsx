@@ -9,7 +9,7 @@ import {
   CloudDownload,
   Send,
   FolderPlus,
-} from 'lucide-react';
+} from '@/components/GlossaIcons';
 import { useKeyDownActions } from '@/hooks/useKeyDownActions';
 import { useTranslation } from '@/hooks/useTranslation';
 import { isMd5 } from '@/utils/md5';

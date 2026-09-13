@@ -1,4 +1,4 @@
-import { IoCheckmark } from 'react-icons/io5';
+import { Check as IoCheckmark } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getLocale } from '@/utils/misc';
 import { PlanDetails } from '../utils/plan';

@@ -19,12 +19,12 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  gap: 8px;
+  gap: var(--glossa-gap-chrome);
 }
 
 .glossa-navigation-secondary,
 .glossa-navigation-spacer {
-  flex: 0 0 72px;
+  flex: 0 0 66px;
 }
 
 .glossa-navigation-secondary .glossa-icon-button {

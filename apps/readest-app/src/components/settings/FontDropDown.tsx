@@ -1,8 +1,8 @@
 import clsx from 'clsx';
 import React, { useMemo } from 'react';
 import { FixedSizeList as List } from 'react-window';
-import { FiChevronUp, FiChevronLeft } from 'react-icons/fi';
-import { MdCheck } from 'react-icons/md';
+import { ChevronUp as FiChevronUp, ChevronLeft as FiChevronLeft } from '@/components/GlossaIcons';
+import { Check as MdCheck } from '@/components/GlossaIcons';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';

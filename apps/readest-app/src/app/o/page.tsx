@@ -2,7 +2,11 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { IoAlertCircleOutline, IoBookOutline, IoOpenOutline } from 'react-icons/io5';
+import {
+  CircleAlert as IoAlertCircleOutline,
+  BookOpen as IoBookOutline,
+  ExternalLink as IoOpenOutline,
+} from '@/components/GlossaIcons';
 import { GLOSSA_DOWNLOAD_URL, GLOSSA_SOURCE_URL } from '@/services/constants';
 import { useTranslation } from '@/hooks/useTranslation';
 import { buildAnnotationAppUrl } from '@/utils/deeplink';

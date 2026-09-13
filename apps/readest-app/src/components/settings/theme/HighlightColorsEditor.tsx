@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import React, { useEffect, useRef, useState } from 'react';
-import { MdClose } from 'react-icons/md';
+import { X as MdClose } from '@/components/GlossaIcons';
 import {
   DEFAULT_HIGHLIGHT_COLORS,
   DefaultHighlightColor,

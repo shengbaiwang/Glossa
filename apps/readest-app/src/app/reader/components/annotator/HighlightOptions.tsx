@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import React, { useEffect, useRef, useState } from 'react';
-import { FaCheck } from 'react-icons/fa';
-import { MdLibraryAddCheck } from 'react-icons/md';
+import { Check as FaCheck } from '@/components/GlossaIcons';
+import { CopyCheck as MdLibraryAddCheck } from '@/components/GlossaIcons';
 import { DEFAULT_HIGHLIGHT_COLORS, HighlightColor, HighlightStyle } from '@/types/book';
 import { useEnv } from '@/context/EnvContext';
 import { useThemeStore } from '@/store/themeStore';

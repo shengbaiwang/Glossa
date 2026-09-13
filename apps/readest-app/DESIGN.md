@@ -12,20 +12,26 @@ or stroke weight; a filled bookmark and stop square retain their state meaning.
 
 | Role | Desktop glyph | Control / rounding |
 | --- | --- | --- |
-| Library toolbar and category navigation | 20px | 32px icon button / 9px; category row keeps its own full-width target |
-| Reader header, selection and page navigation | 18px | 32px / 9px |
+| Library toolbar and category navigation | 20px | 32px desktop icon button / 12px; category row keeps its own full-width target |
+| Reader header, selection and page navigation | 18px | 32px / 11px; 2px peer gap |
 | Left/right pane destinations and collapse | 18px | 32 × 32px target; 28 × 28px selected backplate / 10px; 2px group gap |
-| Workspace tools, menus, history navigation | 16px | 32px / 7px for nested icon tools; menu rows keep text alignment |
-| Reply actions, fold indicators, selection checks | 14px | Keep the parent target; never shrink the hit area to the glyph |
-| Settings category tabs | 18px | Keep their labeled tab layout |
+| Workspace tools, settings actions, menus, history navigation | 16px | 28px / 9px for pure local actions; menu rows retain their text target |
+| Reply actions, fold indicators, selection checks | 14px | 24px / 8px for compact standalone actions; folds/checks keep the parent target |
+| Settings category tabs and navigation row chips | 18px | Labeled tabs / 11px; 36px row chip / 12px |
+| Image/table viewer controls | 20px | 40px / 12px; 6px group gap and contrasting overlay |
+| Alerts, toast status and empty states | 20–32px | Status/illustration role, without an action backplate |
+| Standalone account/open-document actions | 20–24px | Keep their full-page row or 44px target |
 
 Sizes live in `glossa.css` (`--glossa-icon-navigation/chrome/tool/detail`);
-`glossa-icons.css` maps roles to controls. Use `--glossa-radius-control` (9px) for
-main controls and `--glossa-radius-nested` (7px) for embedded tools. Popovers stay
+`glossa-icons.css` maps roles to controls. Use `--glossa-radius-navigation` (12px) for app navigation,
+`--glossa-radius-control` (11px) for reading controls,
+`--glossa-radius-nested` (9px) for embedded tools and
+`--glossa-radius-detail` (8px) for inline actions. Popovers stay
 12px, large surfaces 20px, message bubbles and map roots keep their own geometry.
-Avoid global `svg` sizing or a blanket radius rule. Existing Lucide icons in
-unrevised settings and specialist menus may remain, with 1.8-unit strokes on
-shared chrome; do not alter external logos, covers, diagrams or status artwork.
+Avoid global `svg` sizing or a blanket radius rule. Import functional glyphs only from `GlossaIcons.tsx`. Its supplement adapts
+Lucide secondary glyphs to the same drawing contract; retain Lucide attribution
+and license. Do not import raw Lucide or another icon family at call sites.
+External service logos, file-format marks, covers and diagrams keep their identity.
 
 Contents uses three chapter markers with long/short/long entry lines, an open
 list silhouette that reads at 18px. It is distinct from the split-pane toggles,
@@ -41,6 +47,70 @@ e-ink selection borders. Empty-state symbols (22–28px), the app mark and float
 page controls (24px glyph in a circular target) are intentional exceptions.
 This section supersedes earlier icon-size and icon-button radius guidance.
 
+
+### Reusable icon roles across Glossa — 2026-09-14
+
+This applies to the library and its search/import/transfer tools, reading chrome,
+selection and annotation tools, conversation and mind map workspaces, settings,
+metadata, dialogs, account controls, alerts and notifications. Coordinate the
+whole family while retaining the hierarchy in the table above.
+
+- Draw functional icons through `GlossaIcons`. The reading-specific silhouettes
+  remain custom; `GlossaIconsSupplement` normalizes secondary Lucide geometry to
+  the same 24-unit grid, 1.8-unit rounded stroke and prop/accessibility contract.
+  Extend those two files rather than pasting an SVG or importing another family.
+- A glyph has no background. The **control** owns its hit target, surface, radius,
+  focus and state. Use `glossa-icon-button` for main actions, add `glossa-tool-icon`
+  for nested pure-icon actions, or `glossa-detail-icon` for compact inline actions.
+  Use `ReaderPaneTabs` for pane destinations. Do not use an icon-button class on
+  a labeled menu row, color swatch, notification symbol or decorative illustration.
+- CSS tokens are the reusable source: `--glossa-icon-navigation/chrome/tool/detail`
+  = 20/18/16/14px; `--glossa-control-size` = 32px,
+  `--glossa-target-tool/detail` = 28/24px. Coarse-pointer controls keep at least
+  44px targets, with 20/18/16px chrome/tool/detail glyphs. Main library actions on
+  narrow screens retain their existing larger targets. Never reduce reader insets.
+- Use 2px between peer reading tools and compact workspace actions; library actions
+  keep 4px and distinct groups retain 8px or their semantic separation. Tighten
+  icon groups without squeezing text, fields, the progress slider or touch spacing.
+- Normal actions use theme ink with a subtle hover wash. Pressed/expanded actions
+  keep one stronger ink wash; pane destinations follow the stricter exclusive
+  contract below. Disabled controls remain muted and keyboard focus visible.
+  Error/warning/success symbols retain their semantic color and shape; do not use
+  arbitrary accent colors or filled legacy glyph CSS on a line icon.
+- Menus use 16px leading symbols and 14px checks/chevrons, aligned to their text;
+  preserve the full row target. Attached search/field controls inherit field
+  geometry, with 14–16px glyphs rather than standalone navigation backplates.
+- Keep intentional exceptions: circular transport/send/stop controls, circular
+  folding counters, native window buttons, filled bookmark/radio/check states,
+  battery and scroll indicators, range handles, bookmark ribbons, highlight-style previews, third-party logos,
+  file-format marks and empty-state illustrations (cover/profile placeholders may
+  remain 48–64px). Tiny noninteractive metadata
+  markers may stay 12px. These are documented semantic roles, not accidental sizes.
+- E-ink keeps explicit state borders and contrast; reduced motion and e-ink disable
+  icon spinners. Directional arrows retain RTL logic; do not mirror all glyphs.
+  Visible labels/tooltips and accessible button names describe the action, while
+  decorative glyphs default to `aria-hidden`. Never shrink an interactive target
+  to an inline glyph's size.
+- Custom title-bar dragging must exclude semantic buttons (including their SVG
+  children), regardless of their CSS classes. Shared icon buttons must remain
+  clickable without triggering window movement.
+
+```tsx
+import { Pencil, Copy } from '@/components/GlossaIcons';
+
+<button className='glossa-icon-button glossa-tool-icon' aria-label={_('Edit')}>
+  <Pencil />
+</button>
+<button className='glossa-icon-button glossa-detail-icon' aria-label={_('Copy')}>
+  <Copy />
+</button>
+```
+
+Both examples inherit size, curvature, theme states and touch behavior. Reuse the
+role class; avoid copied width/radius utilities that override it. Existing
+`glossa-chat-text-button`, `glossa-workmap-icon`, selection tools and library
+controls consume the same role tokens. Verify representative navigation, local,
+inline and settings controls in light/dark, RTL, narrow and e-ink layouts.
 
 ### Pane selection contract — 2026-09-14
 
@@ -118,7 +188,7 @@ interaction, safe-area, RTL, theme and e-ink rules still apply.
 - Use `glossa.css` theme-derived tokens for ink, muted text, surfaces, borders, focus
   and elevation. The default palette is paper/ink in light mode and charcoal/paper in
   dark mode. Other built-in and custom palettes keep their identity.
-- Controls use 9px radii for compact icons, 12px for standard controls/popovers and
+- Controls use the role radii above for icons, 12px for standard controls/popovers and
   20px for larger surfaces. Library headings establish hierarchy with type and space;
   book titles and authors remain distinct from reading progress.
 - `glossa-icon-button` has a 32px visual size; keep `touch-target` for its existing

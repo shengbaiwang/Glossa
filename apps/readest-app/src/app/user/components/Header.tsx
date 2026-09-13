@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { useRef } from 'react';
-import { IoArrowBack } from 'react-icons/io5';
+import { ArrowLeft as IoArrowBack } from '@/components/GlossaIcons';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useTrafficLightStore } from '@/store/trafficLightStore';

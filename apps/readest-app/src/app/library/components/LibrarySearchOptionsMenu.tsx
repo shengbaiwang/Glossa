@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { MdCheck } from 'react-icons/md';
+import { Check as MdCheck } from '@/components/GlossaIcons';
 
 import { useTranslation } from '@/hooks/useTranslation';
 import { useDefaultIconSize } from '@/hooks/useResponsiveSize';

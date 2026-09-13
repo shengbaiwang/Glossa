@@ -30,7 +30,11 @@ const WindowButtonsHarness = () => {
   const headerRef = useRef<HTMLDivElement>(null);
   return (
     <>
-      <div ref={headerRef} data-testid='header' />
+      <div ref={headerRef} data-testid='header'>
+        <button className='glossa-icon-button' aria-label='Tool'>
+          <svg data-testid='tool-glyph' />
+        </button>
+      </div>
       <WindowButtons headerRef={headerRef} />
     </>
   );
@@ -73,5 +77,17 @@ describe('WindowButtons', () => {
     });
 
     expect(startDragging).toHaveBeenCalledOnce();
+  });
+
+  it('does not drag the window when pressing a shared icon button', async () => {
+    hasWindowBar = true;
+    render(<WindowButtonsHarness />);
+
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByTestId('tool-glyph'), { buttons: 1, detail: 1 });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(startDragging).not.toHaveBeenCalled();
   });
 });

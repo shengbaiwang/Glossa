@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { MdArrowBack } from 'react-icons/md';
+import { ArrowLeft as MdArrowBack } from '@/components/GlossaIcons';
 
 import { BookDoc } from '@/libs/document';
 import { useReaderStore } from '@/store/readerStore';

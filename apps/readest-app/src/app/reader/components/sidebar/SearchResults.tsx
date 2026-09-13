@@ -1,3 +1,4 @@
+import { ChevronRight } from '@/components/GlossaIcons';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { BookSearchMatch, BookSearchResult, SearchExcerpt } from '@/types/book';
 import { useReaderStore } from '@/store/readerStore';
@@ -160,21 +161,13 @@ const ChapterSection: React.FC<ChapterSectionProps> = ({
           aria-expanded={isExpanded}
         >
           <span className='flex min-w-0 items-center gap-1.5'>
-            <svg
-              viewBox='0 0 8 10'
-              width='8'
-              height='10'
+            <ChevronRight
+              size={14}
               className={clsx(
                 'text-base-content not-eink:transition-transform shrink-0',
                 isExpanded ? 'rotate-90' : 'rotate-0',
               )}
-              style={{ transformOrigin: 'center' }}
-              fill='currentColor'
-              aria-hidden='true'
-              focusable='false'
-            >
-              <polygon points='0 0, 8 5, 0 10' />
-            </svg>
+            />
             <span className='truncate'>{label}</span>
           </span>
           <span className='text-base-content/60 ms-2 shrink-0 whitespace-nowrap text-xs'>

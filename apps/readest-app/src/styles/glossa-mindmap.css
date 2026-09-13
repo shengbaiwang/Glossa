@@ -86,11 +86,12 @@
   font-weight: 500;
 }
 .glossa-workmap .glossa-workmap-icon {
+  min-height: var(--glossa-target-tool);
   border-radius: var(--glossa-radius-nested);
 }
 .glossa-workmap-icon {
-  width: 32px;
-  min-width: 32px;
+  width: var(--glossa-target-tool);
+  min-width: var(--glossa-target-tool);
   flex-shrink: 0;
   font-size: 20px;
 }
@@ -590,11 +591,12 @@
   box-shadow: none;
 }
 @media (pointer: coarse) {
-  .glossa-workmap :is(button, select) {
+  .glossa-workmap :is(button, select),
+  .glossa-workmap .glossa-workmap-icon {
     min-height: 44px;
   }
   .glossa-workmap-icon,
   .glossa-workmap-fold {
-    min-width: 40px;
+    min-width: 44px;
   }
 }

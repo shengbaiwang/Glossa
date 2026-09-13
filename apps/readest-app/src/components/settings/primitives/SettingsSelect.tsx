@@ -1,5 +1,5 @@
 import React from 'react';
-import { MdArrowDropDown } from 'react-icons/md';
+import { ChevronDown as MdArrowDropDown } from '@/components/GlossaIcons';
 
 interface SettingsSelectOption {
   value: string;

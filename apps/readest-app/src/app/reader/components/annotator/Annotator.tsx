@@ -1,3 +1,4 @@
+import { LoaderCircle } from '@/components/GlossaIcons';
 import { useCustomDictionaryStore } from '@/store/customDictionaryStore';
 import { isSystemDictionaryEnabled } from '@/services/dictionaries/registry';
 import { invokeSystemDictionary } from '@/services/dictionaries/systemDictionary';
@@ -6,7 +7,7 @@ import DictionaryPopup from './DictionaryPopup';
 import SelectionTranslation from './SelectionTranslation';
 import { getReadingQuickAction } from '@/utils/annotationToolbar';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { RiDeleteBinLine } from 'react-icons/ri';
+import { Trash2 as RiDeleteBinLine } from '@/components/GlossaIcons';
 
 import * as CFI from 'foliate-js/epubcfi.js';
 import { Overlayer } from 'foliate-js/overlayer.js';
@@ -1833,21 +1834,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
           className='fixed inset-0 z-50 flex items-center justify-center bg-black/30'
         >
           <div className='modal-box bg-base-100 flex flex-col items-center gap-3 px-8 py-6 shadow-2xl'>
-            <svg className='text-primary h-8 w-8 animate-spin' viewBox='0 0 24 24' fill='none'>
-              <circle
-                className='opacity-25'
-                cx='12'
-                cy='12'
-                r='10'
-                stroke='currentColor'
-                strokeWidth='4'
-              />
-              <path
-                className='opacity-75'
-                fill='currentColor'
-                d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z'
-              />
-            </svg>
+            <LoaderCircle className='text-base-content h-8 w-8 animate-spin' />
             <p className='font-size-sm text-base-content'>{_('Importing annotations...')}</p>
           </div>
         </div>

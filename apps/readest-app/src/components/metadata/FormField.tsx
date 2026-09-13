@@ -1,6 +1,11 @@
 import React from 'react';
 import clsx from 'clsx';
-import { MdOutlineInfo, MdLock, MdLockOpen, MdError } from 'react-icons/md';
+import {
+  Info as MdOutlineInfo,
+  Lock as MdLock,
+  LockOpen as MdLockOpen,
+  CircleAlert as MdError,
+} from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 
 const inputBaseStyles =

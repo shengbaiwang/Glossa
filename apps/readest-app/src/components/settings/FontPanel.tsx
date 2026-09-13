@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { ChevronDown, Minus, Plus, RotateCcw } from 'lucide-react';
+import { ChevronDown, Minus, Plus, RotateCcw } from '@/components/GlossaIcons';
 import {
   CJK_EXCLUDE_PATTENS,
   CJK_FONTS_PATTENS,

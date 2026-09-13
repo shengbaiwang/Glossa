@@ -1,7 +1,11 @@
 import clsx from 'clsx';
 import React from 'react';
-import { MdOutlineLightMode, MdOutlineDarkMode, MdOutlineSensors } from 'react-icons/md';
-import { TbSunMoon } from 'react-icons/tb';
+import {
+  Sun as MdOutlineLightMode,
+  Moon as MdOutlineDarkMode,
+  Radio as MdOutlineSensors,
+} from '@/components/GlossaIcons';
+import { SunMoon as TbSunMoon } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 
 import { ThemeMode } from '@/styles/themes';

@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import React from 'react';
-import { MdCheck } from 'react-icons/md';
+import { Check as MdCheck } from '@/components/GlossaIcons';
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';

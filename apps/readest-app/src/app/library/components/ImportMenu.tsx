@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { FilePlus2, FolderOpen, Link } from 'lucide-react';
+import { FilePlus2, FolderOpen, Link } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';

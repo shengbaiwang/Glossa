@@ -1,6 +1,12 @@
 import clsx from 'clsx';
 import React, { useState } from 'react';
-import { MdEdit, MdDelete, MdLock, MdLockOpen, MdOutlineSearch } from 'react-icons/md';
+import {
+  Pencil as MdEdit,
+  Trash2 as MdDelete,
+  Lock as MdLock,
+  LockOpen as MdLockOpen,
+  Search as MdOutlineSearch,
+} from '@/components/GlossaIcons';
 
 import { Book } from '@/types/book';
 import { BookMetadata } from '@/libs/document';
@@ -214,7 +220,7 @@ const BookDetailEdit: React.FC<BookDetailEditProps> = ({
               <MdEdit
                 className={clsx(
                   'h-5 w-5 flex-shrink-0 sm:h-4 sm:w-4',
-                  isCoverLocked ? 'fill-base-content' : 'fill-gray-600',
+                  isCoverLocked ? 'text-base-content' : 'text-neutral-content',
                 )}
               />
               <span className='hidden truncate sm:inline'>{_('Replace')}</span>

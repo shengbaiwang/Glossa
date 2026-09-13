@@ -1,4 +1,5 @@
 'use client';
+import { Check, Clock, X } from '@/components/GlossaIcons';
 import Stripe from 'stripe';
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -281,19 +282,7 @@ const SuccessPageWithSearchParams = () => {
       <div className='flex min-h-screen items-center justify-center bg-gray-50'>
         <div className='max-w-md text-center'>
           <div className='mx-auto mb-4 flex h-12 w-12 animate-pulse items-center justify-center rounded-full bg-yellow-400'>
-            <svg
-              className='h-6 w-6 text-white'
-              fill='none'
-              stroke='currentColor'
-              viewBox='0 0 24 24'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d='M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'
-              />
-            </svg>
+            <Clock className='h-6 w-6 text-white' />
           </div>
           <h2 className='mb-2 text-xl font-semibold text-gray-800'>{_('Payment Processing')}</h2>
           <p className='mb-4 text-gray-600'>
@@ -310,19 +299,7 @@ const SuccessPageWithSearchParams = () => {
       <div className='flex min-h-screen items-center justify-center bg-gray-50'>
         <div className='mx-auto max-w-2xl px-4 text-center'>
           <div className='mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100'>
-            <svg
-              className='h-6 w-6 text-red-600'
-              fill='none'
-              stroke='currentColor'
-              viewBox='0 0 24 24'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d='M6 18L18 6M6 6l12 12'
-              />
-            </svg>
+            <X className='h-6 w-6 text-red-600' />
           </div>
           <h2 className='mb-2 text-xl font-semibold text-gray-800'>{_('Payment Failed')}</h2>
           <p className='mb-6 text-gray-600'>
@@ -355,14 +332,7 @@ const SuccessPageWithSearchParams = () => {
       <div className='mx-auto max-w-2xl px-4 text-center'>
         {/* Success Icon */}
         <div className='mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-green-100'>
-          <svg
-            className='h-8 w-8 text-green-600'
-            fill='none'
-            stroke='currentColor'
-            viewBox='0 0 24 24'
-          >
-            <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M5 13l4 4L19 7' />
-          </svg>
+          <Check className='h-8 w-8 text-green-600' />
         </div>
 
         {/* Success Message */}

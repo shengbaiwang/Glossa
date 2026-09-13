@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
-import { Check, Circle, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Check, Circle, ChevronRight, ChevronLeft } from '@/components/GlossaIcons';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { BooksGroup } from '@/types/book';

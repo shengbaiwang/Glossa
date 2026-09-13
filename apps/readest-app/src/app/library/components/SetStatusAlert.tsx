@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import * as React from 'react';
-import { PiX } from 'react-icons/pi';
+import { X as PiX } from '@/components/GlossaIcons';
 import { ReadingStatus } from '@/types/book';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useKeyDownActions } from '@/hooks/useKeyDownActions';

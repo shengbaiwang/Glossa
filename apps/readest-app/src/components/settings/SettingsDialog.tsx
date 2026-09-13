@@ -20,7 +20,7 @@ import {
   Search,
   Server,
   MessageSquare,
-} from 'lucide-react';
+} from '@/components/GlossaIcons';
 import { getDirFromUILanguage } from '@/utils/rtl';
 import { getCommandPaletteShortcut } from '@/services/environment';
 import FontPanel from './FontPanel';
@@ -309,7 +309,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const currentPanel = tabConfig.find((tab) => tab.tab === activePanel);
 
   const windowControls = (
-    <div className='flex h-full items-center justify-end gap-x-2'>
+    <div className='flex h-full items-center justify-end gap-x-[var(--glossa-gap-chrome)]'>
       <button
         onClick={handleOpenCommandPalette}
         aria-label={_('Search Settings')}
@@ -371,9 +371,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
               tabIndex={-1}
               aria-label={_('Close')}
               onClick={handleClose}
-              className={
-                'btn btn-ghost btn-circle absolute left-3 flex h-8 min-h-8 w-8 hover:bg-transparent focus:outline-none'
-              }
+              className={'glossa-icon-button absolute left-3'}
             >
               {isRtl ? <ChevronRight /> : <ChevronLeft />}
             </button>
@@ -427,7 +425,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
                 aria-label={_('Scroll tabs')}
                 title={_('Scroll tabs')}
                 tabIndex={-1}
-                className='btn btn-ghost btn-circle flex h-8 min-h-8 w-8 shrink-0 items-center justify-center p-0'
+                className='glossa-icon-button'
               >
                 {isRtl ? <ChevronLeft /> : <ChevronRight />}
               </button>

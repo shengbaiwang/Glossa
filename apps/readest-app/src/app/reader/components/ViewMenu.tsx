@@ -16,7 +16,7 @@ import {
   Columns2,
   GalleryVertical,
   GalleryHorizontal,
-} from 'lucide-react';
+} from '@/components/GlossaIcons';
 import clsx from 'clsx';
 import React, { useEffect } from 'react';
 import { useState } from 'react';

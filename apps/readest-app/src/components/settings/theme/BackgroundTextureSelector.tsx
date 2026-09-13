@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import React from 'react';
-import { MdClose, MdPlayCircleOutline } from 'react-icons/md';
+import { X as MdClose, CirclePlay as MdPlayCircleOutline } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import {
@@ -10,7 +10,7 @@ import {
   SettingsSelect,
   SettingsSwitchRow,
 } from '../primitives';
-import { PiPlus } from 'react-icons/pi';
+import { Plus as PiPlus } from '@/components/GlossaIcons';
 import type { BackgroundTextureScope } from '@/helpers/settings';
 
 interface Texture {

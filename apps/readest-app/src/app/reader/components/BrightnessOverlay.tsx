@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import React from 'react';
-import { PiSun } from 'react-icons/pi';
+import { Sun as PiSun } from '@/components/GlossaIcons';
 import { valueToPosition } from '@/app/reader/utils/brightnessGesture';
 
 interface BrightnessOverlayProps {

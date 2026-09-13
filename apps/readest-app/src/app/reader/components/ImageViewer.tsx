@@ -1,6 +1,9 @@
 import clsx from 'clsx';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
+import {
+  ChevronLeft as IoChevronBack,
+  ChevronRight as IoChevronForward,
+} from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useKeyDownActions } from '@/hooks/useKeyDownActions';
 import { useEnv } from '@/context/EnvContext';

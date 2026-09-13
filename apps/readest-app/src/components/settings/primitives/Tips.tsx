@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import React from 'react';
-import { MdInfoOutline } from 'react-icons/md';
+import { Info as MdInfoOutline } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 
 interface TipsProps {

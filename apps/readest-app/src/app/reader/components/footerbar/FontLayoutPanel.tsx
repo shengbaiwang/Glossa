@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import React, { useCallback } from 'react';
-import { TbBoxMargin } from 'react-icons/tb';
-import { RxLineHeight } from 'react-icons/rx';
+import { Margins as TbBoxMargin } from '@/components/GlossaIcons';
+import { MoveVertical as RxLineHeight } from '@/components/GlossaIcons';
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';

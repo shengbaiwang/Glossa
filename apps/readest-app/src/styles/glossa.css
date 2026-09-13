@@ -17,8 +17,15 @@
   --glossa-icon-tool: 16px;
   --glossa-icon-detail: 14px;
   --glossa-control-size: 32px;
-  --glossa-radius-control: 9px;
-  --glossa-radius-nested: 7px;
+  --glossa-radius-control: 11px;
+  --glossa-radius-nested: 9px;
+  --glossa-radius-navigation: 12px;
+  --glossa-radius-detail: 8px;
+  --glossa-target-tool: 28px;
+  --glossa-target-detail: 24px;
+  --glossa-gap-chrome: 2px;
+  --glossa-gap-tool: 2px;
+  --glossa-gap-group: 8px;
   --glossa-pane-backplate: 28px;
   --glossa-pane-radius: 10px;
   --glossa-pane-gap: 2px;
@@ -153,11 +160,11 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
 }
 
 .glossa-menu-item {
-  border-radius: 8px;
+  border-radius: var(--glossa-radius-nested);
 }
 
 .glossa-settings .dialog-tabs .btn {
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-control);
   font-weight: 500;
 }
 
@@ -166,7 +173,7 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
   border-color: var(--glossa-border);
 }
 
-.glossa-settings .dialog-tabs .lucide {
+.glossa-settings .dialog-tabs .glossa-icon {
   width: var(--glossa-icon-chrome);
   height: var(--glossa-icon-chrome);
   stroke-width: 1.8;

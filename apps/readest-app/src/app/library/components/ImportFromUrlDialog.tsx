@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { MdLink } from 'react-icons/md';
+import { Link as MdLink } from '@/components/GlossaIcons';
 import Dialog from '@/components/Dialog';
 import { isClipCancelled } from '@/services/send/clipSignIn';
 import { useTranslation } from '@/hooks/useTranslation';

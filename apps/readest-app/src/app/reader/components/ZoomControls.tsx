@@ -1,12 +1,12 @@
 import React from 'react';
 import {
-  IoClose,
-  IoExpand,
-  IoAdd,
-  IoRemove,
-  IoShareOutline,
-  IoDownloadOutline,
-} from 'react-icons/io5';
+  X as IoClose,
+  Expand as IoExpand,
+  Plus as IoAdd,
+  Minus as IoRemove,
+  Share2 as IoShareOutline,
+  Download as IoDownloadOutline,
+} from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useThemeStore } from '@/store/themeStore';
 import { Insets } from '@/types/misc';
@@ -35,7 +35,7 @@ const ZoomControls: React.FC<ZoomControlsProps> = ({
   const { systemUIVisible, statusBarHeight } = useThemeStore();
   return (
     <div
-      className='absolute right-4 top-2 z-10 grid grid-cols-1 gap-4 text-white'
+      className='glossa-viewer-tools absolute right-4 top-2 z-10 grid grid-cols-1 gap-4 text-white'
       style={{
         marginTop: systemUIVisible
           ? `${Math.max(gridInsets.top, statusBarHeight)}px`

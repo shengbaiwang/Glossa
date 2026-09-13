@@ -1,11 +1,11 @@
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import {
-  RiFolderOpenLine,
-  RiCheckboxCircleFill,
-  RiErrorWarningFill,
-  RiLoader2Line,
-} from 'react-icons/ri';
+  FolderOpen as RiFolderOpenLine,
+  CircleCheck as RiCheckboxCircleFill,
+  CircleAlert as RiErrorWarningFill,
+  LoaderCircle as RiLoader2Line,
+} from '@/components/GlossaIcons';
 import { documentDir, join } from '@tauri-apps/api/path';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { useEnv } from '@/context/EnvContext';

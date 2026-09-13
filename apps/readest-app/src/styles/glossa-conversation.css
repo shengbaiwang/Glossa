@@ -130,9 +130,9 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  min-height: 32px;
-  min-width: 32px;
-  padding: 6px;
+  min-height: var(--glossa-target-tool);
+  min-width: var(--glossa-target-tool);
+  padding: 5px;
   border-radius: var(--glossa-radius-nested);
   color: var(--glossa-muted);
   background: transparent;
@@ -326,11 +326,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: var(--glossa-target-detail);
+  height: var(--glossa-target-detail);
   padding: 0;
   border: 1px solid var(--glossa-border);
-  border-radius: 7px;
+  border-radius: var(--glossa-radius-detail);
   color: var(--glossa-muted);
   background: var(--glossa-surface);
 }
@@ -378,9 +378,12 @@
   flex-shrink: 0;
   color: var(--glossa-muted);
 }
+.glossa-chat-turn .glossa-chat-text-button {
+  border-radius: var(--glossa-radius-detail);
+}
 .glossa-chat-versions .glossa-chat-text-button {
-  min-height: 26px;
-  min-width: 26px;
+  min-height: var(--glossa-target-detail);
+  min-width: var(--glossa-target-detail);
   padding: 2px;
 }
 .glossa-chat-version-count {
@@ -726,6 +729,7 @@
     min-height: 44px;
   }
   .glossa-chat-text-button,
+  .glossa-chat-code-copy,
   .glossa-chat-send {
     min-width: 44px;
   }

@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import React, { useEffect, useState } from 'react';
-import { FiMinus, FiPlus } from 'react-icons/fi';
+import { Minus as FiMinus, Plus as FiPlus } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import { SettingLabel } from './primitives';
 
@@ -94,7 +94,7 @@ const NumberInput: React.FC<NumberInputProps> = ({
           tabIndex={disabled ? -1 : 0}
           aria-label={_('Decrease')}
           onClick={decrement}
-          className={`btn btn-circle btn-sm ${currentNumericValue <= min || disabled ? 'btn-disabled !bg-opacity-5' : ''}`}
+          className={`glossa-icon-button glossa-tool-icon ${currentNumericValue <= min || disabled ? 'btn-disabled !bg-opacity-5' : ''}`}
         >
           <FiMinus className='h-4 w-4' />
         </button>
@@ -102,7 +102,7 @@ const NumberInput: React.FC<NumberInputProps> = ({
           tabIndex={disabled ? -1 : 0}
           aria-label={_('Increase')}
           onClick={increment}
-          className={`btn btn-circle btn-sm ${currentNumericValue >= max || disabled ? 'btn-disabled !bg-opacity-5' : ''}`}
+          className={`glossa-icon-button glossa-tool-icon ${currentNumericValue >= max || disabled ? 'btn-disabled !bg-opacity-5' : ''}`}
         >
           <FiPlus className='h-4 w-4' />
         </button>

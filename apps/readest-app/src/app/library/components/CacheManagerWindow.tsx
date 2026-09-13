@@ -1,11 +1,11 @@
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import {
-  RiDatabase2Line,
-  RiCheckboxCircleFill,
-  RiErrorWarningFill,
-  RiLoader2Line,
-} from 'react-icons/ri';
+  Database as RiDatabase2Line,
+  CircleCheck as RiCheckboxCircleFill,
+  CircleAlert as RiErrorWarningFill,
+  LoaderCircle as RiLoader2Line,
+} from '@/components/GlossaIcons';
 import { documentDir, join } from '@tauri-apps/api/path';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';

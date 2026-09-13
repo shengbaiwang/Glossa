@@ -1,6 +1,9 @@
 import React from 'react';
-import { IoMdCloseCircleOutline } from 'react-icons/io';
-import { MdArrowBackIosNew, MdArrowForwardIos } from 'react-icons/md';
+import { CircleX as IoMdCloseCircleOutline } from '@/components/GlossaIcons';
+import {
+  ChevronLeft as MdArrowBackIosNew,
+  ChevronRight as MdArrowForwardIos,
+} from '@/components/GlossaIcons';
 
 import { useTranslation } from '@/hooks/useTranslation';
 import { getDirFromUILanguage } from '@/utils/rtl';

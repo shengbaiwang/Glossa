@@ -11,7 +11,7 @@ import {
   RefreshCw,
   CloudAlert,
   Radio,
-} from 'lucide-react';
+} from '@/components/GlossaIcons';
 import type { IconType } from 'react-icons';
 
 import { isTauriAppPlatform, isWebAppPlatform } from '@/services/environment';

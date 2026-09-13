@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import React from 'react';
-import { MdChevronRight } from 'react-icons/md';
+import { ChevronRight as MdChevronRight } from '@/components/GlossaIcons';
 
 interface SubPageHeaderProps {
   /** Label of the parent panel (the "back" target). */

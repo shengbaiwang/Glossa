@@ -12,7 +12,7 @@ import {
   BsFiletypeXml,
 } from 'react-icons/bs';
 import { LuBookImage } from 'react-icons/lu';
-import { MdInsertDriveFile } from 'react-icons/md';
+import { File as MdInsertDriveFile } from '@/components/GlossaIcons';
 import React from 'react';
 import { SUPPORTED_BOOK_EXTS } from '@/services/constants';
 import type { WebDAVEntry } from '@/services/sync/providers/webdav/client';

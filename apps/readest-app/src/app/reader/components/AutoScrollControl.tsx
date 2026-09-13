@@ -2,7 +2,13 @@
 
 import clsx from 'clsx';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { MdAdd, MdClose, MdPause, MdPlayArrow, MdRemove } from 'react-icons/md';
+import {
+  Plus as MdAdd,
+  X as MdClose,
+  Pause as MdPause,
+  Play as MdPlayArrow,
+  Minus as MdRemove,
+} from '@/components/GlossaIcons';
 import { Insets } from '@/types/misc';
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
@@ -92,9 +98,9 @@ const AutoScrollControl: React.FC<AutoScrollControlProps> = ({
   const isVisible = isBarVisible && hoveredBookKey !== bookKey;
 
   const buttonClass = clsx(
-    'flex items-center justify-center rounded-full p-1.5',
+    'glossa-icon-button glossa-tool-icon flex items-center justify-center',
     'transition-all duration-200 ease-out',
-    'not-eink:hover:bg-base-200 active:scale-90',
+    'not-eink:hover:bg-base-200 ',
   );
 
   return (

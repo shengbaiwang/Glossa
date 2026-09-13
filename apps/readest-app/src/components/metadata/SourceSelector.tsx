@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { MdOutlineCheck, MdOutlineEdit } from 'react-icons/md';
+import { Check as MdOutlineCheck, Pencil as MdOutlineEdit } from '@/components/GlossaIcons';
 
 import { BookMetadata } from '@/libs/document';
 import { useTranslation } from '@/hooks/useTranslation';

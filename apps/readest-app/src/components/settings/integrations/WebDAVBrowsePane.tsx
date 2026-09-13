@@ -1,18 +1,18 @@
 import clsx from 'clsx';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  MdFolder,
-  MdFolderOff,
-  MdRefresh,
-  MdArrowBack,
-  MdDownload,
-  MdCheck,
-  MdDeleteSweep,
-  MdClose,
-  MdSearch,
-  MdArrowUpward,
-  MdArrowDownward,
-} from 'react-icons/md';
+  Folder as MdFolder,
+  FolderX as MdFolderOff,
+  RefreshCw as MdRefresh,
+  ArrowLeft as MdArrowBack,
+  Download as MdDownload,
+  Check as MdCheck,
+  ListX as MdDeleteSweep,
+  X as MdClose,
+  Search as MdSearch,
+  ArrowUp as MdArrowUpward,
+  ArrowDown as MdArrowDownward,
+} from '@/components/GlossaIcons';
 import { useEnv } from '@/context/EnvContext';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/hooks/useTranslation';

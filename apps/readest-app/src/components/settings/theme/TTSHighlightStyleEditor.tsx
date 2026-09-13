@@ -1,5 +1,5 @@
 import React from 'react';
-import { MdClose } from 'react-icons/md';
+import { X as MdClose } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import { TTSHighlightGranularity } from '@/services/tts/types';
 import { BoxedList, SettingsRow, SettingsSelect } from '../primitives';

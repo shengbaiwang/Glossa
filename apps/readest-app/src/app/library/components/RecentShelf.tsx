@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight } from '@/components/GlossaIcons';
 import { Book } from '@/types/book';
 import { LibraryCoverFitType } from '@/types/settings';
 import { useTranslation } from '@/hooks/useTranslation';

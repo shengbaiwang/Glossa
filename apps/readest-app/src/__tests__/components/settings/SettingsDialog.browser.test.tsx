@@ -68,6 +68,7 @@ it('keeps every tab at the same desktop edge and supports RTL and narrow screens
     );
   }
   fireEvent.click(screen.getByRole('button', { name: 'Conversation' }));
+  await vi.dynamicImportSettled();
   await screen.findByRole('button', { name: 'New prompt' });
   await page.screenshot({
     path: '../../../../../../.glossa-dev/qa/settings-conversation-prompts.png',

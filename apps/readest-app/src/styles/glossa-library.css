@@ -270,7 +270,7 @@
   justify-content: center;
   width: 32px;
   height: 32px;
-  border-radius: 6px;
+  border-radius: var(--glossa-radius-nested);
 }
 
 .glossa-book-detail-button::before,
@@ -516,16 +516,16 @@
 .glossa-selection-action-bar button {
   min-width: 40px;
   min-height: 44px;
-  border-radius: 8px;
+  border-radius: var(--glossa-radius-control);
 }
 
 .glossa-selection-action-bar button:hover {
   background: var(--glossa-wash);
 }
 
-.glossa-selection-action-bar button svg {
-  width: 19px;
-  height: 19px;
+.glossa-selection-action-bar button > .glossa-icon {
+  width: var(--glossa-icon-chrome);
+  height: var(--glossa-icon-chrome);
 }
 
 [data-eink='true'] .glossa-selection-action-bar {

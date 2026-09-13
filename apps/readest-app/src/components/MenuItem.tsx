@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import React from 'react';
 import { IconType } from 'react-icons';
-import { Check } from 'lucide-react';
+import { Check } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 

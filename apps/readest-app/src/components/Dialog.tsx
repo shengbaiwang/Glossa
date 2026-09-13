@@ -1,8 +1,12 @@
+import { X } from '@/components/GlossaIcons';
 import clsx from 'clsx';
 import React, { ReactNode, useEffect, useRef, useState } from 'react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import 'overlayscrollbars/overlayscrollbars.css';
-import { MdArrowBackIosNew, MdArrowForwardIos } from 'react-icons/md';
+import {
+  ChevronLeft as MdArrowBackIosNew,
+  ChevronRight as MdArrowForwardIos,
+} from '@/components/GlossaIcons';
 import { useEnv } from '@/context/EnvContext';
 import { useDrag } from '@/hooks/useDrag';
 import { useThemeStore } from '@/store/themeStore';
@@ -273,21 +277,9 @@ const Dialog: React.FC<DialogProps> = ({
                 aria-hidden={!isOpen}
                 onClick={onClose}
                 disabled={!dismissible}
-                className={
-                  'bg-base-300/65 btn btn-ghost btn-circle ml-auto hidden h-6 min-h-6 w-6 focus:outline-none sm:flex'
-                }
+                className={'glossa-icon-button glossa-tool-icon ml-auto hidden sm:flex'}
               >
-                <svg
-                  xmlns='http://www.w3.org/2000/svg'
-                  width='1em'
-                  height='1em'
-                  viewBox='0 0 24 24'
-                >
-                  <path
-                    fill='currentColor'
-                    d='M19 6.41L17.59 5L12 10.59L6.41 5L5 6.41L10.59 12L5 17.59L6.41 19L12 13.41L17.59 19L19 17.59L13.41 12z'
-                  />
-                </svg>
+                <X className='h-4 w-4' />
               </button>
             </div>
           )}

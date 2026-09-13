@@ -1,4 +1,4 @@
-import { PiUserCircle } from 'react-icons/pi';
+import { CircleUserRound as PiUserCircle } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import { PlanDetails } from '../utils/plan';
 import UserAvatar from '@/components/UserAvatar';

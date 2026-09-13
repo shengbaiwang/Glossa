@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from '@/hooks/useTranslation';
-import { HiArrowDownTray } from 'react-icons/hi2';
+import { Download as HiArrowDownTray } from '@/components/GlossaIcons';
 
 const DropIndicator: React.FC = () => {
   const _ = useTranslation();

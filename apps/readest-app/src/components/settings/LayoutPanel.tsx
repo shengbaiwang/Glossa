@@ -1,8 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { MdOutlineAutoMode, MdOutlineScreenRotation } from 'react-icons/md';
-import { MdOutlineTextRotationNone, MdTextRotateVertical } from 'react-icons/md';
-import { IoPhoneLandscapeOutline, IoPhonePortraitOutline } from 'react-icons/io5';
-import { TbTextDirectionRtl } from 'react-icons/tb';
+import {
+  RotateCw as MdOutlineAutoMode,
+  ScreenRotation as MdOutlineScreenRotation,
+} from '@/components/GlossaIcons';
+import {
+  MoveHorizontal as MdOutlineTextRotationNone,
+  MoveVertical as MdTextRotateVertical,
+} from '@/components/GlossaIcons';
+import {
+  RectangleHorizontal as IoPhoneLandscapeOutline,
+  Smartphone as IoPhonePortraitOutline,
+} from '@/components/GlossaIcons';
+import { TextDirectionRtl as TbTextDirectionRtl } from '@/components/GlossaIcons';
 
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';

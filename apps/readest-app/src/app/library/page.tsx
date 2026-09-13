@@ -2,7 +2,7 @@
 
 import clsx from 'clsx';
 import * as React from 'react';
-import { ChevronRight, X } from 'lucide-react';
+import { ChevronRight, X } from '@/components/GlossaIcons';
 import { useState, useRef, useEffect, Suspense, useCallback } from 'react';
 import { ReadonlyURLSearchParams, useSearchParams } from 'next/navigation';
 

@@ -1,7 +1,13 @@
 import clsx from 'clsx';
 import React, { useEffect, useState } from 'react';
-import { MdAdd, MdDelete, MdDragIndicator, MdEdit, MdInfoOutline } from 'react-icons/md';
-import { IoMdCloseCircleOutline } from 'react-icons/io';
+import {
+  Plus as MdAdd,
+  Trash2 as MdDelete,
+  GripVertical as MdDragIndicator,
+  Pencil as MdEdit,
+  Info as MdInfoOutline,
+} from '@/components/GlossaIcons';
+import { CircleX as IoMdCloseCircleOutline } from '@/components/GlossaIcons';
 import {
   DndContext,
   closestCenter,
@@ -225,7 +231,7 @@ const SortableRow: React.FC<SortableRowProps> = ({
               onEditWebSearch(row.webSearch);
             }
           }}
-          className='btn btn-ghost btn-sm shrink-0 px-1'
+          className='glossa-icon-button glossa-tool-icon'
           aria-label={_('Edit')}
           title={_('Edit')}
         >
@@ -241,7 +247,7 @@ const SortableRow: React.FC<SortableRowProps> = ({
         <button
           type='button'
           onClick={() => onDelete(row)}
-          className='btn btn-ghost btn-sm shrink-0 px-1'
+          className='glossa-icon-button glossa-tool-icon'
           aria-label={_('Delete')}
           title={_('Delete')}
         >

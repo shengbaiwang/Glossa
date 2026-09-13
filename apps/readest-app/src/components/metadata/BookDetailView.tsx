@@ -1,14 +1,14 @@
 import clsx from 'clsx';
 import React, { useState } from 'react';
 import {
-  MdOutlineCloudDownload,
-  MdOutlineCloudUpload,
-  MdOutlineDelete,
-  MdOutlineEdit,
-  MdMenu,
-  MdExpandMore,
-  MdExpandLess,
-} from 'react-icons/md';
+  CloudDownload as MdOutlineCloudDownload,
+  CloudUpload as MdOutlineCloudUpload,
+  Trash2 as MdOutlineDelete,
+  Pencil as MdOutlineEdit,
+  Ellipsis as MdMenu,
+  ChevronDown as MdExpandMore,
+  ChevronUp as MdExpandLess,
+} from '@/components/GlossaIcons';
 
 import { Book } from '@/types/book';
 import { BookMetadata } from '@/libs/document';
@@ -131,18 +131,18 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
                 className={!metadata ? 'btn-disabled opacity-50' : ''}
                 title={_('Edit Metadata')}
               >
-                <MdOutlineEdit className='hover:fill-blue-500' />
+                <MdOutlineEdit className='hover:text-base-content' />
               </button>
             )}
             {book.uploadedAt && onDownload && (
               <button onClick={onDownload} title={_('Download from Cloud')}>
-                <MdOutlineCloudDownload className='fill-base-content' />
+                <MdOutlineCloudDownload className='text-base-content' />
               </button>
             )}
             {/* A feed book is fileless — there is nothing to push (#5307). */}
             {book.downloadedAt && !isFeedBook(book) && onUpload && (
               <button onClick={onUpload} title={_('Upload to Cloud')}>
-                <MdOutlineCloudUpload className='fill-base-content' />
+                <MdOutlineCloudUpload className='text-base-content' />
               </button>
             )}
             {onDelete && (
@@ -150,7 +150,7 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
                 label={_('Delete Book Options')}
                 className='dropdown-bottom dropdown-center flex justify-center'
                 buttonClassName='btn btn-ghost h-8 min-h-8 w-8 p-0'
-                toggleButton={<MdOutlineDelete className='fill-red-500' />}
+                toggleButton={<MdOutlineDelete className='text-error' />}
               >
                 <div
                   className={clsx(
@@ -190,7 +190,7 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
               label={_('More Actions')}
               className='dropdown-bottom dropdown-center flex justify-center'
               buttonClassName='btn btn-ghost h-8 min-h-8 w-8 p-0'
-              toggleButton={<MdMenu className='fill-base-content' />}
+              toggleButton={<MdMenu className='text-base-content' />}
             >
               <div
                 className={clsx(

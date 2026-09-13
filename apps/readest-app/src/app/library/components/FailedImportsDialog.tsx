@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import React from 'react';
-import { MdErrorOutline, MdInsertDriveFile } from 'react-icons/md';
+import { CircleAlert as MdErrorOutline, File as MdInsertDriveFile } from '@/components/GlossaIcons';
 
 import Dialog from '@/components/Dialog';
 import { useTranslation } from '@/hooks/useTranslation';

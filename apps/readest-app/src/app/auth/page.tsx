@@ -3,7 +3,7 @@ import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { IoArrowBack } from 'react-icons/io5';
+import { ArrowLeft as IoArrowBack } from '@/components/GlossaIcons';
 
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/utils/supabase';

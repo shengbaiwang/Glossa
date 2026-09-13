@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { RiArrowDownLine } from 'react-icons/ri';
+import { ArrowDown as RiArrowDownLine } from '@/components/GlossaIcons';
 
 import { useReaderStore } from '@/store/readerStore';
 import { useBookDataStore } from '@/store/bookDataStore';

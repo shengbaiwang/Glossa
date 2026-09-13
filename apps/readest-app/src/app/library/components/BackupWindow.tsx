@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import {
-  RiCheckboxCircleFill,
-  RiErrorWarningFill,
-  RiLoader2Line,
-  RiUploadCloud2Line,
-  RiDownloadCloud2Line,
-} from 'react-icons/ri';
+  CircleCheck as RiCheckboxCircleFill,
+  CircleAlert as RiErrorWarningFill,
+  LoaderCircle as RiLoader2Line,
+  CloudUpload as RiUploadCloud2Line,
+  CloudDownload as RiDownloadCloud2Line,
+} from '@/components/GlossaIcons';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useFileSelector } from '@/hooks/useFileSelector';

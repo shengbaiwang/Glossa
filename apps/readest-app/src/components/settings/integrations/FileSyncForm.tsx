@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import dayjs from 'dayjs';
 import React from 'react';
-import { MdCloudSync } from 'react-icons/md';
+import { CloudSync as MdCloudSync } from '@/components/GlossaIcons';
 import { v4 as uuidv4 } from 'uuid';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation, type TranslationFunc } from '@/hooks/useTranslation';

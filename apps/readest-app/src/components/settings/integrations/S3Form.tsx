@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import React, { useState } from 'react';
-import { MdVisibility, MdVisibilityOff } from 'react-icons/md';
+import { Eye as MdVisibility, EyeOff as MdVisibilityOff } from '@/components/GlossaIcons';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation, type TranslationFunc } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';

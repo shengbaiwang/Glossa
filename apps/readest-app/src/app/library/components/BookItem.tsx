@@ -1,6 +1,13 @@
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
-import { Check, Circle, CloudUpload, CloudDownload, Headphones, Info } from 'lucide-react';
+import {
+  Check,
+  Circle,
+  CloudUpload,
+  CloudDownload,
+  Headphones,
+  Info,
+} from '@/components/GlossaIcons';
 
 import { Book } from '@/types/book';
 import { useEnv } from '@/context/EnvContext';

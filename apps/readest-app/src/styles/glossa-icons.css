@@ -52,3 +52,85 @@
 .glossa-menu-item .lucide {
   stroke-width: 1.8;
 }
+
+/* Named icon roles are opt-in. They do not resize artwork, text actions or swatches. */
+.glossa-icon-button.glossa-tool-icon {
+  width: var(--glossa-target-tool);
+  height: var(--glossa-target-tool);
+  min-height: var(--glossa-target-tool);
+  border-radius: var(--glossa-radius-nested);
+}
+.glossa-icon-button.glossa-detail-icon {
+  width: var(--glossa-target-detail);
+  height: var(--glossa-target-detail);
+  min-height: var(--glossa-target-detail);
+  border-radius: var(--glossa-radius-detail);
+}
+.glossa-tool-icon > .glossa-icon,
+.glossa-chat-panel .glossa-chat-text-button > .glossa-icon,
+.glossa-menu-item .glossa-icon,
+.glossa-book-detail-button > .glossa-icon,
+.glossa-book-cloud-button > .glossa-icon {
+  width: var(--glossa-icon-tool);
+  height: var(--glossa-icon-tool);
+}
+.glossa-detail-icon > .glossa-icon,
+.glossa-chat-panel .glossa-chat-turn .glossa-chat-text-button > .glossa-icon {
+  width: var(--glossa-icon-detail);
+  height: var(--glossa-icon-detail);
+}
+.glossa-library-header .glossa-icon-button {
+  border-radius: var(--glossa-radius-navigation);
+}
+.glossa-library-header .glossa-library-search .glossa-icon-button > .glossa-icon {
+  width: var(--glossa-icon-tool);
+  height: var(--glossa-icon-tool);
+}
+.glossa-settings :is(.btn, .glossa-tool-icon) > .glossa-icon {
+  width: var(--glossa-icon-tool);
+  height: var(--glossa-icon-tool);
+}
+.glossa-settings .dialog-tabs .btn > .glossa-icon {
+  width: var(--glossa-icon-chrome);
+  height: var(--glossa-icon-chrome);
+}
+.glossa-settings-navigation-icon > .glossa-icon {
+  width: var(--glossa-icon-chrome);
+  height: var(--glossa-icon-chrome);
+}
+.glossa-chat-toolbar,
+.glossa-workmap-actions,
+.glossa-workmap-zoom {
+  gap: var(--glossa-gap-tool);
+}
+
+/* Full-bleed image/table controls retain contrast and larger direct targets. */
+.glossa-viewer-tools {
+  gap: 6px;
+}
+.glossa-viewer-tools > button {
+  border-radius: var(--glossa-radius-navigation);
+}
+.glossa-viewer-tools > button > .glossa-icon {
+  width: 20px;
+  height: 20px;
+}
+
+@media (pointer: coarse) {
+  .glossa-icon-button.glossa-tool-icon,
+  .glossa-icon-button.glossa-detail-icon,
+  .glossa-viewer-tools > button {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+}
+
+[data-eink='true'] .glossa-icon.animate-spin {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .glossa-icon.animate-spin {
+    animation: none;
+  }
+}

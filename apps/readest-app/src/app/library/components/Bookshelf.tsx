@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { Plus, SearchCheck, SearchX } from 'lucide-react';
+import { Plus, SearchCheck, SearchX } from '@/components/GlossaIcons';
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';

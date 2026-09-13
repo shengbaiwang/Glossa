@@ -1,3 +1,4 @@
+import { ChevronDown } from '@/components/GlossaIcons';
 import clsx from 'clsx';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 
@@ -453,23 +454,13 @@ const LibrarySearchResults = ({
                         {group.matchCount}
                         {group.truncated && '+'}
                       </span>
-                      <svg
-                        viewBox='0 0 10 6'
-                        width='10'
-                        height='6'
-                        aria-hidden='true'
+                      <ChevronDown
+                        size={14}
                         className={clsx(
                           'text-base-content/40 not-eink:transition-transform shrink-0 duration-150',
                           isExpanded ? 'rotate-180' : 'rotate-0',
                         )}
-                        fill='none'
-                        stroke='currentColor'
-                        strokeWidth='1.5'
-                        strokeLinecap='round'
-                        strokeLinejoin='round'
-                      >
-                        <polyline points='1 1, 5 5, 9 1' />
-                      </svg>
+                      />
                     </button>
                   </div>
                 </header>
