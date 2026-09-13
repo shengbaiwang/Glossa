@@ -229,6 +229,22 @@ it('chats beside a real EPUB using only identity, restores history, changes mode
   expect(chatCalls()[2]!.messages).toHaveLength(2);
   const saved = await loadConversations(book.hash);
   expect(saved?.sessions).toHaveLength(2);
+  fireEvent.click(screen.getByRole('button', { name: 'Conversation history' }));
+  const sessions = await screen.findByRole('dialog', { name: 'Conversation history' });
+  expect(sessions.textContent).toContain('聊个新问题');
+  expect(sessions.textContent).toContain('先找到作者回答的问题，再看理由如何支持结论');
+  await page.screenshot({
+    path: '../../../../../.glossa-dev/qa/conversation-session-picker.png',
+  });
+  const first = Array.from(sessions.querySelectorAll('button')).find((option) =>
+    option
+      .querySelector('.glossa-chat-session-preview')
+      ?.textContent?.includes('如何理解一个观点？'),
+  );
+  expect(first).toBeTruthy();
+  fireEvent.click(first!);
+  await screen.findByText('能举一个例子吗？');
+  expect(chatCalls()).toHaveLength(3);
 });
 it('keeps partial replies on stop and protects IndexedDB isolation', async () => {
   const { book, panel } = await setup();
@@ -247,6 +263,11 @@ it('keeps partial replies on stop and protects IndexedDB isolation', async () =>
     ),
   );
   fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await screen.findByText('已经收到的内容。');
+  expect(document.querySelector('.glossa-chat-cursor')).toBeTruthy();
+  await page.screenshot({
+    path: '../../../../../.glossa-dev/qa/conversation-streaming-cursor.png',
+  });
   fireEvent.click(await screen.findByRole('button', { name: 'Stop reply' }));
   await screen.findByText('Stopped');
   await screen.findByText('已经收到的内容。');
@@ -345,7 +366,11 @@ it('preserves answer versions, restores a renamed history and lays out math, cod
   );
   panel.unmount();
   render(wrapper());
-  await screen.findByRole('option', { name: '公式与条件' });
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Conversation history' }).textContent).toContain(
+      '公式与条件',
+    ),
+  );
   await screen.findByRole('button', { name: 'Copy code' });
   await waitFor(() => expect(hasUnsavedConversations(book.hash)).toBe(false));
   expect(screen.queryByText('Conversation not saved.')).toBeNull();

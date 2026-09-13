@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
+  ArrowDown,
   ArrowUp,
   Check,
   ChevronLeft,
@@ -67,6 +68,7 @@ import { writeTextToClipboard } from '@/utils/clipboard';
 import { renderAnswerHtml } from './answerMarkdown';
 import ConversationModelPicker from './ConversationModelPicker';
 import ConversationPromptPicker from './ConversationPromptPicker';
+import ConversationSessionPicker, { sessionLabel } from './ConversationSessionPicker';
 
 interface Props {
   book: Book;
@@ -538,8 +540,8 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
     setEditDraft(turn.question);
     setError('');
   };
-  const sessionLabel = (session: { title?: string; turns: ConversationTurn[] }) =>
-    session.title || session.turns[0]?.question.slice(0, 48) || _('New conversation');
+  const localSessionLabel = (session: { title?: string; turns: ConversationTurn[] }) =>
+    sessionLabel(session, _('New conversation'));
   const startRenaming = () => {
     const active = history?.sessions.find((session) => session.id === history.activeId);
     setRenameDraft(active?.title ?? '');
@@ -639,22 +641,12 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
       onKeyDown={(e) => e.stopPropagation()}
     >
       <div className='glossa-chat-toolbar'>
-        <select
-          aria-label={_('Conversation history')}
-          value={history?.activeId ?? ''}
+        <ConversationSessionPicker
+          sessions={history?.sessions ?? []}
+          activeId={history?.activeId ?? ''}
           disabled={!history}
-          onChange={(e) => changeSession(e.target.value)}
-        >
-          {!history && <option value=''>{_('Loading…')}</option>}
-          {history?.sessions
-            .slice()
-            .reverse()
-            .map((s) => (
-              <option key={s.id} value={s.id}>
-                {sessionLabel(s)}
-              </option>
-            ))}
-        </select>
+          onSelect={(id) => changeSession(id)}
+        />
         <button
           type='button'
           className='glossa-chat-text-button'
@@ -806,7 +798,7 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
                     setSearchQuery('');
                   }}
                 >
-                  <span className='glossa-chat-search-title'>{sessionLabel(session)}</span>
+                  <span className='glossa-chat-search-title'>{localSessionLabel(session)}</span>
                   <span className='glossa-chat-search-snippet'>{snippet}</span>
                 </button>
               ))}
@@ -847,162 +839,168 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
           </button>
         </div>
       )}
-      <div
-        className='glossa-chat-transcript'
-        ref={transcript}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 64);
-        }}
-      >
-        {!turns.length && !busy && (
-          <div className='glossa-chat-welcome'>
-            <MessageCircle size={28} />
-            <h3>{_('New conversation')}</h3>
-            {!ready && config !== null && (
-              <button className='glossa-button' type='button' onClick={openModels}>
-                {_('Set up a model')}
-              </button>
-            )}
-          </div>
-        )}
-        {turns.map((turn, index) => {
-          const versions =
-            'versions' in turn && turn.versions ? turn.versions : [currentAnswerVersion(turn)];
-          const activeIndex = versions.findIndex(
-            (version) => version.id === currentAnswerVersion(turn).id,
-          );
-          const editing = editTurn === turn.id;
-          return (
-            <article className='glossa-chat-turn' key={turn.id}>
-              {editing ? (
-                <div className='glossa-chat-edit eink-bordered'>
-                  <textarea
-                    aria-label={_('Edit question')}
-                    value={editDraft}
-                    maxLength={MAX_QUESTION_CHARS}
-                    rows={3}
-                    onChange={(e) => setEditDraft(e.target.value)}
-                  />
-                  <div className='glossa-chat-edit-actions'>
-                    <button
-                      type='button'
-                      className='glossa-chat-text-button'
-                      onClick={() => setEditTurn(null)}
-                    >
-                      {_('Cancel')}
-                    </button>
-                    <button
-                      type='button'
-                      className='glossa-chat-text-button glossa-chat-edit-send'
-                      disabled={busy || !editDraft.trim()}
-                      onClick={() => void send({ versionOf: index, question: editDraft })}
-                    >
-                      {_('Resend')}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className='glossa-chat-question eink-bordered' dir='auto'>
-                  {turn.question}
-                </div>
-              )}
-              <Answer text={turn.blocks.map((b) => b.text).join('\n\n')} />
-              <div className='glossa-chat-answer-actions'>
-                <span title={turn.provider.name}>{turn.provider.model}</span>
-                {turn.promptVersion === CONVERSATION_PROMPT_VERSION &&
-                  turn.status !== 'complete' && (
-                    <span>{_(turn.status === 'stopped' ? 'Stopped' : 'Reply interrupted')}</span>
-                  )}
-                {versions.length > 1 && (
-                  <div className='glossa-chat-versions'>
-                    <button
-                      type='button'
-                      className='glossa-chat-text-button'
-                      aria-label={_('Previous answer')}
-                      title={_('Previous answer')}
-                      disabled={busy || activeIndex <= 0}
-                      onClick={() => switchVersion(index, versions[activeIndex - 1]!.id)}
-                    >
-                      <ChevronLeft size={14} />
-                    </button>
-                    <span className='glossa-chat-version-count'>
-                      {activeIndex + 1}/{versions.length}
-                    </span>
-                    <button
-                      type='button'
-                      className='glossa-chat-text-button'
-                      aria-label={_('Next answer')}
-                      title={_('Next answer')}
-                      disabled={busy || activeIndex >= versions.length - 1}
-                      onClick={() => switchVersion(index, versions[activeIndex + 1]!.id)}
-                    >
-                      <ChevronRight size={14} />
-                    </button>
-                  </div>
-                )}
-                <button
-                  type='button'
-                  className='glossa-chat-text-button'
-                  aria-label={_('Copy reply')}
-                  title={_('Copy reply')}
-                  onClick={() => {
-                    void writeTextToClipboard(turn.blocks.map((b) => b.text).join('\n\n'))
-                      .then(() => {
-                        if (mounted.current) setCopied(turn.id);
-                      })
-                      .catch(() => {
-                        if (mounted.current) setError('The reply could not be copied.');
-                      });
-                  }}
-                >
-                  {copied === turn.id ? <Check size={14} /> : <Copy size={14} />}
+      <div className='glossa-chat-transcript-wrap'>
+        <div
+          className='glossa-chat-transcript'
+          ref={transcript}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 64);
+          }}
+        >
+          {!turns.length && !busy && (
+            <div className='glossa-chat-welcome'>
+              <MessageCircle size={28} />
+              <h3>{_('New conversation')}</h3>
+              {!ready && config !== null && (
+                <button className='glossa-button' type='button' onClick={openModels}>
+                  {_('Set up a model')}
                 </button>
-                {index === turns.length - 1 && !editing && (
-                  <button
-                    type='button'
-                    className='glossa-chat-text-button'
-                    aria-label={_('Edit question')}
-                    title={_('Edit question')}
-                    disabled={busy}
-                    onClick={() => startEditing(turn)}
-                  >
-                    <Pencil size={14} />
-                  </button>
-                )}
-                {index === turns.length - 1 && (
-                  <button
-                    type='button'
-                    className='glossa-chat-text-button'
-                    aria-label={_('Regenerate reply')}
-                    title={_('Regenerate reply')}
-                    disabled={busy || !ready}
-                    onClick={() => void send({ versionOf: index })}
-                  >
-                    <RefreshCw size={14} />
-                  </button>
-                )}
-              </div>
-            </article>
-          );
-        })}
-        {pending && (
-          <article className='glossa-chat-turn'>
-            <div className='glossa-chat-question eink-bordered' dir='auto'>
-              {pending.question}
+              )}
             </div>
-            <Answer text={pending.text} />
-            <span className='glossa-chat-pending' role='status' aria-label={_('Replying…')}>
-              •••
-            </span>
-          </article>
+          )}
+          {turns.map((turn, index) => {
+            const versions =
+              'versions' in turn && turn.versions ? turn.versions : [currentAnswerVersion(turn)];
+            const activeIndex = versions.findIndex(
+              (version) => version.id === currentAnswerVersion(turn).id,
+            );
+            const editing = editTurn === turn.id;
+            return (
+              <article className='glossa-chat-turn' key={turn.id}>
+                {editing ? (
+                  <div className='glossa-chat-edit eink-bordered'>
+                    <textarea
+                      aria-label={_('Edit question')}
+                      value={editDraft}
+                      maxLength={MAX_QUESTION_CHARS}
+                      rows={3}
+                      onChange={(e) => setEditDraft(e.target.value)}
+                    />
+                    <div className='glossa-chat-edit-actions'>
+                      <button
+                        type='button'
+                        className='glossa-chat-text-button'
+                        onClick={() => setEditTurn(null)}
+                      >
+                        {_('Cancel')}
+                      </button>
+                      <button
+                        type='button'
+                        className='glossa-chat-text-button glossa-chat-edit-send'
+                        disabled={busy || !editDraft.trim()}
+                        onClick={() => void send({ versionOf: index, question: editDraft })}
+                      >
+                        {_('Resend')}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className='glossa-chat-question eink-bordered' dir='auto'>
+                    {turn.question}
+                  </div>
+                )}
+                <Answer text={turn.blocks.map((b) => b.text).join('\n\n')} />
+                <div className='glossa-chat-answer-actions'>
+                  <span title={turn.provider.name}>{turn.provider.model}</span>
+                  {turn.promptVersion === CONVERSATION_PROMPT_VERSION &&
+                    turn.status !== 'complete' && (
+                      <span>{_(turn.status === 'stopped' ? 'Stopped' : 'Reply interrupted')}</span>
+                    )}
+                  {versions.length > 1 && (
+                    <div className='glossa-chat-versions'>
+                      <button
+                        type='button'
+                        className='glossa-chat-text-button'
+                        aria-label={_('Previous answer')}
+                        title={_('Previous answer')}
+                        disabled={busy || activeIndex <= 0}
+                        onClick={() => switchVersion(index, versions[activeIndex - 1]!.id)}
+                      >
+                        <ChevronLeft size={14} />
+                      </button>
+                      <span className='glossa-chat-version-count'>
+                        {activeIndex + 1}/{versions.length}
+                      </span>
+                      <button
+                        type='button'
+                        className='glossa-chat-text-button'
+                        aria-label={_('Next answer')}
+                        title={_('Next answer')}
+                        disabled={busy || activeIndex >= versions.length - 1}
+                        onClick={() => switchVersion(index, versions[activeIndex + 1]!.id)}
+                      >
+                        <ChevronRight size={14} />
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    type='button'
+                    className='glossa-chat-text-button'
+                    aria-label={_('Copy reply')}
+                    title={_('Copy reply')}
+                    onClick={() => {
+                      void writeTextToClipboard(turn.blocks.map((b) => b.text).join('\n\n'))
+                        .then(() => {
+                          if (mounted.current) setCopied(turn.id);
+                        })
+                        .catch(() => {
+                          if (mounted.current) setError('The reply could not be copied.');
+                        });
+                    }}
+                  >
+                    {copied === turn.id ? <Check size={14} /> : <Copy size={14} />}
+                  </button>
+                  {index === turns.length - 1 && !editing && (
+                    <button
+                      type='button'
+                      className='glossa-chat-text-button'
+                      aria-label={_('Edit question')}
+                      title={_('Edit question')}
+                      disabled={busy}
+                      onClick={() => startEditing(turn)}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  )}
+                  {index === turns.length - 1 && (
+                    <button
+                      type='button'
+                      className='glossa-chat-text-button'
+                      aria-label={_('Regenerate reply')}
+                      title={_('Regenerate reply')}
+                      disabled={busy || !ready}
+                      onClick={() => void send({ versionOf: index })}
+                    >
+                      <RefreshCw size={14} />
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+          {pending && (
+            <article className='glossa-chat-turn'>
+              <div className='glossa-chat-question eink-bordered' dir='auto'>
+                {pending.question}
+              </div>
+              <Answer text={pending.text} />
+              <span className='glossa-chat-cursor' role='status' aria-label={_('Replying…')} />
+            </article>
+          )}
+        </div>
+        {!atBottom && (
+          <button
+            className='glossa-chat-latest eink-bordered'
+            type='button'
+            aria-label={_('Latest reply')}
+            title={_('Latest reply')}
+            onClick={() => setAtBottom(true)}
+          >
+            <ArrowDown size={16} />
+          </button>
         )}
       </div>
-      {!atBottom && (
-        <button className='glossa-chat-latest' type='button' onClick={() => setAtBottom(true)}>
-          {_('Latest reply')}
-        </button>
-      )}
       {error && (
         <p className='glossa-chat-message' role='alert'>
           {_(error)}
@@ -1077,7 +1075,7 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
                   ))}
                 </select>
               )}
-              {draft.length > 0 && (
+              {draft.length >= MAX_QUESTION_CHARS * 0.9 && (
                 <span className='glossa-chat-count' aria-hidden='true'>
                   {`${draft.length}/${MAX_QUESTION_CHARS}`}
                 </span>

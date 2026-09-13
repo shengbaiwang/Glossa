@@ -261,9 +261,7 @@ it('starts an empty conversation, restores per-session drafts, and deletes only 
   send();
   await answer();
   await typeQuestion('Unsent first draft');
-  const oldId = (
-    screen.getByRole('combobox', { name: 'Conversation history' }) as HTMLSelectElement
-  ).value;
+  const oldId = f.save.mock.calls.at(-1)![0].activeId as string;
   fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
   expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('');
   expect(document.querySelector('.glossa-chat-answer')).toBeNull();
@@ -271,9 +269,10 @@ it('starts an empty conversation, restores per-session drafts, and deletes only 
   send();
   await answer();
   expect(f.generate.mock.calls[1]![0].turns).toEqual([]);
-  fireEvent.change(screen.getByRole('combobox', { name: 'Conversation history' }), {
-    target: { value: oldId },
-  });
+  expect(f.save.mock.calls.at(-1)![0].activeId).not.toBe(oldId);
+  fireEvent.click(screen.getByRole('button', { name: 'Conversation history' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Explain this' }));
+  expect(f.save.mock.calls.at(-1)![0].activeId).toBe(oldId);
   expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Unsent first draft');
   fireEvent.click(screen.getByRole('button', { name: 'Conversation menu' }));
   fireEvent.click(screen.getByRole('button', { name: 'Delete conversation' }));
@@ -458,10 +457,9 @@ it('renames the active conversation and shows the name in the switcher', async (
   });
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() =>
-    expect(
-      (screen.getByRole('combobox', { name: 'Conversation history' }) as HTMLSelectElement)
-        .selectedOptions[0]?.textContent,
-    ).toBe('Reading notes'),
+    expect(screen.getByRole('button', { name: 'Conversation history' }).textContent).toContain(
+      'Reading notes',
+    ),
   );
   expect(f.save.mock.calls.at(-1)![0].sessions[0].title).toBe('Reading notes');
 });
@@ -485,6 +483,78 @@ it('searches the book history and switches to a matching conversation', async ()
     expect(document.querySelector('.glossa-chat-question')?.textContent).toBe('First subject'),
   );
 });
+it('lists sessions newest-first in a custom picker with preview, check mark, Escape and outside close', async () => {
+  mount();
+  await typeQuestion('First subject');
+  send();
+  await answer();
+  fireEvent.click(screen.getByRole('button', { name: 'Conversation menu' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Rename conversation' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Conversation name' }), {
+    target: { value: 'Notes' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
+  await typeQuestion('Second subject');
+  send();
+  await answer();
+  const trigger = screen.getByRole('button', { name: 'Conversation history' });
+  fireEvent.click(trigger);
+  const dialog = screen.getByRole('dialog', { name: 'Conversation history' });
+  const titles = Array.from(dialog.querySelectorAll('.glossa-chat-session-title')).map(
+    (el) => el.textContent,
+  );
+  expect(titles).toEqual(['Second subject', 'Notes']);
+  expect(dialog.querySelector('.glossa-chat-session-preview')?.textContent).toBe('First subject');
+  const current = Array.from(dialog.querySelectorAll('button')).find((option) =>
+    option.textContent?.includes('Second subject'),
+  );
+  expect(current?.querySelector('svg')).toBeTruthy();
+  fireEvent.keyDown(dialog, { key: 'Escape' });
+  expect(screen.queryByRole('dialog', { name: 'Conversation history' })).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+  fireEvent.click(trigger);
+  expect(screen.getByRole('dialog', { name: 'Conversation history' })).toBeTruthy();
+  fireEvent.pointerDown(document.body);
+  expect(screen.queryByRole('dialog', { name: 'Conversation history' })).toBeNull();
+});
+it('shows a typing cursor while the reply is streaming', async () => {
+  let resolve!: (text: string) => void;
+  f.generate.mockImplementationOnce(
+    (request) =>
+      new Promise<string>((done) => {
+        request.onText('Partial');
+        resolve = done;
+      }),
+  );
+  mount();
+  await typeQuestion();
+  send();
+  await screen.findByRole('status', { name: 'Replying…' });
+  expect(document.querySelector('.glossa-chat-cursor')).toBeTruthy();
+  await act(async () => resolve('Done'));
+  await waitFor(() => expect(screen.queryByRole('status', { name: 'Replying…' })).toBeNull());
+});
+it('offers a floating jump to the latest reply after scrolling up', async () => {
+  mount();
+  await typeQuestion();
+  send();
+  await answer();
+  expect(screen.queryByRole('button', { name: 'Latest reply' })).toBeNull();
+  const transcriptEl = document.querySelector('.glossa-chat-transcript') as HTMLElement;
+  Object.defineProperty(transcriptEl, 'scrollHeight', { configurable: true, value: 1000 });
+  Object.defineProperty(transcriptEl, 'clientHeight', { configurable: true, value: 200 });
+  Object.defineProperty(transcriptEl, 'scrollTop', {
+    configurable: true,
+    writable: true,
+    value: 0,
+  });
+  fireEvent.scroll(transcriptEl);
+  const jump = await screen.findByRole('button', { name: 'Latest reply' });
+  expect(jump.querySelector('svg')).toBeTruthy();
+  fireEvent.click(jump);
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Latest reply' })).toBeNull());
+});
 it('grows the composer automatically and accepts a question up to the raised limit', async () => {
   mount();
   const input = screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement;
@@ -492,6 +562,10 @@ it('grows the composer automatically and accepts a question up to the raised lim
   expect(screen.queryByRole('button', { name: 'Expand input' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Collapse input' })).toBeNull();
   expect(document.querySelector('.glossa-chat-count')).toBeNull();
+  fireEvent.change(input, { target: { value: 'x'.repeat(1000) } });
+  expect(document.querySelector('.glossa-chat-count')).toBeNull();
+  fireEvent.change(input, { target: { value: 'x'.repeat(18000) } });
+  expect(document.querySelector('.glossa-chat-count')?.textContent).toBe('18000/20000');
   fireEvent.change(input, { target: { value: 'x'.repeat(20000) } });
   expect(document.querySelector('.glossa-chat-count')?.textContent).toBe('20000/20000');
   expect(Number.parseInt(input.style.height)).toBeLessThanOrEqual(180);
@@ -511,10 +585,9 @@ it('names a new conversation from its first completed reply only', async () => {
   send();
   await answer();
   await waitFor(() =>
-    expect(
-      (screen.getByRole('combobox', { name: 'Conversation history' }) as HTMLSelectElement)
-        .selectedOptions[0]?.textContent,
-    ).toBe('阅读笔记：第一章'),
+    expect(screen.getByRole('button', { name: 'Conversation history' }).textContent).toContain(
+      '阅读笔记：第一章',
+    ),
   );
   expect(f.title).toHaveBeenCalledTimes(1);
   expect(f.title.mock.calls[0]![0]).toMatchObject({
@@ -557,10 +630,9 @@ it('keeps the question label without an error when naming fails', async () => {
   await answer();
   await waitFor(() => expect(f.title).toHaveBeenCalledTimes(1));
   expect(screen.queryByRole('alert')).toBeNull();
-  expect(
-    (screen.getByRole('combobox', { name: 'Conversation history' }) as HTMLSelectElement)
-      .selectedOptions[0]?.textContent,
-  ).toBe('Why does this matter?');
+  expect(screen.getByRole('button', { name: 'Conversation history' }).textContent).toContain(
+    'Why does this matter?',
+  );
 });
 it('adjusts reasoning effort from the composer for capable models only', async () => {
   mount();

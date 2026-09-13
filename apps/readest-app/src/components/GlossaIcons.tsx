@@ -81,6 +81,13 @@ export function ArrowUp(props: GlossaIconProps) {
     </Icon>
   );
 }
+export function ArrowDown(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <path d='M12 5v14m-6-6 6 6 6-6' />
+    </Icon>
+  );
+}
 export function Square(props: GlossaIconProps) {
   return (
     <Icon {...props}>
