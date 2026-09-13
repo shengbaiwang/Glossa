@@ -30,6 +30,8 @@
 .glossa-icon-button,
 .glossa-button {
   gap: 8px;
+  /* A permanently transparent 1px border keeps the box model stable without
+     drawing a visible frame; only state backgrounds appear. */
   border: 1px solid transparent;
   border-radius: var(--glossa-radius);
   background: transparent;
@@ -63,11 +65,13 @@
   color: var(--glossa-surface);
 }
 
+/* Icon buttons carry no resting frame: a faint wash on hover, and a single
+   stronger wash as the only selected affordance. The washes mix from the ink
+   color so they read on both base-100 bars and base-200 panels. */
 @media (hover: hover) {
   .glossa-icon-button:not(:disabled):hover,
   .glossa-button:not(:disabled):not(.glossa-button-primary):hover {
-    background: var(--glossa-wash);
-    border-color: var(--glossa-border);
+    background: color-mix(in srgb, var(--glossa-ink) 7%, transparent);
   }
 
   .glossa-button-primary:not(:disabled):hover {
@@ -78,9 +82,11 @@
 
 .glossa-icon-button[aria-pressed='true'],
 .glossa-icon-button[aria-expanded='true'],
-.glossa-button[aria-pressed='true'] {
-  border-color: var(--glossa-border);
-  background: var(--glossa-wash);
+.glossa-button[aria-pressed='true'],
+.glossa-icon-button[aria-pressed='true']:hover,
+.glossa-icon-button[aria-expanded='true']:hover,
+.glossa-button[aria-pressed='true']:hover {
+  background: color-mix(in srgb, var(--glossa-ink) 13%, transparent);
 }
 
 .glossa-icon-button:disabled,

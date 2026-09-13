@@ -6,16 +6,14 @@ import { useTrafficLight } from '@/hooks/useTrafficLight';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import Dropdown from '@/components/Dropdown';
 import BookMenu from './BookMenu';
-import SidebarToggler from '../SidebarToggler';
 
 const SidebarHeader: React.FC<{
-  bookKey: string;
   isPinned: boolean;
   isSearchBarVisible: boolean;
   onClose: () => void;
   onTogglePin: () => void;
   onToggleSearchBar: () => void;
-}> = ({ bookKey, isPinned, isSearchBarVisible, onClose, onTogglePin, onToggleSearchBar }) => {
+}> = ({ isPinned, isSearchBarVisible, onClose, onTogglePin, onToggleSearchBar }) => {
   const _ = useTranslation();
   const headerRef = useRef<HTMLDivElement>(null);
   const { isTrafficLightVisible } = useTrafficLight(headerRef);
@@ -40,9 +38,6 @@ const SidebarHeader: React.FC<{
         >
           <ChevronLeft size={iconSize18} aria-hidden='true' />
         </button>
-        <div className='hidden sm:flex'>
-          <SidebarToggler bookKey={bookKey} />
-        </div>
       </div>
       <div className='flex items-center gap-2'>
         <button
@@ -52,10 +47,7 @@ const SidebarHeader: React.FC<{
           aria-expanded={isSearchBarVisible}
           aria-pressed={isSearchBarVisible}
           onClick={onToggleSearchBar}
-          className={clsx(
-            'glossa-icon-button touch-target btn btn-ghost h-8 min-h-8 w-8 p-0',
-            isSearchBarVisible ? 'bg-base-300' : '',
-          )}
+          className='glossa-icon-button touch-target btn btn-ghost h-8 min-h-8 w-8 p-0'
         >
           <Search size={iconSize18} aria-hidden='true' />
         </button>

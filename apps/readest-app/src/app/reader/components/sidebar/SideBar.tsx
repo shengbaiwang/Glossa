@@ -262,7 +262,6 @@ const SideBar = ({}) => {
             </div>
           )}
           <SidebarHeader
-            bookKey={sideBarBookKey!}
             isPinned={isSideBarPinned}
             isSearchBarVisible={isSearchBarVisible}
             onClose={() => setSideBarVisible(false)}

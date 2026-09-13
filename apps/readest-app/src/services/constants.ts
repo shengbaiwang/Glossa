@@ -277,7 +277,9 @@ export const READING_RULER_COLORS: Record<ReadingRulerColor, string> = {
 
 export const DEFAULT_READSETTINGS: ReadSettings = {
   sideBarWidth: '15%',
-  isSideBarPinned: true,
+  // Content first: both side panels start hidden; opening one floats it over
+  // the page until the reader pins it into the layout.
+  isSideBarPinned: false,
   notebookWidth: '25%',
   isNotebookPinned: false,
   notebookActiveTab: 'notes',

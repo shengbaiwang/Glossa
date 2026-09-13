@@ -9,11 +9,9 @@ import { eventDispatcher } from '@/utils/event';
 import type { BookNote } from '@/types/book';
 
 const mocks = vi.hoisted(() => ({
-  pinned: false,
   language: 'en',
   rtl: false,
   format: 'EPUB',
-  saveSysSettings: vi.fn(),
   conversationUnmount: vi.fn(),
   notes: [] as BookNote[],
 }));
@@ -26,7 +24,7 @@ vi.mock('@/context/EnvContext', () => ({
 }));
 vi.mock('@/store/settingsStore', () => ({
   useSettingsStore: () => ({
-    settings: { globalReadSettings: { notebookWidth: '30%', isNotebookPinned: mocks.pinned } },
+    settings: { globalReadSettings: { notebookWidth: '30%' } },
   }),
 }));
 vi.mock('@/store/themeStore', () => ({
@@ -53,7 +51,6 @@ vi.mock('@/store/readerStore', () => ({
 }));
 vi.mock('@/utils/book', () => ({ getBookDirFromLanguage: () => (mocks.rtl ? 'rtl' : 'ltr') }));
 vi.mock('@/utils/misc', () => ({ uniqueId: () => 'new-note' }));
-vi.mock('@/helpers/settings', () => ({ saveSysSettings: mocks.saveSysSettings }));
 vi.mock('@/app/reader/utils/annotatorUtil', () => ({
   findAnnotationAtCfi: vi.fn(),
   removeBookNoteOverlays: vi.fn(),
@@ -87,7 +84,6 @@ const editNote: BookNote = {
 };
 
 beforeEach(() => {
-  mocks.pinned = false;
   mocks.rtl = false;
   mocks.format = 'EPUB';
   mocks.notes = [];
@@ -120,8 +116,10 @@ describe('Notebook reading assistant integration', () => {
     const header = document.querySelector('.notebook-header');
     expect(header?.contains(tabs)).toBe(true);
     expect(screen.queryByRole('heading', { name: 'Conversation' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'View Options' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Pin Notebook' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Show Search Bar' })).toBeNull();
+    expect(header?.contains(screen.getByRole('button', { name: 'Close' }))).toBe(true);
     fireEvent.click(screen.getByRole('tab', { name: 'Excerpts' }));
     const search = screen.getByRole('button', { name: 'Show Search Bar' });
     expect(header?.contains(search)).toBe(false);
@@ -144,16 +142,20 @@ describe('Notebook reading assistant integration', () => {
     expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
   });
 
-  it('closes the pane menu with Escape and returns focus without closing the notebook', async () => {
+  it('closes the docked panel directly with Escape', async () => {
     await openNotebook();
-    const menu = screen.getByRole('button', { name: 'View Options' });
-    fireEvent.click(menu);
-    const pin = screen.getByRole('menuitem', { name: 'Pin Notebook' });
-    pin.focus();
-    fireEvent.keyDown(pin, { key: 'Escape' });
-    expect(screen.queryByRole('menuitem', { name: 'Pin Notebook' })).toBeNull();
-    expect(document.activeElement).toBe(menu);
-    expect(useNotebookStore.getState().isNotebookVisible).toBe(true);
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Conversation' }), { key: 'Escape' });
+    expect(useNotebookStore.getState().isNotebookVisible).toBe(false);
+  });
+
+  it('presents named icon destinations without visible text labels', async () => {
+    await openNotebook();
+    for (const name of ['Conversation', 'Mind map', 'Excerpts']) {
+      const tab = screen.getByRole('tab', { name });
+      expect(tab.textContent).toBe('');
+      expect(tab.querySelector('svg')).toBeTruthy();
+      expect(tab.title).toBe(name);
+    }
   });
 
   it('removes the guide tab and opens conversation by default', async () => {
@@ -246,22 +248,13 @@ describe('Notebook reading assistant integration', () => {
     expect(screen.queryByText('Original excerpt')).toBeNull();
   });
 
-  it('keeps excerpt navigation dismissal and respects pinning, including Escape', async () => {
+  it('stays docked beside the text when following sources on wide windows', async () => {
     await openNotebook();
     fireEvent.click(screen.getByRole('tab', { name: 'Excerpts' }));
+    expect(screen.getByRole('group', { name: 'Notebook' }).style.position).toBe('relative');
+    expect(document.querySelector('.overlay')).toBeNull();
     await act(() => eventDispatcher.dispatch('navigate'));
-    expect(useNotebookStore.getState().isNotebookVisible).toBe(false);
-    act(() => useNotebookStore.getState().setNotebookVisible(true));
-    fireEvent.click(screen.getByRole('button', { name: 'View Options' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Pin Notebook' }));
-    expect(mocks.saveSysSettings).toHaveBeenCalled();
-    await act(() => eventDispatcher.dispatch('navigate'));
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Excerpts' }), { key: 'Escape' });
     expect(useNotebookStore.getState().isNotebookVisible).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'View Options' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Unpin Notebook' }));
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Excerpts' }), { key: 'Escape' });
-    expect(useNotebookStore.getState().isNotebookVisible).toBe(false);
   });
 
   it('supports RTL tab navigation and width controls', async () => {
@@ -285,8 +278,7 @@ describe('Notebook reading assistant integration', () => {
     expect(screen.getByRole('group', { name: 'Notebook' }).classList.contains('end-0')).toBe(true);
   });
 
-  it('adapts a pinned desktop panel to a dismissible full-width narrow view', async () => {
-    mocks.pinned = true;
+  it('adapts to a dismissible full-width sheet on narrow windows', async () => {
     await openNotebook();
     act(() => {
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
@@ -296,6 +288,11 @@ describe('Notebook reading assistant integration', () => {
     expect(panel.style.width).toBe('100%');
     expect(panel.style.position).toBe('fixed');
     expect(document.querySelector('.overlay')).toBeTruthy();
+    // Following a source dismisses the sheet so the destination is visible.
+    act(() => useNotebookStore.getState().setNotebookVisible(true));
+    await act(() => eventDispatcher.dispatch('navigate'));
+    expect(useNotebookStore.getState().isNotebookVisible).toBe(false);
+    act(() => useNotebookStore.getState().setNotebookVisible(true));
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Conversation' }), { key: 'Escape' });
     expect(useNotebookStore.getState().isNotebookVisible).toBe(false);
   });

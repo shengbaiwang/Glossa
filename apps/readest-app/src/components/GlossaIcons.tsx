@@ -49,6 +49,15 @@ export function PanelLeft(props: GlossaIconProps) {
   );
 }
 
+export function PanelRight(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <rect x='3.5' y='4.5' width='17' height='15' rx='3' />
+      <path d='M15 4.5v15' />
+    </Icon>
+  );
+}
+
 export function Bookmark(props: GlossaIconProps) {
   return (
     <Icon {...props}>
@@ -99,7 +108,7 @@ export function Square(props: GlossaIconProps) {
 export function Type(props: GlossaIconProps) {
   return (
     <Icon {...props}>
-      <path d='m3.5 18 5-13 5 13M5.4 13h6.2M20.5 18v-6a3 3 0 0 0-5-2.2M20.5 13h-3a2.5 2.5 0 0 0 0 5c1.4 0 2.5-.6 3-1.5' />
+      <path d='M4 18.5 8.5 5.5 13 18.5M6.1 13.8h4.8M20 18.5v-5.8a2.8 2.8 0 0 0-4.8-2M20 13.6h-2.8a2.4 2.4 0 0 0 0 4.8c1.3 0 2.3-.5 2.8-1.4' />
     </Icon>
   );
 }
@@ -149,6 +158,17 @@ export function ListTree(props: GlossaIconProps) {
   return (
     <Icon {...props}>
       <path d='M4.5 6h15M7 12h7M6 18h13.5' />
+    </Icon>
+  );
+}
+
+export function GitBranch(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <rect x='3' y='9' width='5' height='6' rx='1.5' />
+      <rect x='16' y='3' width='5' height='5' rx='1.5' />
+      <rect x='16' y='16' width='5' height='5' rx='1.5' />
+      <path d='M8 12h3a2 2 0 0 0 2-2V7.5a2 2 0 0 1 2-2h1M11 12a2 2 0 0 1 2 2v2.5a2 2 0 0 0 2 2h1' />
     </Icon>
   );
 }

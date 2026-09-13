@@ -1,5 +1,5 @@
 import React from 'react';
-import { NotebookPen } from '@/components/GlossaIcons';
+import { PanelRight } from '@/components/GlossaIcons';
 
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
@@ -34,12 +34,12 @@ const NotebookToggler: React.FC<NotebookTogglerProps> = ({ bookKey }) => {
   };
   return (
     <Button
-      icon={<NotebookPen size={iconSize18} aria-hidden='true' />}
+      icon={<PanelRight size={iconSize18} aria-hidden='true' />}
       className='glossa-icon-button'
       aria-pressed={sideBarBookKey === bookKey && isNotebookVisible}
       aria-expanded={sideBarBookKey === bookKey && isNotebookVisible}
       onClick={handleToggleSidebar}
-      label={_('Notebook')}
+      label={_('Reading Assistant')}
     ></Button>
   );
 };

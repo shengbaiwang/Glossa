@@ -118,7 +118,8 @@
 /* One destination row; each reading tool owns its controls below this line. */
 .glossa-reader-notebook .notebook-header {
   display: flex;
-  min-height: 48px;
+  height: 44px;
+  min-height: 44px;
   align-items: center;
   gap: 8px;
   padding-inline: 12px;
@@ -129,23 +130,56 @@
   display: flex;
   min-width: 0;
   flex: 1;
-  align-self: stretch;
-  gap: 2px;
+  align-items: center;
+  gap: 4px;
   padding: 0;
   border: 0;
 }
 
-.glossa-notebook-tabs .glossa-reader-tab {
+.glossa-reader-notebook .glossa-notebook-tabs .glossa-reader-tab {
   display: flex;
-  min-height: 44px;
-  flex: 1 1 auto;
+  width: 36px;
+  height: 32px;
+  min-height: 32px;
+  flex: 0 0 36px;
   align-items: center;
   justify-content: center;
-  line-height: 1.4;
+  padding: 0;
+  border-radius: 7px;
+}
+
+.glossa-notebook-tabs .glossa-reader-tab svg {
+  display: block;
+}
+
+.glossa-reader-notebook .glossa-reader-tab[aria-selected='true'] {
+  background: color-mix(in srgb, var(--glossa-ink) 13%, transparent);
 }
 
 .glossa-reader-notebook .glossa-reader-tab[aria-selected='true']::after {
-  bottom: 5px;
+  content: none;
+}
+
+[data-eink='true'] .glossa-reader-notebook .glossa-reader-tab[aria-selected='true'] {
+  border-color: var(--glossa-ink);
+  background: var(--glossa-surface);
+}
+
+.glossa-notebook-collapse {
+  margin-inline-start: auto;
+}
+
+@media (pointer: coarse) {
+  .glossa-reader-notebook .glossa-notebook-tabs .glossa-reader-tab {
+    width: 44px;
+    height: 44px;
+    flex-basis: 44px;
+  }
+
+  .glossa-reader-notebook .notebook-header {
+    height: 48px;
+    min-height: 48px;
+  }
 }
 
 .glossa-notebook-menu {

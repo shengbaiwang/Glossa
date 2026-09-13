@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import TabNavigation from '@/app/reader/components/sidebar/TabNavigation';
 import NotebookHeader from '@/app/reader/components/notebook/Header';
 import QuickActionMenu from '@/app/reader/components/annotator/QuickActionMenu';
-import { DropdownProvider } from '@/context/DropdownContext';
 
 vi.mock('@/context/EnvContext', () => ({ useEnv: () => ({ appService: null }) }));
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (key: string) => key }));
@@ -42,23 +41,13 @@ describe('reader navigation controls', () => {
     );
   });
 
-  it('keeps notebook pinning in its pane menu and close directly available', () => {
+  it('keeps the assistant header to destinations and a direct close', () => {
     const handleClose = vi.fn();
-    const handleTogglePin = vi.fn();
-    render(
-      <DropdownProvider>
-        <NotebookHeader isPinned handleClose={handleClose} handleTogglePin={handleTogglePin} />
-      </DropdownProvider>,
-    );
+    render(<NotebookHeader handleClose={handleClose} />);
     expect(screen.getByRole('heading', { name: 'Notebook' })).toBeTruthy();
-    const options = screen.getByRole('button', { name: 'View Options' });
-    expect(options.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(options);
-    expect(options.getAttribute('aria-expanded')).toBe('true');
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Unpin Notebook' }));
-    expect(options.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('button', { name: 'View Options' })).toBeNull();
+    expect(screen.queryByRole('menuitem')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    expect(handleTogglePin).toHaveBeenCalledOnce();
     expect(handleClose).toHaveBeenCalledOnce();
   });
 });

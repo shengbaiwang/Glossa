@@ -348,7 +348,7 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
               ? _('Search with regex')
               : searchMode === 'nearby-words'
                 ? _('Words to find near each other')
-                : _('Search...')
+                : _('Search in Book')
           }
           className='search-input w-full bg-transparent p-2 pr-0 ps-10 font-sans text-sm font-light focus:outline-none'
         />

@@ -8,6 +8,7 @@ import { useEnv } from '@/context/EnvContext';
 import { useThemeStore } from '@/store/themeStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useBookDataStore } from '@/store/bookDataStore';
+import { useNotebookStore } from '@/store/notebookStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useTrafficLightStore } from '@/store/trafficLightStore';
@@ -25,7 +26,6 @@ import QuickActionMenu from './annotator/QuickActionMenu';
 import SidebarToggler from './SidebarToggler';
 import BookmarkToggler from './BookmarkToggler';
 import NotebookToggler from './NotebookToggler';
-import ConversationToggler from './ConversationToggler';
 import SettingsToggler from './SettingsToggler';
 
 import ViewMenu from './ViewMenu';
@@ -61,7 +61,8 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
   const { trafficLightInFullscreen, setTrafficLightVisibility } = useTrafficLightStore();
   const { bookKeys, hoveredBookKey } = useReaderStore();
   const { systemUIVisible, statusBarHeight } = useThemeStore();
-  const { isSideBarVisible, getIsSideBarVisible } = useSidebarStore();
+  const { isSideBarVisible, getIsSideBarVisible, sideBarBookKey } = useSidebarStore();
+  const { isNotebookVisible } = useNotebookStore();
   const { getView, getViewSettings, setHoveredBookKey } = useReaderStore();
   const { getBookData, getConfig } = useBookDataStore();
   const viewSettings = getViewSettings(bookKey);
@@ -231,11 +232,6 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
               cut the touch halos short of the 44px target (#5401) —
               `scrollbar-width: none` alone does not remove that strip. */}
           <div className='no-scrollbar flex h-full min-w-0 items-center gap-x-3 overflow-x-auto max-[350px]:gap-x-2'>
-            {!isSideBarVisible && (
-              <div className='hidden sm:flex'>
-                <SidebarToggler bookKey={bookKey} />
-              </div>
-            )}
             <button
               title={_('Go to Library')}
               aria-label={_('Go to Library')}
@@ -244,8 +240,10 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
               onClick={onGoToLibrary}
             >
               <LibraryBig size={iconSize18} aria-hidden='true' />
-              <span>{_('Library')}</span>
             </button>
+            <div className='hidden sm:flex'>
+              <SidebarToggler bookKey={bookKey} />
+            </div>
           </div>
           {enableAnnotationQuickActions && annotationQuickAction && (
             <Dropdown
@@ -288,10 +286,8 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
         </div>
 
         <div className='header-tools-end bg-base-100 z-20 ms-auto flex h-full min-w-max items-center gap-x-3 ps-2 max-[350px]:gap-x-2'>
-          {!isHeaderCompact && <SettingsToggler bookKey={bookKey} />}
           <BookmarkToggler bookKey={bookKey} />
-          <NotebookToggler bookKey={bookKey} />
-          {bookData?.book?.format === 'EPUB' && <ConversationToggler bookKey={bookKey} />}
+          {!isHeaderCompact && <SettingsToggler bookKey={bookKey} />}
           <Dropdown
             label={_('View Options')}
             containerClassName='h-8'
@@ -316,6 +312,9 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
                 onClose={() => setIsMetaHashDialogOpen(false)}
               />
             </ModalPortal>
+          )}
+          {(!isNotebookVisible || sideBarBookKey !== bookKey || isMobile) && (
+            <NotebookToggler bookKey={bookKey} />
           )}
           <WindowButtons
             className='window-buttons flex items-center'

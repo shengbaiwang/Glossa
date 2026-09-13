@@ -9,7 +9,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { NotebookPen, Search } from '@/components/GlossaIcons';
+import { NotebookPen, Search, MessageCircle, GitBranch, Highlight } from '@/components/GlossaIcons';
 
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
@@ -29,7 +29,6 @@ import { eventDispatcher } from '@/utils/event';
 import { getBookDirFromLanguage } from '@/utils/book';
 import { getPanelTopInset } from '@/utils/insets';
 import { Overlay } from '@/components/Overlay';
-import { saveSysSettings } from '@/helpers/settings';
 import { NOTE_PREFIX } from '@/types/view';
 import useShortcuts from '@/hooks/useShortcuts';
 import {
@@ -55,13 +54,12 @@ const Notebook: React.FC = ({}) => {
   const { settings } = useSettingsStore();
   const { updateAppTheme, safeAreaInsets, systemUIVisible, statusBarHeight } = useThemeStore();
   const { sideBarBookKey } = useSidebarStore();
-  const { notebookWidth, isNotebookVisible, isNotebookPinned } = useNotebookStore();
+  const { notebookWidth, isNotebookVisible } = useNotebookStore();
   const { notebookActiveTab, setNotebookActiveTab } = useNotebookStore();
-  const { notebookNewAnnotation, notebookEditAnnotation, setNotebookPin } = useNotebookStore();
+  const { notebookNewAnnotation, notebookEditAnnotation } = useNotebookStore();
   const { getBookData, getConfig, saveConfig, updateBooknotes } = useBookDataStore();
   const { getView, getViewsById, getProgress, getViewSettings } = useReaderStore();
-  const { getNotebookWidth, setNotebookWidth, setNotebookVisible, toggleNotebookPin } =
-    useNotebookStore();
+  const { getNotebookWidth, setNotebookWidth, setNotebookVisible } = useNotebookStore();
   const { setNotebookNewAnnotation, setNotebookNewHighlightId } = useNotebookStore();
   const { setNotebookEditAnnotation } = useNotebookStore();
 
@@ -92,25 +90,18 @@ const Notebook: React.FC = ({}) => {
     (data) => setIsFullHeightInMobile(data.clientY < 44),
   );
 
+  // The panel docks beside the text on wide windows and becomes a sheet on
+  // narrow ones; following a source only dismisses the sheet form.
   const onNavigateEvent = async () => {
-    const { isNotebookPinned, notebookActiveTab } = useNotebookStore.getState();
-    const bookKey = useSidebarStore.getState().sideBarBookKey;
-    const isReadingAssistant =
-      (notebookActiveTab === 'conversation' || notebookActiveTab === 'mindmap') &&
-      bookKey &&
-      getBookData(bookKey)?.book?.format === 'EPUB';
-    // Sources and their return action belong to the reading assistant session.
-    if (!isReadingAssistant && (!isNotebookPinned || window.innerWidth < 640)) {
+    if (window.innerWidth < 640) {
       setNotebookVisible(false);
     }
   };
 
   const handleHideNotebook = useCallback(() => {
-    if (!isNotebookPinned || isMobile) {
-      setNotebookVisible(false);
-    }
+    setNotebookVisible(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNotebookPinned, isMobile]);
+  }, []);
 
   useShortcuts({ onEscape: handleHideNotebook }, [handleHideNotebook]);
 
@@ -127,8 +118,6 @@ const Notebook: React.FC = ({}) => {
 
   useEffect(() => {
     setNotebookWidth(settings.globalReadSettings.notebookWidth);
-    setNotebookPin(settings.globalReadSettings.isNotebookPinned);
-    setNotebookVisible(settings.globalReadSettings.isNotebookPinned);
 
     eventDispatcher.on('navigate', onNavigateEvent);
     return () => {
@@ -159,13 +148,6 @@ const Notebook: React.FC = ({}) => {
   const handleNotebookResize = (newWidth: string) => {
     setNotebookWidth(newWidth);
     settings.globalReadSettings.notebookWidth = newWidth;
-  };
-
-  const handleTogglePin = () => {
-    toggleNotebookPin();
-    const globalReadSettings = settings.globalReadSettings;
-    const newGlobalReadSettings = { ...globalReadSettings, isNotebookPinned: !isNotebookPinned };
-    saveSysSettings(envConfig, 'globalReadSettings', newGlobalReadSettings);
   };
 
   // Abandon a note-creation flow: tear down the empty highlight the "Annotate"
@@ -353,9 +335,9 @@ const Notebook: React.FC = ({}) => {
   const supportsReadingAssistant = book.format === 'EPUB';
   const activeTab = supportsReadingAssistant ? notebookActiveTab : 'notes';
   const tabs = [
-    { id: 'conversation' as const, label: _('Conversation') },
-    { id: 'mindmap' as const, label: _('Mind map') },
-    { id: 'notes' as const, label: _('Excerpts') },
+    { id: 'conversation' as const, label: _('Conversation'), Icon: MessageCircle },
+    { id: 'mindmap' as const, label: _('Mind map'), Icon: GitBranch },
+    { id: 'notes' as const, label: _('Excerpts'), Icon: Highlight },
   ];
 
   const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -390,13 +372,12 @@ const Notebook: React.FC = ({}) => {
 
   return isNotebookVisible ? (
     <>
-      {(!isNotebookPinned || isMobile) &&
-        !((activeTab === 'conversation' || activeTab === 'mindmap') && !isMobile) && (
-          <Overlay
-            className={clsx('z-[45]', viewSettings?.isEink ? '' : 'bg-black/50 sm:bg-black/20')}
-            onDismiss={handleClickOverlay}
-          />
-        )}
+      {isMobile && (
+        <Overlay
+          className={clsx('z-[45]', viewSettings?.isEink ? '' : 'bg-black/50 sm:bg-black/20')}
+          onDismiss={handleClickOverlay}
+        />
+      )}
       <div
         ref={notebookRef}
         className={clsx(
@@ -404,19 +385,13 @@ const Notebook: React.FC = ({}) => {
           'full-height font-sans text-base font-normal transition-[padding-top] duration-300 sm:text-sm',
           viewSettings?.isEink ? 'bg-base-100' : 'bg-base-200',
           appService?.hasRoundedWindow && 'rounded-se-[10px] rounded-ee-[10px]',
-          (isNotebookPinned || activeTab === 'conversation' || activeTab === 'mindmap') && !isMobile
-            ? 'z-20'
-            : 'z-[45] shadow-2xl',
-          (!isNotebookPinned || isMobile) && viewSettings?.isEink && 'border-base-content border-s',
+          isMobile ? 'z-[45] shadow-2xl' : 'z-20',
+          isMobile && viewSettings?.isEink && 'border-base-content border-s',
         )}
         role='group'
         aria-label={_('Notebook')}
         onKeyDown={(event) => {
-          if (
-            event.key === 'Escape' &&
-            !event.defaultPrevented &&
-            (!isNotebookPinned || isMobile)
-          ) {
+          if (event.key === 'Escape' && !event.defaultPrevented) {
             event.stopPropagation();
             handleHideNotebook();
           }
@@ -424,11 +399,7 @@ const Notebook: React.FC = ({}) => {
         style={{
           width: isMobile ? '100%' : `${notebookWidth}`,
           maxWidth: isMobile ? '100%' : `${MAX_NOTEBOOK_WIDTH * 100}%`,
-          position: isMobile
-            ? 'fixed'
-            : isNotebookPinned || activeTab === 'conversation' || activeTab === 'mindmap'
-              ? 'relative'
-              : 'absolute',
+          position: isMobile ? 'fixed' : 'relative',
           paddingTop: `${getPanelTopInset({
             isMobile,
             isFullHeightInMobile,
@@ -480,11 +451,7 @@ const Notebook: React.FC = ({}) => {
               <div className='bg-base-content/50 h-1 w-10 rounded-full'></div>
             </div>
           )}
-          <NotebookHeader
-            isPinned={isNotebookPinned}
-            handleClose={() => setNotebookVisible(false)}
-            handleTogglePin={handleTogglePin}
-          >
+          <NotebookHeader handleClose={() => setNotebookVisible(false)}>
             {supportsReadingAssistant && (
               <div
                 className='glossa-reader-tabs glossa-notebook-tabs'
@@ -492,7 +459,7 @@ const Notebook: React.FC = ({}) => {
                 aria-label={_('Notebook')}
                 aria-orientation='horizontal'
               >
-                {tabs.map(({ id, label }, index) => (
+                {tabs.map(({ id, label, Icon }, index) => (
                   <button
                     key={id}
                     ref={(element) => {
@@ -501,7 +468,7 @@ const Notebook: React.FC = ({}) => {
                     id={`${tabId}-tab-${id}`}
                     type='button'
                     role='tab'
-                    className='glossa-reader-tab min-w-0 text-xs font-medium'
+                    className='glossa-reader-tab glossa-icon-button'
                     title={label}
                     aria-label={label}
                     aria-selected={activeTab === id}
@@ -510,7 +477,7 @@ const Notebook: React.FC = ({}) => {
                     onClick={() => setNotebookActiveTab(id)}
                     onKeyDown={(event) => handleTabKeyDown(event, index)}
                   >
-                    <span className='truncate'>{label}</span>
+                    <Icon size={20} aria-hidden='true' />
                   </button>
                 ))}
               </div>

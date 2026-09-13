@@ -81,15 +81,29 @@ composer usable in short/narrow panes. See `../../docs/design/conversation.md`.
   Use open silhouettes and the mark's interlinear rhythm; avoid decorated notebooks,
   starred bookmarks or pictorial empty-state badges. Reuse `GlossaIcons` across
   library, reader, selection tools and sidebars rather than mixing icon libraries.
-- Keep return/navigation controls at the toolbar start and typography, bookmark and
-  notebook controls at the end. Show a text label with the library action on desktop.
-  Inactive selection automation lives under the named Selection Actions menu; an
-  enabled action stays visible so the reader can see and disable the current mode.
-  Single-book close is available in View Options; preserve native window controls.
-- Place Contents / Notes / Bookmarks directly below the compact book identity.
+- One top bar per book: return-to-library and the contents (left sidebar) toggle
+  sit at the start as icons. Preserve the original centered plain-text book title,
+  without a tab surface, border or rounded frame. Bookmark, reading settings and
+  the book-level More menu sit at the end. The assistant toggle sits at the trailing
+  edge while closed and moves to the open pane’s trailing edge as its collapse action. Icon buttons
+  carry no resting frame: a faint ink wash on hover and a single stronger wash for
+  the pressed/expanded state. Inactive selection automation lives under the named
+  Selection Actions menu; an enabled action stays visible so the reader can see and
+  disable the current mode. Single-book close is available in View Options;
+  preserve native window controls.
+- The left sidebar holds only in-book navigation — Contents / Notes / Bookmarks
+  and the current book's search — directly below the compact book identity.
   Use a quiet ink underline for the active tab, proper tab/panel semantics and
   arrow/Home/End navigation. Switching is immediate; selecting the current tab
-  leaves the panel open. Pinning is a named menu option, not a permanent toolbar icon.
+  leaves the panel open. Sidebar pinning is a named menu option, not a permanent
+  toolbar icon. The reading-assistant pane uses compact Conversation / Mind map /
+  Excerpts icon tabs (speech, tree, highlight) at the start of its 44px header,
+  aligned with the reader bar, and a collapse icon at the trailing edge. Keep
+  tooltips, accessible names and arrow/Home/End navigation. Use one ink wash for
+  the selected icon, without an underline. Tab-owned actions stay inside each tab;
+  there is no pane-level generic menu. Both panels collapse independently,
+  remember their widths, dock beside the text on wide windows and become
+  dismissible sheets on narrow ones.
 - Empty sidebars use a small open icon, short guidance and a secondary action close
   to the content start, without a large centered call to action.
 - Group previous/page/next navigation around the progress control. Keep history and

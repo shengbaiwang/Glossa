@@ -1,8 +1,8 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
+import { MessageCircle, GitBranch, Highlight } from '@/components/GlossaIcons';
 import NotebookHeader from '@/app/reader/components/notebook/Header';
-import { DropdownProvider } from '@/context/DropdownContext';
 import '@/styles/globals.css';
 import '@/styles/glossa.css';
 import '@/styles/glossa-reader.css';
@@ -11,8 +11,6 @@ import '@/styles/glossa-reader-sidebar.css';
 
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (key: string) => key }));
 vi.mock('@/hooks/useResponsiveSize', () => ({ useResponsiveSize: (size: number) => size }));
-vi.mock('@/context/EnvContext', () => ({ useEnv: () => ({ appService: { isMobile: false } }) }));
-vi.mock('@/store/deviceStore', () => ({ useDeviceControlStore: () => ({}) }));
 
 afterEach(() => {
   cleanup();
@@ -21,81 +19,70 @@ afterEach(() => {
   document.documentElement.removeAttribute('data-eink');
 });
 
-it('keeps destination labels and pane actions aligned in narrow, RTL and e-ink layouts', async () => {
+it('keeps destination icons and the close action aligned in narrow, RTL and e-ink layouts', async () => {
   await page.viewport(1000, 600);
   document.documentElement.setAttribute('data-theme', 'default-light');
   render(
-    <DropdownProvider>
-      <div
-        data-testid='pane'
-        className='glossa-reader-notebook'
-        style={{ width: 320, position: 'absolute', insetInlineEnd: 0, top: 0 }}
-      >
-        <NotebookHeader isPinned={false} handleClose={vi.fn()} handleTogglePin={vi.fn()}>
-          <div
-            className='glossa-reader-tabs glossa-notebook-tabs'
-            role='tablist'
-            aria-label='Notebook'
-          >
-            {['Conversation', 'Mind map', 'Excerpts'].map((label) => (
-              <button
-                key={label}
-                type='button'
-                role='tab'
-                aria-label={label}
-                aria-selected={label === 'Mind map'}
-                className='glossa-reader-tab min-w-0 text-xs font-medium'
-              >
-                <span className='truncate'>{label}</span>
-              </button>
-            ))}
-          </div>
-        </NotebookHeader>
-      </div>
-    </DropdownProvider>,
+    <div
+      data-testid='pane'
+      className='glossa-reader-notebook'
+      style={{ width: 320, position: 'absolute', insetInlineEnd: 0, top: 0 }}
+    >
+      <NotebookHeader handleClose={vi.fn()}>
+        <div
+          className='glossa-reader-tabs glossa-notebook-tabs'
+          role='tablist'
+          aria-label='Notebook'
+        >
+          {['Conversation', 'Mind map', 'Excerpts'].map((label, index) => (
+            <button
+              key={label}
+              type='button'
+              role='tab'
+              aria-label={label}
+              aria-selected={label === 'Mind map'}
+              className='glossa-reader-tab glossa-icon-button'
+            >
+              {index === 0 ? <MessageCircle /> : index === 1 ? <GitBranch /> : <Highlight />}
+            </button>
+          ))}
+        </div>
+      </NotebookHeader>
+    </div>,
   );
   const pane = screen.getByTestId('pane');
   const tabs = screen.getAllByRole('tab');
   const close = screen.getByRole('button', { name: 'Close' });
-  const options = screen.getByRole('button', { name: 'View Options' });
+  // The pane header holds only the destinations and their close action.
+  expect(screen.queryByRole('button', { name: 'View Options' })).toBeNull();
   for (const width of [240, 280, 320, 420]) {
     pane.style.width = `${width}px`;
     expect(pane.scrollWidth).toBeLessThanOrEqual(width);
     const header = pane.querySelector('.notebook-header')!;
-    expect(header.getBoundingClientRect().height).toBe(48);
+    expect(header.getBoundingClientRect().height).toBe(44);
     expect(close.getBoundingClientRect().right).toBeLessThanOrEqual(
       pane.getBoundingClientRect().right,
     );
-    expect(tabs[2]!.getBoundingClientRect().right).toBeLessThan(
-      options.getBoundingClientRect().left,
-    );
+    expect(tabs[2]!.getBoundingClientRect().right).toBeLessThan(close.getBoundingClientRect().left);
     if (width >= 320) {
       for (const tab of tabs) {
-        const label = tab.querySelector('span')!;
-        expect(label.scrollWidth).toBeLessThanOrEqual(label.clientWidth);
+        expect(tab.textContent).toBe('');
+        expect(getComputedStyle(tab.querySelector('svg')!).display).not.toBe('none');
+        expect(tab.getBoundingClientRect().width).toBe(36);
       }
     }
   }
   const active = screen.getByRole('tab', { name: 'Mind map' });
-  expect(getComputedStyle(active).backgroundColor).toBe('rgba(0, 0, 0, 0)');
-  expect(getComputedStyle(active, '::after').height).toBe('2px');
+  expect(getComputedStyle(active).backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+  expect(getComputedStyle(active, '::after').content).toBe('none');
   active.focus();
   expect(getComputedStyle(active).outlineStyle).toBe('solid');
 
   document.documentElement.dir = 'rtl';
   pane.style.width = '280px';
   expect(close.getBoundingClientRect().right).toBeLessThan(tabs[2]!.getBoundingClientRect().left);
-  fireEvent.click(options);
-  const menu = document.querySelector('.glossa-notebook-menu')!;
-  expect(menu.getBoundingClientRect().left).toBeGreaterThanOrEqual(16);
-  expect(menu.getBoundingClientRect().right).toBeLessThanOrEqual(984);
   document.documentElement.setAttribute('data-theme', 'default-dark');
   expect(pane.scrollWidth).toBeLessThanOrEqual(280);
   document.documentElement.setAttribute('data-eink', 'true');
-  expect(getComputedStyle(menu).boxShadow).toBe('none');
-  expect(getComputedStyle(menu).borderTopWidth).toBe('1px');
-  expect(getComputedStyle(active).fontWeight).toBe('700');
-  fireEvent.keyDown(screen.getByRole('menuitem', { name: 'Pin Notebook' }), { key: 'Escape' });
-  expect(document.activeElement).toBe(options);
-  expect(screen.queryByRole('menuitem')).toBeNull();
+  expect(getComputedStyle(active).borderTopColor).not.toBe('rgba(0, 0, 0, 0)');
 });

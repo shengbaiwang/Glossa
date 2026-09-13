@@ -64,7 +64,7 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
   const { acquireBackKeyInterception, releaseBackKeyInterception } = useDeviceControlStore();
   const { isSideBarVisible, isSideBarPinned } = useSidebarStore();
   const { getIsSideBarVisible, setSideBarVisible } = useSidebarStore();
-  const { isNotebookVisible, isNotebookPinned } = useNotebookStore();
+  const { isNotebookVisible } = useNotebookStore();
   const { getIsNotebookVisible, setNotebookVisible } = useNotebookStore();
   const { isDarkMode, systemUIAlwaysHidden, isRoundedWindow } = useThemeStore();
 
@@ -93,7 +93,7 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
         (document.activeElement as HTMLElement)?.blur();
       } else if (getIsSideBarVisible() && !isSideBarPinned) {
         setSideBarVisible(false);
-      } else if (getIsNotebookVisible() && !isNotebookPinned) {
+      } else if (getIsNotebookVisible()) {
         setNotebookVisible(false);
       } else {
         eventDispatcher.dispatch('close-reader');
@@ -128,7 +128,6 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
     sideBarBookKey,
     isSideBarPinned,
     isSideBarVisible,
-    isNotebookPinned,
     isNotebookVisible,
   ]);
 
