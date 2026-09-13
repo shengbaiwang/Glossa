@@ -1,5 +1,6 @@
 @import './glossa-mindmap.css';
 @import './glossa-conversation.css';
+@import './glossa-icons.css';
 /* Glossa: the icon's rounded ink strokes, carried through the application.
    All surfaces derive from the selected theme, including custom palettes. */
 :root {
@@ -11,9 +12,26 @@
   --glossa-wash: theme('colors.base-200');
   --glossa-group: color-mix(in srgb, theme('colors.base-200') 96%, white 4%);
   --glossa-focus: theme('colors.base-content / 0.65');
+  --glossa-icon-navigation: 20px;
+  --glossa-icon-chrome: 18px;
+  --glossa-icon-tool: 16px;
+  --glossa-icon-detail: 14px;
+  --glossa-control-size: 32px;
+  --glossa-radius-control: 9px;
+  --glossa-radius-nested: 7px;
   --glossa-radius: 12px;
   --glossa-radius-lg: 20px;
   --glossa-shadow: 0 8px 32px rgb(0 0 0 / 0.08), 0 1px 4px rgb(0 0 0 / 0.04);
+}
+
+/* Increase glyph legibility on touch devices; existing per-surface hit targets
+   and reader insets remain authoritative. */
+@media (pointer: coarse) {
+  :root {
+    --glossa-icon-chrome: 20px;
+    --glossa-icon-tool: 18px;
+    --glossa-icon-detail: 16px;
+  }
 }
 
 [data-theme$='-dark'] {
@@ -46,11 +64,11 @@
 }
 
 .glossa-icon-button {
-  width: 32px;
-  height: 32px;
-  min-height: 32px;
+  width: var(--glossa-control-size);
+  height: var(--glossa-control-size);
+  min-height: var(--glossa-control-size);
   padding: 0;
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-control);
 }
 
 .glossa-button {
@@ -144,9 +162,9 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
 }
 
 .glossa-settings .dialog-tabs .lucide {
-  width: 17px;
-  height: 17px;
-  stroke-width: 1.75;
+  width: var(--glossa-icon-chrome);
+  height: var(--glossa-icon-chrome);
+  stroke-width: 1.8;
 }
 
 [data-eink='true'] {

@@ -77,6 +77,25 @@ describe('Reader sidebar content', () => {
     expect(tab.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('keeps icon navigation available above search and returns to the active destination', () => {
+    render(
+      <SidebarContent
+        bookDoc={bookDoc}
+        sideBarBookKey='book-0'
+        renderNavigation={(tabs) => <header>{tabs}</header>}
+      >
+        <p>Search matches</p>
+      </SidebarContent>,
+    );
+    const tab = screen.getByRole('tab', { name: 'Contents' });
+    expect(tab.closest('header')).toBeTruthy();
+    expect(screen.getByRole('tabpanel').id).toBe(tab.getAttribute('aria-controls'));
+    expect(screen.getByText('Search matches')).toBeTruthy();
+    fireEvent.click(tab);
+    expect(mocks.setSearchBarVisible).toHaveBeenCalledWith(false);
+    expect(mocks.setConfig).not.toHaveBeenCalled();
+  });
+
   it('does not dismiss the sidebar when its selected tab is pressed again on mobile', () => {
     const width = window.innerWidth;
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });

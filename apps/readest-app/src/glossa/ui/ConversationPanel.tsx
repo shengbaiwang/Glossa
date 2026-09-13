@@ -709,7 +709,7 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
                   startRenaming();
                 }}
               >
-                <Pencil size={15} />
+                <Pencil size={16} />
                 <span>{_('Rename conversation')}</span>
               </button>
               <fieldset className='glossa-chat-font-group'>
@@ -728,7 +728,7 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
                     }}
                   >
                     <span>{_(size.label)}</span>
-                    {size.id === fontSize && <Check size={15} />}
+                    {size.id === fontSize && <Check size={14} />}
                   </button>
                 ))}
               </fieldset>
@@ -741,7 +741,7 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
                   setDeleting(true);
                 }}
               >
-                <Trash2 size={15} />
+                <Trash2 size={16} />
                 <span>{_('Delete conversation')}</span>
               </button>
             </div>
@@ -1087,7 +1087,7 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
                   aria-label={_('Stop reply')}
                   onClick={() => stopRequest.current?.()}
                 >
-                  <Square size={15} />
+                  <Square size={16} />
                 </button>
               ) : (
                 <button

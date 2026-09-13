@@ -1,7 +1,8 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import HeaderBar from '@/app/reader/components/HeaderBar';
+import TabNavigation from '@/app/reader/components/sidebar/TabNavigation';
 import SidebarHeader from '@/app/reader/components/sidebar/Header';
 import { MessageCircle, GitBranch, Highlight } from '@/components/GlossaIcons';
 import NotebookHeader from '@/app/reader/components/notebook/Header';
@@ -109,7 +110,9 @@ const renderChrome = () =>
     <div data-testid='frame' className='relative h-screen w-full overflow-hidden'>
       <div className='flex h-full min-h-0'>
         <div className='glossa-reader-sidebar bg-base-200 relative z-20 flex w-64 shrink-0 flex-col'>
-          <SidebarHeader isSearchBarVisible={false} onClose={vi.fn()} onToggleSearchBar={vi.fn()} />
+          <SidebarHeader isSearchBarVisible={false} onClose={vi.fn()} onToggleSearchBar={vi.fn()}>
+            <TabNavigation activeTab='toc' onTabChange={vi.fn()} />
+          </SidebarHeader>
         </div>
         <div className='bg-base-100 relative min-w-0 flex-1'>
           <HeaderBar
@@ -169,7 +172,7 @@ it('shows the unified chrome: quiet buttons, one selected emphasis, Glossa icons
   const start = within(bar.querySelector('.header-tools-start') as HTMLElement)
     .getAllByRole('button')
     .map((button) => button.getAttribute('aria-label'));
-  expect(start).toEqual(['Go to Library', 'Toggle Sidebar']);
+  expect(start).toEqual(['Go to Library']);
   const end = within(bar.querySelector('.header-tools-end') as HTMLElement)
     .getAllByRole('button')
     .map((button) => button.getAttribute('aria-label'));
@@ -185,7 +188,10 @@ it('shows the unified chrome: quiet buttons, one selected emphasis, Glossa icons
   expect(titleStyle.borderTopWidth).toBe('0px');
   expect(titleStyle.borderRadius).toBe('0px');
   expect(
-    screen.getByRole('tablist').closest('.notebook-header')!.getBoundingClientRect().height,
+    screen
+      .getByRole('tablist', { name: 'Notebook' })
+      .closest('.notebook-header')!
+      .getBoundingClientRect().height,
   ).toBe(44);
 
   // Resting icon buttons draw no frame; the pressed toggle keeps a single wash.
@@ -196,13 +202,28 @@ it('shows the unified chrome: quiet buttons, one selected emphasis, Glossa icons
   const contents = screen.getByRole('button', { name: 'Toggle Sidebar' });
   const contentsStyle = getComputedStyle(contents);
   expect(contentsStyle.borderTopColor).toBe('rgba(0, 0, 0, 0)');
-  expect(contentsStyle.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
-  // All bar icons render at one size.
-  const iconSizes = [...bar.querySelectorAll('.glossa-icon')].map((icon) => {
-    const rect = icon.getBoundingClientRect();
-    return `${Math.round(rect.width)}x${Math.round(rect.height)}`;
+  expect(contentsStyle.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+  const tabs = screen.getByRole('tablist', { name: 'Sidebar' });
+  expect(contents.getBoundingClientRect().right).toBeLessThanOrEqual(
+    tabs.getBoundingClientRect().left,
+  );
+  const selected = within(tabs).getByRole('tab', { selected: true });
+  expect(selected.textContent).toBe('');
+  expect(getComputedStyle(selected, '::after').content).toBe('none');
+  expect(selected.getBoundingClientRect().width).toBe(36);
+  expect(tabs.closest('.sidebar-header')!.getBoundingClientRect().height).toBe(44);
+  // Wait for the upstream button entrance animation before comparing geometry.
+  await waitFor(() => {
+    const iconSizes = [...bar.querySelectorAll('.glossa-icon')].map((icon) => {
+      const rect = icon.getBoundingClientRect();
+      return `${Math.round(rect.width)}x${Math.round(rect.height)}`;
+    });
+    expect(new Set(iconSizes)).toEqual(new Set(['18x18']));
+    for (const tab of screen.getAllByRole('tab')) {
+      expect(getComputedStyle(tab).borderRadius).toBe(bookmarkStyle.borderRadius);
+      expect(tab.querySelector('svg')!.getBoundingClientRect().width).toBeCloseTo(18, 0);
+    }
   });
-  expect(new Set(iconSizes).size).toBe(1);
 
   await page.screenshot({ path: '../../../../../../../.glossa-dev/qa/obsidian-chrome-light.png' });
 

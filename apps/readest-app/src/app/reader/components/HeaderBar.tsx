@@ -232,6 +232,11 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
               cut the touch halos short of the 44px target (#5401) —
               `scrollbar-width: none` alone does not remove that strip. */}
           <div className='no-scrollbar flex h-full min-w-0 items-center gap-x-3 overflow-x-auto max-[350px]:gap-x-2'>
+            {(!isSideBarVisible || sideBarBookKey !== bookKey) && (
+              <div className='hidden sm:flex'>
+                <SidebarToggler bookKey={bookKey} />
+              </div>
+            )}
             <button
               title={_('Go to Library')}
               aria-label={_('Go to Library')}
@@ -241,9 +246,6 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
             >
               <LibraryBig size={iconSize18} aria-hidden='true' />
             </button>
-            <div className='hidden sm:flex'>
-              <SidebarToggler bookKey={bookKey} />
-            </div>
           </div>
           {enableAnnotationQuickActions && annotationQuickAction && (
             <Dropdown

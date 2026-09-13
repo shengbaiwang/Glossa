@@ -154,6 +154,15 @@ export function PinOff(props: GlossaIconProps) {
   );
 }
 
+/** Chapter markers and varying entry lengths; distinct from pane toggles and relationship trees. */
+export function Contents(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <path d='M4 6h1.5M9.5 6H20M4 12h1.5M9.5 12H17M4 18h1.5M9.5 18H20' />
+    </Icon>
+  );
+}
+
 export function ListTree(props: GlossaIconProps) {
   return (
     <Icon {...props}>
@@ -397,7 +406,6 @@ export {
   Type as Typography,
   Ellipsis as More,
   X as Close,
-  ListTree as Contents,
   ListTree as List,
 };
 

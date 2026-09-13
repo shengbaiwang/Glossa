@@ -85,6 +85,9 @@
   flex: 1;
   font-weight: 500;
 }
+.glossa-workmap .glossa-workmap-icon {
+  border-radius: var(--glossa-radius-nested);
+}
 .glossa-workmap-icon {
   width: 32px;
   min-width: 32px;

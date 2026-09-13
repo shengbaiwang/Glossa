@@ -1,15 +1,16 @@
 import clsx from 'clsx';
 import React, { useRef } from 'react';
-import { Search, ChevronLeft } from '@/components/GlossaIcons';
+import { Search, PanelLeft, X } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useTrafficLight } from '@/hooks/useTrafficLight';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 
 const SidebarHeader: React.FC<{
+  children?: React.ReactNode;
   isSearchBarVisible: boolean;
   onClose: () => void;
   onToggleSearchBar: () => void;
-}> = ({ isSearchBarVisible, onClose, onToggleSearchBar }) => {
+}> = ({ children, isSearchBarVisible, onClose, onToggleSearchBar }) => {
   const _ = useTranslation();
   const headerRef = useRef<HTMLDivElement>(null);
   const { isTrafficLightVisible } = useTrafficLight(headerRef);
@@ -24,17 +25,17 @@ const SidebarHeader: React.FC<{
       )}
       dir='ltr'
     >
-      <div className='flex items-center gap-x-8'>
-        <button
-          type='button'
-          title={_('Close')}
-          aria-label={_('Close')}
-          onClick={onClose}
-          className='glossa-icon-button touch-target btn btn-ghost flex h-8 min-h-8 w-8 p-0 sm:hidden'
-        >
-          <ChevronLeft size={iconSize18} aria-hidden='true' />
-        </button>
-      </div>
+      <button
+        type='button'
+        title={_('Toggle Sidebar')}
+        aria-label={_('Toggle Sidebar')}
+        onClick={onClose}
+        className='glossa-sidebar-collapse glossa-icon-button touch-target btn btn-ghost h-8 min-h-8 w-8 shrink-0 p-0'
+      >
+        <PanelLeft size={iconSize18} className='hidden sm:block' aria-hidden='true' />
+        <X size={iconSize18} className='sm:hidden' aria-hidden='true' />
+      </button>
+      {children}
       <div className='flex items-center gap-2'>
         <button
           type='button'

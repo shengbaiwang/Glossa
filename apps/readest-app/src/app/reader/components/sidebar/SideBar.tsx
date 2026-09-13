@@ -241,47 +241,54 @@ const SideBar = ({}) => {
           onTouchStart={handleHorizontalDragStart}
           onKeyDown={handleDragKeyDown}
         ></div>
-        <div className='flex-shrink-0'>
-          {isMobile && (
-            <div
-              role='slider'
-              tabIndex={0}
-              aria-label={_('Resize Sidebar')}
-              aria-orientation='vertical'
-              aria-valuenow={sidebarHeight.current}
-              className='drag-handle flex h-6 max-h-6 min-h-6 w-full cursor-row-resize items-center justify-center'
-              onMouseDown={handleVerticalDragStart}
-              onTouchStart={handleVerticalDragStart}
-            >
-              <div className='bg-base-content/50 h-1 w-10 rounded-full'></div>
+        <SidebarContent
+          bookDoc={bookDoc}
+          sideBarBookKey={sideBarBookKey}
+          renderNavigation={(tabs) => (
+            <div className='flex-shrink-0'>
+              {isMobile && (
+                <div
+                  role='slider'
+                  tabIndex={0}
+                  aria-label={_('Resize Sidebar')}
+                  aria-orientation='vertical'
+                  aria-valuenow={sidebarHeight.current}
+                  className='drag-handle flex h-6 max-h-6 min-h-6 w-full cursor-row-resize items-center justify-center'
+                  onMouseDown={handleVerticalDragStart}
+                  onTouchStart={handleVerticalDragStart}
+                >
+                  <div className='bg-base-content/50 h-1 w-10 rounded-full'></div>
+                </div>
+              )}
+              <SidebarHeader
+                isSearchBarVisible={isSearchBarVisible}
+                onClose={() => setSideBarVisible(false)}
+                onToggleSearchBar={handleToggleSearchBar}
+              >
+                {tabs}
+              </SidebarHeader>
+              <div
+                className={clsx('search-bar', {
+                  'search-bar-visible': isSearchBarVisible,
+                })}
+              >
+                <SearchBar
+                  isVisible={isSearchBarVisible}
+                  bookKey={sideBarBookKey!}
+                  onHideSearchBar={handleHideSearchBar}
+                />
+              </div>
             </div>
           )}
-          <SidebarHeader
-            isSearchBarVisible={isSearchBarVisible}
-            onClose={() => setSideBarVisible(false)}
-            onToggleSearchBar={handleToggleSearchBar}
-          />
-          <div
-            className={clsx('search-bar', {
-              'search-bar-visible': isSearchBarVisible,
-            })}
-          >
-            <SearchBar
-              isVisible={isSearchBarVisible}
-              bookKey={sideBarBookKey!}
-              onHideSearchBar={handleHideSearchBar}
+        >
+          {isSearchBarVisible && searchResults ? (
+            <SearchResults
+              bookKey={sideBarBookKey}
+              results={searchResults}
+              onSelectResult={handleSearchResultClick}
             />
-          </div>
-        </div>
-        {isSearchBarVisible && searchResults ? (
-          <SearchResults
-            bookKey={sideBarBookKey!}
-            results={searchResults}
-            onSelectResult={handleSearchResultClick}
-          />
-        ) : (
-          <SidebarContent bookDoc={bookDoc} sideBarBookKey={sideBarBookKey!} />
-        )}
+          ) : null}
+        </SidebarContent>
       </div>
     </>
   ) : null;

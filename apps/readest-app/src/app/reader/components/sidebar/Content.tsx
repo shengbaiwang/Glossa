@@ -13,9 +13,11 @@ import BooknoteView from './BooknoteView';
 import TabNavigation from './TabNavigation';
 
 const SidebarContent: React.FC<{
+  renderNavigation?: (tabs: React.ReactNode) => React.ReactNode;
+  children?: React.ReactNode;
   bookDoc: BookDoc;
   sideBarBookKey: string;
-}> = ({ bookDoc, sideBarBookKey }) => {
+}> = ({ bookDoc, sideBarBookKey, renderNavigation, children }) => {
   const { setSearchBarVisible } = useSidebarStore();
   const { getConfig, setConfig } = useBookDataStore();
   const config = getConfig(sideBarBookKey);
@@ -24,17 +26,20 @@ const SidebarContent: React.FC<{
   const tabId = useId();
 
   const handleTabChange = (tab: string) => {
-    if (activeTab === tab || !config?.viewSettings) return;
-
     setSearchBarVisible(false);
+    if (activeTab === tab || !config?.viewSettings) return;
     setConfig(sideBarBookKey, {
       viewSettings: { ...config.viewSettings, sideBarTab: tab },
     });
   };
 
+  const tabs = (
+    <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} idPrefix={tabId} />
+  );
+
   return (
     <>
-      <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} idPrefix={tabId} />
+      {renderNavigation ? renderNavigation(tabs) : tabs}
       <div
         className={clsx(
           'sidebar-content glossa-reader-sidebar-content flex h-full min-h-0 flex-grow flex-col',
@@ -45,27 +50,29 @@ const SidebarContent: React.FC<{
         aria-labelledby={`${tabId}-tab-${activeTab}`}
         tabIndex={0}
       >
-        <OverlayScrollbarsComponent
-          className='min-h-0 flex-1'
-          options={{
-            // The tab content is width-bound; x stays hidden so oversized
-            // touch-target halos (e.g. the toolbar's dropdown toggle) can't
-            // turn into a horizontal scrollbar.
-            overflow: { x: 'hidden' },
-            scrollbars: { autoHide: 'scroll', clickScroll: true },
-            showNativeOverlaidScrollbars: false,
-          }}
-          defer
-        >
-          <div className='scroll-container h-full'>
-            {activeTab === 'toc' && bookDoc.toc && (
-              <TOCView toc={bookDoc.toc} bookKey={sideBarBookKey} />
-            )}
-            {activeTab === 'bookmarks' && (
-              <BooknoteView type='bookmark' toc={bookDoc.toc ?? []} bookKey={sideBarBookKey} />
-            )}
-          </div>
-        </OverlayScrollbarsComponent>
+        {children || (
+          <OverlayScrollbarsComponent
+            className='min-h-0 flex-1'
+            options={{
+              // The tab content is width-bound; x stays hidden so oversized
+              // touch-target halos (e.g. the toolbar's dropdown toggle) can't
+              // turn into a horizontal scrollbar.
+              overflow: { x: 'hidden' },
+              scrollbars: { autoHide: 'scroll', clickScroll: true },
+              showNativeOverlaidScrollbars: false,
+            }}
+            defer
+          >
+            <div className='scroll-container h-full'>
+              {activeTab === 'toc' && bookDoc.toc && (
+                <TOCView toc={bookDoc.toc} bookKey={sideBarBookKey} />
+              )}
+              {activeTab === 'bookmarks' && (
+                <BooknoteView type='bookmark' toc={bookDoc.toc ?? []} bookKey={sideBarBookKey} />
+              )}
+            </div>
+          </OverlayScrollbarsComponent>
+        )}
       </div>
     </>
   );

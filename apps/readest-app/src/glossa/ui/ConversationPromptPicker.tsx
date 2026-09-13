@@ -69,12 +69,12 @@ export default function ConversationPromptPicker({ openSettings }: Props) {
           <div className='glossa-chat-model-options'>
             <button type='button' onClick={() => choose(null)}>
               <span>{_('No prompt')}</span>
-              {!active && <Check size={15} />}
+              {!active && <Check size={14} />}
             </button>
             {state.prompts.map((prompt) => (
               <button type='button' key={prompt.id} onClick={() => choose(prompt.id)}>
                 <span>{prompt.name}</span>
-                {prompt.id === active?.id && <Check size={15} />}
+                {prompt.id === active?.id && <Check size={14} />}
               </button>
             ))}
           </div>
@@ -86,7 +86,7 @@ export default function ConversationPromptPicker({ openSettings }: Props) {
               openSettings();
             }}
           >
-            <SlidersHorizontal size={15} />
+            <SlidersHorizontal size={16} />
             {_('Prompt settings')}
           </button>
         </div>

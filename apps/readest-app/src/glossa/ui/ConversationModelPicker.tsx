@@ -184,13 +184,13 @@ export default function ConversationModelPicker({ config, ready, openSettings }:
                 onClick={() => void choose(model)}
               >
                 <span>{model}</span>
-                {model === config?.model && selected?.id === config.id && <Check size={15} />}
+                {model === config?.model && selected?.id === config.id && <Check size={14} />}
               </button>
             ))}
             {query.trim() && !filtered.includes(query.trim()) && (
               <button type='button' disabled={saving} onClick={() => void choose(query)}>
                 <span>{query.trim()}</span>
-                <Check size={15} />
+                <Check size={14} />
               </button>
             )}
             {loading && (
@@ -212,7 +212,7 @@ export default function ConversationModelPicker({ config, ready, openSettings }:
               openSettings();
             }}
           >
-            <SlidersHorizontal size={15} />
+            <SlidersHorizontal size={16} />
             {_('Model settings')}
           </button>
         </div>

@@ -1,0 +1,54 @@
+/* Role sizes belong to controls, not to every SVG on a surface. Keep artwork,
+   diagrams, status marks and empty-state illustrations at their intended sizes. */
+.glossa-icon {
+  flex-shrink: 0;
+}
+
+.glossa-icon-button > .glossa-icon {
+  width: var(--glossa-icon-chrome);
+  height: var(--glossa-icon-chrome);
+}
+
+/* App-level navigation is one step larger than the per-book chrome. */
+.glossa-library-header .glossa-icon-button > :is(.glossa-icon, .lucide),
+.glossa-library-navigation button > .glossa-icon {
+  width: var(--glossa-icon-navigation);
+  height: var(--glossa-icon-navigation);
+}
+
+/* Local tools: a smaller glyph and tighter corners within a 32px control. */
+.glossa-chat-toolbar .glossa-chat-text-button > .glossa-icon,
+.glossa-workmap-icon > .glossa-icon,
+.glossa-workmap-menu-items button > .glossa-icon {
+  width: var(--glossa-icon-tool);
+  height: var(--glossa-icon-tool);
+}
+
+.glossa-chat-turn .glossa-chat-text-button > .glossa-icon,
+.glossa-workmap-fold > .glossa-icon {
+  width: var(--glossa-icon-detail);
+  height: var(--glossa-icon-detail);
+}
+
+/* Reading directly on the page needs the same legibility as the header. */
+.glossa-selection-tool {
+  border-radius: var(--glossa-radius-control);
+}
+
+.glossa-selection-tool > .glossa-icon,
+.glossa-page-navigation .glossa-icon {
+  width: var(--glossa-icon-chrome);
+  height: var(--glossa-icon-chrome);
+}
+
+.glossa-navigation-secondary .glossa-icon {
+  width: var(--glossa-icon-tool);
+  height: var(--glossa-icon-tool);
+}
+
+/* Remaining Lucide glyphs share stroke weight, without restyling brand logos,
+   filled status symbols or the custom shapes of Glossa's own family. */
+.glossa-library-header .lucide,
+.glossa-menu-item .lucide {
+  stroke-width: 1.8;
+}

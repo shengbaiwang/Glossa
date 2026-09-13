@@ -160,7 +160,7 @@
 
 .glossa-reader-header .glossa-icon-button,
 .glossa-reader-panel-header .glossa-icon-button {
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-control);
 }
 
 .glossa-reader-header .glossa-reader-library-button {
@@ -183,8 +183,8 @@
 
 .glossa-reader-header .glossa-icon,
 .glossa-reader-panel-header .glossa-icon {
-  width: 20px;
-  height: 20px;
+  width: var(--glossa-icon-chrome);
+  height: var(--glossa-icon-chrome);
 }
 
 /* Reading tools share the paper/ink surface and compact chrome. */
@@ -212,7 +212,7 @@
   max-width: 150px;
   height: 32px;
   border: 1px solid var(--glossa-border);
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-control);
   background: var(--glossa-wash);
   color: var(--glossa-ink);
   font-size: 12px;

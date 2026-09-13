@@ -23,13 +23,15 @@ describe('reader navigation controls', () => {
     expect(onActionSelect).toHaveBeenCalledWith('copy');
   });
 
-  it('names every sidebar destination visibly and exposes the selected destination', () => {
+  it('names every sidebar icon destination accessibly and exposes the selected destination', () => {
     const onTabChange = vi.fn();
     const { rerender } = render(<TabNavigation activeTab='toc' onTabChange={onTabChange} />);
     const contents = screen.getByRole('tab', { name: 'Contents' });
     const bookmarks = screen.getByRole('tab', { name: 'Bookmarks' });
     expect(contents.tagName).toBe('BUTTON');
-    expect(contents.textContent).toContain('Contents');
+    expect(contents.textContent).toBe('');
+    expect(contents.querySelector('svg.glossa-icon')).toBeTruthy();
+    expect(contents.title).toBe('Contents');
     expect(contents.getAttribute('aria-selected')).toBe('true');
     expect(bookmarks.getAttribute('aria-selected')).toBe('false');
     fireEvent.click(bookmarks);

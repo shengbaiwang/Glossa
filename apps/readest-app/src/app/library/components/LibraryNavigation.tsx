@@ -59,7 +59,7 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
             navigateToLibrary(router, params.toString());
           }}
         >
-          <Icon size={17} strokeWidth={1.75} aria-hidden='true' />
+          <Icon size={20} aria-hidden='true' />
           <span>{label}</span>
         </button>
       ))}

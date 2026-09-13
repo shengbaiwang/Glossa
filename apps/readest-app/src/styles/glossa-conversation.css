@@ -133,7 +133,7 @@
   min-height: 32px;
   min-width: 32px;
   padding: 6px;
-  border-radius: 9px;
+  border-radius: var(--glossa-radius-nested);
   color: var(--glossa-muted);
   background: transparent;
 }

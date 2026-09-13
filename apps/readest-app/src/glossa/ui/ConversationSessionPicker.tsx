@@ -98,7 +98,7 @@ export default function ConversationSessionPicker({
                       <span className='glossa-chat-session-preview'>{preview}</span>
                     ) : null}
                   </span>
-                  {session.id === activeId && <Check size={15} />}
+                  {session.id === activeId && <Check size={14} />}
                 </button>
               );
             })}

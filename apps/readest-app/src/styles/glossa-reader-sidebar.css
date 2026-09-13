@@ -111,17 +111,16 @@
 }
 
 /* One destination row; each reading tool owns its controls below this line. */
-.glossa-reader-notebook .notebook-header {
+:is(.glossa-reader-notebook .notebook-header, .glossa-reader-sidebar .sidebar-header) {
   display: flex;
   height: 44px;
   min-height: 44px;
   align-items: center;
   gap: 8px;
-  padding-inline: 12px;
   border-bottom: 1px solid var(--glossa-border);
 }
 
-.glossa-reader-notebook .glossa-notebook-tabs {
+:is(.glossa-reader-notebook .glossa-notebook-tabs, .glossa-reader-sidebar .glossa-sidebar-tabs) {
   display: flex;
   min-width: 0;
   flex: 1;
@@ -131,7 +130,8 @@
   border: 0;
 }
 
-.glossa-reader-notebook .glossa-notebook-tabs .glossa-reader-tab {
+:is(.glossa-reader-notebook .glossa-notebook-tabs, .glossa-reader-sidebar .glossa-sidebar-tabs)
+  .glossa-reader-tab {
   display: flex;
   width: 36px;
   height: 32px;
@@ -140,22 +140,27 @@
   align-items: center;
   justify-content: center;
   padding: 0;
-  border-radius: 7px;
+  border-radius: var(--glossa-radius-control);
 }
 
-.glossa-notebook-tabs .glossa-reader-tab svg {
+:is(.glossa-notebook-tabs, .glossa-sidebar-tabs) .glossa-reader-tab svg {
   display: block;
+  width: var(--glossa-icon-chrome);
+  height: var(--glossa-icon-chrome);
 }
 
-.glossa-reader-notebook .glossa-reader-tab[aria-selected='true'] {
+:is(.glossa-reader-notebook, .glossa-reader-sidebar) .glossa-reader-tab[aria-selected='true'] {
   background: color-mix(in srgb, var(--glossa-ink) 13%, transparent);
 }
 
-.glossa-reader-notebook .glossa-reader-tab[aria-selected='true']::after {
+:is(.glossa-reader-notebook, .glossa-reader-sidebar)
+  .glossa-reader-tab[aria-selected='true']::after {
   content: none;
 }
 
-[data-eink='true'] .glossa-reader-notebook .glossa-reader-tab[aria-selected='true'] {
+[data-eink='true']
+  :is(.glossa-reader-notebook, .glossa-reader-sidebar)
+  .glossa-reader-tab[aria-selected='true'] {
   border-color: var(--glossa-ink);
   background: var(--glossa-surface);
 }
@@ -165,13 +170,14 @@
 }
 
 @media (pointer: coarse) {
-  .glossa-reader-notebook .glossa-notebook-tabs .glossa-reader-tab {
+  :is(.glossa-reader-notebook .glossa-notebook-tabs, .glossa-reader-sidebar .glossa-sidebar-tabs)
+    .glossa-reader-tab {
     width: 44px;
     height: 44px;
     flex-basis: 44px;
   }
 
-  .glossa-reader-notebook .notebook-header {
+  :is(.glossa-reader-notebook .notebook-header, .glossa-reader-sidebar .sidebar-header) {
     height: 48px;
     min-height: 48px;
   }
@@ -200,4 +206,17 @@
 [data-eink='true'] .glossa-notebook-menu {
   border-color: var(--glossa-ink);
   box-shadow: none;
+}
+
+.glossa-reader-notebook .notebook-header {
+  padding-inline: 12px;
+}
+
+.glossa-reader-sidebar .sidebar-header {
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.glossa-sidebar-collapse {
+  margin-inline-end: 4px;
 }

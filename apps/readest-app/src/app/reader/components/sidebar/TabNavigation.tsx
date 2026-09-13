@@ -1,3 +1,5 @@
+import { Contents, Bookmark } from '@/components/GlossaIcons';
+import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import React, { useId, useRef } from 'react';
 import { useTranslation } from '@/hooks/useTranslation';
 
@@ -7,12 +9,13 @@ const TabNavigation: React.FC<{
   idPrefix?: string;
 }> = ({ activeTab, onTabChange, idPrefix }) => {
   const _ = useTranslation();
+  const iconSize = useResponsiveSize(18);
   const localId = useId();
   const prefix = idPrefix ?? localId;
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const tabs = [
-    { id: 'toc', label: _('Contents') },
-    { id: 'bookmarks', label: _('Bookmarks') },
+    { id: 'toc', label: _('Contents'), Icon: Contents },
+    { id: 'bookmarks', label: _('Bookmarks'), Icon: Bookmark },
   ];
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -42,12 +45,12 @@ const TabNavigation: React.FC<{
 
   return (
     <div
-      className='glossa-reader-tabs flex w-full shrink-0 gap-1 px-3 pb-2'
+      className='glossa-reader-tabs glossa-sidebar-tabs'
       role='tablist'
       aria-label={_('Sidebar')}
       aria-orientation='horizontal'
     >
-      {tabs.map(({ id, label }, index) => (
+      {tabs.map(({ id, label, Icon }, index) => (
         <button
           key={id}
           ref={(element) => {
@@ -56,7 +59,7 @@ const TabNavigation: React.FC<{
           id={`${prefix}-tab-${id}`}
           type='button'
           role='tab'
-          className='glossa-reader-tab flex min-h-9 min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-2'
+          className='glossa-reader-tab glossa-icon-button'
           onClick={() => onTabChange(id)}
           onKeyDown={(event) => handleKeyDown(event, index)}
           title={label}
@@ -65,7 +68,7 @@ const TabNavigation: React.FC<{
           aria-controls={idPrefix ? `${prefix}-panel` : undefined}
           tabIndex={activeTab === id ? 0 : -1}
         >
-          <span className='max-w-full truncate text-xs font-medium leading-4'>{label}</span>
+          <Icon size={iconSize} aria-hidden='true' />
         </button>
       ))}
     </div>

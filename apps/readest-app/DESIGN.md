@@ -1,5 +1,46 @@
 ## Glossa Design Language
 
+### Icon hierarchy — 2026-09-14
+
+Use `GlossaIcons.tsx` for app navigation, reading controls, selection tools and
+Glossa workspaces. Draw on a 24-unit grid, with 1.8-unit strokes, round caps and
+round joins. Keep most silhouettes within 16–18 units; optically balance open
+marks against enclosed shapes. Enclosed frames use 2–3-unit corner radii, small
+map junctions 1–1.5 units. Do not round arrow directions or bookmark notches into
+unrecognizable shapes. Selected states change the control surface, not glyph size
+or stroke weight; a filled bookmark and stop square retain their state meaning.
+
+| Role | Desktop glyph | Control / rounding |
+| --- | --- | --- |
+| Library toolbar and category navigation | 20px | 32px icon button / 9px; category row keeps its own full-width target |
+| Reader header, left/right pane destinations, selection and page navigation | 18px | 32px / 9px; pane destinations 36 × 32px / 9px |
+| Workspace tools, menus, history navigation | 16px | 32px / 7px for nested icon tools; menu rows keep text alignment |
+| Reply actions, fold indicators, selection checks | 14px | Keep the parent target; never shrink the hit area to the glyph |
+| Settings category tabs | 18px | Keep their labeled tab layout |
+
+Sizes live in `glossa.css` (`--glossa-icon-navigation/chrome/tool/detail`);
+`glossa-icons.css` maps roles to controls. Use `--glossa-radius-control` (9px) for
+main controls and `--glossa-radius-nested` (7px) for embedded tools. Popovers stay
+12px, large surfaces 20px, message bubbles and map roots keep their own geometry.
+Avoid global `svg` sizing or a blanket radius rule. Existing Lucide icons in
+unrevised settings and specialist menus may remain, with 1.8-unit strokes on
+shared chrome; do not alter external logos, covers, diagrams or status artwork.
+
+Contents uses three chapter markers with long/short/long entry lines, an open
+list silhouette that reads at 18px. It is distinct from the split-pane toggles,
+bookmarks and branching relationship map. Do not give Contents a notebook frame
+or reuse the app logo as a functional icon. Keep tooltips and accessible names;
+icons are decorative SVGs inside named controls. Mirror directional controls for
+RTL through existing navigation logic, not every icon indiscriminately.
+
+On coarse pointers, role glyphs step up from 18/16/14px to 20/18/16px while
+existing per-surface touch targets and reader insets remain authoritative.
+Preserve 44px touch regions, focus rings, reduced-motion behavior and explicit
+e-ink selection borders. Empty-state symbols (22–28px), the app mark and floating
+page controls (24px glyph in a circular target) are intentional exceptions.
+This section supersedes earlier icon-size and icon-button radius guidance.
+
+
 ### Reading tools — 2026-09-13
 
 Restore Dictionary / Translate / Read Aloud in the selection toolbar and Read Aloud
@@ -103,6 +144,8 @@ composer usable in short/narrow panes. See `../../docs/design/conversation.md`.
   Use open silhouettes and the mark's interlinear rhythm; avoid decorated notebooks,
   starred bookmarks or pictorial empty-state badges. Reuse `GlossaIcons` across
   library, reader, selection tools and sidebars rather than mixing icon libraries.
+  Abstract recognizable structures of the named action or content; avoid invented
+  physical metaphors that suggest a different object or function.
 - One top bar per book: return-to-library and the contents (left sidebar) toggle
   sit at the start as icons. Preserve the original centered plain-text book title,
   without a tab surface, border or rounded frame. Bookmark, reading settings and
@@ -115,9 +158,13 @@ composer usable in short/narrow panes. See `../../docs/design/conversation.md`.
   preserve native window controls.
 - The left sidebar holds only in-book navigation — Contents / Bookmarks
   and the current book's search. Cover and author appear only in the Book Details dialog.
-  Use a quiet ink underline for the active tab, proper tab/panel semantics and
+  Keep collapse at the far left of its 44px header, followed by Contents / Bookmarks
+  icon tabs, with search at the far end. Use the shared rounded ink strokes (the
+  contents mark uses chapter markers and varying entry lengths on the shared 24px grid), the same selected ink wash
+  as the right pane, tooltip names, proper tab/panel semantics and
   arrow/Home/End navigation. Switching is immediate; selecting the current tab
-  leaves the panel open. Sidebar pinning is a named menu option, not a permanent
+  leaves the panel open and exits search. When closed, its toggle comes before Library
+  in the reader bar; when open, the pane owns the sole collapse control. Sidebar pinning is a named menu option, not a permanent
   toolbar icon. The reading-assistant pane uses compact Conversation / Mind map /
   Notes icon tabs (speech, tree, highlight) at the start of its 44px header,
   aligned with the reader bar, and a collapse icon at the trailing edge. Keep

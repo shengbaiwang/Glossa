@@ -133,7 +133,7 @@ describe('reader top bar hierarchy', () => {
     const startLabels = within(start as HTMLElement)
       .getAllByRole('button')
       .map((button) => button.getAttribute('aria-label'));
-    expect(startLabels).toEqual(['Go to Library', 'Toggle Sidebar']);
+    expect(startLabels).toEqual(['Toggle Sidebar', 'Go to Library']);
 
     expect(screen.getByRole('contentinfo', { name: 'Title - 中国历代政治得失' })).toBeTruthy();
 
@@ -155,13 +155,10 @@ describe('reader top bar hierarchy', () => {
     expect(screen.queryByRole('button', { name: 'Reading Assistant' })).toBeNull();
   });
 
-  it('keeps the contents toggle available and pressed while the sidebar is open', () => {
+  it('leaves the left collapse control in the open sidebar', () => {
     mocks.isSideBarVisible = true;
     renderBar();
-    const toggle = screen.getByRole('button', { name: 'Toggle Sidebar' });
-    expect(toggle.getAttribute('aria-pressed')).toBe('true');
-    fireEvent.click(toggle);
-    expect(mocks.toggleSideBar).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('button', { name: 'Toggle Sidebar' })).toBeNull();
   });
 
   it('toggles the reading assistant from the single right-panel control', () => {

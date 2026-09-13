@@ -170,7 +170,7 @@ export default function MindmapSourcePanel({
       {origin && (
         <div className='glossa-workmap-return'>
           <button type='button' disabled={busy} onClick={() => void goBack()}>
-            <Undo2 size={15} />
+            <Undo2 size={16} />
             {_('Back to reading position')}
           </button>
         </div>
