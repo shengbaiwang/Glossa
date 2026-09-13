@@ -62,7 +62,7 @@ vi.mock('@/glossa/mindmap/generate', () => ({
 }));
 vi.mock('@/glossa/mindmap/store', () => ({ loadMindmap: f.load, saveMindmap: f.save }));
 
-import MindmapPanel from '@/glossa/ui/MindmapPanel';
+import MindmapPanel from '@/glossa/ui/GeneratedMindmapPanel';
 
 const provider = {
   id: 'test',

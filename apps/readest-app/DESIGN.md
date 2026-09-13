@@ -1196,8 +1196,10 @@ Cross-references that must stay in sync:
 If you change a rule here, search for the cross-reference and update both.
 
 
-### 14. Glossa reading mind maps
+### 14. Glossa mind map foundation — 2026-09-13
 
-The right-side mind map is a reading surface beside the document on desktop. Use the existing paper/ink theme tokens, 12px node corners, fine logical-direction connectors and short labels. Root emphasis comes from weight and border, without adding a color palette. Branch text navigates directly to its locally verified passage; the separate expand control only folds children. Do not add citation numbers, superscripts, annotation badges or explanation cards. A node's optional explanation belongs in its hover title, with interpretations explicitly named there.
+The EPUB trailing pane now opens a local idea workspace with no model setup. Outline and horizontal map views share one ordered tree. Start from a blank theme; use the root label as the map title. Keep paper/ink surfaces, short readable labels, fine logical connectors and a stronger root. Optional relationship text sits above its idea as a quiet interlinear gloss.
 
-Keep model/range controls collapsed after generation. Use a reflowing tree in narrow panels instead of shrinking a canvas to unreadable text. Maintain visible keyboard focus, 44px action targets, RTL connectors and crisp borders in e-ink. Validation, cancellation and navigation failures stay actionable; successful save need not occupy visual space. See `src/glossa/ui/MindmapDocument.tsx` and `src/styles/glossa.css`.
+Outline click edits; map click selects, double-click edits. Keep folding separate from text. Show child/sibling creation beside a contextual More menu. Advanced operations, branch focus and JSON backup live there. Keep search, level controls, undo/redo and genuine canvas zoom distinct from content. A native dialog expands the workspace while preserving the current structure; Escape and native focus handling return control to the reader. No decorative palette, gradient, sources badges or explanation cards.
+
+Long labels wrap; the map scrolls within its own viewport. Narrow controls wrap rather than overflow. Use logical spacing and connectors for RTL, visible keyboard focus, 44px primary actions and explicit e-ink borders. Show a quiet save status and actionable failures. Previously generated maps remain read-only with locally verified source navigation; personal nodes do not inherit source claims. See `../../docs/design/mindmap.md` and `src/styles/glossa-mindmap.css`.

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { generateMindmap } from '@/glossa/mindmap/generate';
 import { getPassageId } from '@/glossa/guide/passages';
-import { loadMindmap, saveMindmap } from '@/glossa/mindmap/store';
+import { listSavedMindmaps, loadMindmap, saveMindmap } from '@/glossa/mindmap/store';
 import type { ReadingPassage } from '@/glossa/guide/types';
 import type { ReadingMindmap } from '@/glossa/mindmap/types';
 import type { MindmapBody } from '@/glossa/mindmap/schema';
@@ -241,4 +241,16 @@ it('rejects corrupt stored graphs without silently replacing them', async () => 
   expect(
     await readRaw(DB_NAME, 'mindmaps', [guide.bookId, guide.chapterId, guide.passageId]),
   ).toEqual(corrupt);
+});
+
+it('lists only the selected book’s validated archive without rewriting its records', async () => {
+  const first = await guideFixture(crypto.randomUUID());
+  const second = await guideFixture(crypto.randomUUID());
+  await saveMindmap(first);
+  await saveMindmap(second);
+  expect(await listSavedMindmaps(first.bookId)).toEqual([first]);
+  expect(await listSavedMindmaps(crypto.randomUUID())).toEqual([]);
+  await putRaw(DB_NAME, 'mindmaps', { ...first, nodes: [] });
+  await expect(listSavedMindmaps(first.bookId)).rejects.toThrow();
+  expect(await listSavedMindmaps(second.bookId)).toEqual([second]);
 });

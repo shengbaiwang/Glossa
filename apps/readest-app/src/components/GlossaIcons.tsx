@@ -227,6 +227,14 @@ export function Plus(props: GlossaIconProps) {
   );
 }
 
+export function Expand(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <path d='M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7' />
+    </Icon>
+  );
+}
+
 export function Info(props: GlossaIconProps) {
   return (
     <Icon {...props}>

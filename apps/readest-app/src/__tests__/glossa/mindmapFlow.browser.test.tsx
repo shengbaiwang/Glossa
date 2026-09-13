@@ -8,7 +8,7 @@ import { extractChapter, listChapters } from '@/glossa/context/chapters';
 import { buildReadingPassages } from '@/glossa/guide/passages';
 import { loadMindmap } from '@/glossa/mindmap/store';
 import type { CompletionRequest, ProviderConfig } from '@/glossa/ai/provider';
-import MindmapPanel from '@/glossa/ui/MindmapPanel';
+import MindmapPanel from '@/glossa/ui/GeneratedMindmapPanel';
 import '@/styles/globals.css';
 import '@/styles/glossa.css';
 

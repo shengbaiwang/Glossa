@@ -157,3 +157,24 @@ export async function saveMindmap(guide: ReadingMindmap, signal?: AbortSignal): 
     throw storageError();
   }
 }
+
+/** Read-only archive access; one book only, with the original validation intact. */
+export async function listSavedMindmaps(bookId: string): Promise<ReadingMindmap[]> {
+  const db = await openDatabase();
+  const raw: unknown[] = await new Promise((resolve, reject) => {
+    const tx = db.transaction(GUIDES, 'readonly');
+    const rows: unknown[] = [];
+    const request = tx.objectStore(GUIDES).openCursor(IDBKeyRange.bound([bookId], [bookId, []]));
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      rows.push(cursor.value);
+      cursor.continue();
+    };
+    tx.oncomplete = () => resolve(rows);
+    tx.onerror = tx.onabort = () => reject(storageError());
+  });
+  const maps = await Promise.all(raw.map(validatedGuide));
+  if (maps.some((map) => !map || map.bookId !== bookId)) throw storageError();
+  return (maps as ReadingMindmap[]).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}

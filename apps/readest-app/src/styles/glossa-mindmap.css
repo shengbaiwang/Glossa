@@ -1,0 +1,419 @@
+/* A sheet of ideas: ink hierarchy, interlinear relations, and quiet branch rules. */
+.glossa-workmap {
+  --glossa-map-line: color-mix(in srgb, var(--glossa-ink) 50%, var(--glossa-surface));
+  position: relative;
+  inset: auto;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--glossa-surface);
+  color: var(--glossa-ink);
+  font-size: 13px;
+  text-align: start;
+  overflow: visible;
+}
+.glossa-workmap.is-expanded {
+  position: fixed;
+  inset: 0;
+  width: min(1180px, 94vw);
+  height: 88dvh;
+  min-height: 0;
+  margin: auto;
+  border: 1px solid var(--glossa-border);
+  border-radius: 20px;
+  overflow: hidden;
+}
+.glossa-workmap::backdrop {
+  background: rgb(0 0 0 / 0.25);
+}
+.glossa-workmap button,
+.glossa-workmap summary,
+.glossa-workmap select {
+  min-height: 44px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.glossa-workmap button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+.glossa-workmap button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.glossa-workmap button:not(:disabled):hover,
+.glossa-workmap summary:hover {
+  background: var(--glossa-wash);
+}
+.glossa-workmap :is(button, summary, select, input, textarea):focus-visible {
+  outline: 2px solid var(--glossa-focus);
+  outline-offset: -2px;
+}
+.glossa-workmap select {
+  min-width: 0;
+  background: transparent;
+  color: inherit;
+  text-overflow: ellipsis;
+  padding-inline: 8px 16px;
+}
+.glossa-workmap-header,
+.glossa-workmap-toolbar,
+.glossa-workmap-footer,
+.glossa-workmap-context {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-inline: 12px;
+}
+.glossa-workmap-header {
+  padding-block: 6px 0;
+}
+.glossa-workmap-header select {
+  flex: 1;
+  font-weight: 600;
+}
+.glossa-workmap-icon {
+  width: 44px;
+  min-width: 44px;
+  flex-shrink: 0;
+  font-size: 20px;
+}
+.glossa-workmap-toolbar {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding-block: 0 8px;
+  border-block-end: 1px solid var(--glossa-border);
+}
+.glossa-workmap-views,
+.glossa-workmap-actions,
+.glossa-workmap-zoom {
+  display: flex;
+  align-items: center;
+}
+.glossa-workmap-views button {
+  white-space: nowrap;
+  padding-inline: 10px;
+  color: var(--glossa-muted);
+  border-radius: 0;
+  border-block-end: 2px solid transparent;
+}
+.glossa-workmap-views button[aria-pressed='true'] {
+  color: var(--glossa-ink);
+  border-block-end-color: var(--glossa-ink);
+}
+.glossa-workmap-viewport {
+  flex: 1;
+  min-height: 140px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.glossa-workmap-viewport[data-view='map'] {
+  cursor: grab;
+  touch-action: pan-x pan-y;
+}
+.glossa-workmap-canvas {
+  padding: 30px 20px;
+}
+.glossa-workmap-canvas ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.glossa-workmap-node {
+  display: flex;
+  align-items: center;
+  position: relative;
+  border-radius: 9px;
+  border: 1px solid transparent;
+}
+.glossa-workmap-node[data-selected='true'] {
+  background: var(--glossa-wash);
+  border-color: var(--glossa-border);
+}
+.glossa-workmap-label {
+  flex: 1;
+  min-width: 90px;
+  flex-direction: column;
+  align-items: stretch !important;
+  text-align: start;
+  padding: 9px 10px 9px 0;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.glossa-workmap-label small {
+  color: var(--glossa-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.glossa-workmap-node[data-root='true'] .glossa-workmap-label {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+.glossa-workmap-fold {
+  width: 44px;
+  flex-shrink: 0;
+}
+.glossa-workmap-dot {
+  width: 32px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+}
+.glossa-workmap-dot::after {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--glossa-muted);
+}
+[data-view='outline'] ul ul {
+  margin-inline-start: 16px;
+  padding-inline-start: 12px;
+  border-inline-start: 1px solid var(--glossa-border);
+}
+[data-view='outline'] li {
+  padding-block: 4px;
+}
+[data-view='map'] .glossa-workmap-canvas {
+  display: flex;
+  justify-content: center;
+  width: max-content;
+  min-width: 100%;
+  padding: 48px 36px;
+}
+[data-view='map'] li {
+  display: flex;
+  align-items: center;
+  position: relative;
+  padding-block: 12px;
+}
+[data-view='map'] ul ul {
+  position: relative;
+  margin-inline-start: 42px;
+}
+[data-view='map'] ul ul > li::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: -22px;
+  inset-block: 0;
+  width: 22px;
+  border-inline-start: 1px solid var(--glossa-map-line);
+}
+[data-view='map'] ul ul > li:first-child::before {
+  inset-block-start: 50%;
+}
+[data-view='map'] ul ul > li:last-child::before {
+  inset-block-end: 50%;
+}
+[data-view='map'] ul ul > li > .glossa-workmap-node::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: -22px;
+  width: 21px;
+  top: 50%;
+  border-block-start: 1px solid var(--glossa-map-line);
+}
+[data-view='map'] li:has(> ul) > .glossa-workmap-node::after {
+  content: '';
+  position: absolute;
+  inset-inline-end: -21px;
+  top: 50%;
+  width: 20px;
+  border-block-start: 1px solid var(--glossa-map-line);
+}
+[data-view='map'] .glossa-workmap-node {
+  width: 210px;
+  flex-shrink: 0;
+  border-color: var(--glossa-border);
+  background: var(--glossa-surface);
+}
+[data-view='map'] .glossa-workmap-node[data-root='true'] {
+  width: 230px;
+  border-color: var(--glossa-ink);
+  padding-block: 6px;
+}
+[data-view='map'] .glossa-workmap-node[data-selected='true'] {
+  border-color: var(--glossa-ink);
+  background: var(--glossa-wash);
+}
+.glossa-workmap-edit {
+  flex: 1;
+  min-width: 110px;
+  padding: 8px;
+}
+.glossa-workmap-edit textarea,
+.glossa-workmap-edit input,
+.glossa-workmap-search input {
+  width: 100%;
+  color: inherit;
+  background: transparent;
+  padding: 7px;
+  border-radius: 6px;
+  font: inherit;
+}
+.glossa-workmap-edit textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+.glossa-workmap-edit input {
+  font-size: 11px;
+  border-block-start: 1px solid var(--glossa-border);
+  min-height: 36px;
+}
+.glossa-workmap-context {
+  border-block-start: 1px solid var(--glossa-border);
+  justify-content: start;
+}
+.glossa-workmap-context > button {
+  padding-inline: 6px;
+}
+.glossa-workmap-more {
+  position: relative;
+  margin-inline-start: auto;
+}
+.glossa-workmap-more summary {
+  display: flex;
+  align-items: center;
+  padding-inline: 12px;
+  list-style: none;
+}
+.glossa-workmap-more summary::-webkit-details-marker {
+  display: none;
+}
+.glossa-workmap-more > div {
+  position: absolute;
+  inset-block-end: 100%;
+  inset-inline-end: 0;
+  width: 190px;
+  max-height: min(60dvh, 440px);
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--glossa-border);
+  border-radius: 12px;
+  background: var(--glossa-surface);
+  z-index: 10;
+}
+.glossa-workmap-more button {
+  display: flex;
+  justify-content: start;
+  width: 100%;
+  padding-inline: 12px;
+}
+.glossa-workmap-footer {
+  flex-wrap: wrap;
+  gap: 0;
+  padding-block-end: 6px;
+  color: var(--glossa-muted);
+  font-size: 11px;
+}
+.glossa-workmap-footer select {
+  padding-inline-start: 4px;
+  max-width: 90px;
+}
+.glossa-workmap-zoom button {
+  min-width: 32px;
+  width: auto;
+  font-size: 12px;
+}
+.glossa-workmap-status {
+  margin-inline-start: auto;
+  padding-inline: 4px;
+  white-space: nowrap;
+}
+.glossa-workmap-search {
+  position: relative;
+  padding: 8px 16px;
+  border-block-end: 1px solid var(--glossa-border);
+}
+.glossa-workmap-search input {
+  min-height: 44px;
+  background: var(--glossa-wash);
+}
+.glossa-workmap-results {
+  position: absolute;
+  inset-inline: 16px;
+  inset-block-start: 100%;
+  max-height: 240px;
+  overflow: auto;
+  background: var(--glossa-surface);
+  border: 1px solid var(--glossa-border);
+  border-radius: 9px;
+  z-index: 5;
+  padding: 6px;
+}
+.glossa-workmap-results button {
+  display: block;
+  width: 100%;
+  text-align: start;
+  padding: 8px;
+  overflow-wrap: anywhere;
+}
+.glossa-workmap-path {
+  display: flex;
+  flex-wrap: wrap;
+  padding-inline: 16px;
+  border-block-end: 1px solid var(--glossa-border);
+  color: var(--glossa-muted);
+}
+.glossa-workmap-path button {
+  max-width: 160px;
+  text-align: start;
+  overflow: hidden;
+  padding-inline: 4px;
+}
+.glossa-workmap-empty {
+  padding: 42px 26px;
+  color: var(--glossa-muted);
+}
+.glossa-workmap-empty h3 {
+  color: var(--glossa-ink);
+  font-size: 20px;
+  margin-block: 20px 8px;
+}
+.glossa-workmap-empty p {
+  line-height: 1.8;
+  margin-block-end: 24px;
+}
+.glossa-workmap-error {
+  padding: 12px 16px;
+  border-block-start: 1px solid var(--glossa-border);
+}
+.glossa-workmap-error button {
+  text-decoration: underline;
+  padding-inline-end: 16px;
+}
+.glossa-workmap-archive {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+.glossa-workmap-archive > select {
+  width: 100%;
+}
+[data-eink='true'] .glossa-workmap {
+  --glossa-border: var(--glossa-ink);
+  --glossa-map-line: var(--glossa-ink);
+  --glossa-muted: var(--glossa-ink);
+}
+@media (max-height: 600px) {
+  .glossa-workmap {
+    min-height: 300px;
+  }
+  .glossa-workmap.is-expanded {
+    height: 96dvh;
+  }
+}
