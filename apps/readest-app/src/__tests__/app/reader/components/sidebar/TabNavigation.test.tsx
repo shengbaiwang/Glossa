@@ -18,17 +18,18 @@ const Tabs = ({ dir = 'ltr' }: { dir?: 'ltr' | 'rtl' }) => {
 };
 
 describe('Reader sidebar tabs', () => {
-  it('keeps the left navigation limited to contents and bookmarks', () => {
+  it('keeps the left navigation to mutually exclusive contents, bookmarks and search', () => {
     render(<Tabs />);
     expect(screen.getAllByRole('tab').map((tab) => tab.getAttribute('aria-label'))).toEqual([
       'Contents',
       'Bookmarks',
+      'Search',
     ]);
   });
 
   it('keeps one tab stop and activates tabs immediately with arrows, Home and End', () => {
     render(<Tabs />);
-    const [contents, bookmarks] = screen.getAllByRole('tab');
+    const [contents, bookmarks, search] = screen.getAllByRole('tab');
     expect(contents?.tabIndex).toBe(0);
     expect(bookmarks?.tabIndex).toBe(-1);
 
@@ -40,11 +41,12 @@ describe('Reader sidebar tabs', () => {
     expect(contents?.tabIndex).toBe(-1);
 
     fireEvent.keyDown(bookmarks!, { key: 'End' });
-    expect(document.activeElement).toBe(bookmarks);
-    fireEvent.keyDown(bookmarks!, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(search);
+    expect(screen.getAllByRole('tab', { selected: true })).toEqual([search]);
+    fireEvent.keyDown(search!, { key: 'ArrowRight' });
     expect(document.activeElement).toBe(contents);
     fireEvent.keyDown(contents!, { key: 'End' });
-    fireEvent.keyDown(bookmarks!, { key: 'Home' });
+    fireEvent.keyDown(search!, { key: 'Home' });
     expect(document.activeElement).toBe(contents);
   });
 

@@ -19,6 +19,11 @@
   --glossa-control-size: 32px;
   --glossa-radius-control: 9px;
   --glossa-radius-nested: 7px;
+  --glossa-pane-backplate: 28px;
+  --glossa-pane-radius: 10px;
+  --glossa-pane-gap: 2px;
+  --glossa-pane-group-gap: 6px;
+  --glossa-pane-inset: 10px;
   --glossa-radius: 12px;
   --glossa-radius-lg: 20px;
   --glossa-shadow: 0 8px 32px rgb(0 0 0 / 0.08), 0 1px 4px rgb(0 0 0 / 0.04);
@@ -197,12 +202,6 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
 /* The guide and excerpts share the reader's notebook chrome. */
 .glossa-notebook-content {
   overscroll-behavior: contain;
-}
-
-.glossa-notebook-tabs .glossa-reader-tab[aria-selected='true'] {
-  background: var(--glossa-surface);
-  color: var(--glossa-ink);
-  box-shadow: none;
 }
 
 /* Reading colors: rounded paper tiles, borrowing the app icon's shape and space. */

@@ -3,7 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SideBar from '@/app/reader/components/sidebar/SideBar';
 import { eventDispatcher } from '@/utils/event';
 
-const mocks = vi.hoisted(() => ({ setSideBarVisible: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  setSideBarVisible: vi.fn(),
+  setSearchBarVisible: vi.fn(),
+  setSideBarBookKey: vi.fn(),
+  setSearchTerm: vi.fn(),
+  clearSearch: vi.fn(),
+  isSearchBarVisible: false,
+  shortcuts: {} as { onEscape?: () => void; onShowSearchBar?: () => void },
+}));
 
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (key: string) => key }));
 vi.mock('@/context/EnvContext', () => ({ useEnv: () => ({ appService: {} }) }));
@@ -15,7 +23,15 @@ vi.mock('@/store/themeStore', () => ({
 }));
 vi.mock('@/store/sidebarStore', () => ({
   useSidebarStore: Object.assign(
-    () => ({ sideBarBookKey: 'book', getSearchNavState: () => ({}) }),
+    () => ({
+      sideBarBookKey: 'book',
+      getSearchNavState: () => ({}),
+      isSearchBarVisible: mocks.isSearchBarVisible,
+      setSearchBarVisible: mocks.setSearchBarVisible,
+      setSideBarBookKey: mocks.setSideBarBookKey,
+      setSearchTerm: mocks.setSearchTerm,
+      clearSearch: mocks.clearSearch,
+    }),
     { getState: () => ({ isSideBarPinned: true }) },
   ),
 }));
@@ -36,7 +52,11 @@ vi.mock('@/app/reader/hooks/useSidebar', () => ({
     setSideBarVisible: mocks.setSideBarVisible,
   }),
 }));
-vi.mock('@/hooks/useShortcuts', () => ({ default: vi.fn() }));
+vi.mock('@/hooks/useShortcuts', () => ({
+  default: (callbacks: typeof mocks.shortcuts) => {
+    mocks.shortcuts = callbacks;
+  },
+}));
 vi.mock('@/hooks/usePanelResize', () => ({ usePanelResize: () => ({}) }));
 vi.mock('@/hooks/useSwipeToDismiss', () => ({
   useSwipeToDismiss: () => ({
@@ -52,6 +72,7 @@ vi.mock('@/app/reader/components/sidebar/SearchResults', () => ({ default: () =>
 
 const originalWidth = window.innerWidth;
 beforeEach(() => {
+  mocks.isSearchBarVisible = false;
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1100 });
 });
 afterEach(() => {
@@ -74,4 +95,24 @@ describe('sidebar when a pinned desktop reader becomes mobile', () => {
     await act(() => eventDispatcher.dispatch('navigate'));
     expect(mocks.setSideBarVisible).toHaveBeenCalledWith(false);
   });
+});
+
+it('closes an empty search with Escape and clears it before a new search can open', () => {
+  mocks.isSearchBarVisible = true;
+  render(<SideBar />);
+  act(() => mocks.shortcuts.onEscape?.());
+  expect(mocks.setSearchBarVisible).toHaveBeenLastCalledWith(false);
+  expect(mocks.clearSearch).toHaveBeenCalledWith('book');
+  expect(mocks.setSideBarVisible).not.toHaveBeenCalled();
+  act(() => mocks.shortcuts.onShowSearchBar?.());
+  expect(mocks.setSearchBarVisible).toHaveBeenLastCalledWith(true);
+  expect(mocks.setSideBarVisible).toHaveBeenLastCalledWith(true);
+  expect(mocks.clearSearch).toHaveBeenCalledTimes(1);
+});
+
+it('opens search immediately when invoked from selected text', async () => {
+  render(<SideBar />);
+  await act(() => eventDispatcher.dispatch('search-term', { bookKey: 'book', term: 'gloss' }));
+  expect(mocks.setSearchBarVisible).toHaveBeenCalledWith(true);
+  expect(mocks.setSearchTerm).toHaveBeenCalledWith('book', 'gloss');
 });

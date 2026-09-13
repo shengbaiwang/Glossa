@@ -1,36 +1,87 @@
-/* A book identity, one line of destinations, then the selected reading tool. */
-:is(.glossa-reader-sidebar, .glossa-reader-notebook) .glossa-reader-tabs {
-  gap: 4px;
-  padding: 0 8px 8px;
-  border-bottom: 1px solid var(--glossa-border);
+/* Pane controls own their state styles; never mix generic button pressed/hover
+   rules with tab selection. The backplate is smaller than the hit target. */
+.glossa-pane-tabs {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: var(--glossa-pane-gap);
 }
 
-:is(.glossa-reader-sidebar, .glossa-reader-notebook) .glossa-reader-tab {
+.glossa-pane-control {
   position: relative;
-  min-height: 36px;
-  padding-block: 8px;
-  padding-inline: 2px;
-  border-color: transparent;
-  border-radius: 8px;
+  isolation: isolate;
+  display: inline-flex;
+  width: var(--glossa-control-size);
+  height: var(--glossa-control-size);
+  min-height: var(--glossa-control-size);
+  flex: 0 0 var(--glossa-control-size);
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--glossa-pane-radius);
+  background: transparent;
+  color: var(--glossa-muted);
+  cursor: pointer;
   box-shadow: none;
 }
 
-:is(.glossa-reader-sidebar, .glossa-reader-notebook) .glossa-reader-tab[aria-selected='true'] {
-  color: var(--glossa-ink);
-  background: transparent;
-  font-weight: 600;
-}
-
-:is(.glossa-reader-sidebar, .glossa-reader-notebook)
-  .glossa-reader-tab[aria-selected='true']::after {
+.glossa-pane-control::before {
   content: '';
   position: absolute;
-  bottom: 0;
-  inset-inline-start: calc(50% - 8px);
-  width: 16px;
-  height: 2px;
-  border-radius: 2px;
-  background: currentColor;
+  z-index: -1;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: var(--glossa-pane-backplate);
+  height: var(--glossa-pane-backplate);
+  border: 1px solid transparent;
+  border-radius: var(--glossa-pane-radius);
+  background: transparent;
+  pointer-events: none;
+}
+
+.glossa-pane-control[aria-selected='true'] {
+  color: var(--glossa-ink);
+}
+
+.glossa-pane-control[aria-selected='true']::before {
+  background: color-mix(in srgb, var(--glossa-ink) 13%, transparent);
+}
+
+/* Hover changes the glyph only: another destination must never look selected. */
+@media (hover: hover) {
+  .glossa-pane-control:hover {
+    color: var(--glossa-ink);
+  }
+}
+
+.glossa-pane-control:focus-visible {
+  outline: 2px solid var(--glossa-focus);
+  outline-offset: -2px;
+}
+
+.glossa-pane-control > .glossa-icon {
+  width: var(--glossa-icon-chrome);
+  height: var(--glossa-icon-chrome);
+}
+
+@media (pointer: coarse) {
+  .glossa-pane-control {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    flex-basis: 44px;
+  }
+}
+
+[data-eink='true'] .glossa-pane-control {
+  color: var(--glossa-ink);
+}
+
+[data-eink='true'] .glossa-pane-control[aria-selected='true']::before {
+  border-color: var(--glossa-ink);
+  background: var(--glossa-surface);
 }
 
 .glossa-reader-sidebar-content:focus-visible {
@@ -89,21 +140,13 @@
 }
 
 @media (pointer: coarse) {
-  :is(.glossa-reader-sidebar, .glossa-reader-notebook) .glossa-reader-tab,
   .glossa-reader-sidebar .glossa-reader-empty-action {
     min-height: 44px;
   }
 }
 
-[data-eink='true'] :is(.glossa-reader-sidebar, .glossa-reader-notebook) .glossa-reader-tab,
 [data-eink='true'] .glossa-reader-sidebar .glossa-reader-muted {
   color: var(--glossa-ink);
-}
-
-[data-eink='true']
-  :is(.glossa-reader-sidebar, .glossa-reader-notebook)
-  .glossa-reader-tab[aria-selected='true'] {
-  font-weight: 700;
 }
 
 [data-eink='true'] .glossa-reader-sidebar .glossa-reader-empty-action {
@@ -116,53 +159,8 @@
   height: 44px;
   min-height: 44px;
   align-items: center;
-  gap: 8px;
+  gap: var(--glossa-pane-group-gap);
   border-bottom: 1px solid var(--glossa-border);
-}
-
-:is(.glossa-reader-notebook .glossa-notebook-tabs, .glossa-reader-sidebar .glossa-sidebar-tabs) {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  align-items: center;
-  gap: 4px;
-  padding: 0;
-  border: 0;
-}
-
-:is(.glossa-reader-notebook .glossa-notebook-tabs, .glossa-reader-sidebar .glossa-sidebar-tabs)
-  .glossa-reader-tab {
-  display: flex;
-  width: 36px;
-  height: 32px;
-  min-height: 32px;
-  flex: 0 0 36px;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border-radius: var(--glossa-radius-control);
-}
-
-:is(.glossa-notebook-tabs, .glossa-sidebar-tabs) .glossa-reader-tab svg {
-  display: block;
-  width: var(--glossa-icon-chrome);
-  height: var(--glossa-icon-chrome);
-}
-
-:is(.glossa-reader-notebook, .glossa-reader-sidebar) .glossa-reader-tab[aria-selected='true'] {
-  background: color-mix(in srgb, var(--glossa-ink) 13%, transparent);
-}
-
-:is(.glossa-reader-notebook, .glossa-reader-sidebar)
-  .glossa-reader-tab[aria-selected='true']::after {
-  content: none;
-}
-
-[data-eink='true']
-  :is(.glossa-reader-notebook, .glossa-reader-sidebar)
-  .glossa-reader-tab[aria-selected='true'] {
-  border-color: var(--glossa-ink);
-  background: var(--glossa-surface);
 }
 
 .glossa-notebook-collapse {
@@ -170,13 +168,6 @@
 }
 
 @media (pointer: coarse) {
-  :is(.glossa-reader-notebook .glossa-notebook-tabs, .glossa-reader-sidebar .glossa-sidebar-tabs)
-    .glossa-reader-tab {
-    width: 44px;
-    height: 44px;
-    flex-basis: 44px;
-  }
-
   :is(.glossa-reader-notebook .notebook-header, .glossa-reader-sidebar .sidebar-header) {
     height: 48px;
     min-height: 48px;
@@ -209,14 +200,9 @@
 }
 
 .glossa-reader-notebook .notebook-header {
-  padding-inline: 12px;
+  padding-inline: var(--glossa-pane-inset);
 }
 
 .glossa-reader-sidebar .sidebar-header {
   flex-shrink: 0;
-  gap: 4px;
-}
-
-.glossa-sidebar-collapse {
-  margin-inline-end: 4px;
 }

@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
+import ReaderPaneTabs from '@/app/reader/components/ReaderPaneTabs';
 import HeaderBar from '@/app/reader/components/HeaderBar';
 import TabNavigation from '@/app/reader/components/sidebar/TabNavigation';
 import SidebarHeader from '@/app/reader/components/sidebar/Header';
@@ -105,13 +107,18 @@ vi.mock('@/app/reader/components/annotator/QuickActionMenu', () => ({ default: (
 
 const insets = { top: 0, right: 0, bottom: 0, left: 0 };
 
+const LeftTabs = () => {
+  const [activeTab, setActiveTab] = useState('toc');
+  return <TabNavigation activeTab={activeTab} onTabChange={setActiveTab} />;
+};
+
 const renderChrome = () =>
   render(
     <div data-testid='frame' className='relative h-screen w-full overflow-hidden'>
       <div className='flex h-full min-h-0'>
         <div className='glossa-reader-sidebar bg-base-200 relative z-20 flex w-64 shrink-0 flex-col'>
-          <SidebarHeader isSearchBarVisible={false} onClose={vi.fn()} onToggleSearchBar={vi.fn()}>
-            <TabNavigation activeTab='toc' onTabChange={vi.fn()} />
+          <SidebarHeader onClose={vi.fn()}>
+            <LeftTabs />
           </SidebarHeader>
         </div>
         <div className='bg-base-100 relative min-w-0 flex-1'>
@@ -128,24 +135,16 @@ const renderChrome = () =>
         </div>
         <div className='glossa-reader-notebook bg-base-200 relative z-20 flex w-80 shrink-0 flex-col'>
           <NotebookHeader handleClose={vi.fn()}>
-            <div
-              className='glossa-reader-tabs glossa-notebook-tabs'
-              role='tablist'
-              aria-label='Notebook'
-            >
-              {['Conversation', 'Mind map', 'Notes'].map((label, index) => (
-                <button
-                  key={label}
-                  type='button'
-                  role='tab'
-                  aria-label={label}
-                  aria-selected={index === 0}
-                  className='glossa-reader-tab glossa-icon-button'
-                >
-                  {index === 0 ? <MessageCircle /> : index === 1 ? <GitBranch /> : <Highlight />}
-                </button>
-              ))}
-            </div>
+            <ReaderPaneTabs
+              label='Notebook'
+              activeTab='conversation'
+              onTabChange={vi.fn()}
+              tabs={[
+                { id: 'conversation', label: 'Conversation', Icon: MessageCircle },
+                { id: 'mindmap', label: 'Mind map', Icon: GitBranch },
+                { id: 'notes', label: 'Notes', Icon: Highlight },
+              ]}
+            />
           </NotebookHeader>
         </div>
       </div>
@@ -201,16 +200,26 @@ it('shows the unified chrome: quiet buttons, one selected emphasis, Glossa icons
   expect(bookmarkStyle.backgroundColor).toBe('rgba(0, 0, 0, 0)');
   const contents = screen.getByRole('button', { name: 'Toggle Sidebar' });
   const contentsStyle = getComputedStyle(contents);
-  expect(contentsStyle.borderTopColor).toBe('rgba(0, 0, 0, 0)');
+  expect(contentsStyle.borderTopWidth).toBe('0px');
   expect(contentsStyle.backgroundColor).toBe('rgba(0, 0, 0, 0)');
   const tabs = screen.getByRole('tablist', { name: 'Sidebar' });
   expect(contents.getBoundingClientRect().right).toBeLessThanOrEqual(
     tabs.getBoundingClientRect().left,
   );
+  // Both destination groups keep the same compact rhythm, including Search.
+  for (const tablist of screen.getAllByRole('tablist')) {
+    const destinations = within(tablist).getAllByRole('tab');
+    for (let index = 1; index < destinations.length; index++) {
+      const previous = destinations[index - 1]!.getBoundingClientRect();
+      const current = destinations[index]!.getBoundingClientRect();
+      expect(current.left - previous.right).toBe(2);
+      expect(current.left - previous.left).toBe(34);
+    }
+  }
   const selected = within(tabs).getByRole('tab', { selected: true });
   expect(selected.textContent).toBe('');
   expect(getComputedStyle(selected, '::after').content).toBe('none');
-  expect(selected.getBoundingClientRect().width).toBe(36);
+  expect(selected.getBoundingClientRect().width).toBe(32);
   expect(tabs.closest('.sidebar-header')!.getBoundingClientRect().height).toBe(44);
   // Wait for the upstream button entrance animation before comparing geometry.
   await waitFor(() => {
@@ -220,7 +229,9 @@ it('shows the unified chrome: quiet buttons, one selected emphasis, Glossa icons
     });
     expect(new Set(iconSizes)).toEqual(new Set(['18x18']));
     for (const tab of screen.getAllByRole('tab')) {
-      expect(getComputedStyle(tab).borderRadius).toBe(bookmarkStyle.borderRadius);
+      expect(getComputedStyle(tab, '::before').borderRadius).toBe('10px');
+      expect(getComputedStyle(tab, '::before').width).toBe('28px');
+      expect(getComputedStyle(tab, '::before').height).toBe('28px');
       expect(tab.querySelector('svg')!.getBoundingClientRect().width).toBeCloseTo(18, 0);
     }
   });
@@ -243,4 +254,42 @@ it('shows the unified chrome: quiet buttons, one selected emphasis, Glossa icons
   cleanup();
   renderChrome();
   await page.screenshot({ path: '../../../../../../../.glossa-dev/qa/obsidian-chrome-zh.png' });
+});
+
+it('keeps one compact backplate per pane through selection, hover, focus and theme changes', async () => {
+  await page.viewport(1100, 100);
+  renderChrome();
+  const left = screen.getByRole('tablist', { name: 'Sidebar' });
+  const right = screen.getByRole('tablist', { name: 'Notebook' });
+  for (const theme of ['default-light', 'default-dark']) {
+    document.documentElement.setAttribute('data-theme', theme);
+    for (const label of ['Bookmarks', 'Search', 'Contents']) {
+      await page.getByRole('tab', { name: label, exact: true }).click();
+      const selected = within(left).getByRole('tab', { selected: true });
+      expect(selected.getAttribute('aria-label')).toBe(label);
+      // Moving the pointer to another tab must not create a second filled tile.
+      const other = within(left).getAllByRole('tab', { selected: false })[0]!;
+      await page.getByRole('tab', { name: other.getAttribute('aria-label')!, exact: true }).hover();
+      other.focus();
+      const reference = getComputedStyle(
+        within(right).getByRole('tab', { selected: true }),
+        '::before',
+      );
+      expect(getComputedStyle(selected, '::before').backgroundColor).toBe(
+        reference.backgroundColor,
+      );
+      expect(getComputedStyle(other, '::before').backgroundColor).toBe('rgba(0, 0, 0, 0)');
+      expect(getComputedStyle(other).backgroundColor).toBe('rgba(0, 0, 0, 0)');
+      await page.getByRole('tab', { name: label, exact: true }).click();
+      expect(within(left).getAllByRole('tab', { selected: true })).toEqual([selected]);
+      await userEvent.keyboard('{ArrowRight}');
+      const focused = document.activeElement as HTMLElement;
+      expect(left.contains(focused)).toBe(true);
+      expect(getComputedStyle(focused).outlineStyle).toBe('solid');
+      expect(within(left).getAllByRole('tab', { selected: true })).toEqual([focused]);
+    }
+  }
+  await page.screenshot({
+    path: '../../../../../../../.glossa-dev/qa/pane-tabs-exclusive-dark.png',
+  });
 });

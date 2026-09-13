@@ -18,16 +18,17 @@ const SidebarContent: React.FC<{
   bookDoc: BookDoc;
   sideBarBookKey: string;
 }> = ({ bookDoc, sideBarBookKey, renderNavigation, children }) => {
-  const { setSearchBarVisible } = useSidebarStore();
+  const { isSearchBarVisible, setSearchBarVisible } = useSidebarStore();
   const { getConfig, setConfig } = useBookDataStore();
   const config = getConfig(sideBarBookKey);
   const storedTab = config?.viewSettings?.sideBarTab;
-  const activeTab = storedTab === 'bookmarks' ? storedTab : 'toc';
+  const savedTab = storedTab === 'bookmarks' ? storedTab : 'toc';
+  const activeTab = isSearchBarVisible ? 'search' : savedTab;
   const tabId = useId();
 
   const handleTabChange = (tab: string) => {
-    setSearchBarVisible(false);
-    if (activeTab === tab || !config?.viewSettings) return;
+    setSearchBarVisible(tab === 'search');
+    if (tab === 'search' || savedTab === tab || !config?.viewSettings) return;
     setConfig(sideBarBookKey, {
       viewSettings: { ...config.viewSettings, sideBarTab: tab },
     });
@@ -50,7 +51,9 @@ const SidebarContent: React.FC<{
         aria-labelledby={`${tabId}-tab-${activeTab}`}
         tabIndex={0}
       >
-        {children || (
+        {isSearchBarVisible ? (
+          children
+        ) : (
           <OverlayScrollbarsComponent
             className='min-h-0 flex-1'
             options={{

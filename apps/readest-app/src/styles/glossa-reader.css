@@ -65,33 +65,9 @@
   font-weight: 600;
 }
 
-.glossa-reader-toc-item:focus-visible,
-.glossa-reader-tab:focus-visible {
+.glossa-reader-toc-item:focus-visible {
   outline: 2px solid var(--glossa-focus);
   outline-offset: -2px;
-}
-
-.glossa-reader-tabs {
-  background: var(--glossa-wash);
-  border-color: var(--glossa-border);
-}
-
-.glossa-reader-tab {
-  color: var(--glossa-muted);
-  border: 1px solid transparent;
-  transition:
-    background-color 150ms,
-    border-color 150ms;
-}
-
-.glossa-reader-tab:hover {
-  background: var(--glossa-surface);
-}
-
-.glossa-reader-tab[aria-pressed='true'] {
-  color: var(--glossa-ink);
-  background: var(--glossa-surface);
-  border-color: var(--glossa-border);
 }
 
 .glossa-reader-page-input {
@@ -132,21 +108,18 @@
   border-radius: var(--glossa-radius);
 }
 
-[data-eink='true'] .glossa-reader-tab[aria-pressed='true'],
 [data-eink='true'] .glossa-reader-toc-item[aria-current='page'] {
   border-color: var(--glossa-ink);
   font-weight: 700;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .glossa-reader-toc-item,
-  .glossa-reader-tab {
+  .glossa-reader-toc-item {
     transition: none;
   }
 }
 
-[data-eink='true'] .glossa-reader-toc-item,
-[data-eink='true'] .glossa-reader-tab {
+[data-eink='true'] .glossa-reader-toc-item {
   transition: none;
 }
 

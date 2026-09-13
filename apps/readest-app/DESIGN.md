@@ -13,7 +13,8 @@ or stroke weight; a filled bookmark and stop square retain their state meaning.
 | Role | Desktop glyph | Control / rounding |
 | --- | --- | --- |
 | Library toolbar and category navigation | 20px | 32px icon button / 9px; category row keeps its own full-width target |
-| Reader header, left/right pane destinations, selection and page navigation | 18px | 32px / 9px; pane destinations 36 × 32px / 9px |
+| Reader header, selection and page navigation | 18px | 32px / 9px |
+| Left/right pane destinations and collapse | 18px | 32 × 32px target; 28 × 28px selected backplate / 10px; 2px group gap |
 | Workspace tools, menus, history navigation | 16px | 32px / 7px for nested icon tools; menu rows keep text alignment |
 | Reply actions, fold indicators, selection checks | 14px | Keep the parent target; never shrink the hit area to the glyph |
 | Settings category tabs | 18px | Keep their labeled tab layout |
@@ -40,6 +41,46 @@ e-ink selection borders. Empty-state symbols (22–28px), the app mark and float
 page controls (24px glyph in a circular target) are intentional exceptions.
 This section supersedes earlier icon-size and icon-button radius guidance.
 
+
+### Pane selection contract — 2026-09-14
+
+Both pane headers use `ReaderPaneTabs` and `glossa-pane-control`. Keep the visual
+backplate separate from the hit region: 28 × 28px with 10px corners on desktop and
+touch, even when the target grows to 44 × 44px. Only the selected destination gets
+the 13% theme-ink wash. Hover changes glyph color only; keyboard focus adds an
+outline. E-ink uses a solid selection border. Do not mix these controls with
+generic `btn`, pressed/expanded background rules or per-pane selection overrides.
+
+Use this reusable geometry for both pane headers:
+
+| Token in `glossa.css` | Value | Purpose |
+| --- | --- | --- |
+| `--glossa-control-size` | 32px | Desktop square hit target |
+| `--glossa-pane-backplate` | 28px | Centered square selected surface; 2px inset |
+| `--glossa-pane-radius` | 10px | Soft, pronounced corners; preserve short straight edges |
+| `--glossa-pane-gap` | 2px | Adjacent destinations; 34px center-to-center on desktop |
+| `--glossa-pane-group-gap` | 6px | Minimum separation between destinations and collapse |
+| `--glossa-pane-inset` | 10px | Pane header edge inset, excluding native window controls |
+
+Keep each destination group together at its leading edge. Search immediately
+follows Bookmarks with the same gap; never use auto margins or distributed spacing
+between peer tabs. Left collapse precedes its group; right collapse stays at the
+trailing edge. Preserve the native macOS traffic-light clearance. Both headers
+remain 44px high (48px on coarse pointers); touch targets remain 44px square without
+enlarging the backplate. Use the shared component and tokens when adding a pane
+destination, not copied button classes or per-icon radii. Glyphs retain their
+18px desktop / 20px touch role size and 1.8-unit rounded strokes. Keep other
+functional levels on their own geometry; this is not a global radius change.
+
+Contents / Bookmarks / Search are three mutually exclusive destinations, matching
+Conversation / Mind map / Notes. Each tablist has exactly one selected tab and one
+tab stop; repeated activation keeps that destination open. Opening search through
+its tab or a shortcut selects Search immediately, including an empty query.
+Switching to Contents or Bookmarks exits search; Escape exits search and restores
+the last navigation tab. Preserve the existing saved Contents/Bookmarks preference
+and search store instead of persisting Search as a new book setting. Collapse is a
+separate action with no persistent selection. Keep tooltip names, panel associations,
+RTL-aware arrows and Home/End behavior in the shared component.
 
 ### Reading tools — 2026-09-13
 
@@ -159,11 +200,11 @@ composer usable in short/narrow panes. See `../../docs/design/conversation.md`.
 - The left sidebar holds only in-book navigation — Contents / Bookmarks
   and the current book's search. Cover and author appear only in the Book Details dialog.
   Keep collapse at the far left of its 44px header, followed by Contents / Bookmarks
-  icon tabs, with search at the far end. Use the shared rounded ink strokes (the
+  icon tabs, with the mutually exclusive Search tab immediately after Bookmarks. Use the shared rounded ink strokes (the
   contents mark uses chapter markers and varying entry lengths on the shared 24px grid), the same selected ink wash
   as the right pane, tooltip names, proper tab/panel semantics and
   arrow/Home/End navigation. Switching is immediate; selecting the current tab
-  leaves the panel open and exits search. When closed, its toggle comes before Library
+  keeps it open. Selecting Contents or Bookmarks exits search. When closed, its toggle comes before Library
   in the reader bar; when open, the pane owns the sole collapse control. Sidebar pinning is a named menu option, not a permanent
   toolbar icon. The reading-assistant pane uses compact Conversation / Mind map /
   Notes icon tabs (speech, tree, highlight) at the start of its 44px header,

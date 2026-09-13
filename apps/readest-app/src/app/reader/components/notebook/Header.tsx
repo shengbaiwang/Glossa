@@ -25,7 +25,7 @@ const NotebookHeader: React.FC<{
         title={_('Close')}
         aria-label={_('Close')}
         onClick={handleClose}
-        className='glossa-notebook-collapse glossa-icon-button touch-target btn btn-ghost h-8 min-h-8 w-8 shrink-0 p-0'
+        className='glossa-notebook-collapse glossa-pane-control'
       >
         <PanelRight size={iconSize18} className='hidden sm:block' aria-hidden='true' />
         <X size={iconSize18} className='sm:hidden' aria-hidden='true' />

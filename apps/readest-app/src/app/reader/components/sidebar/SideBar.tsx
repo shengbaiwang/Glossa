@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
@@ -33,10 +33,9 @@ const SideBar = ({}) => {
     useSidebarStore();
   const { isSearchBarVisible, setSearchBarVisible } = useSidebarStore();
   const searchNavState = sideBarBookKey ? getSearchNavState(sideBarBookKey) : null;
-  const { searchTerm = '', searchResults = null } = searchNavState || {};
+  const { searchResults = null } = searchNavState || {};
   const { getBookData } = useBookDataStore();
   const { getView, getViewSettings } = useReaderStore();
-  const searchTermRef = useRef(searchTerm);
   const isMobile = window.innerWidth < 640;
   const [isFullHeightInMobile, setIsFullHeightInMobile] = useState(isMobile);
   const {
@@ -100,10 +99,6 @@ const SideBar = ({}) => {
   }, [isSideBarVisible, isOverlay]);
 
   useEffect(() => {
-    searchTermRef.current = searchTerm;
-  }, [searchTerm]);
-
-  useEffect(() => {
     eventDispatcher.on('search-term', onSearchEvent);
     eventDispatcher.on('navigate', onNavigateEvent);
     return () => {
@@ -126,41 +121,27 @@ const SideBar = ({}) => {
     setSideBarVisible(false);
   };
 
-  const handleToggleSearchBar = () => {
-    if (isSearchBarVisible) {
-      handleHideSearchBar();
-    } else {
-      setSearchBarVisible(true);
-    }
-  };
-
   const handleShowSearchBar = useCallback(() => {
-    setTimeout(() => {
-      setSideBarVisible(true);
-      setSearchBarVisible(true);
-    }, 100);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    setSideBarVisible(true);
+    setSearchBarVisible(true);
+  }, [setSideBarVisible, setSearchBarVisible]);
 
   const handleHideSearchBar = useCallback(() => {
     setSearchBarVisible(false);
-    setTimeout(() => {
-      if (sideBarBookKey) clearSearch(sideBarBookKey);
-    }, 100);
+    if (sideBarBookKey) clearSearch(sideBarBookKey);
     getView(sideBarBookKey)?.clearSearch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sideBarBookKey, clearSearch]);
+  }, [sideBarBookKey, clearSearch, getView, setSearchBarVisible]);
 
   const handleHideSideBar = useCallback(() => {
-    if (searchTermRef.current) {
+    if (isSearchBarVisible) {
       handleHideSearchBar();
     } else if (isOverlay) {
       setSideBarVisible(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sideBarBookKey, isOverlay]);
+  }, [isSearchBarVisible, handleHideSearchBar, isOverlay, setSideBarVisible]);
 
   useShortcuts({ onShowSearchBar: handleShowSearchBar, onEscape: handleHideSideBar }, [
+    handleShowSearchBar,
     handleHideSideBar,
   ]);
 
@@ -260,13 +241,7 @@ const SideBar = ({}) => {
                   <div className='bg-base-content/50 h-1 w-10 rounded-full'></div>
                 </div>
               )}
-              <SidebarHeader
-                isSearchBarVisible={isSearchBarVisible}
-                onClose={() => setSideBarVisible(false)}
-                onToggleSearchBar={handleToggleSearchBar}
-              >
-                {tabs}
-              </SidebarHeader>
+              <SidebarHeader onClose={() => setSideBarVisible(false)}>{tabs}</SidebarHeader>
               <div
                 className={clsx('search-bar', {
                   'search-bar-visible': isSearchBarVisible,

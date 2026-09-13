@@ -6,6 +6,7 @@ import SidebarContent from '@/app/reader/components/sidebar/Content';
 
 const mocks = vi.hoisted(() => ({
   config: { viewSettings: { sideBarTab: 'toc', fontSize: 20 }, booknotes: [] },
+  isSearchBarVisible: false,
   setConfig: vi.fn(),
   setSideBarVisible: vi.fn(),
   setSearchBarVisible: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock('@/store/readerStore', () => ({
 }));
 vi.mock('@/store/sidebarStore', () => ({
   useSidebarStore: () => ({
+    isSearchBarVisible: mocks.isSearchBarVisible,
     setSideBarVisible: mocks.setSideBarVisible,
     setSearchBarVisible: mocks.setSearchBarVisible,
   }),
@@ -40,6 +42,10 @@ vi.mock('@/app/reader/components/sidebar/BooknoteView', () => ({
 const bookDoc = { toc: [] } as unknown as BookDoc;
 
 beforeEach(() => {
+  mocks.isSearchBarVisible = false;
+  mocks.setSearchBarVisible.mockImplementation((visible: boolean) => {
+    mocks.isSearchBarVisible = visible;
+  });
   mocks.config = { viewSettings: { sideBarTab: 'toc', fontSize: 20 }, booknotes: [] };
   mocks.setConfig.mockImplementation((_key, patch) => {
     mocks.config = { ...mocks.config, ...patch };
@@ -78,6 +84,7 @@ describe('Reader sidebar content', () => {
   });
 
   it('keeps icon navigation available above search and returns to the active destination', () => {
+    mocks.isSearchBarVisible = true;
     render(
       <SidebarContent
         bookDoc={bookDoc}
@@ -94,6 +101,40 @@ describe('Reader sidebar content', () => {
     fireEvent.click(tab);
     expect(mocks.setSearchBarVisible).toHaveBeenCalledWith(false);
     expect(mocks.setConfig).not.toHaveBeenCalled();
+  });
+
+  it('makes search exclusive, including before results arrive, and preserves the saved destination', () => {
+    mocks.config.viewSettings.sideBarTab = 'bookmarks';
+    const { rerender } = render(<SidebarContent bookDoc={bookDoc} sideBarBookKey='book-0' />);
+    const search = screen.getByRole('tab', { name: 'Search' });
+    fireEvent.click(search);
+    rerender(<SidebarContent bookDoc={bookDoc} sideBarBookKey='book-0' />);
+    expect(screen.getAllByRole('tab', { selected: true })).toEqual([search]);
+    expect(screen.queryByText('bookmark list')).toBeNull();
+    expect(screen.queryByText('Chapter list')).toBeNull();
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(search.id);
+    expect(mocks.config.viewSettings.sideBarTab).toBe('bookmarks');
+    fireEvent.click(search);
+    expect(mocks.isSearchBarVisible).toBe(true);
+    fireEvent.click(screen.getByRole('tab', { name: 'Contents' }));
+    rerender(<SidebarContent bookDoc={bookDoc} sideBarBookKey='book-0' />);
+    expect(screen.getAllByRole('tab', { selected: true })).toEqual([
+      screen.getByRole('tab', { name: 'Contents' }),
+    ]);
+    expect(screen.getByText('Chapter list')).toBeTruthy();
+  });
+
+  it('selects only search when opened by the search shortcut and restores the prior tab on close', () => {
+    mocks.config.viewSettings.sideBarTab = 'bookmarks';
+    mocks.isSearchBarVisible = true;
+    const { rerender } = render(<SidebarContent bookDoc={bookDoc} sideBarBookKey='book-0' />);
+    expect(screen.getByRole('tab', { selected: true }).getAttribute('aria-label')).toBe('Search');
+    mocks.isSearchBarVisible = false;
+    rerender(<SidebarContent bookDoc={bookDoc} sideBarBookKey='book-0' />);
+    expect(screen.getByRole('tab', { selected: true }).getAttribute('aria-label')).toBe(
+      'Bookmarks',
+    );
+    expect(screen.getByText('bookmark list')).toBeTruthy();
   });
 
   it('does not dismiss the sidebar when its selected tab is pressed again on mobile', () => {

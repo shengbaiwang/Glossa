@@ -2,6 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { MessageCircle, GitBranch, Highlight } from '@/components/GlossaIcons';
+import ReaderPaneTabs from '@/app/reader/components/ReaderPaneTabs';
 import NotebookHeader from '@/app/reader/components/notebook/Header';
 import '@/styles/globals.css';
 import '@/styles/glossa.css';
@@ -29,24 +30,16 @@ it('keeps destination icons and the close action aligned in narrow, RTL and e-in
       style={{ width: 320, position: 'absolute', insetInlineEnd: 0, top: 0 }}
     >
       <NotebookHeader handleClose={vi.fn()}>
-        <div
-          className='glossa-reader-tabs glossa-notebook-tabs'
-          role='tablist'
-          aria-label='Notebook'
-        >
-          {['Conversation', 'Mind map', 'Notes'].map((label, index) => (
-            <button
-              key={label}
-              type='button'
-              role='tab'
-              aria-label={label}
-              aria-selected={label === 'Mind map'}
-              className='glossa-reader-tab glossa-icon-button'
-            >
-              {index === 0 ? <MessageCircle /> : index === 1 ? <GitBranch /> : <Highlight />}
-            </button>
-          ))}
-        </div>
+        <ReaderPaneTabs
+          label='Notebook'
+          activeTab='mindmap'
+          onTabChange={vi.fn()}
+          tabs={[
+            { id: 'conversation', label: 'Conversation', Icon: MessageCircle },
+            { id: 'mindmap', label: 'Mind map', Icon: GitBranch },
+            { id: 'notes', label: 'Notes', Icon: Highlight },
+          ]}
+        />
       </NotebookHeader>
     </div>,
   );
@@ -68,12 +61,12 @@ it('keeps destination icons and the close action aligned in narrow, RTL and e-in
       for (const tab of tabs) {
         expect(tab.textContent).toBe('');
         expect(getComputedStyle(tab.querySelector('svg')!).display).not.toBe('none');
-        expect(tab.getBoundingClientRect().width).toBe(36);
+        expect(tab.getBoundingClientRect().width).toBe(32);
       }
     }
   }
   const active = screen.getByRole('tab', { name: 'Mind map' });
-  expect(getComputedStyle(active).backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+  expect(getComputedStyle(active, '::before').backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
   expect(getComputedStyle(active, '::after').content).toBe('none');
   active.focus();
   expect(getComputedStyle(active).outlineStyle).toBe('solid');
@@ -84,5 +77,5 @@ it('keeps destination icons and the close action aligned in narrow, RTL and e-in
   document.documentElement.setAttribute('data-theme', 'default-dark');
   expect(pane.scrollWidth).toBeLessThanOrEqual(280);
   document.documentElement.setAttribute('data-eink', 'true');
-  expect(getComputedStyle(active).borderTopColor).not.toBe('rgba(0, 0, 0, 0)');
+  expect(getComputedStyle(active, '::before').borderTopColor).not.toBe('rgba(0, 0, 0, 0)');
 });

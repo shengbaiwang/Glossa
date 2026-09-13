@@ -189,28 +189,6 @@
     background: theme('colors.base-content / 0.09');
   }
 
-  .glossa-reader-tabs {
-    gap: 2px;
-    padding: 5px 8px;
-  }
-
-  .glossa-reader-tab {
-    min-height: 32px;
-    flex-direction: row;
-    gap: 5px;
-    padding-block: 5px;
-    border-radius: var(--glossa-radius-control);
-    font-size: 11px;
-  }
-
-  .glossa-reader-tab svg {
-    display: none;
-  }
-
-  .glossa-reader-tab[aria-pressed='true'] {
-    box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
-  }
-
   .glossa-reader-header .glossa-icon-button,
   .glossa-reader-panel-header .glossa-icon-button {
     border-radius: var(--glossa-radius-control);
@@ -220,9 +198,5 @@
   [data-eink='true'] .glossa-reader-toc-item[aria-current='page'] {
     border-color: var(--glossa-ink);
     background: var(--glossa-surface);
-  }
-
-  [data-eink='true'] .glossa-reader-tab {
-    box-shadow: none;
   }
 }

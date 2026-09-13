@@ -1,14 +1,6 @@
+import ReaderPaneTabs from '../ReaderPaneTabs';
 import clsx from 'clsx';
-import React, {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { NotebookPen, Search, MessageCircle, GitBranch, Highlight } from '@/components/GlossaIcons';
 
 import { useSettingsStore } from '@/store/settingsStore';
@@ -70,7 +62,6 @@ const Notebook: React.FC = ({}) => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 640);
   const [isFullHeightInMobile, setIsFullHeightInMobile] = useState(isMobile);
   const tabId = useId();
-  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 640);
@@ -341,31 +332,6 @@ const Notebook: React.FC = ({}) => {
     { id: 'notes' as const, label: _('Notes'), Icon: Highlight },
   ];
 
-  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
-    const isRTL = event.currentTarget.closest('[dir]')?.getAttribute('dir') === 'rtl';
-    let nextIndex: number;
-    switch (event.key) {
-      case 'ArrowRight':
-        nextIndex = (index + (isRTL ? -1 : 1) + tabs.length) % tabs.length;
-        break;
-      case 'ArrowLeft':
-        nextIndex = (index + (isRTL ? 1 : -1) + tabs.length) % tabs.length;
-        break;
-      case 'Home':
-        nextIndex = 0;
-        break;
-      case 'End':
-        nextIndex = tabs.length - 1;
-        break;
-      default:
-        return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    tabRefs.current[nextIndex]?.focus();
-    setNotebookActiveTab(tabs[nextIndex]!.id);
-  };
-
   const hasAnnotations = allNotes.some((note) => note.type === 'annotation' && !note.deletedAt);
   const hasSearchResults =
     filteredExcerptNotes.length > 0 || searchResults?.some((note) => note.type === 'annotation');
@@ -456,34 +422,13 @@ const Notebook: React.FC = ({}) => {
           )}
           <NotebookHeader handleClose={() => setNotebookVisible(false)}>
             {supportsReadingAssistant && (
-              <div
-                className='glossa-reader-tabs glossa-notebook-tabs'
-                role='tablist'
-                aria-label={_('Notebook')}
-                aria-orientation='horizontal'
-              >
-                {tabs.map(({ id, label, Icon }, index) => (
-                  <button
-                    key={id}
-                    ref={(element) => {
-                      tabRefs.current[index] = element;
-                    }}
-                    id={`${tabId}-tab-${id}`}
-                    type='button'
-                    role='tab'
-                    className='glossa-reader-tab glossa-icon-button'
-                    title={label}
-                    aria-label={label}
-                    aria-selected={activeTab === id}
-                    aria-controls={`${tabId}-panel-${id}`}
-                    tabIndex={activeTab === id ? 0 : -1}
-                    onClick={() => setNotebookActiveTab(id)}
-                    onKeyDown={(event) => handleTabKeyDown(event, index)}
-                  >
-                    <Icon size={20} aria-hidden='true' />
-                  </button>
-                ))}
-              </div>
+              <ReaderPaneTabs
+                label={_('Notebook')}
+                activeTab={activeTab}
+                onTabChange={setNotebookActiveTab}
+                idPrefix={tabId}
+                tabs={tabs.map((tab) => ({ ...tab, panelId: `${tabId}-panel-${tab.id}` }))}
+              />
             )}
           </NotebookHeader>
 
