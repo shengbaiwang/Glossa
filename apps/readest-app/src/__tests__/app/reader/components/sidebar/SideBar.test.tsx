@@ -46,7 +46,6 @@ vi.mock('@/hooks/useSwipeToDismiss', () => ({
   }),
 }));
 vi.mock('@/app/reader/components/sidebar/Header', () => ({ default: () => null }));
-vi.mock('@/app/reader/components/sidebar/BookCard', () => ({ default: () => null }));
 vi.mock('@/app/reader/components/sidebar/Content', () => ({ default: () => null }));
 vi.mock('@/app/reader/components/sidebar/SearchBar', () => ({ default: () => null }));
 vi.mock('@/app/reader/components/sidebar/SearchResults', () => ({ default: () => null }));

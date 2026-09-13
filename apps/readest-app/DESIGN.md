@@ -16,6 +16,9 @@ external cloud labels remain neutral and their actual destinations remain unchan
 
 Keep one overflow menu in the central reading header, immediately after Font & Layout.
 The navigation sidebar keeps search and its mobile close control without an overflow menu.
+It has no persistent book information card; the reading header retains the title.
+Book Details in the existing reading menu opens the shared metadata dialog with cover, author
+and the current book’s live reading progress.
 Book operations share the reading menu and target that header’s book, independently of sidebar state.
 Keep bookmark and typography shortcuts directly accessible.
 
@@ -111,7 +114,7 @@ composer usable in short/narrow panes. See `../../docs/design/conversation.md`.
   disable the current mode. Single-book close is available in View Options;
   preserve native window controls.
 - The left sidebar holds only in-book navigation — Contents / Bookmarks
-  and the current book's search — directly below the compact book identity.
+  and the current book's search. Cover and author appear only in the Book Details dialog.
   Use a quiet ink underline for the active tab, proper tab/panel semantics and
   arrow/Home/End navigation. Switching is immediate; selecting the current tab
   leaves the panel open. Sidebar pinning is a named menu option, not a permanent

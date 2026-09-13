@@ -23,6 +23,8 @@ const mocks = vi.hoisted(() => ({
   setSettingsDialogOpen: vi.fn(),
   setSettingsDialogBookKey: vi.fn(),
   dispatch: vi.fn(),
+  dispatchSync: vi.fn(),
+  progress: undefined as [number, number] | undefined,
   saveSysSettings: vi.fn(),
 }));
 
@@ -39,8 +41,15 @@ vi.mock('@/context/EnvContext', () => ({
 vi.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: null }) }));
 vi.mock('@/store/bookDataStore', () => ({
   useBookDataStore: () => ({
-    getConfig: () => ({ booknotes: [{ type: 'annotation' }] }),
-    getBookData: () => ({ isFixedLayout: false, book: { format: 'EPUB' }, bookDoc: {} }),
+    getConfig: (key: string) => ({
+      booknotes: [{ type: 'annotation' }],
+      progress: key === 'book-2' ? mocks.progress : [1, 5],
+    }),
+    getBookData: (key: string) => ({
+      isFixedLayout: false,
+      book: { hash: key, format: 'EPUB', progress: [10, 200] },
+      bookDoc: {},
+    }),
   }),
 }));
 vi.mock('@/store/readerStore', () => ({
@@ -67,7 +76,9 @@ vi.mock('@/helpers/settings', () => ({
   saveViewSettings: mocks.saveViewSettings,
   saveSysSettings: mocks.saveSysSettings,
 }));
-vi.mock('@/utils/event', () => ({ eventDispatcher: { dispatch: mocks.dispatch } }));
+vi.mock('@/utils/event', () => ({
+  eventDispatcher: { dispatch: mocks.dispatch, dispatchSync: mocks.dispatchSync },
+}));
 vi.mock('@/utils/style', () => ({ getStyles: vi.fn() }));
 vi.mock('@/utils/window', () => ({ tauriHandleToggleFullScreen: vi.fn() }));
 vi.mock('@/utils/nav', () => ({ navigateToLogin: vi.fn() }));
@@ -83,6 +94,7 @@ vi.mock('@/components/AboutWindow', () => ({ setAboutDialogVisible: vi.fn() }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.progress = undefined;
   useSidebarStore.setState({
     sideBarBookKey: 'book-1',
     isSideBarVisible: false,
@@ -96,6 +108,23 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('reader ViewMenu', () => {
+  it.each([
+    undefined,
+    [42, 317] as [number, number],
+  ])('opens details for the menu book with live progress %s', (progress) => {
+    const close = vi.fn();
+    render(<ViewMenu bookKey='book-2' setIsDropdownOpen={close} />);
+    mocks.progress = progress;
+    expect(mocks.dispatchSync).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Book Details' }));
+    expect(mocks.dispatchSync).toHaveBeenCalledWith('show-book-details', {
+      hash: 'book-2',
+      format: 'EPUB',
+      progress: progress ?? [10, 200],
+    });
+    expect(close).toHaveBeenCalledWith(false);
+  });
+
   it('starts reading aloud for the menu book', () => {
     const close = vi.fn();
     render(<ViewMenu bookKey='book-2' setIsDropdownOpen={close} />);

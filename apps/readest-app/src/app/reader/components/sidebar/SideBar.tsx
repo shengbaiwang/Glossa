@@ -17,7 +17,6 @@ import { Overlay } from '@/components/Overlay';
 import useShortcuts from '@/hooks/useShortcuts';
 import SidebarHeader from './Header';
 import SidebarContent from './Content';
-import BookCard from './BookCard';
 import useSidebar from '../../hooks/useSidebar';
 import SearchBar from './SearchBar';
 import SearchResults from './SearchResults';
@@ -177,7 +176,7 @@ const SideBar = ({}) => {
   if (!bookData || !bookData.book || !bookData.bookDoc) {
     return null;
   }
-  const { book, bookDoc } = bookData;
+  const { bookDoc } = bookData;
   const languageDir = getBookDirFromLanguage(bookDoc.metadata.language);
 
   return isSideBarVisible ? (
@@ -272,9 +271,6 @@ const SideBar = ({}) => {
               bookKey={sideBarBookKey!}
               onHideSearchBar={handleHideSearchBar}
             />
-          </div>
-          <div className='px-4'>
-            <BookCard book={book} />
           </div>
         </div>
         {isSearchBarVisible && searchResults ? (

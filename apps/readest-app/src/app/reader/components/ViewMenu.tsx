@@ -559,6 +559,22 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
       />
 
       <hr aria-hidden='true' className='border-base-300 my-1' />
+      <MenuItem
+        label={_('Book Details')}
+        Icon={<Info size={iconSize} aria-hidden='true' />}
+        disabled={!bookData.book}
+        onClick={() => {
+          const book = getBookData(bookKey)?.book;
+          if (!book) return;
+          // Use this view's live page count, not the snapshot from opening the book.
+          const progress = getConfig(bookKey)?.progress;
+          setIsDropdownOpen?.(false);
+          eventDispatcher.dispatchSync(
+            'show-book-details',
+            progress ? { ...book, progress } : book,
+          );
+        }}
+      />
       <BookMenuItems bookKey={bookKey} setIsDropdownOpen={setIsDropdownOpen} />
 
       {onCloseBook && (
