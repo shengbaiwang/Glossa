@@ -1,60 +1,65 @@
-import React from 'react';
-import { Search, NotebookPen, MessageCircle, Pin, X } from '@/components/GlossaIcons';
+import React, { useRef } from 'react';
+import { NotebookPen, Ellipsis, Pin, PinOff, X } from '@/components/GlossaIcons';
+import Dropdown from '@/components/Dropdown';
+import Menu from '@/components/Menu';
+import MenuItem from '@/components/MenuItem';
+import { useDropdownContext } from '@/context/DropdownContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 
 const NotebookHeader: React.FC<{
   isPinned: boolean;
-  isSearchBarVisible: boolean;
   handleClose: () => void;
   handleTogglePin: () => void;
-  handleToggleSearchBar: () => void;
-  showSearchButton?: boolean;
-  conversation?: boolean;
-}> = ({
-  isPinned,
-  isSearchBarVisible,
-  handleClose,
-  handleTogglePin,
-  handleToggleSearchBar,
-  showSearchButton = true,
-  conversation = false,
-}) => {
+  children?: React.ReactNode;
+}> = ({ isPinned, handleClose, handleTogglePin, children }) => {
   const _ = useTranslation();
   const iconSize18 = useResponsiveSize(18);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const dropdown = useDropdownContext();
+  const closeMenu = () => {
+    dropdown?.closeAll();
+    headerRef.current?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')?.focus();
+  };
+
   return (
-    <div className='notebook-header glossa-reader-panel-header flex h-11 items-center gap-2 px-3'>
-      {conversation ? (
-        <MessageCircle size={iconSize18} className='shrink-0' />
-      ) : (
-        <NotebookPen size={iconSize18} className='shrink-0' aria-hidden='true' />
+    <div ref={headerRef} className='notebook-header glossa-reader-panel-header'>
+      {children || (
+        <>
+          <NotebookPen size={iconSize18} className='shrink-0' aria-hidden='true' />
+          <h2 className='notebook-title min-w-0 flex-1 truncate text-sm font-semibold'>
+            {_('Notebook')}
+          </h2>
+        </>
       )}
-      <h2 className='notebook-title min-w-0 flex-1 truncate text-sm font-semibold'>
-        {_(conversation ? 'Conversation' : 'Notebook')}
-      </h2>
-      <button
-        type='button'
-        title={isPinned ? _('Unpin Notebook') : _('Pin Notebook')}
-        aria-label={isPinned ? _('Unpin Notebook') : _('Pin Notebook')}
-        aria-pressed={isPinned}
-        onClick={handleTogglePin}
-        className='glossa-icon-button touch-target btn btn-ghost hidden h-8 min-h-8 w-8 p-0 sm:flex'
+      <Dropdown
+        label={_('View Options')}
+        showTooltip={false}
+        className='dropdown-end dropdown-bottom'
+        buttonClassName='glossa-icon-button btn btn-ghost h-8 min-h-8 w-8 p-0'
+        containerClassName='glossa-notebook-options hidden h-8 shrink-0 sm:flex'
+        toggleButton={<Ellipsis size={iconSize18} aria-hidden='true' />}
       >
-        <Pin size={iconSize18} fill={isPinned ? 'currentColor' : 'none'} aria-hidden='true' />
-      </button>
-      {showSearchButton && (
-        <button
-          type='button'
-          title={isSearchBarVisible ? _('Hide Search Bar') : _('Show Search Bar')}
-          aria-label={isSearchBarVisible ? _('Hide Search Bar') : _('Show Search Bar')}
-          aria-expanded={isSearchBarVisible}
-          aria-pressed={isSearchBarVisible}
-          onClick={handleToggleSearchBar}
-          className='glossa-icon-button touch-target btn btn-ghost h-8 min-h-8 w-8 shrink-0 p-0'
+        <Menu
+          className='glossa-notebook-menu dropdown-content no-triangle mt-2'
+          onCancel={closeMenu}
         >
-          <Search size={iconSize18} aria-hidden='true' />
-        </button>
-      )}
+          <MenuItem
+            label={isPinned ? _('Unpin Notebook') : _('Pin Notebook')}
+            Icon={
+              isPinned ? (
+                <PinOff size={iconSize18} aria-hidden='true' />
+              ) : (
+                <Pin size={iconSize18} aria-hidden='true' />
+              )
+            }
+            onClick={() => {
+              handleTogglePin();
+              closeMenu();
+            }}
+          />
+        </Menu>
+      </Dropdown>
       <button
         type='button'
         title={_('Close')}

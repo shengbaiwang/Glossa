@@ -2,6 +2,7 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useId,
   useRef,
   useState,
   type KeyboardEvent,
@@ -11,6 +12,9 @@ import {
   ChevronDown,
   ChevronRight,
   Expand,
+  Ellipsis,
+  Pencil,
+  Check,
   ListTree,
   Plus,
   Redo2,
@@ -23,6 +27,8 @@ import { useTranslation } from '@/hooks/useTranslation';
 import {
   cleanMap,
   createMap,
+  createMapFromMindmap,
+  getMapNodeSources,
   descendants,
   editTree,
   mapWorkspaceSchema,
@@ -32,8 +38,13 @@ import {
 } from '@/glossa/mindmap/workspace';
 import { useMapWorkspace } from '@/glossa/mindmap/workspaceSession';
 import type { ReadingPanelProps } from './ReadingPassagePanel';
+import type { ReadingMindmap } from '@/glossa/mindmap/types';
+import type { MindmapSourceSelection } from './MindmapSourcePanel';
 
 const SavedMindmaps = lazy(() => import('./SavedMindmaps'));
+const GeneratedMindmapPanel = lazy(() => import('./GeneratedMindmapPanel'));
+const MindmapSourcePanel = lazy(() => import('./MindmapSourcePanel'));
+
 export default function MindmapPanel(props: ReadingPanelProps) {
   return <MapBook key={props.book.hash} {...props} />;
 }
@@ -41,6 +52,9 @@ function MapBook(props: ReadingPanelProps) {
   const _ = useTranslation();
   const session = useMapWorkspace(props.book.hash);
   const [legacy, setLegacy] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [sourceSelection, setSourceSelection] = useState<MindmapSourceSelection | null>(null);
+  const [capacityError, setCapacityError] = useState(false);
   const [importError, setImportError] = useState(false);
   const backupInput = useRef<HTMLInputElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -63,6 +77,12 @@ function MapBook(props: ReadingPanelProps) {
     depthNode = map?.nodes.find((n) => n.id === depthNode?.parentId);
   }
   useEffect(() => {
+    setSourceSelection(null);
+  }, [map?.id]);
+  useEffect(() => {
+    if (sourceSelection && sourceSelection.nodeId !== map?.selectedId) setSourceSelection(null);
+  }, [map?.selectedId, sourceSelection]);
+  useEffect(() => {
     const el = dialog.current;
     if (!el?.showModal) return;
     el.close();
@@ -73,6 +93,7 @@ function MapBook(props: ReadingPanelProps) {
     if (editingId) {
       input.current?.focus();
       input.current?.select();
+      resizeInput();
     }
   }, [editingId]);
   useEffect(() => {
@@ -81,6 +102,11 @@ function MapBook(props: ReadingPanelProps) {
         ?.querySelector<HTMLButtonElement>('[data-selected="true"] .glossa-workmap-label')
         ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }, [map?.selectedId, map?.focusId, map?.view, editingId]);
+  const resizeInput = () => {
+    if (!input.current) return;
+    input.current.style.height = 'auto';
+    input.current.style.height = `${input.current.scrollHeight}px`;
+  };
   const updateMap = (transform: (current: LocalMap) => LocalMap, history = false) => {
     session.update(
       (data) => ({
@@ -169,6 +195,7 @@ function MapBook(props: ReadingPanelProps) {
     const command = event.metaKey || event.ctrlKey;
     const target = event.target as HTMLElement;
     const textInput = target instanceof HTMLTextAreaElement;
+    if (target.closest('.glossa-workmap-generation, .glossa-workmap-source')) return;
     if (command && event.key.toLowerCase() === 'z') {
       if (target instanceof HTMLInputElement && target.closest('.glossa-workmap-search')) return;
       event.preventDefault();
@@ -191,7 +218,7 @@ function MapBook(props: ReadingPanelProps) {
     if (!selected || target instanceof HTMLSelectElement || target instanceof HTMLInputElement)
       return;
     if (textInput || target.classList.contains('glossa-workmap-label')) {
-      if (event.key === 'Enter' && !event.shiftKey) {
+      if (event.key === 'Enter' && !event.shiftKey && (textInput || command)) {
         event.preventDefault();
         add(command);
       } else if (event.key === 'Tab' && (textInput || command)) {
@@ -255,12 +282,30 @@ function MapBook(props: ReadingPanelProps) {
       if (file.size > 5_000_000) throw new Error('Backup too large');
       const imported = mapWorkspaceSchema.parse(JSON.parse(await file.text()));
       if (!imported.maps.length) throw new Error('Empty backup');
+      if (imported.bookId === props.book.hash && imported.maps.some((m) => m.origin)) {
+        const { validateSavedMindmap } = await import('@/glossa/mindmap/store');
+        const origins = await Promise.all(
+          imported.maps.map((m) => (m.origin ? validateSavedMindmap(m.origin) : true)),
+        );
+        if (origins.some((origin) => !origin)) throw new Error('Invalid original sources');
+      }
       session.update((data) => {
         if (data.maps.length + imported.maps.length > 20) {
           setImportError(true);
           return data;
         }
-        const copies = imported.maps.map((m) => cleanMap({ ...m, id: crypto.randomUUID() }));
+        const copies = imported.maps.map((m) => {
+          const sameBook = imported.bookId === data.bookId;
+          return cleanMap({
+            ...m,
+            id: crypto.randomUUID(),
+            origin: sameBook ? m.origin : undefined,
+            nodes: m.nodes.map((node) => ({
+              ...node,
+              originNodeId: sameBook ? node.originNodeId : undefined,
+            })),
+          });
+        });
         return { ...data, maps: [...data.maps, ...copies], activeId: copies[0]!.id };
       });
       setLegacy(false);
@@ -275,6 +320,41 @@ function MapBook(props: ReadingPanelProps) {
     setEditingId(created.selectedId);
     editBatch.current = null;
     setLegacy(false);
+    setGenerating(false);
+  };
+  const useGeneratedMap = (result: ReadingMindmap) => {
+    const created = createMapFromMindmap(result);
+    let accepted = false;
+    session.update((data) => {
+      if (data.maps.length >= 20) return data;
+      accepted = true;
+      return { ...data, maps: [...data.maps, created], activeId: created.id };
+    });
+    if (!accepted) {
+      setCapacityError(true);
+      return;
+    }
+    setGenerating(false);
+    setLegacy(false);
+    setCapacityError(false);
+    setEditingId(null);
+  };
+  const openGeneration = () => {
+    setEditingId(null);
+    setLegacy(false);
+    setGenerating(true);
+    setExpanded(false);
+  };
+  const chooseNode = (node: MapNode) => {
+    updateMap((m) => ({ ...m, selectedId: node.id }));
+    const sources = map ? getMapNodeSources(map, node.id) : [];
+    if (sources.length) {
+      setEditingId(null);
+      setSourceSelection({ nodeId: node.id, sources });
+    } else {
+      setSourceSelection(null);
+      if (map?.view === 'outline') beginEdit(node);
+    }
   };
   const iconButton = (label: string, icon: ReactNode, action: () => void, disabled = false) => (
     <button
@@ -328,9 +408,12 @@ function MapBook(props: ReadingPanelProps) {
                 aria-label={_('Idea text')}
                 value={node.label}
                 maxLength={500}
-                rows={3}
+                rows={1}
                 dir='auto'
-                onChange={(event) => textChange(node, event.target.value, node.relation)}
+                onChange={(event) => {
+                  textChange(node, event.target.value, node.relation);
+                  resizeInput();
+                }}
               />
               {node.parentId && (
                 <input
@@ -348,9 +431,11 @@ function MapBook(props: ReadingPanelProps) {
               type='button'
               className='glossa-workmap-label'
               aria-pressed={map!.selectedId === node.id}
+              onFocus={() => {
+                if (map!.selectedId !== node.id) updateMap((m) => ({ ...m, selectedId: node.id }));
+              }}
               onClick={() => {
-                if (map!.view === 'outline') beginEdit(node);
-                else updateMap((m) => ({ ...m, selectedId: node.id }));
+                chooseNode(node);
               }}
               onDoubleClick={() => beginEdit(node)}
               dir='auto'
@@ -397,6 +482,18 @@ function MapBook(props: ReadingPanelProps) {
     ? (map?.nodes.filter((n) => `${n.label} ${n.relation}`.toLocaleLowerCase().includes(query)) ??
       [])
     : [];
+  const sourceNode = map?.nodes.find((node) => node.id === sourceSelection?.nodeId);
+  const originalNode = map?.origin?.nodes.find((node) => node.id === sourceNode?.originNodeId);
+  const sourceKind =
+    sourceNode &&
+    originalNode &&
+    (sourceNode.label !== originalNode.label ||
+      sourceNode.relation !== originalNode.relation ||
+      sourceNode.parentId !== originalNode.parentId)
+      ? 'Edited idea'
+      : originalNode?.kind === 'inference'
+        ? 'Interpretation'
+        : undefined;
   const status =
     session.status === 'ready'
       ? _('Saved on this device')
@@ -434,29 +531,128 @@ function MapBook(props: ReadingPanelProps) {
           onChange={(event) => {
             const value = event.target.value;
             setLegacy(value === 'legacy');
+            setGenerating(false);
             setEditingId(null);
             setSearch(null);
             if (value !== 'legacy') session.update((data) => ({ ...data, activeId: value }), false);
           }}
         >
-          {!map && <option value=''>{_('Mind maps')}</option>}
+          {!map && <option value=''>{_('Mind map')}</option>}
           {session.data.maps.map((m) => (
             <option key={m.id} value={m.id}>
               {m.nodes.find((n) => !n.parentId)?.label || _('Untitled mind map')}
             </option>
           ))}
-          <option value='legacy'>{_('Earlier generated maps')}</option>
+          {legacy && <option value='legacy'>{_('Earlier generated maps')}</option>}
         </select>
-        {iconButton(_('New mind map'), <Plus size={18} />, newMap, session.data.maps.length >= 20)}
-        {iconButton(
-          _(expanded ? 'Close expanded view' : 'Expand workspace'),
-          expanded ? <X size={18} /> : <Expand size={18} />,
-          () => setExpanded(!expanded),
+        {map && !generating && (
+          <button
+            className='glossa-workmap-generate'
+            type='button'
+            disabled={session.data.maps.length >= 20}
+            onClick={openGeneration}
+          >
+            {_('AI mind map')}
+          </button>
         )}
+        <WorkspaceMenu label={_('Mind map menu')}>
+          <button type='button' onClick={newMap} disabled={session.data.maps.length >= 20}>
+            <Plus size={16} />
+            {_('New mind map')}
+          </button>
+          {map && (
+            <button type='button' onClick={() => setSearch(search === null ? '' : null)}>
+              <Search size={16} />
+              {_('Find an idea')}
+            </button>
+          )}
+          {map && (
+            <label className='glossa-workmap-menu-select'>
+              {_('Levels')}
+              <select
+                aria-label={_('Visible levels')}
+                value=''
+                onChange={(event) => {
+                  const level = Number(event.target.value);
+                  const depth = (node: MapNode): number =>
+                    node.parentId ? 1 + depth(map.nodes.find((n) => n.id === node.parentId)!) : 1;
+                  updateMap((m) => ({
+                    ...m,
+                    collapsed:
+                      level === 0
+                        ? []
+                        : m.nodes
+                            .filter(
+                              (n) => depth(n) >= level && m.nodes.some((c) => c.parentId === n.id),
+                            )
+                            .map((n) => n.id),
+                  }));
+                }}
+              >
+                <option value='' disabled>
+                  {_('Levels')}
+                </option>
+                <option value='1'>{_('Root only')}</option>
+                <option value='2'>{_('Two levels')}</option>
+                <option value='3'>{_('Three levels')}</option>
+                <option value='0'>{_('Expand all')}</option>
+              </select>
+            </label>
+          )}
+          <hr />
+          <button
+            type='button'
+            onClick={() => {
+              setLegacy(true);
+              setGenerating(false);
+              setEditingId(null);
+            }}
+          >
+            {_('Earlier generated maps')}
+          </button>
+          <button type='button' onClick={download}>
+            {_('Download mind maps')}
+          </button>
+          <button type='button' onClick={() => backupInput.current?.click()}>
+            {_('Import mind maps')}
+          </button>
+          {map && (
+            <>
+              <hr />
+              <button
+                type='button'
+                onClick={() => {
+                  setEditingId(null);
+                  session.update((data) => {
+                    const maps = data.maps.filter((m) => m.id !== map.id);
+                    return { ...data, maps, activeId: maps[0]?.id ?? null };
+                  });
+                }}
+              >
+                <Trash2 size={16} />
+                {_('Delete mind map')}
+              </button>
+            </>
+          )}
+        </WorkspaceMenu>
       </header>
-      {legacy ? (
+      {generating ? (
+        <section className='glossa-workmap-generation' aria-label={_('Generate mind map')}>
+          <header>
+            <h3>{_('AI mind map')}</h3>
+            {iconButton(_('Close generation'), <X size={18} />, () => setGenerating(false))}
+          </header>
+          <Suspense fallback={<p role='status'>{_('Loading…')}</p>}>
+            <GeneratedMindmapPanel {...props} onUseMap={useGeneratedMap} />
+          </Suspense>
+        </section>
+      ) : legacy ? (
         <Suspense fallback={<p role='status'>{_('Loading…')}</p>}>
-          <SavedMindmaps {...props} onNavigate={() => setExpanded(false)} />
+          <SavedMindmaps
+            {...props}
+            onNavigate={() => setExpanded(false)}
+            onUseMap={session.data.maps.length < 20 ? useGeneratedMap : undefined}
+          />
         </Suspense>
       ) : map && root && focus ? (
         <>
@@ -495,8 +691,10 @@ function MapBook(props: ReadingPanelProps) {
                 },
                 !session.canRedo,
               )}
-              {iconButton(_('Find an idea'), <Search size={16} />, () =>
-                setSearch(search === null ? '' : null),
+              {iconButton(
+                _(expanded ? 'Close expanded view' : 'Expand workspace'),
+                expanded ? <X size={16} /> : <Expand size={16} />,
+                () => setExpanded(!expanded),
               )}
             </div>
           </div>
@@ -600,103 +798,66 @@ function MapBook(props: ReadingPanelProps) {
             <button type='button' onClick={() => add(false)} disabled={map.nodes.length >= 200}>
               {_('Sibling idea')}
             </button>
-            <details
-              className='glossa-workmap-more'
-              onClick={(event) => {
-                if ((event.target as HTMLElement).closest('button'))
-                  event.currentTarget.open = false;
-              }}
-            >
-              <summary>{_('More')}</summary>
-              <div>
-                <button type='button' onClick={() => selected && beginEdit(selected)}>
-                  {_('Edit idea')}
-                </button>
-                {(['indent', 'outdent', 'up', 'down'] as const).map((type, index) => (
-                  <button
-                    type='button'
-                    key={type}
-                    disabled={
-                      !selected ||
-                      JSON.stringify(editTree(map.nodes, { type, id: selected.id })) ===
-                        JSON.stringify(map.nodes)
-                    }
-                    onClick={() => selected && edit({ type, id: selected.id })}
-                  >
-                    {_(['Indent', 'Outdent', 'Move up', 'Move down'][index]!)}
-                  </button>
-                ))}
+            {iconButton(
+              editingId ? _('Done') : _('Edit idea'),
+              editingId ? <Check size={16} /> : <Pencil size={16} />,
+              () => (editingId ? setEditingId(null) : selected && beginEdit(selected)),
+            )}
+            <WorkspaceMenu label={_('Idea menu')} above>
+              {(['indent', 'outdent', 'up', 'down'] as const).map((type, index) => (
                 <button
                   type='button'
-                  disabled={selected?.id === root.id}
-                  onClick={() => {
-                    setEditingId(null);
-                    updateMap((m) => ({
-                      ...m,
-                      focusId: m.selectedId,
-                      collapsed: m.collapsed.filter((n) => n !== m.selectedId),
-                    }));
-                  }}
-                >
-                  {_('Focus branch')}
-                </button>
-                <button
-                  type='button'
-                  disabled={!selected?.parentId}
-                  onClick={() => selected && edit({ type: 'delete', id: selected.id })}
-                >
-                  <Trash2 size={14} />
-                  {_('Delete branch')}
-                </button>
-                <button type='button' onClick={download}>
-                  {_('Download mind maps')}
-                </button>
-                <button type='button' onClick={() => backupInput.current?.click()}>
-                  {_('Import mind maps')}
-                </button>
-                <button
-                  type='button'
-                  onClick={() =>
-                    session.update((data) => {
-                      const maps = data.maps.filter((m) => m.id !== map.id);
-                      return { ...data, maps, activeId: maps[0]?.id ?? null };
-                    })
+                  key={type}
+                  disabled={
+                    !selected ||
+                    JSON.stringify(editTree(map.nodes, { type, id: selected.id })) ===
+                      JSON.stringify(map.nodes)
                   }
+                  onClick={() => selected && edit({ type, id: selected.id })}
                 >
-                  {_('Delete mind map')}
+                  {_(['Indent', 'Outdent', 'Move up', 'Move down'][index]!)}
                 </button>
-              </div>
-            </details>
+              ))}
+              <button
+                type='button'
+                disabled={selected?.id === root.id}
+                onClick={() => {
+                  setEditingId(null);
+                  updateMap((m) => ({
+                    ...m,
+                    focusId: m.selectedId,
+                    collapsed: m.collapsed.filter((n) => n !== m.selectedId),
+                  }));
+                }}
+              >
+                {_('Focus branch')}
+              </button>
+              <button
+                type='button'
+                disabled={!selected?.parentId}
+                onClick={() => selected && edit({ type: 'delete', id: selected.id })}
+              >
+                <Trash2 size={14} />
+                {_('Delete branch')}
+              </button>
+            </WorkspaceMenu>
           </div>
+          {map.origin && (
+            <Suspense fallback={null}>
+              <MindmapSourcePanel
+                key={map.id}
+                {...props}
+                selection={
+                  sourceSelection && map.nodes.some((node) => node.id === sourceSelection.nodeId)
+                    ? sourceSelection
+                    : null
+                }
+                contextLabel={sourceKind}
+                onNavigate={() => setExpanded(false)}
+              />
+            </Suspense>
+          )}
           <footer className='glossa-workmap-footer'>
-            <select
-              aria-label={_('Visible levels')}
-              value=''
-              onChange={(event) => {
-                const level = Number(event.target.value);
-                const depth = (node: MapNode): number =>
-                  node.parentId ? 1 + depth(map.nodes.find((n) => n.id === node.parentId)!) : 1;
-                updateMap((m) => ({
-                  ...m,
-                  collapsed:
-                    level === 0
-                      ? []
-                      : m.nodes
-                          .filter(
-                            (n) => depth(n) >= level && m.nodes.some((c) => c.parentId === n.id),
-                          )
-                          .map((n) => n.id),
-                }));
-              }}
-            >
-              <option value='' disabled>
-                {_('Levels')}
-              </option>
-              <option value='1'>{_('Root only')}</option>
-              <option value='2'>{_('Two levels')}</option>
-              <option value='3'>{_('Three levels')}</option>
-              <option value='0'>{_('Expand all')}</option>
-            </select>
             {map.view === 'map' && (
               <div className='glossa-workmap-zoom'>
                 {iconButton(
@@ -739,7 +900,7 @@ function MapBook(props: ReadingPanelProps) {
                 </button>
               </div>
             )}
-            <span className='glossa-workmap-status' role='status' title={status}>
+            <span className='sr-only' role='status'>
               {status}
             </span>
           </footer>
@@ -747,18 +908,17 @@ function MapBook(props: ReadingPanelProps) {
       ) : (
         <div className='glossa-workmap-empty'>
           <ListTree size={28} />
-          <h3>{_('Give your ideas a shape')}</h3>
-          <p>{_('Start with a question. Let the connections grow.')}</p>
-          <button type='button' className='glossa-button glossa-button-primary' onClick={newMap}>
-            <Plus size={16} />
-            {_('New mind map')}
-          </button>
+          <h3>{_('Mind map')}</h3>
           <button
             type='button'
-            className='glossa-button'
-            onClick={() => backupInput.current?.click()}
+            className='glossa-button glossa-button-primary'
+            onClick={openGeneration}
           >
-            {_('Import mind maps')}
+            {_('Generate mind map')}
+          </button>
+          <button type='button' className='glossa-button' onClick={newMap}>
+            <Plus size={16} />
+            {_('New mind map')}
           </button>
           {session.canRedo && (
             <button type='button' className='glossa-button' onClick={() => session.undo(true)}>
@@ -771,6 +931,11 @@ function MapBook(props: ReadingPanelProps) {
             </button>
           )}
         </div>
+      )}
+      {capacityError && (
+        <p role='alert' className='glossa-workmap-error'>
+          {_('This book already has 20 mind maps.')}
+        </p>
       )}
       {importError && (
         <p className='glossa-workmap-error' role='alert'>
@@ -797,5 +962,69 @@ function MapBook(props: ReadingPanelProps) {
         </div>
       )}
     </dialog>
+  );
+}
+
+function WorkspaceMenu({
+  label,
+  above = false,
+  children,
+}: {
+  label: string;
+  above?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: PointerEvent) => {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [open]);
+  return (
+    <div
+      ref={ref}
+      className={`glossa-workmap-menu ${above ? 'opens-above' : ''}`}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && open) {
+          event.preventDefault();
+          event.stopPropagation();
+          setOpen(false);
+          trigger.current?.focus();
+        }
+      }}
+    >
+      <button
+        ref={trigger}
+        type='button'
+        className='glossa-workmap-icon'
+        aria-label={label}
+        title={label}
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen(!open)}
+      >
+        <Ellipsis size={18} />
+      </button>
+      {open && (
+        <div
+          id={id}
+          className='glossa-workmap-menu-items'
+          role='group'
+          aria-label={label}
+          onClick={(event) => {
+            if ((event.target as HTMLElement).closest('button')) setOpen(false);
+          }}
+          onChange={() => setOpen(false)}
+        >
+          {children}
+        </div>
+      )}
+    </div>
   );
 }

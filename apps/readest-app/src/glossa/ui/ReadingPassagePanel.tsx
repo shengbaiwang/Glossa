@@ -29,6 +29,7 @@ export interface PassageResult {
   id: string;
   cacheKey: string;
   sources: ChapterSource[];
+  insufficientEvidence: boolean;
 }
 export interface ReadingPanelAdapter<T extends PassageResult> {
   id: string;
@@ -44,7 +45,10 @@ export interface ReadingPanelAdapter<T extends PassageResult> {
     onSource: (source: ChapterSource) => void;
   }>;
 }
-type Props<T extends PassageResult> = ReadingPanelProps & { adapter: ReadingPanelAdapter<T> };
+type Props<T extends PassageResult> = ReadingPanelProps & {
+  adapter: ReadingPanelAdapter<T>;
+  onUseResult?: (result: T) => void;
+};
 
 const safeError = (cause: unknown, fallback: string) =>
   cause instanceof PassageError || cause instanceof ModelServiceError ? cause.message : fallback;
@@ -106,11 +110,6 @@ function ReadingPassageBook<T extends PassageResult>(props: Props<T>) {
 
   return (
     <div className='glossa-passage-panel' aria-label={_('Mind map')}>
-      {!chapter && (
-        <p className='glossa-passage-intro'>
-          {_('Choose a passage to map its ideas and connections.')}
-        </p>
-      )}
       <label className='glossa-passage-label' htmlFor={`${bookKey}-${adapter.id}-chapter`}>
         {_('Chapter')}
       </label>
@@ -151,6 +150,7 @@ function ReadingPassageBook<T extends PassageResult>(props: Props<T>) {
 
 interface ChapterProps<T extends PassageResult> extends ReadingPanelProps {
   adapter: ReadingPanelAdapter<T>;
+  onUseResult?: (result: T) => void;
   chapter: ChapterDescriptor;
   config: ProviderConfig | null;
   providerReady: boolean;
@@ -249,6 +249,7 @@ function PassageResultPanel<T extends PassageResult>({
   config,
   providerReady,
   openModels,
+  onUseResult,
 }: ChapterProps<T> & { passage: ReadingPassage }) {
   const _ = useTranslation();
   const identity = JSON.stringify([book.hash, chapter.id, passage.id]);
@@ -377,6 +378,7 @@ function PassageResultPanel<T extends PassageResult>({
       setUnsaved(true);
       unsavedGuides.set(identity, result);
       await persist(result, controller);
+      if (!controller.signal.aborted && !result.insufficientEvidence) onUseResult?.(result);
     } catch (cause) {
       if (!controller.signal.aborted) {
         setNotice('');
@@ -497,15 +499,9 @@ function PassageResultPanel<T extends PassageResult>({
               ? `${config.name} · ${config.model}`
               : _('Configure model service')}
           </button>
-          {config && (
-            <p className='glossa-passage-message'>
-              {_('Only this passage will be sent to {{provider}}.', { provider: config.name })}
-            </p>
-          )}
-
           <button
             type='button'
-            className='glossa-button glossa-button-primary btn-contrast glossa-passage-generate'
+            className={`glossa-button glossa-passage-generate ${onUseResult && guide && !guide.insufficientEvidence ? 'eink-bordered' : 'glossa-button-primary btn-contrast'}`}
             disabled={!ready || !providerReady || busy !== null || unsaved}
             onClick={() => void generate()}
           >
@@ -517,7 +513,7 @@ function PassageResultPanel<T extends PassageResult>({
   );
   return (
     <div className='glossa-passage-passage'>
-      {adapter.directNavigation && guide ? (
+      {adapter.directNavigation && guide && !onUseResult ? (
         <details className='glossa-map-options'>
           <summary>{_('Passage and model')}</summary>
           {rangeAndActions}
@@ -593,7 +589,17 @@ function PassageResultPanel<T extends PassageResult>({
           {_('This saved mind map uses earlier text or model settings.')}
         </p>
       )}
-      {guide && (
+      {guide && onUseResult && !guide.insufficientEvidence && (
+        <button
+          type='button'
+          className='glossa-button glossa-button-primary btn-contrast glossa-passage-generate'
+          disabled={!ready || busy !== null}
+          onClick={() => onUseResult(guide)}
+        >
+          {_('Edit mind map')}
+        </button>
+      )}
+      {guide && (!onUseResult || guide.insufficientEvidence) && (
         <ResultDocument
           key={guide.id}
           guide={guide}

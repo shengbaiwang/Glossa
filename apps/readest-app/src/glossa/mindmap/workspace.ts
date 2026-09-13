@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import type { ChapterSource } from '@/glossa/context/types';
+import { readingMindmapSchema } from './schema';
+import type { ReadingMindmap } from './types';
 
 const id = z
   .string()
@@ -11,6 +14,7 @@ const nodeSchema = z
     parentId: id.nullable(),
     label: z.string().max(500),
     relation: z.string().max(80),
+    originNodeId: id.optional(),
   })
   .strict();
 export type MapNode = z.infer<typeof nodeSchema>;
@@ -50,6 +54,7 @@ const mapSchema = z
     focusId: id.nullable(),
     selectedId: id,
     zoom: z.number().min(0.4).max(1.6),
+    origin: readingMindmapSchema.optional(),
   })
   .strict()
   .superRefine((map, ctx) => {
@@ -60,6 +65,12 @@ const mapSchema = z
       map.collapsed.some((n) => !ids.has(n))
     )
       ctx.addIssue({ code: 'custom', message: 'Invalid view state' });
+    const originIds = new Set(map.origin?.nodes.map((node) => node.id));
+    if (
+      map.origin?.insufficientEvidence ||
+      map.nodes.some((node) => node.originNodeId && !originIds.has(node.originNodeId))
+    )
+      ctx.addIssue({ code: 'custom', message: 'Invalid original source association' });
   });
 export type LocalMap = z.infer<typeof mapSchema>;
 export const mapWorkspaceSchema = z
@@ -79,6 +90,8 @@ export const mapWorkspaceSchema = z
         : !workspace.maps.some((m) => m.id === workspace.activeId))
     )
       ctx.addIssue({ code: 'custom', message: 'Invalid active map' });
+    if (workspace.maps.some((map) => map.origin && map.origin.bookId !== workspace.bookId))
+      ctx.addIssue({ code: 'custom', message: 'Original sources belong to another book' });
   });
 export type MapWorkspace = z.infer<typeof mapWorkspaceSchema>;
 
@@ -93,6 +106,37 @@ export function createMap(label: string): LocalMap {
     selectedId: rootId,
     zoom: 1,
   };
+}
+
+/** User edits affect the workspace tree; the original generation stays as provenance. */
+export function createMapFromMindmap(generated: ReadingMindmap): LocalMap {
+  const origin = readingMindmapSchema.parse(generated);
+  const root = origin.nodes.find((node) => node.parentId === null);
+  if (!root || origin.insufficientEvidence) throw new Error('No supported map to edit');
+  return {
+    ...createMap(root.label),
+    nodes: origin.nodes.map(({ id, parentId, label, relation }) => ({
+      id,
+      parentId,
+      label,
+      relation,
+      originNodeId: id,
+    })),
+    selectedId: root.id,
+    origin,
+  };
+}
+
+/** These are local source snapshots, never a verification of the user's edited wording. */
+export function getMapNodeSources(map: LocalMap, nodeId: string): ChapterSource[] {
+  const node = map.nodes.find((candidate) => candidate.id === nodeId);
+  const originNode = map.origin?.nodes.find((candidate) => candidate.id === node?.originNodeId);
+  if (!originNode || !map.origin) return [];
+  const byId = new Map(map.origin.sources.map((source) => [source.sourceId, source]));
+  return originNode.sourceIds.flatMap((sourceId) => {
+    const source = byId.get(sourceId);
+    return source ? [source] : [];
+  });
 }
 
 export type TreeEdit =

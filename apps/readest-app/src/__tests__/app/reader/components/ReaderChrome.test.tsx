@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import TabNavigation from '@/app/reader/components/sidebar/TabNavigation';
 import NotebookHeader from '@/app/reader/components/notebook/Header';
 import QuickActionMenu from '@/app/reader/components/annotator/QuickActionMenu';
+import { DropdownProvider } from '@/context/DropdownContext';
 
 vi.mock('@/context/EnvContext', () => ({ useEnv: () => ({ appService: null }) }));
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (key: string) => key }));
@@ -41,30 +42,23 @@ describe('reader navigation controls', () => {
     );
   });
 
-  it('exposes notebook pin and search state, and keeps a directly operable close control', () => {
+  it('keeps notebook pinning in its pane menu and close directly available', () => {
     const handleClose = vi.fn();
     const handleTogglePin = vi.fn();
-    const handleToggleSearchBar = vi.fn();
     render(
-      <NotebookHeader
-        isPinned
-        isSearchBarVisible
-        handleClose={handleClose}
-        handleTogglePin={handleTogglePin}
-        handleToggleSearchBar={handleToggleSearchBar}
-      />,
+      <DropdownProvider>
+        <NotebookHeader isPinned handleClose={handleClose} handleTogglePin={handleTogglePin} />
+      </DropdownProvider>,
     );
-    expect(
-      screen.getByRole('button', { name: 'Unpin Notebook' }).getAttribute('aria-pressed'),
-    ).toBe('true');
-    expect(
-      screen.getByRole('button', { name: 'Hide Search Bar' }).getAttribute('aria-expanded'),
-    ).toBe('true');
-    fireEvent.click(screen.getByRole('button', { name: 'Unpin Notebook' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Hide Search Bar' }));
+    expect(screen.getByRole('heading', { name: 'Notebook' })).toBeTruthy();
+    const options = screen.getByRole('button', { name: 'View Options' });
+    expect(options.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(options);
+    expect(options.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Unpin Notebook' }));
+    expect(options.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(handleTogglePin).toHaveBeenCalledOnce();
-    expect(handleToggleSearchBar).toHaveBeenCalledOnce();
     expect(handleClose).toHaveBeenCalledOnce();
   });
 });

@@ -40,7 +40,7 @@ beforeEach(() => {
       insufficientEvidence: false,
     },
   ]);
-  f.resolve.mockResolvedValue({ cfi: 'verified-cfi' });
+  f.resolve.mockResolvedValue({ cfi: 'verified-cfi', text: 'Locally verified original paragraph' });
   f.navigate.mockResolvedValue(undefined);
 });
 const mount = () =>
@@ -59,6 +59,9 @@ it('verifies before navigating and returns to the original position', async () =
     expect(f.navigate).toHaveBeenCalledWith({}, 'verified-cfi', expect.any(AbortSignal)),
   );
   expect(f.reveal).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('complementary', { name: 'Source excerpt' }).textContent).toContain(
+    'Locally verified original paragraph',
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Back to reading position' }));
   await waitFor(() =>
     expect(f.navigate).toHaveBeenLastCalledWith({}, 'origin-cfi', expect.any(AbortSignal)),
@@ -70,6 +73,10 @@ it('refuses unverified locations and cancels work when the archive closes', asyn
   fireEvent.click(await screen.findByRole('button', { name: 'Verified idea' }));
   await screen.findByRole('alert');
   expect(f.navigate).not.toHaveBeenCalled();
+  expect(screen.getByRole('complementary', { name: 'Source excerpt' }).textContent).toContain(
+    'Original statement',
+  );
+  expect(screen.getByText('Saved excerpt · unverified')).toBeTruthy();
   let finish: ((value: { cfi: string }) => void) | undefined;
   f.resolve.mockImplementationOnce(
     () =>

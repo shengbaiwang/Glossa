@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { ChapterSource } from '@/glossa/context/types';
 import { passageSourcesSchema } from '@/glossa/passages/schema';
+import { getPassageId } from '@/glossa/passages/passages';
 import { PassageError } from '@/glossa/passages/types';
 import { stubTranslation as _ } from '@/utils/misc';
 
@@ -57,6 +58,30 @@ export function validateMindmapSources(body: MindmapBody, sources: ChapterSource
     ids.size === sources.length && body.nodes.every((n) => n.sourceIds.every((id) => ids.has(id)))
   );
 }
+
+/** Shared persistence protocol for the original generation and editable copies. */
+export const readingMindmapSchema = mindmapBodySchema
+  .safeExtend({
+    id: z.string().min(1).max(200),
+    bookId: z.string().min(1).max(500),
+    chapterId: z.string().min(1).max(500),
+    passageId: z.string().min(1).max(600),
+    createdAt: z.iso.datetime(),
+    cacheKey: z.string().regex(/^[a-f0-9]{64}$/),
+    contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+    promptVersion: z.enum(['mindmap-1', 'mindmap-2']),
+    schemaVersion: z.literal(1),
+    provider: z
+      .object({ id: z.string(), name: z.string(), baseUrl: z.string(), model: z.string() })
+      .strict(),
+    sources: passageSourcesSchema,
+  })
+  .strict()
+  .refine(
+    (map) =>
+      validateMindmapSources(map, map.sources) &&
+      map.passageId === getPassageId(map.chapterId, map.sources),
+  );
 
 export function parseMindmap(raw: string, sources: ChapterSource[]): MindmapBody {
   try {

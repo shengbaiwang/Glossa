@@ -161,7 +161,8 @@ const book: Book = {
   updatedAt: 1,
 };
 const bookDoc = {} as BookDoc;
-const mount = () => render(<MindmapPanel book={book} bookDoc={bookDoc} bookKey='book-view' />);
+const mount = (onUseMap?: (map: ReadingMindmap) => void) =>
+  render(<MindmapPanel book={book} bookDoc={bookDoc} bookKey='book-view' onUseMap={onUseMap} />);
 const choosePassage = async () => {
   fireEvent.change(screen.getByRole('combobox', { name: 'Chapter' }), {
     target: { value: chapter.id },
@@ -192,6 +193,92 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('right-side mindmap', () => {
+  it('hands a new map to the workspace once the save attempt finishes', async () => {
+    let finishSave!: () => void;
+    f.save.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishSave = resolve;
+        }),
+    );
+    const onUseMap = vi.fn();
+    mount(onUseMap);
+    expect(screen.queryByText('Choose a passage to map its ideas and connections.')).toBeNull();
+    fireEvent.click(await choosePassage());
+    await screen.findByText('Saving…');
+    expect(onUseMap).not.toHaveBeenCalled();
+    expect(screen.queryByText('Only this passage will be sent to Test service.')).toBeNull();
+    await act(async () => finishSave());
+    await waitFor(() => expect(onUseMap).toHaveBeenCalledExactlyOnceWith(guide));
+    expect(screen.getByRole('button', { name: 'Edit mind map' })).toBeTruthy();
+    expect(screen.queryByRole('group', { name: 'Mind map controls' })).toBeNull();
+  });
+
+  it('lets the workspace save a generated map after the generation archive fails', async () => {
+    f.save.mockRejectedValueOnce(new Error('private payload'));
+    const onUseMap = vi.fn();
+    mount(onUseMap);
+    fireEvent.click(await choosePassage());
+    await waitFor(() => expect(onUseMap).toHaveBeenCalledExactlyOnceWith(guide));
+    expect(screen.queryByText('private payload')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry saving mind map' }));
+    await screen.findByText('Mind map saved on this device.');
+    expect(onUseMap).toHaveBeenCalledTimes(1);
+    expect(f.generate).toHaveBeenCalledTimes(1);
+  });
+
+  it('requires an explicit edit action when reopening an archived map', async () => {
+    f.load.mockResolvedValue(guide);
+    const onUseMap = vi.fn();
+    mount(onUseMap);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Chapter' }), {
+      target: { value: chapter.id },
+    });
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Passage' }), {
+      target: { value: passage.id },
+    });
+    const edit = await screen.findByRole('button', { name: 'Edit mind map' });
+    expect(onUseMap).not.toHaveBeenCalled();
+    expect(f.generate).not.toHaveBeenCalled();
+    fireEvent.click(edit);
+    expect(onUseMap).toHaveBeenCalledExactlyOnceWith(guide);
+  });
+
+  it('does not hand off a map when cancelled while its archive is saving', async () => {
+    let finishSave!: () => void;
+    f.save.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishSave = resolve;
+        }),
+    );
+    const onUseMap = vi.fn();
+    mount(onUseMap);
+    fireEvent.click(await choosePassage());
+    await screen.findByText('Saving…');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await act(async () => finishSave());
+    expect(onUseMap).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry saving mind map' }));
+    await screen.findByText('Mind map saved on this device.');
+    expect(onUseMap).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit mind map' }));
+    expect(onUseMap).toHaveBeenCalledExactlyOnceWith(guide);
+  });
+
+  it('keeps insufficient evidence visible without creating an empty workspace map', async () => {
+    f.generate.mockResolvedValue({ ...guide, insufficientEvidence: true, nodes: [] });
+    const onUseMap = vi.fn();
+    mount(onUseMap);
+    fireEvent.click(await choosePassage());
+    await screen.findByText('Mind map saved on this device.');
+    expect(
+      screen.getByText('This passage does not contain enough evidence for a mind map.'),
+    ).toBeTruthy();
+    expect(onUseMap).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Edit mind map' })).toBeNull();
+  });
+
   it('does not jump when a branch source cannot be verified', async () => {
     f.resolve.mockResolvedValue(null);
     mount();
@@ -277,13 +364,15 @@ describe('right-side mindmap', () => {
           finish = resolve;
         }),
     );
-    const panel = mount();
+    const onUseMap = vi.fn();
+    const panel = mount(onUseMap);
     fireEvent.click(await choosePassage());
     const signal = f.generate.mock.calls[0]![0].signal as AbortSignal;
     panel.unmount();
     expect(signal.aborted).toBe(true);
     await act(async () => finish(guide));
     expect(f.save).not.toHaveBeenCalled();
+    expect(onUseMap).not.toHaveBeenCalled();
   });
   it('shows model text as inert text and can fold the whole tree', async () => {
     f.generate.mockResolvedValue({

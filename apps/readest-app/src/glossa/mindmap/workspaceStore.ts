@@ -1,6 +1,15 @@
 import { mapWorkspaceSchema, type MapWorkspace } from './workspace';
 
 export class MapStorageConflict extends Error {}
+
+async function validateOrigins(workspace: MapWorkspace): Promise<void> {
+  const origins = workspace.maps.flatMap((map) => (map.origin ? [map.origin] : []));
+  if (!origins.length) return;
+  const { validateSavedMindmap } = await import('./store');
+  const results = await Promise.all(origins.map(validateSavedMindmap));
+  if (results.some((origin) => !origin)) throw new Error('Original map sources are invalid');
+}
+
 const open = () =>
   new Promise<IDBDatabase>((resolve, reject) => {
     let rejected = false;
@@ -30,6 +39,7 @@ export async function loadMapWorkspace(bookId: string): Promise<MapWorkspace> {
       raw === undefined ? { version: 1, bookId, revision: 0, activeId: null, maps: [] } : raw,
     );
     if (workspace.bookId !== bookId) throw new Error('Map book mismatch');
+    await validateOrigins(workspace);
     return workspace;
   } finally {
     db.close();
@@ -39,6 +49,7 @@ export async function loadMapWorkspace(bookId: string): Promise<MapWorkspace> {
 /** Revision comparison and replacement share one transaction, including across windows. */
 export async function saveMapWorkspace(workspace: MapWorkspace): Promise<void> {
   const valid = mapWorkspaceSchema.parse(workspace);
+  await validateOrigins(valid);
   const db = await open();
   try {
     await new Promise<void>((resolve, reject) => {

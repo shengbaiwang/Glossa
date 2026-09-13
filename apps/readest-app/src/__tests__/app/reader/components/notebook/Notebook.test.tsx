@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Notebook from '@/app/reader/components/notebook/Notebook';
 import { useNotebookStore } from '@/store/notebookStore';
 import { useSidebarStore } from '@/store/sidebarStore';
+import { DropdownProvider } from '@/context/DropdownContext';
 import { eventDispatcher } from '@/utils/event';
 import type { BookNote } from '@/types/book';
 
@@ -103,12 +104,58 @@ afterEach(() => {
 });
 
 const openNotebook = async () => {
-  render(<Notebook />);
+  render(
+    <DropdownProvider>
+      <Notebook />
+    </DropdownProvider>,
+  );
   act(() => useNotebookStore.getState().setNotebookVisible(true));
   await screen.findByRole('tab', { name: 'Conversation' });
 };
 
 describe('Notebook reading assistant integration', () => {
+  it('uses one destination row, with pane actions separate from the active reading tool', async () => {
+    await openNotebook();
+    const tabs = screen.getByRole('tablist', { name: 'Notebook' });
+    const header = document.querySelector('.notebook-header');
+    expect(header?.contains(tabs)).toBe(true);
+    expect(screen.queryByRole('heading', { name: 'Conversation' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Pin Notebook' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Show Search Bar' })).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'Excerpts' }));
+    const search = screen.getByRole('button', { name: 'Show Search Bar' });
+    expect(header?.contains(search)).toBe(false);
+    expect(screen.queryByText('Capture an idea as you read')).toBeNull();
+  });
+
+  it('keeps one active tab and its controlled panel as keyboard navigation changes tools', async () => {
+    await openNotebook();
+    const conversation = screen.getByRole('tab', { name: 'Conversation' });
+    fireEvent.keyDown(conversation, { key: 'ArrowRight' });
+    const map = screen.getByRole('tab', { name: 'Mind map' });
+    expect(document.activeElement).toBe(map);
+    expect(map.getAttribute('aria-selected')).toBe('true');
+    expect(conversation.getAttribute('aria-selected')).toBe('false');
+    expect(conversation.tabIndex).toBe(-1);
+    const activePanel = screen.getByRole('tabpanel', { name: 'Mind map' });
+    expect(map.getAttribute('aria-controls')).toBe(activePanel.id);
+    fireEvent.click(map);
+    expect(useNotebookStore.getState().isNotebookVisible).toBe(true);
+    expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
+  });
+
+  it('closes the pane menu with Escape and returns focus without closing the notebook', async () => {
+    await openNotebook();
+    const menu = screen.getByRole('button', { name: 'View Options' });
+    fireEvent.click(menu);
+    const pin = screen.getByRole('menuitem', { name: 'Pin Notebook' });
+    pin.focus();
+    fireEvent.keyDown(pin, { key: 'Escape' });
+    expect(screen.queryByRole('menuitem', { name: 'Pin Notebook' })).toBeNull();
+    expect(document.activeElement).toBe(menu);
+    expect(useNotebookStore.getState().isNotebookVisible).toBe(true);
+  });
+
   it('removes the guide tab and opens conversation by default', async () => {
     await openNotebook();
     expect(screen.queryByRole('tab', { name: 'Guide' })).toBeNull();
@@ -205,12 +252,14 @@ describe('Notebook reading assistant integration', () => {
     await act(() => eventDispatcher.dispatch('navigate'));
     expect(useNotebookStore.getState().isNotebookVisible).toBe(false);
     act(() => useNotebookStore.getState().setNotebookVisible(true));
-    fireEvent.click(screen.getByRole('button', { name: 'Pin Notebook' }));
+    fireEvent.click(screen.getByRole('button', { name: 'View Options' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pin Notebook' }));
     expect(mocks.saveSysSettings).toHaveBeenCalled();
     await act(() => eventDispatcher.dispatch('navigate'));
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Excerpts' }), { key: 'Escape' });
     expect(useNotebookStore.getState().isNotebookVisible).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Unpin Notebook' }));
+    fireEvent.click(screen.getByRole('button', { name: 'View Options' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Unpin Notebook' }));
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Excerpts' }), { key: 'Escape' });
     expect(useNotebookStore.getState().isNotebookVisible).toBe(false);
   });

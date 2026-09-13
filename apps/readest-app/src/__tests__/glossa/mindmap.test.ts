@@ -5,6 +5,7 @@ import type { ChapterSource } from '@/glossa/context/types';
 import { parseMindmap } from '@/glossa/mindmap/schema';
 import { generateMindmap, getMindmapCacheKey } from '@/glossa/mindmap/generate';
 import { ModelServiceError } from '@/glossa/ai/provider';
+import { getMindmapIdentity } from '@/glossa/mindmap/identity';
 
 const text = '一个例子能说明什么，受到它的条件限制。';
 const sources: ChapterSource[] = [
@@ -126,6 +127,14 @@ describe('mindmap generation boundary', () => {
       sources: [{ ...sources[0]!, anchor: { ...sources[0]!.anchor, cfi: 'other' } }],
     };
     expect(await getMindmapCacheKey('book', changed, config)).not.toBe(first);
+    const legacy = await getMindmapIdentity(
+      'book',
+      passage.id,
+      passage.sources,
+      config,
+      'mindmap-1',
+    );
+    expect(legacy.cacheKey).not.toBe(first);
   });
   it('rejects unavailable or mismatched passages before any API call', async () => {
     const complete = vi.fn();
@@ -158,5 +167,18 @@ describe('mindmap generation boundary', () => {
     await generateMindmap(options(), { complete });
     expect(complete).toHaveBeenCalledTimes(2);
     expect(complete.mock.calls[1]![0].messages[1]).toEqual(complete.mock.calls[0]![0].messages[1]);
+  });
+  it('respects the selected provider output cap even during a compact retry', async () => {
+    const complete = vi
+      .fn()
+      .mockRejectedValueOnce(new ModelServiceError('cut', 'length'))
+      .mockResolvedValue(JSON.stringify(body()));
+    const onRetry = vi.fn();
+    await generateMindmap(
+      { ...options(), config: { ...options().config, maxTokens: 2048 }, onRetry },
+      { complete },
+    );
+    expect(complete.mock.calls.map(([request]) => request.maxTokens)).toEqual([2048, 2048]);
+    expect(onRetry).toHaveBeenCalledOnce();
   });
 });

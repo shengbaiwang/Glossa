@@ -6,7 +6,7 @@ import type { ChapterSource } from '@/glossa/context/types';
 interface Props {
   guide: MindmapBody;
   sources: ChapterSource[];
-  onSource: (source: ChapterSource) => void;
+  onSource: (source: ChapterSource, node?: MindmapNode) => void;
 }
 
 export default function MindmapDocument({ guide, sources, onSource }: Props) {
@@ -46,7 +46,7 @@ export default function MindmapDocument({ guide, sources, onSource }: Props) {
               const source = sources.find((item) => item.sourceId === node.sourceIds[0]);
               if (source) {
                 setSelectedId(node.id);
-                onSource(source);
+                onSource(source, node);
               }
             }}
           >

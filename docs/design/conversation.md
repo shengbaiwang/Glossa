@@ -18,7 +18,7 @@
 
 ### 模型参数（2026-09-12）
 
-`ProviderConfig` 增加可选 `reasoningEffort` 与 `maxTokens`。能力由服务地址与模型名判定，只对已核验的官方接口发送厂商参数：智谱官方（`open.bigmodel.cn`、`api.z.ai`）的 GLM-5.3/Flash 支持 `low`/`high`/`max`，未选择时沿用既有默认 `low`；OpenAI 官方（`api.openai.com`）按已核验型号匹配（含日期快照）：GPT-5/mini/nano 为 `minimal`/`low`/`medium`/`high`；GPT-5.1 为 `none`/`low`/`medium`/`high`；GPT-5.2 在此基础上支持 `xhigh`；o1/o3/o3-mini/o4-mini 为 `low`/`medium`/`high`。不按任意前缀猜测 chat-latest、pro、codex 或未知新型号的能力。未知模型与其他兼容服务不显示推理强度，且即使存储了该字段也不会发送；已知型号也只发送其支持的档位。能力表依据 [OpenAI 模型说明](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.2) 与 [GLM 推理说明](https://docs.z.ai/guides/capabilities/thinking)，不代表覆盖所有服务与未来型号。输出上限在官方 OpenAI Chat Completions 使用 `max_completion_tokens`，其余兼容接口使用 `max_tokens`，对话默认 16,384 token，用户设置优先；导图继续使用显式的输出预算。设置面板保存参数到 provider；写入每轮回答时只保留服务身份（id、name、baseUrl、model），不持久化能力参数。
+`ProviderConfig` 增加可选 `reasoningEffort` 与 `maxTokens`。能力由服务地址与模型名判定，只对已核验的官方接口发送厂商参数：智谱官方（`open.bigmodel.cn`、`api.z.ai`）的 GLM-5.3/Flash 支持 `low`/`high`/`max`，未选择时沿用既有默认 `low`；OpenAI 官方（`api.openai.com`）按已核验型号匹配（含日期快照）：GPT-5/mini/nano 为 `minimal`/`low`/`medium`/`high`；GPT-5.1 为 `none`/`low`/`medium`/`high`；GPT-5.2 在此基础上支持 `xhigh`；o1/o3/o3-mini/o4-mini 为 `low`/`medium`/`high`。不按任意前缀猜测 chat-latest、pro、codex 或未知新型号的能力。未知模型与其他兼容服务不显示推理强度，且即使存储了该字段也不会发送；已知型号也只发送其支持的档位。能力表依据 [OpenAI 模型说明](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.2) 与 [GLM 推理说明](https://docs.z.ai/guides/capabilities/thinking)，不代表覆盖所有服务与未来型号。输出上限在官方 OpenAI Chat Completions 使用 `max_completion_tokens`，其余兼容接口使用 `max_tokens`，对话默认 16,384 token，用户设置优先；导图优先遵从同一设置中的输出上限，未设置时使用其默认预算。设置面板保存参数到 provider；写入每轮回答时只保留服务身份（id、name、baseUrl、model），不持久化能力参数。
 
 ### 输入、历史与排版（2026-09-12）
 

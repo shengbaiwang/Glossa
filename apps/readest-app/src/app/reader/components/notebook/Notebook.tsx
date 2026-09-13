@@ -9,7 +9,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { NotebookPen } from '@/components/GlossaIcons';
+import { NotebookPen, Search } from '@/components/GlossaIcons';
 
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
@@ -482,39 +482,54 @@ const Notebook: React.FC = ({}) => {
           )}
           <NotebookHeader
             isPinned={isNotebookPinned}
-            isSearchBarVisible={isSearchBarVisible}
             handleClose={() => setNotebookVisible(false)}
             handleTogglePin={handleTogglePin}
-            handleToggleSearchBar={handleToggleSearchBar}
-            showSearchButton={activeTab === 'notes'}
-            conversation={activeTab === 'conversation'}
-          />
+          >
+            {supportsReadingAssistant && (
+              <div
+                className='glossa-reader-tabs glossa-notebook-tabs'
+                role='tablist'
+                aria-label={_('Notebook')}
+                aria-orientation='horizontal'
+              >
+                {tabs.map(({ id, label }, index) => (
+                  <button
+                    key={id}
+                    ref={(element) => {
+                      tabRefs.current[index] = element;
+                    }}
+                    id={`${tabId}-tab-${id}`}
+                    type='button'
+                    role='tab'
+                    className='glossa-reader-tab min-w-0 text-xs font-medium'
+                    title={label}
+                    aria-label={label}
+                    aria-selected={activeTab === id}
+                    aria-controls={`${tabId}-panel-${id}`}
+                    tabIndex={activeTab === id ? 0 : -1}
+                    onClick={() => setNotebookActiveTab(id)}
+                    onKeyDown={(event) => handleTabKeyDown(event, index)}
+                  >
+                    <span className='truncate'>{label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </NotebookHeader>
 
-          {supportsReadingAssistant && (
-            <div
-              className='glossa-reader-tabs glossa-notebook-tabs flex shrink-0 gap-1 px-3 pb-2'
-              role='tablist'
-              aria-label={_('Notebook')}
-            >
-              {tabs.map(({ id, label }, index) => (
-                <button
-                  key={id}
-                  ref={(element) => {
-                    tabRefs.current[index] = element;
-                  }}
-                  id={`${tabId}-tab-${id}`}
-                  type='button'
-                  role='tab'
-                  className='glossa-reader-tab min-h-11 min-w-0 flex-1 rounded-lg px-2 py-2 text-xs font-medium'
-                  aria-selected={activeTab === id}
-                  aria-controls={`${tabId}-panel-${id}`}
-                  tabIndex={activeTab === id ? 0 : -1}
-                  onClick={() => setNotebookActiveTab(id)}
-                  onKeyDown={(event) => handleTabKeyDown(event, index)}
-                >
-                  {label}
-                </button>
-              ))}
+          {activeTab === 'notes' && (
+            <div className='glossa-notebook-excerpts-toolbar'>
+              <button
+                type='button'
+                title={isSearchBarVisible ? _('Hide Search Bar') : _('Show Search Bar')}
+                aria-label={isSearchBarVisible ? _('Hide Search Bar') : _('Show Search Bar')}
+                aria-expanded={isSearchBarVisible}
+                aria-pressed={isSearchBarVisible}
+                onClick={handleToggleSearchBar}
+                className='glossa-icon-button touch-target btn btn-ghost h-8 min-h-8 w-8 p-0'
+              >
+                <Search size={18} aria-hidden='true' />
+              </button>
             </div>
           )}
 
@@ -552,7 +567,7 @@ const Notebook: React.FC = ({}) => {
         )}
         {supportsReadingAssistant && activeTab === 'mindmap' && (
           <div
-            className='glossa-notebook-content min-h-0 flex-1 overflow-y-auto'
+            className='glossa-notebook-content min-h-0 flex-1 overflow-hidden'
             role='tabpanel'
             id={`${tabId}-panel-mindmap`}
             aria-labelledby={`${tabId}-tab-mindmap`}
@@ -578,12 +593,8 @@ const Notebook: React.FC = ({}) => {
           tabIndex={0}
         >
           {isNotesTabEmpty ? (
-            <div className='flex flex-grow items-center justify-center overflow-y-auto px-3'>
-              <EmptyState
-                Icon={NotebookPen}
-                label={_('No Notes')}
-                hint={_('Capture an idea as you read')}
-              />
+            <div className='glossa-reader-empty-region'>
+              <EmptyState Icon={NotebookPen} label={_('No Notes')} />
             </div>
           ) : (
             <div className='flex-grow overflow-y-auto px-3'>

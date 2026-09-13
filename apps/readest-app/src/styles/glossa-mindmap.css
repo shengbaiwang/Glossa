@@ -1,13 +1,15 @@
 /* A sheet of ideas: ink hierarchy, interlinear relations, and quiet branch rules. */
 .glossa-workmap {
-  --glossa-map-line: color-mix(in srgb, var(--glossa-ink) 50%, var(--glossa-surface));
+  --glossa-map-line: color-mix(in srgb, var(--glossa-ink) 30%, var(--glossa-surface));
   position: relative;
   inset: auto;
   display: flex;
   flex-direction: column;
   width: 100%;
   height: 100%;
-  min-height: 420px;
+  min-height: 0;
+  min-width: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   max-width: none;
   max-height: none;
   margin: 0;
@@ -17,7 +19,7 @@
   color: var(--glossa-ink);
   font-size: 13px;
   text-align: start;
-  overflow: visible;
+  overflow: hidden;
 }
 .glossa-workmap.is-expanded {
   position: fixed;
@@ -36,7 +38,7 @@
 .glossa-workmap button,
 .glossa-workmap summary,
 .glossa-workmap select {
-  min-height: 44px;
+  min-height: 32px;
   border-radius: 9px;
   cursor: pointer;
 }
@@ -76,22 +78,23 @@
   padding-inline: 12px;
 }
 .glossa-workmap-header {
-  padding-block: 6px 0;
+  padding-block: 8px 2px;
+  gap: 4px;
 }
 .glossa-workmap-header select {
   flex: 1;
-  font-weight: 600;
+  font-weight: 500;
 }
 .glossa-workmap-icon {
-  width: 44px;
-  min-width: 44px;
+  width: 32px;
+  min-width: 32px;
   flex-shrink: 0;
   font-size: 20px;
 }
 .glossa-workmap-toolbar {
   justify-content: space-between;
   flex-wrap: wrap;
-  padding-block: 0 8px;
+  padding-block: 4px 10px;
   border-block-end: 1px solid var(--glossa-border);
 }
 .glossa-workmap-views,
@@ -100,16 +103,25 @@
   display: flex;
   align-items: center;
 }
+.glossa-workmap-views {
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--glossa-wash);
+}
 .glossa-workmap-views button {
+  min-height: 28px;
   white-space: nowrap;
-  padding-inline: 10px;
+  padding-inline: 11px;
   color: var(--glossa-muted);
-  border-radius: 0;
-  border-block-end: 2px solid transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  font-size: 12px;
 }
 .glossa-workmap-views button[aria-pressed='true'] {
   color: var(--glossa-ink);
-  border-block-end-color: var(--glossa-ink);
+  background: var(--glossa-surface);
+  border-color: var(--glossa-border);
 }
 .glossa-workmap-viewport {
   flex: 1;
@@ -123,7 +135,7 @@
   touch-action: pan-x pan-y;
 }
 .glossa-workmap-canvas {
-  padding: 30px 20px;
+  padding: 20px 12px 30px;
 }
 .glossa-workmap-canvas ul {
   list-style: none;
@@ -143,11 +155,12 @@
 }
 .glossa-workmap-label {
   flex: 1;
-  min-width: 90px;
+  min-width: 0;
   flex-direction: column;
   align-items: stretch !important;
   text-align: start;
-  padding: 9px 10px 9px 0;
+  padding: 7px 10px 7px 0;
+  min-height: 38px;
   line-height: 1.65;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -159,12 +172,12 @@
   line-height: 1.5;
 }
 .glossa-workmap-node[data-root='true'] .glossa-workmap-label {
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 600;
   letter-spacing: -0.025em;
 }
 .glossa-workmap-fold {
-  width: 44px;
+  width: 32px;
   flex-shrink: 0;
 }
 .glossa-workmap-dot {
@@ -175,37 +188,37 @@
 }
 .glossa-workmap-dot::after {
   content: '';
-  width: 4px;
-  height: 4px;
+  width: 3px;
+  height: 3px;
   border-radius: 50%;
   background: var(--glossa-muted);
 }
-[data-view='outline'] ul ul {
+.glossa-workmap-viewport[data-view='outline'] ul ul {
   margin-inline-start: 16px;
-  padding-inline-start: 12px;
+  padding-inline-start: 8px;
   border-inline-start: 1px solid var(--glossa-border);
 }
-[data-view='outline'] li {
-  padding-block: 4px;
+.glossa-workmap-viewport[data-view='outline'] li {
+  padding-block: 1px;
 }
-[data-view='map'] .glossa-workmap-canvas {
+.glossa-workmap-viewport[data-view='map'] .glossa-workmap-canvas {
   display: flex;
   justify-content: center;
   width: max-content;
   min-width: 100%;
   padding: 48px 36px;
 }
-[data-view='map'] li {
+.glossa-workmap-viewport[data-view='map'] li {
   display: flex;
   align-items: center;
   position: relative;
   padding-block: 12px;
 }
-[data-view='map'] ul ul {
+.glossa-workmap-viewport[data-view='map'] ul ul {
   position: relative;
   margin-inline-start: 42px;
 }
-[data-view='map'] ul ul > li::before {
+.glossa-workmap-viewport[data-view='map'] ul ul > li::before {
   content: '';
   position: absolute;
   inset-inline-start: -22px;
@@ -213,13 +226,13 @@
   width: 22px;
   border-inline-start: 1px solid var(--glossa-map-line);
 }
-[data-view='map'] ul ul > li:first-child::before {
+.glossa-workmap-viewport[data-view='map'] ul ul > li:first-child::before {
   inset-block-start: 50%;
 }
-[data-view='map'] ul ul > li:last-child::before {
+.glossa-workmap-viewport[data-view='map'] ul ul > li:last-child::before {
   inset-block-end: 50%;
 }
-[data-view='map'] ul ul > li > .glossa-workmap-node::before {
+.glossa-workmap-viewport[data-view='map'] ul ul > li > .glossa-workmap-node::before {
   content: '';
   position: absolute;
   inset-inline-start: -22px;
@@ -227,7 +240,7 @@
   top: 50%;
   border-block-start: 1px solid var(--glossa-map-line);
 }
-[data-view='map'] li:has(> ul) > .glossa-workmap-node::after {
+.glossa-workmap-viewport[data-view='map'] li:has(> ul) > .glossa-workmap-node::after {
   content: '';
   position: absolute;
   inset-inline-end: -21px;
@@ -235,25 +248,31 @@
   width: 20px;
   border-block-start: 1px solid var(--glossa-map-line);
 }
-[data-view='map'] .glossa-workmap-node {
-  width: 210px;
+.glossa-workmap-viewport[data-view='map'] .glossa-workmap-node {
+  width: 194px;
   flex-shrink: 0;
-  border-color: var(--glossa-border);
+  border-color: transparent;
+  border-block-end-color: var(--glossa-map-line);
+  border-radius: 0;
   background: var(--glossa-surface);
 }
-[data-view='map'] .glossa-workmap-node[data-root='true'] {
-  width: 230px;
+.glossa-workmap-viewport[data-view='map'] .glossa-workmap-node[data-root='true'] {
+  width: 216px;
   border-color: var(--glossa-ink);
-  padding-block: 6px;
+  border-radius: 12px;
+  background: var(--glossa-ink);
+  color: var(--glossa-surface);
+  padding: 8px 4px;
 }
-[data-view='map'] .glossa-workmap-node[data-selected='true'] {
+.glossa-workmap-viewport[data-view='map'] .glossa-workmap-node[data-selected='true'] {
   border-color: var(--glossa-ink);
+  border-radius: 9px;
   background: var(--glossa-wash);
 }
 .glossa-workmap-edit {
   flex: 1;
-  min-width: 110px;
-  padding: 8px;
+  min-width: 0;
+  padding: 4px 8px 4px 0;
 }
 .glossa-workmap-edit textarea,
 .glossa-workmap-edit input,
@@ -266,8 +285,11 @@
   font: inherit;
 }
 .glossa-workmap-edit textarea {
-  resize: vertical;
-  min-height: 80px;
+  resize: none;
+  min-height: 34px;
+  max-height: 240px;
+  line-height: 1.65;
+  overflow-y: auto;
 }
 .glossa-workmap-edit input {
   font-size: 11px;
@@ -277,41 +299,10 @@
 .glossa-workmap-context {
   border-block-start: 1px solid var(--glossa-border);
   justify-content: start;
+  padding-block: 6px;
 }
 .glossa-workmap-context > button {
   padding-inline: 6px;
-}
-.glossa-workmap-more {
-  position: relative;
-  margin-inline-start: auto;
-}
-.glossa-workmap-more summary {
-  display: flex;
-  align-items: center;
-  padding-inline: 12px;
-  list-style: none;
-}
-.glossa-workmap-more summary::-webkit-details-marker {
-  display: none;
-}
-.glossa-workmap-more > div {
-  position: absolute;
-  inset-block-end: 100%;
-  inset-inline-end: 0;
-  width: 190px;
-  max-height: min(60dvh, 440px);
-  overflow-y: auto;
-  padding: 6px;
-  border: 1px solid var(--glossa-border);
-  border-radius: 12px;
-  background: var(--glossa-surface);
-  z-index: 10;
-}
-.glossa-workmap-more button {
-  display: flex;
-  justify-content: start;
-  width: 100%;
-  padding-inline: 12px;
 }
 .glossa-workmap-footer {
   flex-wrap: wrap;
@@ -340,7 +331,7 @@
   border-block-end: 1px solid var(--glossa-border);
 }
 .glossa-workmap-search input {
-  min-height: 44px;
+  min-height: 32px;
   background: var(--glossa-wash);
 }
 .glossa-workmap-results {
@@ -376,13 +367,20 @@
   padding-inline: 4px;
 }
 .glossa-workmap-empty {
-  padding: 42px 26px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px 24px;
   color: var(--glossa-muted);
 }
 .glossa-workmap-empty h3 {
   color: var(--glossa-ink);
   font-size: 20px;
-  margin-block: 20px 8px;
+  font-weight: 500;
+  margin-block: 8px 18px;
 }
 .glossa-workmap-empty p {
   line-height: 1.8;
@@ -410,10 +408,190 @@
   --glossa-muted: var(--glossa-ink);
 }
 @media (max-height: 600px) {
-  .glossa-workmap {
-    min-height: 300px;
-  }
   .glossa-workmap.is-expanded {
     height: 96dvh;
+  }
+}
+
+.glossa-workmap :is(input, textarea),
+.glossa-workmap-source blockquote {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.glossa-workmap-header > select {
+  width: 0;
+}
+.glossa-workmap-header .glossa-workmap-generate {
+  padding-inline: 10px;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--glossa-border);
+}
+.glossa-workmap-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+.glossa-workmap-context > .glossa-workmap-menu {
+  margin-inline-start: auto;
+}
+.glossa-workmap-menu-items {
+  position: absolute;
+  inset-block-start: calc(100% + 4px);
+  inset-inline-end: 0;
+  z-index: 20;
+  width: 220px;
+  max-width: calc(100vw - 32px);
+  max-height: min(60dvh, 480px);
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--glossa-border);
+  border-radius: 12px;
+  background: var(--glossa-surface);
+  color: var(--glossa-ink);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.06);
+}
+.glossa-workmap-menu.opens-above .glossa-workmap-menu-items {
+  inset-block-start: auto;
+  inset-block-end: calc(100% + 4px);
+}
+.glossa-workmap-menu-items > button {
+  display: flex;
+  width: 100%;
+  min-height: 36px;
+  justify-content: start;
+  text-align: start;
+  padding: 7px 10px;
+  gap: 8px;
+}
+.glossa-workmap-menu-items hr {
+  border: 0;
+  border-block-start: 1px solid var(--glossa-border);
+  margin-block: 5px;
+}
+.glossa-workmap-menu-select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: 10px 0;
+}
+.glossa-workmap-menu-select select {
+  max-width: 130px;
+}
+.glossa-workmap-footer {
+  padding-block: 0;
+}
+.glossa-workmap-footer:has(.glossa-workmap-zoom) {
+  padding-block: 3px;
+  border-block-start: 1px solid var(--glossa-border);
+}
+.glossa-workmap-zoom {
+  margin-inline: auto;
+}
+.glossa-workmap-source {
+  flex-shrink: 0;
+  min-height: 0;
+  border-block-start: 1px solid var(--glossa-border);
+  padding: 10px 18px 14px;
+  background: var(--glossa-surface);
+}
+.glossa-workmap-source header,
+.glossa-workmap-source header > div,
+.glossa-workmap-source-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.glossa-workmap-source header {
+  justify-content: space-between;
+  margin-block-end: 6px;
+}
+.glossa-workmap-source header > div:first-child {
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.glossa-workmap-source strong {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.glossa-workmap-source-kind,
+.glossa-workmap-source p {
+  font-size: 11px;
+  color: var(--glossa-muted);
+}
+.glossa-workmap-source-actions {
+  gap: 0 !important;
+}
+.glossa-workmap-source-actions button {
+  min-width: 32px;
+}
+.glossa-workmap-source blockquote {
+  max-height: min(25dvh, 220px);
+  margin: 0;
+  padding-inline: 12px 0;
+  border-inline-start: 2px solid var(--glossa-border);
+  overflow: auto;
+  overscroll-behavior: contain;
+  font-size: 13px;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.glossa-workmap-return {
+  padding: 0 14px 4px;
+  flex-shrink: 0;
+}
+.glossa-workmap-return button {
+  font-size: 12px;
+  gap: 6px;
+  padding-inline: 4px;
+  color: var(--glossa-muted);
+}
+.glossa-workmap-generation {
+  overflow: auto;
+  min-height: 0;
+  padding: 8px 16px 20px;
+}
+.glossa-workmap-generation > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.glossa-workmap-generation h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+.glossa-workmap-generation .glossa-passage-panel {
+  padding: 8px 0;
+}
+.glossa-workmap-generation .glossa-passage-range {
+  font-size: 12px;
+}
+.glossa-workmap-viewport[data-view='map']
+  .glossa-workmap-node[data-root='true'][data-selected='true'] {
+  background: var(--glossa-ink);
+  color: var(--glossa-surface);
+  outline: 2px solid var(--glossa-border);
+  outline-offset: 3px;
+}
+.glossa-workmap-viewport[data-view='map'] .glossa-workmap-node[data-root='true'] button:hover {
+  background: transparent;
+}
+.glossa-workmap-viewport[data-view='map']
+  .glossa-workmap-node[data-root='true']
+  :is(input, textarea) {
+  color: var(--glossa-surface);
+}
+[data-eink='true'] .glossa-workmap-menu-items {
+  box-shadow: none;
+}
+@media (pointer: coarse) {
+  .glossa-workmap :is(button, select) {
+    min-height: 44px;
+  }
+  .glossa-workmap-icon,
+  .glossa-workmap-fold {
+    min-width: 40px;
   }
 }

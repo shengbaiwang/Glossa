@@ -50,7 +50,7 @@ const mount = (b: Book, width = 390) =>
 it('edits without AI, preserves hierarchy across views, undoes branch deletion and reopens saved state', async () => {
   const b = book();
   const view = mount(b);
-  await screen.findByRole('heading', { name: 'Give your ideas a shape' });
+  await screen.findByRole('heading', { name: 'Mind map' });
   fireEvent.click(screen.getAllByRole('button', { name: 'New mind map' })[0]!);
   let input = await screen.findByRole('textbox', { name: 'Idea text' });
   fireEvent.change(input, { target: { value: '阅读如何成为理解' } });
@@ -73,6 +73,7 @@ it('edits without AI, preserves hierarchy across views, undoes branch deletion a
   fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
   expect(screen.getByRole('button', { name: '通过 解释概念之间的关系' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Collapse 联系已有知识' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Mind map menu' }));
   fireEvent.click(screen.getByRole('button', { name: 'Find an idea' }));
   fireEvent.change(screen.getByRole('textbox', { name: 'Find an idea' }), {
     target: { value: '概念' },
@@ -158,7 +159,7 @@ it('lays out Chinese branches without overlap and supports narrow, dark, RTL, e-
 it('restores a validated backup as a new map and rejects malformed files without replacing work', async () => {
   const b = book();
   mount(b);
-  await screen.findByRole('heading', { name: 'Give your ideas a shape' });
+  await screen.findByRole('heading', { name: 'Mind map' });
   const map = createMap('Recovered idea');
   const backup = {
     version: 1,
@@ -184,7 +185,7 @@ it('restores a validated backup as a new map and rejects malformed files without
   await screen.findByRole('alert');
   expect((await loadMapWorkspace(b.hash)).maps).toEqual(saved.maps);
   fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-  expect(screen.getByRole('heading', { name: 'Give your ideas a shape' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Mind map' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
   expect(screen.getByRole('button', { name: 'Recovered idea' })).toBeTruthy();
 });

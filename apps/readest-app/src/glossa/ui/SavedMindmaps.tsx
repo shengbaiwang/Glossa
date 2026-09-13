@@ -1,28 +1,24 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useReaderStore } from '@/store/readerStore';
-import { resolveSource } from '@/glossa/citations/sources';
-import { navigateSource } from '@/glossa/citations/navigation';
 import { listSavedMindmaps } from '@/glossa/mindmap/store';
 import type { ReadingMindmap } from '@/glossa/mindmap/types';
-import type { ChapterSource } from '@/glossa/context/types';
 import type { ReadingPanelProps } from './ReadingPassagePanel';
 import MindmapDocument from './MindmapDocument';
+import MindmapSourcePanel, { type MindmapSourceSelection } from './MindmapSourcePanel';
 
 export default function SavedMindmaps({
   book,
   bookDoc,
   bookKey,
   onNavigate,
-}: ReadingPanelProps & { onNavigate?: () => void }) {
+  onUseMap,
+}: ReadingPanelProps & { onNavigate?: () => void; onUseMap?: (map: ReadingMindmap) => void }) {
   const _ = useTranslation();
   const [maps, setMaps] = useState<ReadingMindmap[] | null>(null);
   const [selected, setSelected] = useState('');
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
-  const [origin, setOrigin] = useState('');
-  const [busy, setBusy] = useState(false);
-  const navigation = useRef<AbortController | null>(null);
+  const [source, setSource] = useState<MindmapSourceSelection | null>(null);
   useEffect(() => {
     let active = true;
     setError('');
@@ -39,41 +35,8 @@ export default function SavedMindmaps({
       });
     return () => {
       active = false;
-      navigation.current?.abort();
     };
   }, [book.hash, retry]);
-  const navigate = async (source?: ChapterSource) => {
-    navigation.current?.abort();
-    const controller = new AbortController();
-    navigation.current = controller;
-    setError('');
-    setBusy(true);
-    try {
-      const reader = useReaderStore.getState();
-      const view = reader.getView(bookKey);
-      const resolved = source
-        ? await resolveSource(bookDoc, source, { signal: controller.signal })
-        : null;
-      if (controller.signal.aborted) return;
-      const cfi = source ? resolved?.cfi : origin;
-      if (!view || !cfi) throw new Error('Unresolved source');
-      if (source) setOrigin((previous) => previous || reader.getProgress(bookKey)?.location || '');
-      await navigateSource(view, cfi, controller.signal);
-      if (!controller.signal.aborted) {
-        if (!source) setOrigin('');
-        onNavigate?.();
-      }
-    } catch {
-      if (!controller.signal.aborted)
-        setError(
-          source
-            ? 'The source location could not be verified.'
-            : 'Could not return to the previous reading position.',
-        );
-    } finally {
-      if (!controller.signal.aborted) setBusy(false);
-    }
-  };
   const current = maps?.find((m) => m.id === selected);
   return (
     <section className='glossa-workmap-archive'>
@@ -84,9 +47,8 @@ export default function SavedMindmaps({
           aria-label={_('Earlier generated maps')}
           value={selected}
           onChange={(event) => {
-            navigation.current?.abort();
-            setBusy(false);
             setError('');
+            setSource(null);
             setSelected(event.target.value);
           }}
         >
@@ -98,17 +60,6 @@ export default function SavedMindmaps({
           ))}
         </select>
       )}
-      {origin && (
-        <button
-          type='button'
-          className='glossa-button'
-          disabled={busy}
-          onClick={() => void navigate()}
-        >
-          {_('Back to reading position')}
-        </button>
-      )}
-      {busy && <p role='status'>{_('Locating source…')}</p>}
       {error && (
         <p role='alert'>
           {_(error)}
@@ -121,10 +72,32 @@ export default function SavedMindmaps({
       )}
       {current && (
         <MindmapDocument
-          key={current.id}
+          key={`map-${current.id}`}
           guide={current}
           sources={current.sources}
-          onSource={(source) => void navigate(source)}
+          onSource={(item, node) => {
+            setSource({
+              nodeId: node?.id ?? item.sourceId,
+              sources: node
+                ? node.sourceIds.flatMap((id) => current.sources.filter((s) => s.sourceId === id))
+                : [item],
+            });
+          }}
+        />
+      )}
+      {current && onUseMap && !current.insufficientEvidence && (
+        <button type='button' className='glossa-button' onClick={() => onUseMap(current)}>
+          {_('Edit mind map')}
+        </button>
+      )}
+      {current && (
+        <MindmapSourcePanel
+          key={`source-${current.id}`}
+          book={book}
+          bookDoc={bookDoc}
+          bookKey={bookKey}
+          selection={source}
+          onNavigate={onNavigate}
         />
       )}
     </section>

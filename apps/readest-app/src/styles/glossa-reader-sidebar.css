@@ -1,11 +1,11 @@
 /* A book identity, one line of destinations, then the selected reading tool. */
-.glossa-reader-sidebar .glossa-reader-tabs {
+:is(.glossa-reader-sidebar, .glossa-reader-notebook) .glossa-reader-tabs {
   gap: 4px;
   padding: 0 8px 8px;
   border-bottom: 1px solid var(--glossa-border);
 }
 
-.glossa-reader-sidebar .glossa-reader-tab {
+:is(.glossa-reader-sidebar, .glossa-reader-notebook) .glossa-reader-tab {
   position: relative;
   min-height: 36px;
   padding-block: 8px;
@@ -15,13 +15,14 @@
   box-shadow: none;
 }
 
-.glossa-reader-sidebar .glossa-reader-tab[aria-selected='true'] {
+:is(.glossa-reader-sidebar, .glossa-reader-notebook) .glossa-reader-tab[aria-selected='true'] {
   color: var(--glossa-ink);
   background: transparent;
   font-weight: 600;
 }
 
-.glossa-reader-sidebar .glossa-reader-tab[aria-selected='true']::after {
+:is(.glossa-reader-sidebar, .glossa-reader-notebook)
+  .glossa-reader-tab[aria-selected='true']::after {
   content: '';
   position: absolute;
   bottom: 0;
@@ -46,7 +47,7 @@
   padding: 28px 20px;
 }
 
-.glossa-reader-sidebar .glossa-reader-empty {
+:is(.glossa-reader-sidebar, .glossa-reader-notebook) .glossa-reader-empty {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
   align-items: start;
@@ -56,11 +57,13 @@
   text-align: start;
 }
 
-.glossa-reader-sidebar .glossa-reader-empty > :not(.glossa-reader-empty-icon) {
+:is(.glossa-reader-sidebar, .glossa-reader-notebook)
+  .glossa-reader-empty
+  > :not(.glossa-reader-empty-icon) {
   grid-column: 2;
 }
 
-.glossa-reader-sidebar .glossa-reader-empty-icon {
+:is(.glossa-reader-sidebar, .glossa-reader-notebook) .glossa-reader-empty-icon {
   grid-row: 1 / 4;
   width: 24px;
   height: 24px;
@@ -69,12 +72,12 @@
   background: transparent;
 }
 
-.glossa-reader-sidebar .glossa-reader-empty-icon svg {
+:is(.glossa-reader-sidebar, .glossa-reader-notebook) .glossa-reader-empty-icon svg {
   width: 22px;
   height: 22px;
 }
 
-.glossa-reader-sidebar .glossa-reader-empty > p {
+:is(.glossa-reader-sidebar, .glossa-reader-notebook) .glossa-reader-empty > p {
   font-size: 13px;
   line-height: 1.65;
 }
@@ -91,21 +94,81 @@
 }
 
 @media (pointer: coarse) {
-  .glossa-reader-sidebar .glossa-reader-tab,
+  :is(.glossa-reader-sidebar, .glossa-reader-notebook) .glossa-reader-tab,
   .glossa-reader-sidebar .glossa-reader-empty-action {
     min-height: 44px;
   }
 }
 
-[data-eink='true'] .glossa-reader-sidebar .glossa-reader-tab,
+[data-eink='true'] :is(.glossa-reader-sidebar, .glossa-reader-notebook) .glossa-reader-tab,
 [data-eink='true'] .glossa-reader-sidebar .glossa-reader-muted {
   color: var(--glossa-ink);
 }
 
-[data-eink='true'] .glossa-reader-sidebar .glossa-reader-tab[aria-selected='true'] {
+[data-eink='true']
+  :is(.glossa-reader-sidebar, .glossa-reader-notebook)
+  .glossa-reader-tab[aria-selected='true'] {
   font-weight: 700;
 }
 
 [data-eink='true'] .glossa-reader-sidebar .glossa-reader-empty-action {
   border-color: var(--glossa-ink);
+}
+
+/* One destination row; each reading tool owns its controls below this line. */
+.glossa-reader-notebook .notebook-header {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 8px;
+  padding-inline: 12px;
+  border-bottom: 1px solid var(--glossa-border);
+}
+
+.glossa-reader-notebook .glossa-notebook-tabs {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-self: stretch;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+}
+
+.glossa-notebook-tabs .glossa-reader-tab {
+  display: flex;
+  min-height: 44px;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.4;
+}
+
+.glossa-reader-notebook .glossa-reader-tab[aria-selected='true']::after {
+  bottom: 5px;
+}
+
+.glossa-notebook-menu {
+  width: max-content;
+  min-width: 180px;
+  max-width: calc(100vw - 32px);
+  padding: 5px;
+  color: var(--glossa-ink);
+  background: var(--glossa-surface);
+  border: 1px solid var(--glossa-border);
+  border-radius: var(--glossa-radius);
+  box-shadow: var(--glossa-shadow);
+}
+
+.glossa-notebook-excerpts-toolbar {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: flex-end;
+  padding-inline: 12px;
+}
+
+[data-eink='true'] .glossa-notebook-menu {
+  border-color: var(--glossa-ink);
+  box-shadow: none;
 }

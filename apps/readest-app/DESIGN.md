@@ -1196,10 +1196,12 @@ Cross-references that must stay in sync:
 If you change a rule here, search for the cross-reference and update both.
 
 
-### 14. Glossa mind map foundation — 2026-09-13
+### 14. Glossa mind maps — 2026-09-13
 
-The EPUB trailing pane now opens a local idea workspace with no model setup. Outline and horizontal map views share one ordered tree. Start from a blank theme; use the root label as the map title. Keep paper/ink surfaces, short readable labels, fine logical connectors and a stronger root. Optional relationship text sits above its idea as a quiet interlinear gloss.
+The EPUB trailing pane uses one destination row (Conversation / Mind map / Excerpts), with an ink underline, a pane menu and Close. Excerpt search belongs to its own toolbar. Within Mind map, keep the map title and AI generation action above a quieter segmented Outline / Mind map view switch. Avoid repeated titles and equal-weight nested tabs.
 
-Outline click edits; map click selects, double-click edits. Keep folding separate from text. Show child/sibling creation beside a contextual More menu. Advanced operations, branch focus and JSON backup live there. Keep search, level controls, undo/redo and genuine canvas zoom distinct from content. A native dialog expands the workspace while preserving the current structure; Escape and native focus handling return control to the reader. No decorative palette, gradient, sources badges or explanation cards.
+AI maps and blank maps use the same editable ordered tree. Favor compact text hierarchy, fine logical connectors and an ink root in the horizontal map; paper/ink surfaces, shared rounded icons and readable wrapping throughout. Common editing and undo actions stay visible. Map management and selected-idea actions belong to separate menus. No teaching microcopy, decorative palettes, gradients, source badges or explanation cards.
 
-Long labels wrap; the map scrolls within its own viewport. Narrow controls wrap rather than overflow. Use logical spacing and connectors for RTL, visible keyboard focus, 44px primary actions and explicit e-ink borders. Show a quiet save status and actionable failures. Previously generated maps remain read-only with locally verified source navigation; personal nodes do not inherit source claims. See `../../docs/design/mindmap.md` and `src/styles/glossa-mindmap.css`.
+Click a sourced node to verify and navigate to local text, shown in a restrained excerpt pane below the editor. Double-click, F2 or the visible edit button changes an idea. Preserve immutable generated provenance; edited labels and new manual nodes are never certified quotations. The excerpt pane labels edited ideas and interpretations, supports multiple original passages, failure retry and return to reading position. Manual outline nodes still support direct entry.
+
+Use logical spacing for RTL, visible keyboard focus, compact controls matching Conversation, touch targets on coarse pointers, and explicit e-ink borders. Keep canvas scrolling inside the workspace and source text selectable. Success saving status is announced accessibly; actionable errors remain visible. See `../../docs/design/mindmap.md` and `src/styles/glossa-mindmap.css`.

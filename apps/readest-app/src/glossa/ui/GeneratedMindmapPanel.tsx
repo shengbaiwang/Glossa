@@ -17,6 +17,10 @@ const adapter: ReadingPanelAdapter<ReadingMindmap> = {
   cacheKey: getMindmapCacheKey,
   Document: MindmapDocument,
 };
-export default function GeneratedMindmapPanel(props: ReadingPanelProps) {
-  return <ReadingPassagePanel {...props} adapter={adapter} />;
+interface Props extends ReadingPanelProps {
+  onUseMap?: (map: ReadingMindmap) => void;
+}
+
+export default function GeneratedMindmapPanel({ onUseMap, ...props }: Props) {
+  return <ReadingPassagePanel {...props} adapter={adapter} onUseResult={onUseMap} />;
 }

@@ -1,10 +1,8 @@
-import { z } from 'zod';
 import { validateProviderConfig } from '@/glossa/ai/provider';
 import { stubTranslation as _ } from '@/utils/misc';
-import { getMindmapIdentity, MINDMAP_PROMPT_VERSION, MINDMAP_SCHEMA_VERSION } from './identity';
+import { getMindmapIdentity } from './identity';
 import { getPassageId } from '@/glossa/passages/passages';
-import { passageSourcesSchema } from '@/glossa/passages/schema';
-import { mindmapBodySchema, validateMindmapSources } from './schema';
+import { readingMindmapSchema, validateMindmapSources } from './schema';
 import { PassageError, throwIfAborted } from '@/glossa/passages/types';
 import type { ReadingMindmap } from './types';
 
@@ -14,26 +12,8 @@ let databasePromise: Promise<IDBDatabase> | undefined;
 const storageError = () =>
   new PassageError('storage', _('The mind map could not be read or saved on this device.'));
 
-const mindmapSchema = mindmapBodySchema
-  .safeExtend({
-    id: z.string().min(1).max(200),
-    bookId: z.string().min(1).max(500),
-    chapterId: z.string().min(1).max(500),
-    passageId: z.string().min(1).max(600),
-    createdAt: z.iso.datetime(),
-    cacheKey: z.string().regex(/^[a-f0-9]{64}$/),
-    contentHash: z.string().regex(/^[a-f0-9]{64}$/),
-    promptVersion: z.literal(MINDMAP_PROMPT_VERSION),
-    schemaVersion: z.literal(MINDMAP_SCHEMA_VERSION),
-    provider: z
-      .object({ id: z.string(), name: z.string(), baseUrl: z.string(), model: z.string() })
-      .strict(),
-    sources: passageSourcesSchema,
-  })
-  .strict();
-
-async function validatedGuide(raw: unknown): Promise<ReadingMindmap | null> {
-  const parsed = mindmapSchema.safeParse(raw);
+export async function validateSavedMindmap(raw: unknown): Promise<ReadingMindmap | null> {
+  const parsed = readingMindmapSchema.safeParse(raw);
   if (!parsed.success) return null;
   const guide = parsed.data;
   try {
@@ -50,6 +30,7 @@ async function validatedGuide(raw: unknown): Promise<ReadingMindmap | null> {
       guide.passageId,
       guide.sources,
       provider,
+      guide.promptVersion,
     );
     if (identity.contentHash !== guide.contentHash || identity.cacheKey !== guide.cacheKey)
       return null;
@@ -101,7 +82,7 @@ export async function loadMindmap(
       transaction.onerror = transaction.onabort = () => reject(storageError());
     });
     if (raw === undefined) return null;
-    const guide = await validatedGuide(raw);
+    const guide = await validateSavedMindmap(raw);
     if (!guide) throw storageError();
     return guide?.bookId === bookId &&
       guide.chapterId === chapterId &&
@@ -115,7 +96,7 @@ export async function loadMindmap(
 
 export async function saveMindmap(guide: ReadingMindmap, signal?: AbortSignal): Promise<void> {
   throwIfAborted(signal);
-  const validated = await validatedGuide(guide);
+  const validated = await validateSavedMindmap(guide);
   throwIfAborted(signal);
   if (!validated) throw storageError();
   try {
@@ -174,7 +155,7 @@ export async function listSavedMindmaps(bookId: string): Promise<ReadingMindmap[
     tx.oncomplete = () => resolve(rows);
     tx.onerror = tx.onabort = () => reject(storageError());
   });
-  const maps = await Promise.all(raw.map(validatedGuide));
+  const maps = await Promise.all(raw.map(validateSavedMindmap));
   if (maps.some((map) => !map || map.bookId !== bookId)) throw storageError();
   return (maps as ReadingMindmap[]).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

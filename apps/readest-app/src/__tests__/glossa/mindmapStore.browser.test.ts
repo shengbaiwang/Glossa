@@ -5,6 +5,9 @@ import { listSavedMindmaps, loadMindmap, saveMindmap } from '@/glossa/mindmap/st
 import type { ReadingPassage } from '@/glossa/passages/types';
 import type { ReadingMindmap } from '@/glossa/mindmap/types';
 import type { MindmapBody } from '@/glossa/mindmap/schema';
+import { getMindmapIdentity } from '@/glossa/mindmap/identity';
+import { createMapFromMindmap, editTree, getMapNodeSources } from '@/glossa/mindmap/workspace';
+import { loadMapWorkspace, saveMapWorkspace } from '@/glossa/mindmap/workspaceStore';
 
 const DB_NAME = 'glossa-reading-mindmaps';
 const LEGACY_DB_NAME = 'glossa-study-notes';
@@ -75,6 +78,52 @@ it('persists and restores the complete twenty-thousand-character input', async (
   const restored = await loadMindmap(guide.bookId, guide.chapterId, guide.passageId);
   expect(restored).toEqual(guide);
   expect(restored!.sources[0]!.anchor.quote.exact).toHaveLength(20000);
+});
+
+it('keeps legacy prompt records readable after the generation prompt changes', async () => {
+  const generated = await guideFixture(crypto.randomUUID());
+  const legacy = {
+    ...generated,
+    ...(await getMindmapIdentity(
+      generated.bookId,
+      generated.passageId,
+      generated.sources,
+      generated.provider,
+      'mindmap-1',
+    )),
+    promptVersion: 'mindmap-1',
+  };
+  expect(legacy.cacheKey).not.toBe(generated.cacheKey);
+  await saveMindmap(legacy);
+  expect(await loadMindmap(legacy.bookId, legacy.chapterId, legacy.passageId)).toEqual(legacy);
+  expect(await listSavedMindmaps(legacy.bookId)).toEqual([legacy]);
+});
+
+it('restores editable labels with original sources and rejects a damaged provenance hash', async () => {
+  const generated = await guideFixture(crypto.randomUUID());
+  const map = createMapFromMindmap(generated);
+  map.nodes = editTree(map.nodes, {
+    type: 'text',
+    id: 'root',
+    label: 'My revised understanding',
+    relation: '',
+  });
+  await saveMapWorkspace({
+    version: 1,
+    bookId: generated.bookId,
+    revision: 0,
+    activeId: map.id,
+    maps: [map],
+  });
+  const restored = await loadMapWorkspace(generated.bookId);
+  expect(restored.maps[0]?.nodes[0]?.label).toBe('My revised understanding');
+  expect(restored.maps[0]?.origin?.nodes[0]?.label).toBe('Conditions');
+  expect(getMapNodeSources(restored.maps[0]!, 'root')).toEqual(generated.sources);
+  restored.maps[0]!.origin!.contentHash = '0'.repeat(64);
+  await expect(saveMapWorkspace(restored)).rejects.toThrow();
+  expect((await loadMapWorkspace(generated.bookId)).maps[0]?.origin?.contentHash).toBe(
+    generated.contentHash,
+  );
 });
 
 function openDatabase(name: string, createStore?: string): Promise<IDBDatabase> {
