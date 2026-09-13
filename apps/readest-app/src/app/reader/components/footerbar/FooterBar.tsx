@@ -3,6 +3,7 @@ import React, { useCallback, useMemo, useEffect, useRef } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useSpatialNavigation } from '@/app/reader/hooks/useSpatialNavigation';
 import { useReaderStore } from '@/store/readerStore';
+import { useNotebookStore } from '@/store/notebookStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { FIXED_LAYOUT_FORMATS } from '@/types/book';
@@ -28,7 +29,9 @@ const FooterBar: React.FC<FooterBarProps> = ({
   const { getConfig, setConfig, getBookData } = useBookDataStore();
   const { hoveredBookKey, setHoveredBookKey, bottomBarTab, setBottomBarTab } = useReaderStore();
   const { getView, getViewSettings } = useReaderStore();
-  const { isSideBarVisible, isSideBarPinned, setSideBarVisible } = useSidebarStore();
+  const { isSideBarVisible, isSideBarPinned, setSideBarVisible, setSideBarBookKey } =
+    useSidebarStore();
+  const { setNotebookVisible, setNotebookActiveTab } = useNotebookStore();
   const { acquireBackKeyInterception, releaseBackKeyInterception } = useDeviceControlStore();
 
   const view = getView(bookKey);
@@ -99,12 +102,9 @@ const FooterBar: React.FC<FooterBarProps> = ({
         setSideBarVisible(true);
       } else if (tab === 'note') {
         setHoveredBookKey('');
-        setSideBarVisible(true);
-        if (config?.viewSettings) {
-          setConfig(bookKey, {
-            viewSettings: { ...config.viewSettings, sideBarTab: 'annotations' },
-          });
-        }
+        setSideBarBookKey(bookKey);
+        setNotebookActiveTab('notes');
+        setNotebookVisible(true);
       }
     },
     [
@@ -114,6 +114,9 @@ const FooterBar: React.FC<FooterBarProps> = ({
       setConfig,
       setBottomBarTab,
       setSideBarVisible,
+      setSideBarBookKey,
+      setNotebookActiveTab,
+      setNotebookVisible,
       setHoveredBookKey,
     ],
   );

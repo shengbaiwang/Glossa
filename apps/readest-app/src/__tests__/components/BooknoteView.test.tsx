@@ -229,3 +229,19 @@ describe('BooknoteView — OverlayScrollbars init does not rewind the list to th
     );
   });
 });
+
+it('uses right-panel search results and restores all annotations when search closes', () => {
+  const { rerender } = render(
+    <BooknoteView
+      type='annotation'
+      bookKey='book1'
+      toc={[]}
+      notebookSearch={{ results: [mockBooknotes[0]!] }}
+    />,
+  );
+  expect(capturedVirtuosoProps?.['totalCount']).toBe(2);
+  rerender(
+    <BooknoteView type='annotation' bookKey='book1' toc={[]} notebookSearch={{ results: null }} />,
+  );
+  expect(capturedVirtuosoProps?.['totalCount']).toBe(10);
+});

@@ -42,6 +42,7 @@ import NoteEditor from './NoteEditor';
 import SearchBar from './SearchBar';
 
 import EmptyState from '../EmptyState';
+import BooknoteView from '../sidebar/BooknoteView';
 
 const MIN_NOTEBOOK_WIDTH = 0.15;
 const MAX_NOTEBOOK_WIDTH = 0.45;
@@ -337,7 +338,7 @@ const Notebook: React.FC = ({}) => {
   const tabs = [
     { id: 'conversation' as const, label: _('Conversation'), Icon: MessageCircle },
     { id: 'mindmap' as const, label: _('Mind map'), Icon: GitBranch },
-    { id: 'notes' as const, label: _('Excerpts'), Icon: Highlight },
+    { id: 'notes' as const, label: _('Notes'), Icon: Highlight },
   ];
 
   const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -365,8 +366,10 @@ const Notebook: React.FC = ({}) => {
     setNotebookActiveTab(tabs[nextIndex]!.id);
   };
 
-  const hasSearchResults = filteredExcerptNotes.length > 0;
-  const hasAnyNotes = excerptNotes.length > 0;
+  const hasAnnotations = allNotes.some((note) => note.type === 'annotation' && !note.deletedAt);
+  const hasSearchResults =
+    filteredExcerptNotes.length > 0 || searchResults?.some((note) => note.type === 'annotation');
+  const hasAnyNotes = excerptNotes.length > 0 || hasAnnotations;
   const isNotesTabEmpty =
     !notebookNewAnnotation && !notebookEditAnnotation && !isSearchBarVisible && !hasAnyNotes;
 
@@ -552,7 +555,7 @@ const Notebook: React.FC = ({}) => {
           </div>
         )}
         <div
-          className='min-h-0 flex-1 overflow-y-auto'
+          className='scroll-container min-h-0 flex-1 overflow-y-auto'
           role={supportsReadingAssistant ? 'tabpanel' : undefined}
           id={`${tabId}-panel-notes`}
           aria-labelledby={supportsReadingAssistant ? `${tabId}-tab-notes` : undefined}
@@ -564,12 +567,28 @@ const Notebook: React.FC = ({}) => {
               <EmptyState Icon={NotebookPen} label={_('No Notes')} />
             </div>
           ) : (
-            <div className='flex-grow overflow-y-auto px-3'>
-              {isSearchBarVisible && searchResults && !hasSearchResults && hasAnyNotes && (
-                <div className='flex h-32 items-center justify-center text-gray-500'>
-                  <p className='font-size-sm text-center'>{_('No notes match your search')}</p>
-                </div>
-              )}
+            <div className='flex-grow px-3'>
+              {activeTab === 'notes' &&
+                hasAnnotations &&
+                !notebookNewAnnotation &&
+                !notebookEditAnnotation && (
+                  <BooknoteView
+                    key={sideBarBookKey}
+                    type='annotation'
+                    bookKey={sideBarBookKey}
+                    toc={bookDoc.toc ?? []}
+                    notebookSearch={{ results: isSearchBarVisible ? searchResults : null }}
+                  />
+                )}
+              {isSearchBarVisible &&
+                searchResults &&
+                !hasSearchResults &&
+                hasAnyNotes &&
+                !hasAnnotations && (
+                  <div className='flex h-32 items-center justify-center text-gray-500'>
+                    <p className='font-size-sm text-center'>{_('No notes match your search')}</p>
+                  </div>
+                )}
               <div dir='ltr'>
                 {filteredExcerptNotes.length > 0 && (
                   <p className='glossa-eyebrow my-4'>

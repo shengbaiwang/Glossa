@@ -27,15 +27,17 @@ describe('reader navigation controls', () => {
     const onTabChange = vi.fn();
     const { rerender } = render(<TabNavigation activeTab='toc' onTabChange={onTabChange} />);
     const contents = screen.getByRole('tab', { name: 'Contents' });
-    const annotations = screen.getByRole('tab', { name: 'Notes' });
+    const bookmarks = screen.getByRole('tab', { name: 'Bookmarks' });
     expect(contents.tagName).toBe('BUTTON');
     expect(contents.textContent).toContain('Contents');
     expect(contents.getAttribute('aria-selected')).toBe('true');
-    expect(annotations.getAttribute('aria-selected')).toBe('false');
-    fireEvent.click(annotations);
-    expect(onTabChange).toHaveBeenCalledWith('annotations');
-    rerender(<TabNavigation activeTab='annotations' onTabChange={onTabChange} />);
-    expect(screen.getByRole('tab', { name: 'Notes' }).getAttribute('aria-selected')).toBe('true');
+    expect(bookmarks.getAttribute('aria-selected')).toBe('false');
+    fireEvent.click(bookmarks);
+    expect(onTabChange).toHaveBeenCalledWith('bookmarks');
+    rerender(<TabNavigation activeTab='bookmarks' onTabChange={onTabChange} />);
+    expect(screen.getByRole('tab', { name: 'Bookmarks' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
     expect(screen.getByRole('tab', { name: 'Contents' }).getAttribute('aria-selected')).toBe(
       'false',
     );

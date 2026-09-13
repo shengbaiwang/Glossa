@@ -91,13 +91,13 @@ composer usable in short/narrow panes. See `../../docs/design/conversation.md`.
   Selection Actions menu; an enabled action stays visible so the reader can see and
   disable the current mode. Single-book close is available in View Options;
   preserve native window controls.
-- The left sidebar holds only in-book navigation — Contents / Notes / Bookmarks
+- The left sidebar holds only in-book navigation — Contents / Bookmarks
   and the current book's search — directly below the compact book identity.
   Use a quiet ink underline for the active tab, proper tab/panel semantics and
   arrow/Home/End navigation. Switching is immediate; selecting the current tab
   leaves the panel open. Sidebar pinning is a named menu option, not a permanent
   toolbar icon. The reading-assistant pane uses compact Conversation / Mind map /
-  Excerpts icon tabs (speech, tree, highlight) at the start of its 44px header,
+  Notes icon tabs (speech, tree, highlight) at the start of its 44px header,
   aligned with the reader bar, and a collapse icon at the trailing edge. Keep
   tooltips, accessible names and arrow/Home/End navigation. Use one ink wash for
   the selected icon, without an underline. Tab-owned actions stay inside each tab;
@@ -1212,7 +1212,7 @@ If you change a rule here, search for the cross-reference and update both.
 
 ### 14. Glossa mind maps — 2026-09-13
 
-The EPUB trailing pane uses one destination row (Conversation / Mind map / Excerpts), with an ink underline, a pane menu and Close. Excerpt search belongs to its own toolbar. Within Mind map, keep the map title and AI generation action above a quieter segmented Outline / Mind map view switch. Avoid repeated titles and equal-weight nested tabs.
+The EPUB trailing pane uses one destination row (Conversation / Mind map / Notes), with an ink underline, a pane menu and Close. Excerpt search belongs to its own toolbar. Within Mind map, keep the map title and AI generation action above a quieter segmented Outline / Mind map view switch. Avoid repeated titles and equal-weight nested tabs.
 
 AI maps and blank maps use the same editable ordered tree. Favor compact text hierarchy, fine logical connectors and an ink root in the horizontal map; paper/ink surfaces, shared rounded icons and readable wrapping throughout. Common editing and undo actions stay visible. Map management and selected-idea actions belong to separate menus. No teaching microcopy, decorative palettes, gradients, source badges or explanation cards.
 

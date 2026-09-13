@@ -44,7 +44,8 @@ const BooknoteView: React.FC<{
   type: BookNoteType;
   bookKey: string;
   toc: TOCItem[];
-}> = ({ type, bookKey, toc }) => {
+  notebookSearch?: { results: BookNote[] | null };
+}> = ({ type, bookKey, toc, notebookSearch }) => {
   const _ = useTranslation();
   const { getConfig } = useBookDataStore();
   const { getProgress } = useReaderStore();
@@ -80,6 +81,7 @@ const BooknoteView: React.FC<{
     type === 'annotation' &&
     (filterKind !== 'all' ||
       query.trim().length > 0 ||
+      notebookSearch?.results != null ||
       excludedColors.length > 0 ||
       excludedStyles.length > 0);
 
@@ -118,13 +120,27 @@ const BooknoteView: React.FC<{
     if (type !== 'annotation') {
       return allNotes.filter((note) => note.type === type && !note.deletedAt);
     }
-    return filterBooknotes(liveAnnotations, {
+    const candidates = notebookSearch?.results
+      ? liveAnnotations.filter((note) =>
+          notebookSearch.results?.some((result) => result.id === note.id),
+        )
+      : liveAnnotations;
+    return filterBooknotes(candidates, {
       kind: filterKind,
       query,
       excludedColors,
       excludedStyles,
     });
-  }, [allNotes, liveAnnotations, type, filterKind, query, excludedColors, excludedStyles]);
+  }, [
+    allNotes,
+    liveAnnotations,
+    type,
+    filterKind,
+    query,
+    excludedColors,
+    excludedStyles,
+    notebookSearch,
+  ]);
 
   // Build groups + sort by toc id and intra-group cfi.
   const sortedGroups = useMemo<BooknoteGroup[]>(() => {
@@ -375,7 +391,7 @@ const BooknoteView: React.FC<{
         <AnnotationsToolbar
           filterKind={filterKind}
           searchInput={searchInput}
-          isSearchVisible={isSearchBarVisible}
+          isSearchVisible={!notebookSearch && isSearchBarVisible}
           highlightCount={counts.highlights}
           noteCount={counts.notes}
           matchCount={filteredNotes.length}
@@ -402,7 +418,6 @@ const BooknoteView: React.FC<{
             <EmptyState
               Icon={type === 'annotation' ? NotebookPen : Bookmark}
               label={type === 'annotation' ? _('No Annotations') : _('No Bookmarks')}
-              hint={type === 'annotation' ? _('Select some text to highlight') : undefined}
               action={
                 type === 'bookmark' ? (
                   <button

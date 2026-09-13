@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, cleanup } from '@testing-library/react';
+import { render, cleanup, fireEvent } from '@testing-library/react';
 import dayjs from 'dayjs';
+import { useNotebookStore } from '@/store/notebookStore';
 import relativeTime from 'dayjs/plugin/relativeTime';
 
 /**
@@ -27,7 +28,7 @@ vi.mock('@/store/readerStore', () => ({
 }));
 
 vi.mock('@/store/sidebarStore', () => ({
-  useSidebarStore: () => ({ setSideBarVisible: vi.fn() }),
+  useSidebarStore: () => ({ setSideBarVisible: vi.fn(), setSideBarBookKey: vi.fn() }),
 }));
 
 vi.mock('@/hooks/useResponsiveSize', () => ({
@@ -67,6 +68,14 @@ const renderNotes = () =>
   );
 
 describe('AnnotationNotes popup surface', () => {
+  it('opens the selected annotation in the right notebook', () => {
+    useNotebookStore.setState(useNotebookStore.getInitialState());
+    const { container } = renderNotes();
+    fireEvent.click(container.querySelector('.popup-container')!);
+    expect(useNotebookStore.getState().isNotebookVisible).toBe(true);
+    expect(useNotebookStore.getState().notebookActiveTab).toBe('notes');
+    expect(useNotebookStore.getState().notebookEditAnnotation?.id).toBe('n1');
+  });
   it('paints the note card with the shared popup surface, not a hardcoded gray', () => {
     const { container } = renderNotes();
 

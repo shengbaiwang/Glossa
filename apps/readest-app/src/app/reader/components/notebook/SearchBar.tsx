@@ -22,6 +22,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
 }) => {
   const _ = useTranslation();
   const { getConfig } = useBookDataStore();
+  const booknotes = getConfig(bookKey)?.booknotes;
   const [searchTerm, setSearchTerm] = useState(term);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -32,7 +33,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
   useEffect(() => {
     handleSearchTermChange(searchTerm);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookKey]);
+  }, [bookKey, booknotes]);
 
   useEffect(() => {
     setSearchTerm(term);
@@ -119,7 +120,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
           value={searchTerm}
           spellCheck={false}
           onChange={handleInputChange}
-          placeholder={_('Search excerpts...')}
+          placeholder={_('Search notes...')}
           className='w-full bg-transparent p-2 font-sans text-sm font-light focus:outline-none'
         />
 

@@ -34,7 +34,7 @@ it('keeps destination icons and the close action aligned in narrow, RTL and e-in
           role='tablist'
           aria-label='Notebook'
         >
-          {['Conversation', 'Mind map', 'Excerpts'].map((label, index) => (
+          {['Conversation', 'Mind map', 'Notes'].map((label, index) => (
             <button
               key={label}
               type='button'

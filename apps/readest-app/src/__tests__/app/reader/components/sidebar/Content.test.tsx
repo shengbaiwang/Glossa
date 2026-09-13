@@ -87,7 +87,7 @@ describe('Reader sidebar content', () => {
   });
 
   it('falls back to contents for a removed legacy tab', () => {
-    mocks.config.viewSettings.sideBarTab = 'history';
+    mocks.config.viewSettings.sideBarTab = 'annotations';
     render(<SidebarContent bookDoc={bookDoc} sideBarBookKey='book-0' />);
     expect(screen.getByRole('tab', { selected: true }).getAttribute('aria-label')).toBe('Contents');
     expect(screen.getByText('Chapter list')).toBeTruthy();

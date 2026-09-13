@@ -136,7 +136,7 @@ const renderChrome = () =>
               role='tablist'
               aria-label='Notebook'
             >
-              {['Conversation', 'Mind map', 'Excerpts'].map((label, index) => (
+              {['Conversation', 'Mind map', 'Notes'].map((label, index) => (
                 <button
                   key={label}
                   type='button'

@@ -20,14 +20,12 @@ const SidebarContent: React.FC<{
   const { getConfig, setConfig } = useBookDataStore();
   const config = getConfig(sideBarBookKey);
   const storedTab = config?.viewSettings?.sideBarTab;
-  const activeTab = storedTab === 'annotations' || storedTab === 'bookmarks' ? storedTab : 'toc';
+  const activeTab = storedTab === 'bookmarks' ? storedTab : 'toc';
   const tabId = useId();
 
   const handleTabChange = (tab: string) => {
     if (activeTab === tab || !config?.viewSettings) return;
 
-    // The header search icon is contextual (annotation search vs in-book
-    // search), so an open search bar never survives a tab switch.
     setSearchBarVisible(false);
     setConfig(sideBarBookKey, {
       viewSettings: { ...config.viewSettings, sideBarTab: tab },
@@ -62,9 +60,6 @@ const SidebarContent: React.FC<{
           <div className='scroll-container h-full'>
             {activeTab === 'toc' && bookDoc.toc && (
               <TOCView toc={bookDoc.toc} bookKey={sideBarBookKey} />
-            )}
-            {activeTab === 'annotations' && (
-              <BooknoteView type='annotation' toc={bookDoc.toc ?? []} bookKey={sideBarBookKey} />
             )}
             {activeTab === 'bookmarks' && (
               <BooknoteView type='bookmark' toc={bookDoc.toc ?? []} bookKey={sideBarBookKey} />

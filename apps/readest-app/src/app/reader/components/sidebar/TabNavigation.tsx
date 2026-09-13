@@ -12,7 +12,6 @@ const TabNavigation: React.FC<{
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const tabs = [
     { id: 'toc', label: _('Contents') },
-    { id: 'annotations', label: _('Notes') },
     { id: 'bookmarks', label: _('Bookmarks') },
   ];
 

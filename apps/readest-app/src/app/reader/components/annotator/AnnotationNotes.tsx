@@ -3,7 +3,7 @@ import dayjs from 'dayjs';
 import React, { useMemo } from 'react';
 import { BookNote } from '@/types/book';
 import { useEnv } from '@/context/EnvContext';
-import { useBookDataStore } from '@/store/bookDataStore';
+import { useNotebookStore } from '@/store/notebookStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
@@ -30,10 +30,9 @@ const AnnotationNotes: React.FC<AnnotationNotesProps> = ({
   onDismiss,
 }) => {
   const { appService } = useEnv();
-  const { getConfig, setConfig } = useBookDataStore();
+  const { setNotebookVisible, setNotebookEditAnnotation } = useNotebookStore();
   const { setHoveredBookKey } = useReaderStore();
-  const { setSideBarVisible } = useSidebarStore();
-  const config = getConfig(bookKey);
+  const { setSideBarBookKey } = useSidebarStore();
   const maxSize = useResponsiveSize(250);
 
   const sortedNotes = useMemo(() => {
@@ -48,12 +47,9 @@ const AnnotationNotes: React.FC<AnnotationNotesProps> = ({
     }
 
     setHoveredBookKey('');
-    setSideBarVisible(true);
-    if (config?.viewSettings) {
-      setConfig(bookKey, {
-        viewSettings: { ...config.viewSettings, sideBarTab: 'annotations' },
-      });
-    }
+    setSideBarBookKey(bookKey);
+    setNotebookVisible(true);
+    setNotebookEditAnnotation(note);
   };
 
   return (
