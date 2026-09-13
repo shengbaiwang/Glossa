@@ -109,13 +109,7 @@ const renderChrome = () =>
     <div data-testid='frame' className='relative h-screen w-full overflow-hidden'>
       <div className='flex h-full min-h-0'>
         <div className='glossa-reader-sidebar bg-base-200 relative z-20 flex w-64 shrink-0 flex-col'>
-          <SidebarHeader
-            isPinned={false}
-            isSearchBarVisible={false}
-            onClose={vi.fn()}
-            onTogglePin={vi.fn()}
-            onToggleSearchBar={vi.fn()}
-          />
+          <SidebarHeader isSearchBarVisible={false} onClose={vi.fn()} onToggleSearchBar={vi.fn()} />
         </div>
         <div className='bg-base-100 relative min-w-0 flex-1'>
           <HeaderBar
@@ -168,6 +162,9 @@ it('shows the unified chrome: quiet buttons, one selected emphasis, Glossa icons
   document.documentElement.setAttribute('data-theme', 'default-light');
   renderChrome();
   const bar = screen.getByRole('banner', { name: 'Header Bar' });
+
+  expect(screen.queryByRole('button', { name: 'Book Menu' })).toBeNull();
+  expect(screen.getAllByRole('button', { name: 'View Options' })).toHaveLength(1);
 
   const start = within(bar.querySelector('.header-tools-start') as HTMLElement)
     .getAllByRole('button')

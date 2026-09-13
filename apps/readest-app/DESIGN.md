@@ -1,5 +1,12 @@
 ## Readest Design Language
 
+### Unified reader menu — 2026-09-13
+
+Keep one overflow menu in the central reading header, immediately after Font & Layout.
+The navigation sidebar keeps search and its mobile close control without an overflow menu.
+Book operations share the reading menu and target that header’s book, independently of sidebar state.
+Keep bookmark and typography shortcuts directly accessible.
+
 ### Glossa visual identity — 2026-09-08
 
 Glossa's library and reader now follow the app icon: two rounded text strokes with a

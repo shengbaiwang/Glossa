@@ -1,19 +1,15 @@
 import clsx from 'clsx';
 import React, { useRef } from 'react';
-import { Search, Ellipsis, ChevronLeft } from '@/components/GlossaIcons';
+import { Search, ChevronLeft } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useTrafficLight } from '@/hooks/useTrafficLight';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
-import Dropdown from '@/components/Dropdown';
-import BookMenu from './BookMenu';
 
 const SidebarHeader: React.FC<{
-  isPinned: boolean;
   isSearchBarVisible: boolean;
   onClose: () => void;
-  onTogglePin: () => void;
   onToggleSearchBar: () => void;
-}> = ({ isPinned, isSearchBarVisible, onClose, onTogglePin, onToggleSearchBar }) => {
+}> = ({ isSearchBarVisible, onClose, onToggleSearchBar }) => {
   const _ = useTranslation();
   const headerRef = useRef<HTMLDivElement>(null);
   const { isTrafficLightVisible } = useTrafficLight(headerRef);
@@ -51,20 +47,6 @@ const SidebarHeader: React.FC<{
         >
           <Search size={iconSize18} aria-hidden='true' />
         </button>
-        <Dropdown
-          label={_('Book Menu')}
-          showTooltip={false}
-          className={clsx(
-            window.innerWidth < 640 ? 'dropdown-end' : 'dropdown-center',
-            'dropdown-bottom',
-          )}
-          menuClassName={clsx('no-triangle mt-1', window.innerWidth < 640 ? '' : '!relative')}
-          buttonClassName='glossa-icon-button btn btn-ghost h-8 min-h-8 w-8 p-0'
-          containerClassName='h-8'
-          toggleButton={<Ellipsis size={iconSize18} aria-hidden='true' />}
-        >
-          <BookMenu isPinned={isPinned} onTogglePin={onTogglePin} />
-        </Dropdown>
       </div>
     </div>
   );

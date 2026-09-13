@@ -9,6 +9,7 @@ import { eventDispatcher } from '@/utils/event';
 const h = vi.hoisted(() => ({
   initViewStateMock: vi.fn(() => Promise.resolve()),
   setBookKeysMock: vi.fn(),
+  setParallelMock: vi.fn(),
   setSideBarBookKeyMock: vi.fn(),
   bookKeys: [] as string[],
   viewStates: {} as Record<string, { inited: boolean; view: object }>,
@@ -45,7 +46,7 @@ vi.mock('@/store/sidebarStore', () => ({
   useSidebarStore: () => ({ sideBarBookKey: null, setSideBarBookKey: h.setSideBarBookKeyMock }),
 }));
 vi.mock('@/store/parallelViewStore', () => ({
-  useParallelViewStore: () => ({ setParallel: vi.fn() }),
+  useParallelViewStore: () => ({ setParallel: h.setParallelMock }),
 }));
 vi.mock('@/utils/nav', () => ({ navigateToReader: vi.fn() }));
 
@@ -76,6 +77,18 @@ describe('useBooksManager open-failure handling', () => {
 
     expect(dispatchSpy).toHaveBeenCalledWith('toast', expect.objectContaining({ type: 'error' }));
     dispatchSpy.mockRestore();
+  });
+
+  it('pairs a parallel view with the explicit reading book while the sidebar is closed', async () => {
+    const { result } = renderHook(() => useBooksManager());
+    await act(async () => {
+      result.current.openParallelView('hash1', 'hash1-current');
+    });
+    expect(h.initViewStateMock).toHaveBeenCalledWith({}, 'hash1', expect.any(String), false);
+    expect(h.setParallelMock).toHaveBeenCalledWith([
+      'hash1-current',
+      expect.stringMatching(/^hash1-/),
+    ]);
   });
 
   // Cold-restore autoplay: the app relaunches straight into the reader with the

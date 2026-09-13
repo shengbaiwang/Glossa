@@ -47,7 +47,6 @@ const SideBar = ({}) => {
     getSideBarWidth,
     setSideBarVisible,
     handleSideBarResize,
-    handleSideBarTogglePin,
   } = useSidebar(
     settings.globalReadSettings.sideBarWidth,
     isMobile ? false : settings.globalReadSettings.isSideBarPinned,
@@ -259,10 +258,8 @@ const SideBar = ({}) => {
             </div>
           )}
           <SidebarHeader
-            isPinned={isSideBarPinned}
             isSearchBarVisible={isSearchBarVisible}
             onClose={() => setSideBarVisible(false)}
-            onTogglePin={handleSideBarTogglePin}
             onToggleSearchBar={handleToggleSearchBar}
           />
           <div

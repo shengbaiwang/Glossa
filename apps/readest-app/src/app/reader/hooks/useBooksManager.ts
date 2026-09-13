@@ -43,14 +43,19 @@ const useBooksManager = () => {
   };
 
   // Append a new book and sync with bookKeys and URL
-  const appendBook = (id: string, isPrimary: boolean, isParallel: boolean) => {
+  const appendBook = (
+    id: string,
+    isPrimary: boolean,
+    isParallel: boolean,
+    originBookKey = sideBarBookKey,
+  ) => {
     const newKey = `${id}-${uniqueId()}`;
     initViewState(envConfig, id, newKey, isPrimary).catch(handleOpenError);
     if (!bookKeys.includes(newKey)) {
       const updatedKeys = [...bookKeys, newKey];
       setBookKeys(updatedKeys);
     }
-    if (isParallel) setParallel([sideBarBookKey!, newKey]);
+    if (isParallel) setParallel([originBookKey!, newKey]);
     setSideBarBookKey(newKey);
     setShouldUpdateSearchParams(true);
   };
@@ -143,9 +148,9 @@ const useBooksManager = () => {
     return bookKeys[nextIndex]!;
   };
 
-  const openParallelView = (id: string) => {
-    const sideBarBookId = sideBarBookKey?.split('-')[0];
-    appendBook(id, sideBarBookId != id, true);
+  const openParallelView = (id: string, bookKey: string) => {
+    const bookId = bookKey.split('-')[0];
+    appendBook(id, bookId !== id, true, bookKey);
   };
 
   return {

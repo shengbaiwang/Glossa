@@ -52,6 +52,7 @@ import { getReadingQuickAction } from '@/utils/annotationToolbar';
 import QuickActionMenu from './annotator/QuickActionMenu';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';
+import BookMenuItems from './sidebar/BookMenu';
 
 interface ViewMenuProps {
   bookKey: string;
@@ -548,6 +549,9 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
         Icon={invertImgColorInDark ? <Check size={iconSize} aria-hidden='true' /> : undefined}
         onClick={() => setInvertImgColorInDark(!invertImgColorInDark)}
       />
+
+      <hr aria-hidden='true' className='border-base-300 my-1' />
+      <BookMenuItems bookKey={bookKey} setIsDropdownOpen={setIsDropdownOpen} />
 
       {onCloseBook && (
         <>
