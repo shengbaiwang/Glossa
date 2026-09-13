@@ -1,5 +1,7 @@
 'use client';
 
+import ReadingSpeechPlayer from './tts/ReadingSpeechPlayer';
+
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -267,6 +269,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
       />
       {isSettingsDialogOpen && <SettingsDialog bookKey={settingsDialogBookKey} />}
       <Notebook />
+      <ReadingSpeechPlayer />
 
       {showDetailsBook && (
         <BookDetailModal

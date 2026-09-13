@@ -6,6 +6,9 @@ export const ALL_ANNOTATION_TOOL_TYPES: AnnotationToolType[] = [
   'copylink',
   'highlight',
   'annotate',
+  'dictionary',
+  'translate',
+  'tts',
   'search',
 ];
 
@@ -14,13 +17,20 @@ export const DEFAULT_ANNOTATION_TOOLBAR_ITEMS: AnnotationToolType[] = [
   'copy',
   'highlight',
   'annotate',
+  'dictionary',
+  'translate',
+  'tts',
   'search',
 ];
 
 // Drop unknown/duplicate entries; fall back to the default when unset (a
 // pre-existing per-book config may not carry the field yet).
 const sanitize = (items: AnnotationToolType[] | undefined): AnnotationToolType[] => {
-  const source = items ?? DEFAULT_ANNOTATION_TOOLBAR_ITEMS;
+  const legacyDefault = ['copy', 'highlight', 'annotate', 'search'];
+  const isLegacyDefault =
+    items?.length === legacyDefault.length &&
+    items.every((type, index) => type === legacyDefault[index]);
+  const source = !items || isLegacyDefault ? DEFAULT_ANNOTATION_TOOLBAR_ITEMS : items;
   const seen = new Set<AnnotationToolType>();
   const out: AnnotationToolType[] = [];
   for (const type of source) {
@@ -80,4 +90,6 @@ export const reorderToolbar = (
 
 // Old per-book and synced preferences may still contain removed actions.
 export const getReadingQuickAction = (action: AnnotationToolType | null | undefined) =>
-  action === 'copy' || action === 'highlight' || action === 'search' ? action : null;
+  action && ['copy', 'highlight', 'search', 'dictionary', 'translate', 'tts'].includes(action)
+    ? action
+    : null;

@@ -107,7 +107,6 @@ export const AboutWindow = () => {
           <hr aria-hidden='true' className='border-base-300 my-4 w-full' />
 
           <div className='flex w-full flex-col items-center justify-start gap-2 px-4 text-center'>
-            <p className='text-sm'>{_('Based on Readest {{version}}', { version: 'v0.12.1' })}</p>
             <p className='text-neutral-content text-sm'>
               © 2026 Bilingify LLC. All rights reserved.
             </p>
@@ -123,15 +122,18 @@ export const AboutWindow = () => {
               <Link href={GLOSSA_SOURCE_URL} className='link'>
                 {_('Glossa source code')}
               </Link>
-              <Link href='https://github.com/readest/readest' className='link'>
-                {_('Readest source code')}
-              </Link>
             </div>
             <details className='eink-bordered border-base-300 my-2 w-full rounded-lg border text-start'>
               <summary className='cursor-pointer px-3 py-2 text-sm'>
                 {_('Open source licenses')}
               </summary>
               <div className='max-h-64 overflow-auto px-3 pb-3 text-xs' tabIndex={0}>
+                <p className='text-sm'>
+                  {_('Based on Readest {{version}}', { version: 'v0.12.1' })}
+                </p>
+                <Link href='https://github.com/readest/readest' className='link'>
+                  {_('Readest source code')}
+                </Link>
                 <pre className='whitespace-pre-wrap break-words font-sans' dir='ltr'>
                   {legalNotices.notice}
                 </pre>
@@ -144,10 +146,10 @@ export const AboutWindow = () => {
                   {legalNotices.thirdParty}
                 </pre>
               </div>
+              <p className='text-neutral-content text-xs'>
+                {_('Glossa is an independent project. Readest Cloud is a separate service.')}
+              </p>
             </details>
-            <p className='text-neutral-content text-xs'>
-              {_('Glossa is an independent project. Readest Cloud is a separate service.')}
-            </p>
 
             <LegalLinks />
           </div>

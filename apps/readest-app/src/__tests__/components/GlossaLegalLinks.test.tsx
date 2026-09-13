@@ -17,12 +17,12 @@ describe('Glossa legal and support destinations', () => {
   it('identifies the actual cloud provider whose terms apply', () => {
     render(<LegalLinks />);
 
-    expect(
-      screen.getByRole('link', { name: 'Readest Cloud Terms of Service' }).getAttribute('href'),
-    ).toBe('https://readest.com/terms-of-service');
-    expect(
-      screen.getByRole('link', { name: 'Readest Cloud Privacy Policy' }).getAttribute('href'),
-    ).toBe('https://readest.com/privacy-policy');
+    expect(screen.getByRole('link', { name: 'Cloud Terms of Service' }).getAttribute('href')).toBe(
+      'https://readest.com/terms-of-service',
+    );
+    expect(screen.getByRole('link', { name: 'Cloud Privacy Policy' }).getAttribute('href')).toBe(
+      'https://readest.com/privacy-policy',
+    );
   });
 
   it('directs Glossa support to its own issue tracker', () => {

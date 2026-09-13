@@ -400,3 +400,32 @@ export {
   ListTree as Contents,
   ListTree as List,
 };
+
+export function Volume(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <path d='M4 9h4l5-4v14l-5-4H4Z M17 8a6 6 0 0 1 0 8 M20 5a10 10 0 0 1 0 14' />
+    </Icon>
+  );
+}
+export function Languages(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <path d='M3 6h11M8 3v3M5 6c1 5 4 8 8 10M12 6c-1 5-4 8-9 10M14 21l4-11 4 11M15.5 17h5' />
+    </Icon>
+  );
+}
+export function Play(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <path d='m8 5 11 7-11 7Z' />
+    </Icon>
+  );
+}
+export function Pause(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <path d='M8 5v14M16 5v14' />
+    </Icon>
+  );
+}

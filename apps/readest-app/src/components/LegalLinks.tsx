@@ -6,10 +6,10 @@ const LegalLinks = () => {
   return (
     <div className='my-2 flex flex-wrap justify-center gap-4 text-sm sm:text-xs'>
       <Link href='https://readest.com/terms-of-service' className='link'>
-        {_('Readest Cloud Terms of Service')}
+        {_('Cloud Terms of Service')}
       </Link>
       <Link href='https://readest.com/privacy-policy' className='link'>
-        {_('Readest Cloud Privacy Policy')}
+        {_('Cloud Privacy Policy')}
       </Link>
     </div>
   );

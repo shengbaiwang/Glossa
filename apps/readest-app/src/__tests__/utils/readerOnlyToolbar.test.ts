@@ -5,12 +5,20 @@ import {
   getReadingQuickAction,
 } from '@/utils/annotationToolbar';
 
-describe('reader-only selection toolbar', () => {
+describe('reading selection toolbar', () => {
   it('keeps basic reading actions for new readers', () => {
-    expect(getToolbarToolTypes(undefined)).toEqual(['copy', 'highlight', 'annotate', 'search']);
+    expect(getToolbarToolTypes(undefined)).toEqual([
+      'copy',
+      'highlight',
+      'annotate',
+      'dictionary',
+      'translate',
+      'tts',
+      'search',
+    ]);
   });
 
-  it('ignores removed actions in existing synced settings without losing annotations', () => {
+  it('restores lookup and speech actions in existing synced settings without losing annotations', () => {
     expect(
       getToolbarToolTypes([
         'dictionary',
@@ -21,15 +29,15 @@ describe('reader-only selection toolbar', () => {
         'proofread',
         'search',
       ]),
-    ).toEqual(['highlight', 'annotate', 'search']);
-    expect(getAvailableToolTypes([])).not.toContain('tts');
+    ).toEqual(['dictionary', 'highlight', 'translate', 'tts', 'annotate', 'search']);
+    expect(getAvailableToolTypes([])).toContain('tts');
   });
 });
 
 describe('legacy quick actions', () => {
-  it('falls back to the toolbar for removed actions', () => {
-    expect(getReadingQuickAction('dictionary')).toBeNull();
-    expect(getReadingQuickAction('tts')).toBeNull();
+  it('restores saved reading quick actions', () => {
+    expect(getReadingQuickAction('dictionary')).toBe('dictionary');
+    expect(getReadingQuickAction('tts')).toBe('tts');
     expect(getReadingQuickAction('highlight')).toBe('highlight');
   });
 });

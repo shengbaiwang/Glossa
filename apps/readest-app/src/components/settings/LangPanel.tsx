@@ -8,10 +8,12 @@ import { useResetViewSettings } from '@/hooks/useResetSettings';
 import { TRANSLATED_LANGS } from '@/services/constants';
 import { getDirFromLanguage } from '@/utils/rtl';
 import type { SettingsPanelPanelProp } from './SettingsDialog';
-import { BoxedList, SettingsRow, SettingsSelect } from './primitives';
+import CustomDictionaries from './CustomDictionaries';
+import { BoxedList, SettingsRow, SettingsSelect, NavigationRow } from './primitives';
 
 const LangPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }) => {
   const _ = useTranslation();
+  const [dictionariesOpen, setDictionariesOpen] = useState(false);
   const { envConfig } = useEnv();
   const { settings, applyUILanguage } = useSettingsStore();
   const viewSettings =
@@ -39,6 +41,8 @@ const LangPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
     .sort((a, b) => a.label.localeCompare(b.label));
   options.unshift({ value: '', label: _('System Language') });
 
+  if (dictionariesOpen) return <CustomDictionaries onBack={() => setDictionariesOpen(false)} />;
+
   return (
     <div className='my-4 w-full'>
       <BoxedList title={_('Language')} data-setting-id='settings.language.interfaceLanguage'>
@@ -50,6 +54,9 @@ const LangPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
             options={options}
           />
         </SettingsRow>
+      </BoxedList>
+      <BoxedList>
+        <NavigationRow title={_('Dictionaries')} onClick={() => setDictionariesOpen(true)} />
       </BoxedList>
     </div>
   );

@@ -560,7 +560,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         try {
           const temp = appService.isMobile ? false : !settings.autoImportBooksOnOpen;
           // A file shared into Readest on mobile (the OS share-sheet) is a
-          // "Send to Readest" capture — force it to the cloud so it syncs to
+          // "Send to Glossa" capture — force it to the cloud so it syncs to
           // every device. Desktop "open with" honors the book sync toggle.
           const book = await ingestFile(
             {

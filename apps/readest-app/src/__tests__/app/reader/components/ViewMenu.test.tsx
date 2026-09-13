@@ -96,6 +96,13 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('reader ViewMenu', () => {
+  it('starts reading aloud for the menu book', () => {
+    const close = vi.fn();
+    render(<ViewMenu bookKey='book-2' setIsDropdownOpen={close} />);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Read Aloud' }));
+    expect(mocks.dispatch).toHaveBeenCalledWith('tts-start', { bookKey: 'book-2' });
+    expect(close).toHaveBeenCalledWith(false);
+  });
   it('includes book actions in the reading menu and targets its book with the sidebar closed', () => {
     const closeMenu = vi.fn();
     render(<ViewMenu bookKey='book-2' setIsDropdownOpen={closeMenu} />);
@@ -177,12 +184,12 @@ describe('reader ViewMenu', () => {
     );
   });
 
-  it('keeps removed legacy actions inactive and lets the user choose a retained action', () => {
+  it('restores saved translation actions and lets the user choose another action', () => {
     mocks.viewSettings.annotationQuickAction = 'translate';
     render(<ViewMenu bookKey='book-1' />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Selection Actions' }));
-    expect(screen.queryByRole('menuitem', { name: /Translate/ })).toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'Instant Translate' })).toBeTruthy();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Instant Copy' }));
 
     expect(mocks.saveViewSettings).toHaveBeenCalledWith(

@@ -1,4 +1,16 @@
-## Readest Design Language
+## Glossa Design Language
+
+### Reading tools — 2026-09-13
+
+Restore Dictionary / Translate / Read Aloud in the selection toolbar and Read Aloud
+in the central overflow menu. Keep automatic selection actions opt-in. Use shared
+Glossa line icons and paper/ink surfaces; preserve custom toolbar order and spacing.
+The speech player is a compact, dismissible strip with play/pause, voice and speed,
+above the footer. It must fit a narrow viewport and retain visible keyboard focus.
+Dictionary and translation popups keep the selection, support direct close, and use
+a single compact header. No promotional cards, teaching text or cloud upsells.
+Keep upstream attribution inside Open source licenses and use Glossa for app branding;
+external cloud labels remain neutral and their actual destinations remain unchanged.
 
 ### Unified reader menu — 2026-09-13
 

@@ -190,3 +190,72 @@
   width: 20px;
   height: 20px;
 }
+
+/* Reading tools share the paper/ink surface and compact chrome. */
+.glossa-speech-player {
+  position: fixed;
+  z-index: 40;
+  bottom: max(52px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: min(420px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border: 1px solid var(--glossa-border);
+  border-radius: 12px;
+  background: var(--glossa-surface);
+  color: var(--glossa-ink);
+  box-shadow: var(--glossa-shadow);
+}
+.glossa-speech-player select,
+.glossa-selection-translation select {
+  min-width: 0;
+  max-width: 150px;
+  height: 32px;
+  border: 1px solid var(--glossa-border);
+  border-radius: 9px;
+  background: var(--glossa-wash);
+  color: var(--glossa-ink);
+  font-size: 12px;
+}
+.glossa-speech-voice {
+  flex: 1;
+}
+.glossa-speech-error {
+  flex-basis: 100%;
+  font-size: 12px;
+}
+.glossa-selection-translation {
+  padding: 16px;
+}
+.glossa-selection-lookup {
+  color: var(--glossa-ink);
+}
+.glossa-selection-lookup button:focus-visible,
+.glossa-speech-player :focus-visible {
+  outline: 2px solid var(--glossa-ink);
+  outline-offset: 2px;
+}
+[data-eink='true'] .glossa-speech-player {
+  box-shadow: none;
+  border-color: currentColor;
+}
+
+.popup-container.glossa-reading-popup {
+  border-radius: 12px;
+  border-color: var(--glossa-border);
+  background: var(--glossa-surface);
+  color: var(--glossa-ink);
+  box-shadow: var(--glossa-shadow);
+  overflow: auto;
+}
+.glossa-selection-lookup .popup-triangle-inner {
+  color: var(--glossa-surface);
+}
+[data-eink='true'] .popup-container.glossa-reading-popup {
+  box-shadow: none;
+  border-color: currentColor;
+}

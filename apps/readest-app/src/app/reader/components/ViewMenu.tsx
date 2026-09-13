@@ -423,6 +423,14 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
         </>
       )}
 
+      <MenuItem
+        label={_('Read Aloud')}
+        onClick={() => {
+          eventDispatcher.dispatch('tts-start', { bookKey });
+          setIsDropdownOpen?.(false);
+        }}
+      />
+
       <MenuItem label={_('Font & Layout')} shortcut='Shift+F' onClick={openFontLayoutMenu} />
 
       {viewSettings.enableAnnotationQuickActions && (

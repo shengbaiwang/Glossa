@@ -327,7 +327,7 @@ const SuccessPageWithSearchParams = () => {
           <h2 className='mb-2 text-xl font-semibold text-gray-800'>{_('Payment Failed')}</h2>
           <p className='mb-6 text-gray-600'>
             {_(
-              'Your Readest Cloud subscription could not be processed. Please try again or contact Readest Cloud support.',
+              'Your Cloud subscription could not be processed. Please try again or contact Cloud support.',
             )}
           </p>
           <div className='space-y-3'>
@@ -432,7 +432,11 @@ const SuccessPageWithSearchParams = () => {
 
         {/* Additional Info */}
         <div className='mt-8 text-xs text-gray-500'>
-          <p>{_('Readest Cloud support: support@readest.com')}</p>
+          <p>
+            <a className='link' href='mailto:support@readest.com'>
+              {_('Contact cloud support')}
+            </a>
+          </p>
         </div>
       </div>
     </div>

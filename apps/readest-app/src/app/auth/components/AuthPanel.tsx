@@ -28,7 +28,7 @@ export default function AuthPanel({
         <div>
           <h1 className='text-xl font-semibold tracking-tight'>{_('Sign in to Glossa')}</h1>
           <p className='text-base-content/70 mt-1.5 text-sm leading-relaxed'>
-            {_('Sync your library, reading progress, and highlights with Readest Cloud.')}
+            {_('Sync your library, reading progress, and highlights with Cloud.')}
           </p>
         </div>
       </div>

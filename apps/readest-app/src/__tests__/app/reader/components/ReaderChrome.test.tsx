@@ -17,7 +17,7 @@ describe('reader navigation controls', () => {
     const onActionSelect = vi.fn();
     render(<QuickActionMenu onActionSelect={onActionSelect} />);
     const items = screen.getAllByRole('menuitem');
-    expect(items).toHaveLength(3);
+    expect(items).toHaveLength(6);
     expect(items.every((item) => item.querySelector('svg'))).toBe(true);
     fireEvent.click(items[0]!);
     expect(onActionSelect).toHaveBeenCalledWith('copy');

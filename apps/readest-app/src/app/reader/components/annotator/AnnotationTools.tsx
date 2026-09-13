@@ -1,5 +1,8 @@
 import {
   Copy,
+  BookOpen,
+  Languages,
+  Volume,
   Link,
   Search,
   Highlight as Highlighter,
@@ -43,6 +46,27 @@ export const annotationToolButtons: AnnotationToolButton[] = [
     label: _('Annotate'),
     tooltip: _('Annotate text after selection'),
     Icon: SquarePen,
+  },
+  {
+    type: 'dictionary',
+    label: _('Dictionary'),
+    tooltip: _('Look up text after selection'),
+    Icon: BookOpen,
+    quickAction: true,
+  },
+  {
+    type: 'translate',
+    label: _('Translate'),
+    tooltip: _('Translate text after selection'),
+    Icon: Languages,
+    quickAction: true,
+  },
+  {
+    type: 'tts',
+    label: _('Read Aloud'),
+    tooltip: _('Read aloud after selection'),
+    Icon: Volume,
+    quickAction: true,
   },
   {
     type: 'search',

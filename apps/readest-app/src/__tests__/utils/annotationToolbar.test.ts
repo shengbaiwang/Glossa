@@ -16,7 +16,15 @@ describe('annotationToolbar helpers', () => {
   });
 
   test('default toolbar is the basic reading tools in canonical order', () => {
-    expect(DEFAULT_ANNOTATION_TOOLBAR_ITEMS).toEqual(['copy', 'highlight', 'annotate', 'search']);
+    expect(DEFAULT_ANNOTATION_TOOLBAR_ITEMS).toEqual([
+      'copy',
+      'highlight',
+      'annotate',
+      'dictionary',
+      'translate',
+      'tts',
+      'search',
+    ]);
     expect(DEFAULT_ANNOTATION_TOOLBAR_ITEMS).not.toContain('share');
   });
 
@@ -49,6 +57,9 @@ describe('annotationToolbar helpers', () => {
       'copylink',
       'highlight',
       'annotate',
+      'dictionary',
+      'translate',
+      'tts',
       'search',
     ]);
   });

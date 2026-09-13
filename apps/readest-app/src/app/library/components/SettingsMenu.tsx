@@ -518,7 +518,7 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
       </MenuItem>
       <hr aria-hidden='true' className='border-base-200 my-1' />
       {user && userProfilePlan === 'free' && (
-        <MenuItem label={_('Upgrade to Readest Premium')} onClick={handleUpgrade} />
+        <MenuItem label={_('Upgrade to Glossa Premium')} onClick={handleUpgrade} />
       )}
       {isWebAppPlatform() && <MenuItem label={_('Download Glossa')} onClick={downloadGlossa} />}
       <MenuItem label={_('About Glossa')} onClick={showAboutGlossa} />

@@ -1,3 +1,9 @@
+import { useCustomDictionaryStore } from '@/store/customDictionaryStore';
+import { isSystemDictionaryEnabled } from '@/services/dictionaries/registry';
+import { invokeSystemDictionary } from '@/services/dictionaries/systemDictionary';
+import Popup from '@/components/Popup';
+import DictionaryPopup from './DictionaryPopup';
+import SelectionTranslation from './SelectionTranslation';
 import { getReadingQuickAction } from '@/utils/annotationToolbar';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { RiDeleteBinLine } from 'react-icons/ri';
@@ -176,7 +182,8 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   // selection-change effect opens the dictionary popup instead of the
   // annotation toolbar. Cleared as soon as it's consumed.
 
-  const showingPopup = showAnnotPopup;
+  const [lookup, setLookup] = useState<'dictionary' | 'translate' | null>(null);
+  const showingPopup = showAnnotPopup || lookup !== null;
 
   const popupPadding = useResponsiveSize(10);
   const trianglePadding = popupPadding * 2 + 6;
@@ -259,6 +266,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleDismissPopup = useCallback(
     throttle(() => {
+      setLookup(null);
       setSelection(null);
       setShowAnnotPopup(false);
       setShowAnnotationNotes(false);
@@ -812,6 +820,13 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
           break;
         case 'search':
           handleSearch();
+          break;
+        case 'dictionary':
+        case 'translate':
+          handleLookup(action);
+          break;
+        case 'tts':
+          handleReadAloud();
           break;
       }
     };
@@ -1589,6 +1604,31 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     });
   };
 
+  const latestSelection = useRef(selection);
+  latestSelection.current = selection;
+  const handleLookup = async (type: 'dictionary' | 'translate') => {
+    if (!selection?.text) return;
+    setShowAnnotPopup(false);
+    if (
+      type === 'dictionary' &&
+      isSystemDictionaryEnabled(useCustomDictionaryStore.getState().settings)
+    ) {
+      const handedOff = await invokeSystemDictionary(selection.text);
+      if (latestSelection.current !== selection) return;
+      if (handedOff) return;
+    }
+    setLookup(type);
+  };
+  const closeLookup = () => {
+    setLookup(null);
+    setShowAnnotPopup(true);
+  };
+  const handleReadAloud = () => {
+    if (!selection?.text) return;
+    eventDispatcher.dispatch('tts-start', { bookKey, text: selection.text });
+    handleDismissPopupAndSelection();
+  };
+
   const selectionAnnotated = selection?.annotated;
   // For the ✓ (global) toggle in HighlightOptions: figure out whether
   // the booknote anchored at the current selection is currently global,
@@ -1625,6 +1665,11 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
         return { tooltipText: _(label), Icon, onClick: handleAnnotate };
       case 'search':
         return { tooltipText: _(label), Icon, onClick: handleSearch };
+      case 'dictionary':
+      case 'translate':
+        return { tooltipText: _(label), Icon, onClick: () => handleLookup(type) };
+      case 'tts':
+        return { tooltipText: _(label), Icon, onClick: handleReadAloud };
 
       default:
         return null;
@@ -1635,19 +1680,58 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     .map(buildToolButton)
     .filter((button): button is NonNullable<typeof button> => button !== null);
 
-  // The lookup popups never deselect (handleDictionary / handleTranslation /
-  // handleProofread only flip popup flags), so a genuine selection is still
-  // live when one closes — return to its toolbar instead of discarding it
-  // (#5213). Word Lens gloss taps and taps on an existing highlight
-  // synthesize their selection with isTextSelected left false, and an empty
-  // toolbar has nothing to return to: those keep the full dismiss. The
-  // consuming actions are a different class by design — copy, share, search,
-  // and TTS spend the selection (TTS deselects deliberately), and highlight /
-  // annotate replace it with the created annotation — so they are not here.
+  const lookupRect = lookup
+    ? document.querySelector(`#gridcell-${bookKey}`)?.getBoundingClientRect()
+    : undefined;
+  const lookupWidth = Math.min(
+    420,
+    maxWidth,
+    (lookupRect?.width ?? window.innerWidth) - 2 * popupPadding,
+  );
+  const lookupHeight = Math.min(400, (lookupRect?.height ?? window.innerHeight) - 2 * popupPadding);
+  const lookupPosition =
+    trianglePosition && lookupRect
+      ? getPopupPosition(trianglePosition, lookupRect, lookupWidth, lookupHeight, popupPadding)
+      : annotPopupPosition;
 
   return (
     <div ref={containerRef} role='toolbar' tabIndex={-1}>
+      {lookup && selection?.text && (
+        <div className='glossa-selection-lookup' dir={viewSettings.rtl ? 'rtl' : 'ltr'}>
+          {lookup === 'dictionary' ? (
+            <>
+              <DictionaryPopup
+                word={selection.text}
+                lang={primaryLang}
+                position={lookupPosition!}
+                trianglePosition={trianglePosition!}
+                popupWidth={lookupWidth}
+                popupHeight={lookupHeight}
+                onDismiss={closeLookup}
+                onManage={() => {
+                  handleDismissPopupAndSelection();
+                  const store = useSettingsStore.getState();
+                  store.setRequestedPanel('Language');
+                  store.setSettingsDialogOpen(true);
+                }}
+              />
+            </>
+          ) : (
+            <Popup
+              width={lookupWidth}
+              maxHeight={lookupHeight}
+              position={lookupPosition}
+              trianglePosition={trianglePosition}
+              onDismiss={closeLookup}
+              className='glossa-reading-popup select-text'
+            >
+              <SelectionTranslation text={selection.text} onClose={closeLookup} />
+            </Popup>
+          )}
+        </div>
+      )}
       {showAnnotPopup &&
+        !lookup &&
         trianglePosition &&
         annotPopupPosition &&
         // With an empty toolbar, suppress the popup on a plain selection rather

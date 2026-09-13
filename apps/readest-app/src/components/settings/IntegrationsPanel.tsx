@@ -188,9 +188,7 @@ const IntegrationsPanel: React.FC = () => {
                   provider: _('WebDAV'),
                 })}
               </li>
-              <li>
-                {_('App settings still sync through your Readest Cloud account while signed in.')}
-              </li>
+              <li>{_('App settings still sync through your Cloud account while signed in.')}</li>
             </Tips>
           </div>
         )}
@@ -216,9 +214,7 @@ const IntegrationsPanel: React.FC = () => {
                   provider: _('Google Drive'),
                 })}
               </li>
-              <li>
-                {_('App settings still sync through your Readest Cloud account while signed in.')}
-              </li>
+              <li>{_('App settings still sync through your Cloud account while signed in.')}</li>
             </Tips>
           </div>
         )}
@@ -245,11 +241,7 @@ const IntegrationsPanel: React.FC = () => {
                 })}
               </li>
             }
-            {
-              <li>
-                {_('App settings still sync through your Readest Cloud account while signed in.')}
-              </li>
-            }
+            {<li>{_('App settings still sync through your Cloud account while signed in.')}</li>}
             {
               <li>
                 {_(
@@ -286,9 +278,7 @@ const IntegrationsPanel: React.FC = () => {
                   provider: _('OneDrive'),
                 })}
               </li>
-              <li>
-                {_('App settings still sync through your Readest Cloud account while signed in.')}
-              </li>
+              <li>{_('App settings still sync through your Cloud account while signed in.')}</li>
             </Tips>
           </div>
         )}
@@ -314,9 +304,7 @@ const IntegrationsPanel: React.FC = () => {
                   provider: _('iCloud'),
                 })}
               </li>
-              <li>
-                {_('App settings still sync through your Readest Cloud account while signed in.')}
-              </li>
+              <li>{_('App settings still sync through your Cloud account while signed in.')}</li>
             </Tips>
           </div>
         )}
@@ -327,8 +315,8 @@ const IntegrationsPanel: React.FC = () => {
       <div className='my-4 w-full'>
         <SubPageHeader
           parentLabel={_('Cloud Sync')}
-          currentLabel={_('Readest Cloud')}
-          description={_('Sync your library, reading progress, and highlights with Readest Cloud.')}
+          currentLabel={_('Cloud')}
+          description={_('Sync your library, reading progress, and highlights with Cloud.')}
           onBack={() => setSubPage(null)}
         />
         <BoxedList>
@@ -429,7 +417,7 @@ const IntegrationsPanel: React.FC = () => {
       <div className='w-full px-4'>
         <h2 className='mb-1.5 text-lg font-semibold tracking-tight'>{_('Cloud Sync')}</h2>
         <p className='text-base-content/70 text-sm leading-relaxed'>
-          {_('Sync your library, reading progress, and highlights with Readest Cloud.')}
+          {_('Sync your library, reading progress, and highlights with Cloud.')}
         </p>
       </div>
 
@@ -443,13 +431,13 @@ const IntegrationsPanel: React.FC = () => {
           >
             <CloudProviderRow
               icon={RiCloudFill}
-              title={_('Readest Cloud')}
+              title={_('Cloud')}
               status={readestStatus}
               checked={!!user && readestEnabled}
               canToggle={!!user}
               onToggle={(next) => toggleCloudProvider('readest', next)}
               onOpen={() => (user ? setSubPage('readest-cloud') : navigateToLogin(router))}
-              toggleLabel={_('Sync with Readest Cloud')}
+              toggleLabel={_('Sync with Cloud')}
             />
             {/* Third-party providers are premium: every row carries the tier
                 badge; on a free plan the checkbox is disabled and opening a
@@ -559,9 +547,7 @@ const IntegrationsPanel: React.FC = () => {
                   'Library sync is off. Your books, progress, and annotations stay on this device.',
                 )}
               </li>
-              <li>
-                {_('App settings still sync through your Readest Cloud account while signed in.')}
-              </li>
+              <li>{_('App settings still sync through your Cloud account while signed in.')}</li>
             </Tips>
           </div>
         )}
