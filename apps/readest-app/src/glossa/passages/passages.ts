@@ -1,7 +1,7 @@
 import { md5 } from 'js-md5';
 import type { ChapterContent, ChapterSource } from '@/glossa/context/types';
 import { stubTranslation as _ } from '@/utils/misc';
-import { GuideError, type ReadingPassage } from './types';
+import { PassageError, type ReadingPassage } from './types';
 
 export const PASSAGE_TARGET_CHARACTERS = 20000;
 export const PASSAGE_MAX_CHARACTERS = 20000;
@@ -15,7 +15,7 @@ export function getPassageId(chapterId: string, sources: ChapterSource[]): strin
 /** Keep the adapter's complete semantic blocks and original anchors, never text excerpts. */
 export function buildReadingPassages(content: ChapterContent): ReadingPassage[] {
   if (new Set(content.sources.map((source) => source.sourceId)).size !== content.sources.length)
-    throw new GuideError('unavailable', _('The passage sources could not be verified.'));
+    throw new PassageError('unavailable', _('The passage sources could not be verified.'));
   const passages: ReadingPassage[] = [];
   let pending: ChapterSource[] = [];
   let count = 0;

@@ -10,7 +10,7 @@
 - 移除输入框展开/收起按键；输入框只随内容自动增高（上限 180px，超出滚动），输入时显示字数。推理强度选择器移到输入框右下角发送键旁，仅在当前服务/型号具备已核验推理档位时出现，选择即保存到该服务配置；能力与发送规则不变。
 - 会话自动命名：每个会话的首条回答完成后，用同一服务以一次独立小请求（仅首问与首答的截断、256 token 上限、不携带推理档位与用户提示词）生成不超过 48 字符的名称，取首行并去除首尾引号与标点；失败或结果不可用时保留以首问生成的备用标签，不提示错误。仅在会话无名称时触发一次，用户手动命名永远优先，自动命名不覆盖；命名请求不进对话历史。
 
-目录路径由本地 EPUB 目录层级恢复（含扁平 NCX 的有限层级还原），按“父级 › 子级”拼接后随请求发送；目录不可用时回退到当前分节标签。新消息使用 conversation-3。沿用原数据库并保留旧记录的读取校验；旧原文/来源/摘要不会被带入新请求。模型只能看到三个元数据字段与当前会话有界的普通消息，不获取阅读正文。停止保留部分文本；仅完整轮次参与后续请求。导读的来源验证和阅读/同步数据保持原有行为。
+目录路径由本地 EPUB 目录层级恢复（含扁平 NCX 的有限层级还原），按“父级 › 子级”拼接后随请求发送；目录不可用时回退到当前分节标签。新消息使用 conversation-3。沿用原数据库并保留旧记录的读取校验；旧原文/来源/摘要不会被带入新请求。模型只能看到三个元数据字段与当前会话有界的普通消息，不获取阅读正文。停止保留部分文本；仅完整轮次参与后续请求。导图的来源验证和阅读/同步数据保持原有行为。
 
 ### 修改与多版本回答（2026-09-12）
 
@@ -18,7 +18,7 @@
 
 ### 模型参数（2026-09-12）
 
-`ProviderConfig` 增加可选 `reasoningEffort` 与 `maxTokens`。能力由服务地址与模型名判定，只对已核验的官方接口发送厂商参数：智谱官方（`open.bigmodel.cn`、`api.z.ai`）的 GLM-5.3/Flash 支持 `low`/`high`/`max`，未选择时沿用既有默认 `low`；OpenAI 官方（`api.openai.com`）按已核验型号匹配（含日期快照）：GPT-5/mini/nano 为 `minimal`/`low`/`medium`/`high`；GPT-5.1 为 `none`/`low`/`medium`/`high`；GPT-5.2 在此基础上支持 `xhigh`；o1/o3/o3-mini/o4-mini 为 `low`/`medium`/`high`。不按任意前缀猜测 chat-latest、pro、codex 或未知新型号的能力。未知模型与其他兼容服务不显示推理强度，且即使存储了该字段也不会发送；已知型号也只发送其支持的档位。能力表依据 [OpenAI 模型说明](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.2) 与 [GLM 推理说明](https://docs.z.ai/guides/capabilities/thinking)，不代表覆盖所有服务与未来型号。输出上限在官方 OpenAI Chat Completions 使用 `max_completion_tokens`，其余兼容接口使用 `max_tokens`，对话默认 16,384 token，用户设置优先；导读与导图继续使用各自显式的输出预算。设置面板保存参数到 provider；写入每轮回答时只保留服务身份（id、name、baseUrl、model），不持久化能力参数。
+`ProviderConfig` 增加可选 `reasoningEffort` 与 `maxTokens`。能力由服务地址与模型名判定，只对已核验的官方接口发送厂商参数：智谱官方（`open.bigmodel.cn`、`api.z.ai`）的 GLM-5.3/Flash 支持 `low`/`high`/`max`，未选择时沿用既有默认 `low`；OpenAI 官方（`api.openai.com`）按已核验型号匹配（含日期快照）：GPT-5/mini/nano 为 `minimal`/`low`/`medium`/`high`；GPT-5.1 为 `none`/`low`/`medium`/`high`；GPT-5.2 在此基础上支持 `xhigh`；o1/o3/o3-mini/o4-mini 为 `low`/`medium`/`high`。不按任意前缀猜测 chat-latest、pro、codex 或未知新型号的能力。未知模型与其他兼容服务不显示推理强度，且即使存储了该字段也不会发送；已知型号也只发送其支持的档位。能力表依据 [OpenAI 模型说明](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.2) 与 [GLM 推理说明](https://docs.z.ai/guides/capabilities/thinking)，不代表覆盖所有服务与未来型号。输出上限在官方 OpenAI Chat Completions 使用 `max_completion_tokens`，其余兼容接口使用 `max_tokens`，对话默认 16,384 token，用户设置优先；导图继续使用显式的输出预算。设置面板保存参数到 provider；写入每轮回答时只保留服务身份（id、name、baseUrl、model），不持久化能力参数。
 
 ### 输入、历史与排版（2026-09-12）
 

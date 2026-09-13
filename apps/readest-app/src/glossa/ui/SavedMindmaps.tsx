@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useReaderStore } from '@/store/readerStore';
 import { resolveSource } from '@/glossa/citations/sources';
-import { navigateGuideSource } from '@/glossa/citations/navigation';
+import { navigateSource } from '@/glossa/citations/navigation';
 import { listSavedMindmaps } from '@/glossa/mindmap/store';
 import type { ReadingMindmap } from '@/glossa/mindmap/types';
 import type { ChapterSource } from '@/glossa/context/types';
@@ -58,7 +58,7 @@ export default function SavedMindmaps({
       const cfi = source ? resolved?.cfi : origin;
       if (!view || !cfi) throw new Error('Unresolved source');
       if (source) setOrigin((previous) => previous || reader.getProgress(bookKey)?.location || '');
-      await navigateGuideSource(view, cfi, controller.signal);
+      await navigateSource(view, cfi, controller.signal);
       if (!controller.signal.aborted) {
         if (!source) setOrigin('');
         onNavigate?.();

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Book } from '@/types/book';
 import type { BookDoc } from '@/libs/document';
 import type { ChapterContent, ChapterSource } from '@/glossa/context/types';
-import { type ReadingPassage } from '@/glossa/guide/types';
+import { type ReadingPassage } from '@/glossa/passages/types';
 import type { ReadingMindmap } from '@/glossa/mindmap/types';
 
 const f = vi.hoisted(() => ({
@@ -49,13 +49,13 @@ vi.mock('@/glossa/context/chapters', () => ({
   extractChapter: f.extract,
 }));
 vi.mock('@/glossa/citations/sources', () => ({ resolveSource: f.resolve }));
-vi.mock('@/glossa/citations/navigation', () => ({ navigateGuideSource: f.navigate }));
+vi.mock('@/glossa/citations/navigation', () => ({ navigateSource: f.navigate }));
 vi.mock('@/glossa/ai/provider', async (original) => ({
   ModelServiceError: (await original<typeof import('@/glossa/ai/provider')>()).ModelServiceError,
   getActiveProviderConfig: f.active,
   getProviderStatus: f.status,
 }));
-vi.mock('@/glossa/guide/passages', () => ({ buildReadingPassages: f.passages }));
+vi.mock('@/glossa/passages/passages', () => ({ buildReadingPassages: f.passages }));
 vi.mock('@/glossa/mindmap/generate', () => ({
   generateMindmap: f.generate,
   getMindmapCacheKey: f.cacheKey,
@@ -224,7 +224,7 @@ describe('right-side mindmap', () => {
     fireEvent.click(screen.getByRole('button', { name: '适用条件' }));
     await waitFor(() => expect(f.navigate).toHaveBeenCalled());
     expect(screen.queryByRole('button', { name: 'View source 1' })).toBeNull();
-    expect(document.querySelector('.glossa-guide-inference')).toBeNull();
+    expect(document.querySelector('.glossa-passage-inference')).toBeNull();
     expect(f.resolve).toHaveBeenCalledWith(bookDoc, source, expect.anything());
     expect(f.navigate).toHaveBeenCalledWith(
       expect.anything(),

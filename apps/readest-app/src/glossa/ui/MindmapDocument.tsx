@@ -84,7 +84,7 @@ export default function MindmapDocument({ guide, sources, onSource }: Props) {
   return (
     <article className='glossa-mindmap select-text' aria-label={_('Generated mind map')}>
       {guide.insufficientEvidence ? (
-        <p role='status' className='glossa-guide-message'>
+        <p role='status' className='glossa-passage-message'>
           {_('This passage does not contain enough evidence for a mind map.')}
         </p>
       ) : (
@@ -92,7 +92,7 @@ export default function MindmapDocument({ guide, sources, onSource }: Props) {
           <div className='glossa-map-toolbar' role='group' aria-label={_('Mind map controls')}>
             <button
               type='button'
-              className='glossa-guide-text-button'
+              className='glossa-passage-text-button'
               onClick={() => {
                 setExpanded(new Set(allExpanded ? [] : branches.map((n) => n.id)));
               }}
@@ -102,7 +102,7 @@ export default function MindmapDocument({ guide, sources, onSource }: Props) {
             <div className='glossa-map-size'>
               <button
                 type='button'
-                className='glossa-guide-text-button'
+                className='glossa-passage-text-button'
                 aria-label={_('Smaller nodes')}
                 disabled={scale <= 0.9}
                 onClick={() => setScale((n) => Math.max(0.9, n - 0.1))}
@@ -111,7 +111,7 @@ export default function MindmapDocument({ guide, sources, onSource }: Props) {
               </button>
               <button
                 type='button'
-                className='glossa-guide-text-button'
+                className='glossa-passage-text-button'
                 aria-label={_('Larger nodes')}
                 disabled={scale >= 1.3}
                 onClick={() => setScale((n) => Math.min(1.3, n + 0.1))}

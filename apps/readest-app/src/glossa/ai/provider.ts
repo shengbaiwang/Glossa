@@ -450,8 +450,7 @@ export async function streamCompletion({
   onDelta,
   maxTokens,
 }: CompletionRequest): Promise<string> {
-  if (!input)
-    throw new ModelServiceError(_('Configure a model service before generating a reading guide.'));
+  if (!input) throw new ModelServiceError(_('Configure a model service first.'));
   const config = validateProviderConfig(input);
   if (!config.model) throw new ModelServiceError(_('Enter a model name first.'));
   const capabilities = providerCapabilities(config);

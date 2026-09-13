@@ -46,7 +46,6 @@ import EmptyState from '../EmptyState';
 
 const MIN_NOTEBOOK_WIDTH = 0.15;
 const MAX_NOTEBOOK_WIDTH = 0.45;
-const ReadingGuidePanel = lazy(() => import('@/glossa/ui/ReadingGuidePanel'));
 const MindmapPanel = lazy(() => import('@/glossa/ui/MindmapPanel'));
 const ConversationPanel = lazy(() => import('@/glossa/ui/ConversationPanel'));
 
@@ -96,14 +95,12 @@ const Notebook: React.FC = ({}) => {
   const onNavigateEvent = async () => {
     const { isNotebookPinned, notebookActiveTab } = useNotebookStore.getState();
     const bookKey = useSidebarStore.getState().sideBarBookKey;
-    const isReadingGuide =
-      (notebookActiveTab === 'guide' ||
-        notebookActiveTab === 'conversation' ||
-        notebookActiveTab === 'mindmap') &&
+    const isReadingAssistant =
+      (notebookActiveTab === 'conversation' || notebookActiveTab === 'mindmap') &&
       bookKey &&
       getBookData(bookKey)?.book?.format === 'EPUB';
-    // Sources and their return action belong to the reading guide session.
-    if (!isReadingGuide && (!isNotebookPinned || window.innerWidth < 640)) {
+    // Sources and their return action belong to the reading assistant session.
+    if (!isReadingAssistant && (!isNotebookPinned || window.innerWidth < 640)) {
       setNotebookVisible(false);
     }
   };
@@ -353,11 +350,10 @@ const Notebook: React.FC = ({}) => {
   }
   const { book, bookDoc } = bookData;
   const languageDir = getBookDirFromLanguage(bookDoc.metadata.language);
-  const supportsReadingGuide = book.format === 'EPUB';
-  const activeTab = supportsReadingGuide ? notebookActiveTab : 'notes';
+  const supportsReadingAssistant = book.format === 'EPUB';
+  const activeTab = supportsReadingAssistant ? notebookActiveTab : 'notes';
   const tabs = [
     { id: 'conversation' as const, label: _('Conversation') },
-    { id: 'guide' as const, label: _('Guide') },
     { id: 'mindmap' as const, label: _('Mind map') },
     { id: 'notes' as const, label: _('Excerpts') },
   ];
@@ -494,7 +490,7 @@ const Notebook: React.FC = ({}) => {
             conversation={activeTab === 'conversation'}
           />
 
-          {supportsReadingGuide && (
+          {supportsReadingAssistant && (
             <div
               className='glossa-reader-tabs glossa-notebook-tabs flex shrink-0 gap-1 px-3 pb-2'
               role='tablist'
@@ -536,7 +532,7 @@ const Notebook: React.FC = ({}) => {
             />
           </div>
         </div>
-        {supportsReadingGuide && activeTab === 'conversation' && (
+        {supportsReadingAssistant && activeTab === 'conversation' && (
           <div
             className='glossa-notebook-content min-h-0 flex-1 overflow-hidden'
             role='tabpanel'
@@ -554,7 +550,7 @@ const Notebook: React.FC = ({}) => {
             </Suspense>
           </div>
         )}
-        {supportsReadingGuide && activeTab === 'mindmap' && (
+        {supportsReadingAssistant && activeTab === 'mindmap' && (
           <div
             className='glossa-notebook-content min-h-0 flex-1 overflow-y-auto'
             role='tabpanel'
@@ -573,34 +569,11 @@ const Notebook: React.FC = ({}) => {
             </Suspense>
           </div>
         )}
-        {supportsReadingGuide && (
-          <div
-            key={`${book.hash}:${sideBarBookKey}`}
-            className='glossa-notebook-content min-h-0 flex-1 overflow-y-auto'
-            role='tabpanel'
-            id={`${tabId}-panel-guide`}
-            aria-labelledby={`${tabId}-tab-guide`}
-            hidden={activeTab !== 'guide'}
-            tabIndex={0}
-          >
-            <Suspense
-              fallback={
-                <p className='glossa-reader-muted px-4 py-3 text-sm' role='status'>
-                  {_('Loading...')}
-                </p>
-              }
-            >
-              {activeTab === 'guide' && (
-                <ReadingGuidePanel book={book} bookDoc={bookDoc} bookKey={sideBarBookKey} />
-              )}
-            </Suspense>
-          </div>
-        )}
         <div
           className='min-h-0 flex-1 overflow-y-auto'
-          role={supportsReadingGuide ? 'tabpanel' : undefined}
+          role={supportsReadingAssistant ? 'tabpanel' : undefined}
           id={`${tabId}-panel-notes`}
-          aria-labelledby={supportsReadingGuide ? `${tabId}-tab-notes` : undefined}
+          aria-labelledby={supportsReadingAssistant ? `${tabId}-tab-notes` : undefined}
           hidden={activeTab !== 'notes'}
           tabIndex={0}
         >

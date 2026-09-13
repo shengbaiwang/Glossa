@@ -1,6 +1,6 @@
 import { webcrypto } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getPassageId } from '@/glossa/guide/passages';
+import { getPassageId } from '@/glossa/passages/passages';
 import type { ChapterSource } from '@/glossa/context/types';
 import { parseMindmap } from '@/glossa/mindmap/schema';
 import { generateMindmap, getMindmapCacheKey } from '@/glossa/mindmap/generate';

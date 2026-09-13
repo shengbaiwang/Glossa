@@ -12,7 +12,7 @@ const f = vi.hoisted(() => ({
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (key: string) => key }));
 vi.mock('@/glossa/mindmap/store', () => ({ listSavedMindmaps: f.list }));
 vi.mock('@/glossa/citations/sources', () => ({ resolveSource: f.resolve }));
-vi.mock('@/glossa/citations/navigation', () => ({ navigateGuideSource: f.navigate }));
+vi.mock('@/glossa/citations/navigation', () => ({ navigateSource: f.navigate }));
 vi.mock('@/store/readerStore', () => ({
   useReaderStore: {
     getState: () => ({ getView: () => ({}), getProgress: () => ({ location: 'origin-cfi' }) }),

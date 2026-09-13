@@ -7,10 +7,10 @@ import {
 } from '@/glossa/ai/provider';
 import { stubTranslation as _ } from '@/utils/misc';
 import { getMindmapIdentity, MINDMAP_PROMPT_VERSION, MINDMAP_SCHEMA_VERSION } from './identity';
-import { getPassageId } from '@/glossa/guide/passages';
-import { passageSourcesSchema } from '@/glossa/guide/schema';
+import { getPassageId } from '@/glossa/passages/passages';
+import { passageSourcesSchema } from '@/glossa/passages/schema';
 import { parseMindmap } from './schema';
-import { GuideError, throwIfAborted, type ReadingPassage } from '@/glossa/guide/types';
+import { PassageError, throwIfAborted, type ReadingPassage } from '@/glossa/passages/types';
 import type { ReadingMindmap } from './types';
 
 export { MINDMAP_PROMPT_VERSION, MINDMAP_SCHEMA_VERSION } from './identity';
@@ -50,7 +50,7 @@ export async function generateMindmap(
   const passageId = passage.id;
   throwIfAborted(signal);
   if (!passage.sources.length)
-    throw new GuideError('empty', _('This passage has no readable text.'));
+    throw new PassageError('empty', _('This passage has no readable text.'));
   const parsedSources = passageSourcesSchema.safeParse(passage.sources);
   if (
     passage.unavailable ||
@@ -61,7 +61,7 @@ export async function generateMindmap(
     !bookId ||
     !chapterId
   )
-    throw new GuideError(
+    throw new PassageError(
       'unavailable',
       _('This passage cannot be sent as a complete, verifiable reading segment.'),
     );

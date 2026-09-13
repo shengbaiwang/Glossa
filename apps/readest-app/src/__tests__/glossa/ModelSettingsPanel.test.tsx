@@ -65,7 +65,7 @@ describe('model service settings', () => {
     fireEvent.change(models, { target: { value: 'other-model' } });
     expect((screen.getByLabelText('Model name') as HTMLInputElement).value).toBe('other-model');
     fireEvent.click(screen.getByRole('button', { name: 'Test connection' }));
-    await screen.findByText('Connection successful. This model is ready for reading guides.');
+    await screen.findByText('Connection successful. This model is ready.');
     expect(mocks.test.mock.calls[0]![0].model).toBe('other-model');
   });
 

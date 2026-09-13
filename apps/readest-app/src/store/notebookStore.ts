@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { BookNote } from '@/types/book';
 import { TextSelection } from '@/utils/sel';
 
-export type NotebookTab = 'notes' | 'guide' | 'conversation' | 'mindmap';
+export type NotebookTab = 'notes' | 'conversation' | 'mindmap';
 
 interface NotebookState {
   notebookWidth: string;
@@ -36,7 +36,7 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
   notebookWidth: '',
   isNotebookVisible: false,
   isNotebookPinned: false,
-  notebookActiveTab: 'guide',
+  notebookActiveTab: 'conversation',
   notebookNewAnnotation: null,
   notebookNewHighlightId: null,
   notebookEditAnnotation: null,
