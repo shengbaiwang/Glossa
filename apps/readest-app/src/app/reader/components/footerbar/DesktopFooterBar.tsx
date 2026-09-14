@@ -47,7 +47,6 @@ const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
           onCommit={navigationHandlers.onProgressChange}
         />
       </div>
-      <div className='glossa-navigation-spacer' />
     </div>
   );
 };

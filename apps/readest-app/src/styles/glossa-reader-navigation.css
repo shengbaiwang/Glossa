@@ -22,8 +22,7 @@
   gap: var(--glossa-gap-chrome);
 }
 
-.glossa-navigation-secondary,
-.glossa-navigation-spacer {
+.glossa-navigation-secondary {
   flex: 0 0 66px;
 }
 
@@ -145,7 +144,7 @@
 
 .glossa-mobile-navigation-secondary {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   width: 100%;
   max-width: 520px;
   border-top: 1px solid var(--glossa-border);
@@ -193,8 +192,7 @@
     gap: 0;
   }
 
-  .glossa-navigation-secondary,
-  .glossa-navigation-spacer {
+  .glossa-navigation-secondary {
     flex-basis: 64px;
   }
 
