@@ -519,7 +519,6 @@ const Notebook: React.FC = ({}) => {
                 !notebookEditAnnotation && (
                   <BooknoteView
                     key={sideBarBookKey}
-                    type='annotation'
                     bookKey={sideBarBookKey}
                     toc={bookDoc.toc ?? []}
                     notebookSearch={{ results: isSearchBarVisible ? searchResults : null }}

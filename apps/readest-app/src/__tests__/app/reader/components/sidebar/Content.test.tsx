@@ -35,8 +35,8 @@ vi.mock('overlayscrollbars-react', () => ({
   OverlayScrollbarsComponent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 vi.mock('@/app/reader/components/sidebar/TOCView', () => ({ default: () => <p>Chapter list</p> }));
-vi.mock('@/app/reader/components/sidebar/BooknoteView', () => ({
-  default: ({ type }: { type: string }) => <p>{type} list</p>,
+vi.mock('@/app/reader/components/sidebar/BookmarkView', () => ({
+  default: () => <p>bookmark list</p>,
 }));
 
 const bookDoc = { toc: [] } as unknown as BookDoc;

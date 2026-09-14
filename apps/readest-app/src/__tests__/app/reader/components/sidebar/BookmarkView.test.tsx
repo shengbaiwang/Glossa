@@ -5,35 +5,34 @@ import type { BookNote } from '@/types/book';
 
 // ---------- Shared mutable test state (captured by the mock factories) ----------
 let scrollToIndexSpy: Mock<(arg: unknown) => void>;
-// Only the FIRST (mount-time) `initialized` callback is captured, mirroring how
-// OverlayScrollbars binds its event handlers when it initializes the viewport.
-// A fix that relied on a fresher render closure would pass against the latest
-// callback but still break in the real app — so the test forces a ref-based fix.
 let capturedInitialized:
   | ((instance: { elements: () => { viewport: HTMLElement } }) => void)
   | undefined;
-// Latest props Virtuoso was rendered with, so tests can assert the mount-time
-// position (initialTopMostItemIndex) the panel hands it.
 let capturedVirtuosoProps: Record<string, unknown> | undefined;
 let mockProgress: { location: string } | null;
 let mockBooknotes: BookNote[];
+let dispatchSpy: Mock;
 
 // ---------- Mocks ----------
-// Production code uses per-field selectors; mock must apply them.
 vi.mock('@/store/bookDataStore', () => {
-  const state = { getConfig: () => ({ booknotes: mockBooknotes }) };
+  const state = {
+    booksData: {
+      book1: {
+        get config() {
+          return { booknotes: mockBooknotes };
+        },
+      },
+    },
+  };
   return {
     useBookDataStore: <R,>(selector?: (s: typeof state) => R) =>
       selector ? selector(state) : state,
   };
 });
 
-vi.mock('@/store/readerStore', () => {
-  const state = { getProgress: () => mockProgress };
-  return {
-    useReaderStore: <R,>(selector?: (s: typeof state) => R) => (selector ? selector(state) : state),
-  };
-});
+vi.mock('@/store/readerProgressStore', () => ({
+  useBookProgress: () => mockProgress,
+}));
 
 vi.mock('@/store/sidebarStore', () => ({
   useSidebarStore: () => ({
@@ -42,8 +41,8 @@ vi.mock('@/store/sidebarStore', () => ({
   }),
 }));
 
-// Derive a per-chapter TOC group from the spine step of each note's CFI so the
-// flattened list is [header, note, header, note, ...] sorted by chapter.
+// Derive a per-chapter TOC group from the spine step of each bookmark's CFI so
+// the flattened list is [header, note, header, note, ...] sorted by chapter.
 vi.mock('@/services/nav', () => ({
   findTocItemBS: (_toc: unknown, cfi: string) => {
     const match = cfi.match(/\/6\/(\d+)!/);
@@ -57,19 +56,28 @@ vi.mock('@/hooks/useTranslation', () => ({
 }));
 
 vi.mock('@/utils/event', () => ({
-  eventDispatcher: { dispatch: vi.fn(), on: vi.fn(), off: vi.fn() },
+  eventDispatcher: {
+    dispatch: (...args: unknown[]) => dispatchSpy(...args),
+    on: vi.fn(),
+    off: vi.fn(),
+  },
 }));
 
-vi.mock('@/app/reader/components/sidebar/BooknoteItem', () => ({
+vi.mock('@/app/reader/components/sidebar/BookmarkItem', () => ({
   default: () => null,
 }));
 
 vi.mock('@/app/reader/components/EmptyState', () => ({
-  default: () => null,
+  default: ({ label, action }: { label: string; action?: React.ReactNode }) => (
+    <div>
+      <p>{label}</p>
+      {action}
+    </div>
+  ),
 }));
 
 // Virtuoso is replaced with a stub that exposes a spy-able `scrollToIndex`
-// through the imperative handle and hands BooknoteView a scroller element.
+// through the imperative handle and hands BookmarkView a scroller element.
 vi.mock('react-virtuoso', async () => {
   const ReactMod = await import('react');
   return {
@@ -103,15 +111,28 @@ vi.mock('overlayscrollbars-react', () => ({
 }));
 
 // eslint-disable-next-line import/first
-import BooknoteView from '@/app/reader/components/sidebar/BooknoteView';
+import BookmarkView from '@/app/reader/components/sidebar/BookmarkView';
 
-const makeNote = (cfi: string): BookNote =>
+const makeBookmark = (cfi: string): BookNote =>
   ({
     id: cfi,
+    type: 'bookmark',
+    cfi,
+    text: `excerpt at ${cfi}`,
+    note: '',
+    createdAt: 0,
+    updatedAt: 0,
+  }) as BookNote;
+
+const makeAnnotation = (cfi: string): BookNote =>
+  ({
+    id: `a-${cfi}`,
     type: 'annotation',
     cfi,
-    text: cfi,
+    text: 'highlighted words',
     note: '',
+    style: 'highlight',
+    color: 'yellow',
     createdAt: 0,
     updatedAt: 0,
   }) as BookNote;
@@ -126,13 +147,14 @@ beforeEach(() => {
   scrollToIndexSpy = vi.fn<(arg: unknown) => void>();
   capturedInitialized = undefined;
   capturedVirtuosoProps = undefined;
+  dispatchSpy = vi.fn();
   mockProgress = null;
   mockBooknotes = [
-    makeNote('epubcfi(/6/4!/4/2:0)'),
-    makeNote('epubcfi(/6/6!/4/4:0)'),
-    makeNote('epubcfi(/6/8!/4/2:0)'),
-    makeNote('epubcfi(/6/10!/4/6:0)'),
-    makeNote('epubcfi(/6/26!/4/2:0)'),
+    makeBookmark('epubcfi(/6/4!/4/2:0)'),
+    makeBookmark('epubcfi(/6/6!/4/4:0)'),
+    makeBookmark('epubcfi(/6/8!/4/2:0)'),
+    makeBookmark('epubcfi(/6/10!/4/6:0)'),
+    makeBookmark('epubcfi(/6/26!/4/2:0)'),
   ];
   // Run rAF synchronously so the callback's scroll happens inside act().
   vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
@@ -146,33 +168,58 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('BooknoteView — OverlayScrollbars init does not rewind the list to the top', () => {
-  it('re-applies the auto-scroll to the nearest note when OverlayScrollbars initializes after the reading position arrives', () => {
-    // Fresh open: BooknoteView mounts before the first relocate, so `progress`
-    // (and thus the nearest cfi) has no reading position yet.
-    mockProgress = null;
-    const { rerender } = render(<BooknoteView bookKey='book1' toc={[]} />);
+describe('BookmarkView', () => {
+  it('lists only bookmarks — annotations and excerpts stay in the right panel', () => {
+    mockBooknotes = [
+      makeBookmark('epubcfi(/6/4!/4/2:0)'),
+      makeAnnotation('epubcfi(/6/4!/4/5:0)'),
+      makeBookmark('epubcfi(/6/6!/4/2:0)'),
+    ];
+    render(<BookmarkView bookKey='book1' toc={[]} />);
+    // 2 bookmarks → 2 headers + 2 rows.
+    expect(capturedVirtuosoProps?.['totalCount']).toBe(4);
+  });
 
-    // The relocate arrives → the normal auto-scroll effect centers the nearest
-    // note. The list is [h4, n4, h6, n6, h8, n8, h10, n10, h26, n26]; the
-    // reading position is in the last chapter, so the nearest note is index 9.
+  it('hides soft-deleted bookmarks', () => {
+    mockBooknotes = [
+      { ...makeBookmark('epubcfi(/6/4!/4/2:0)'), deletedAt: 123 },
+      makeBookmark('epubcfi(/6/6!/4/2:0)'),
+    ];
+    render(<BookmarkView bookKey='book1' toc={[]} />);
+    expect(capturedVirtuosoProps?.['totalCount']).toBe(2);
+  });
+
+  it('shows the empty state with a direct "Bookmark This Page" action', () => {
+    mockBooknotes = [];
+    const { getByText } = render(<BookmarkView bookKey='book1' toc={[]} />);
+    expect(getByText('No Bookmarks')).toBeTruthy();
+    expect(capturedVirtuosoProps).toBeUndefined();
+
+    act(() => {
+      getByText('Bookmark This Page').closest('button')!.click();
+    });
+    expect(dispatchSpy).toHaveBeenCalledWith('toggle-bookmark', { bookKey: 'book1' });
+  });
+
+  it('re-applies the auto-scroll to the nearest bookmark when OverlayScrollbars initializes after the reading position arrives', () => {
+    mockProgress = null;
+    const { rerender } = render(<BookmarkView bookKey='book1' toc={[]} />);
+
     mockProgress = { location: 'epubcfi(/6/26!/4/10:0)' };
     act(() => {
-      rerender(<BooknoteView bookKey='book1' toc={[]} />);
+      rerender(<BookmarkView bookKey='book1' toc={[]} />);
     });
-
-    // Ignore that first scroll; we only care whether the OverlayScrollbars init
-    // (which clobbers scrollTop) re-applies it instead of stranding the top.
     scrollToIndexSpy.mockClear();
 
     fireOverlayScrollbarsInitialized();
 
+    // Flat list: [h4, n4, h6, n6, h8, n8, h10, n10, h26, n26]; nearest = index 9.
     expect(scrollToIndexSpy).toHaveBeenCalledWith(expect.objectContaining({ index: 9 }));
   });
 
   it('does not force a scroll on OverlayScrollbars init when there is no reading position', () => {
     mockProgress = null;
-    render(<BooknoteView bookKey='book1' toc={[]} />);
+    render(<BookmarkView bookKey='book1' toc={[]} />);
 
     scrollToIndexSpy.mockClear();
     fireOverlayScrollbarsInitialized();
@@ -180,15 +227,10 @@ describe('BooknoteView — OverlayScrollbars init does not rewind the list to th
     expect(scrollToIndexSpy).not.toHaveBeenCalled();
   });
 
-  it('positions Virtuoso natively on mount (without a racing scrollToIndex) when the reading position is already known', () => {
-    // Switching to the panel while reading: the reading position is available at
-    // mount. A scrollToIndex against the freshly mounted, unmeasured list no-ops
-    // or wedges it into rendering nothing — so the panel must mount Virtuoso
-    // already centered via initialTopMostItemIndex and the scroll effect must
-    // skip its first jump.
+  it('positions Virtuoso natively on mount when the reading position is already known', () => {
     mockProgress = { location: 'epubcfi(/6/26!/4/10:0)' };
     act(() => {
-      render(<BooknoteView bookKey='book1' toc={[]} />);
+      render(<BookmarkView bookKey='book1' toc={[]} />);
     });
 
     expect(capturedVirtuosoProps?.['initialTopMostItemIndex']).toEqual({
@@ -197,30 +239,23 @@ describe('BooknoteView — OverlayScrollbars init does not rewind the list to th
     });
     expect(scrollToIndexSpy).not.toHaveBeenCalled();
 
-    // The deferred OverlayScrollbars init resets scrollTop; the re-apply then
-    // restores the centered position (now that the rows have been measured).
     fireOverlayScrollbarsInitialized();
     expect(scrollToIndexSpy).toHaveBeenCalledWith(expect.objectContaining({ index: 9 }));
   });
 
-  it('jumps instantly (behavior auto) for a far scroll instead of animating it, like TOCView', () => {
-    // 12 notes in distinct chapters → flat list [h, n, h, n, ...] of 24 rows;
-    // the nearest note (last chapter) sits at index 23, far from the top.
+  it('jumps instantly (behavior auto) for a far scroll instead of animating it', () => {
     mockBooknotes = Array.from({ length: 12 }, (_, i) =>
-      makeNote(`epubcfi(/6/${4 + i * 2}!/4/2:0)`),
+      makeBookmark(`epubcfi(/6/${4 + i * 2}!/4/2:0)`),
     );
 
-    // Reload-style: no reading position at mount, so initialTopMostItemIndex
-    // does not handle it and the scroll effect performs the jump.
     mockProgress = null;
-    const { rerender } = render(<BooknoteView bookKey='book1' toc={[]} />);
+    const { rerender } = render(<BookmarkView bookKey='book1' toc={[]} />);
 
     mockProgress = { location: 'epubcfi(/6/26!/4/10:0)' };
     act(() => {
-      rerender(<BooknoteView bookKey='book1' toc={[]} />);
+      rerender(<BookmarkView bookKey='book1' toc={[]} />);
     });
 
-    // distance (23 - 0) > 16 → instant jump, not a smooth animation.
     expect(scrollToIndexSpy).toHaveBeenCalledWith(
       expect.objectContaining({ index: 23, behavior: 'auto' }),
     );
@@ -228,13 +263,4 @@ describe('BooknoteView — OverlayScrollbars init does not rewind the list to th
       expect.objectContaining({ behavior: 'smooth' }),
     );
   });
-});
-
-it('uses right-panel search results and restores all annotations when search closes', () => {
-  const { rerender } = render(
-    <BooknoteView bookKey='book1' toc={[]} notebookSearch={{ results: [mockBooknotes[0]!] }} />,
-  );
-  expect(capturedVirtuosoProps?.['totalCount']).toBe(2);
-  rerender(<BooknoteView bookKey='book1' toc={[]} notebookSearch={{ results: null }} />);
-  expect(capturedVirtuosoProps?.['totalCount']).toBe(10);
 });

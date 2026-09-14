@@ -9,7 +9,7 @@ import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import 'overlayscrollbars/overlayscrollbars.css';
 
 import TOCView from './TOCView';
-import BooknoteView from './BooknoteView';
+import BookmarkView from './BookmarkView';
 import TabNavigation from './TabNavigation';
 
 const SidebarContent: React.FC<{
@@ -71,7 +71,7 @@ const SidebarContent: React.FC<{
                 <TOCView toc={bookDoc.toc} bookKey={sideBarBookKey} />
               )}
               {activeTab === 'bookmarks' && (
-                <BooknoteView type='bookmark' toc={bookDoc.toc ?? []} bookKey={sideBarBookKey} />
+                <BookmarkView bookKey={sideBarBookKey} toc={bookDoc.toc ?? []} />
               )}
             </div>
           </OverlayScrollbarsComponent>

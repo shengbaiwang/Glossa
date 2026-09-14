@@ -3,7 +3,7 @@ import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { useOverlayScrollbars } from 'overlayscrollbars-react';
 import 'overlayscrollbars/overlayscrollbars.css';
 import * as CFI from 'foliate-js/epubcfi.js';
-import { Search, NotebookPen, Bookmark, Plus } from '@/components/GlossaIcons';
+import { Search, NotebookPen } from '@/components/GlossaIcons';
 
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
@@ -11,15 +11,8 @@ import { useSidebarStore } from '@/store/sidebarStore';
 import { findTocItemBS } from '@/services/nav';
 import { findNearestCfi } from '@/utils/cfi';
 import { TOCItem } from '@/libs/document';
-import {
-  BookNote,
-  BooknoteGroup,
-  BookNoteType,
-  HighlightColor,
-  HighlightStyle,
-} from '@/types/book';
+import { BookNote, BooknoteGroup, HighlightColor, HighlightStyle } from '@/types/book';
 import { useTranslation } from '@/hooks/useTranslation';
-import { eventDispatcher } from '@/utils/event';
 import {
   filterBooknotes,
   collectAnnotationFacets,
@@ -41,11 +34,10 @@ type FlatBooknoteRow =
     };
 
 const BooknoteView: React.FC<{
-  type: BookNoteType;
   bookKey: string;
   toc: TOCItem[];
   notebookSearch?: { results: BookNote[] | null };
-}> = ({ type, bookKey, toc, notebookSearch }) => {
+}> = ({ bookKey, toc, notebookSearch }) => {
   const _ = useTranslation();
   const { getConfig } = useBookDataStore();
   const { getProgress } = useReaderStore();
@@ -78,12 +70,11 @@ const BooknoteView: React.FC<{
   }, [isSearchBarVisible]);
 
   const isFiltering =
-    type === 'annotation' &&
-    (filterKind !== 'all' ||
-      query.trim().length > 0 ||
-      notebookSearch?.results != null ||
-      excludedColors.length > 0 ||
-      excludedStyles.length > 0);
+    filterKind !== 'all' ||
+    query.trim().length > 0 ||
+    notebookSearch?.results != null ||
+    excludedColors.length > 0 ||
+    excludedStyles.length > 0;
 
   const toggleColor = useCallback((color: HighlightColor) => {
     setExcludedColors((prev) =>
@@ -112,14 +103,11 @@ const BooknoteView: React.FC<{
   const facets = useMemo(() => collectAnnotationFacets(liveAnnotations), [liveAnnotations]);
   const counts = useMemo(() => summarizeAnnotations(liveAnnotations), [liveAnnotations]);
 
-  // Filter active notes of this type, then apply the hub's kind/query/facet
-  // filter (annotation tab only). useMemo so referential stability flows
-  // through derived data and prevents needless recomputation when unrelated
-  // config fields change (e.g. viewSettings, lastUpdated).
+  // Filter active annotations, then apply the hub's kind/query/facet filter.
+  // useMemo so referential stability flows through derived data and prevents
+  // needless recomputation when unrelated config fields change (e.g.
+  // viewSettings, lastUpdated).
   const filteredNotes = useMemo(() => {
-    if (type !== 'annotation') {
-      return allNotes.filter((note) => note.type === type && !note.deletedAt);
-    }
     const candidates = notebookSearch?.results
       ? liveAnnotations.filter((note) =>
           notebookSearch.results?.some((result) => result.id === note.id),
@@ -131,16 +119,7 @@ const BooknoteView: React.FC<{
       excludedColors,
       excludedStyles,
     });
-  }, [
-    allNotes,
-    liveAnnotations,
-    type,
-    filterKind,
-    query,
-    excludedColors,
-    excludedStyles,
-    notebookSearch,
-  ]);
+  }, [liveAnnotations, filterKind, query, excludedColors, excludedStyles, notebookSearch]);
 
   // Build groups + sort by toc id and intra-group cfi.
   const sortedGroups = useMemo<BooknoteGroup[]>(() => {
@@ -203,9 +182,9 @@ const BooknoteView: React.FC<{
   const handleBrowseBookNotes = useCallback(() => {
     if (filteredNotes.length === 0) return;
     const sorted = [...filteredNotes].sort((a, b) => CFI.compare(a.cfi, b.cfi));
-    setActiveBooknoteType(bookKey, type);
+    setActiveBooknoteType(bookKey, 'annotation');
     setBooknoteResults(bookKey, sorted);
-  }, [filteredNotes, bookKey, type, setActiveBooknoteType, setBooknoteResults]);
+  }, [filteredNotes, bookKey, setActiveBooknoteType, setBooknoteResults]);
 
   // ---- Virtualization wiring (mirrors TOCView pattern) ----
   const listHostRef = useRef<HTMLDivElement | null>(null);
@@ -370,12 +349,12 @@ const BooknoteView: React.FC<{
             item={row.item}
             isNearest={row.item.cfi === nearestCfi}
             onClick={handleBrowseBookNotes}
-            inlineNoteEditing={type === 'annotation'}
+            inlineNoteEditing
           />
         </ul>
       );
     },
-    [flatItems, bookKey, nearestCfi, handleBrowseBookNotes, type],
+    [flatItems, bookKey, nearestCfi, handleBrowseBookNotes],
   );
 
   // Always mount the listHostRef host so the height-measurement effect (and
@@ -387,27 +366,25 @@ const BooknoteView: React.FC<{
 
   return (
     <div className='booknote-list rounded' role='tree'>
-      {type === 'annotation' && (
-        <AnnotationsToolbar
-          filterKind={filterKind}
-          searchInput={searchInput}
-          isSearchVisible={!notebookSearch && isSearchBarVisible}
-          highlightCount={counts.highlights}
-          noteCount={counts.notes}
-          matchCount={filteredNotes.length}
-          isFiltering={isFiltering}
-          onCloseSearch={() => setSearchBarVisible(false)}
-          colors={facets.colors}
-          styles={facets.styles}
-          excludedColors={excludedColors}
-          excludedStyles={excludedStyles}
-          onFilterKindChange={setFilterKind}
-          onSearchInputChange={setSearchInput}
-          onToggleColor={toggleColor}
-          onToggleStyle={toggleStyle}
-          onResetFilters={resetFilters}
-        />
-      )}
+      <AnnotationsToolbar
+        filterKind={filterKind}
+        searchInput={searchInput}
+        isSearchVisible={!notebookSearch && isSearchBarVisible}
+        highlightCount={counts.highlights}
+        noteCount={counts.notes}
+        matchCount={filteredNotes.length}
+        isFiltering={isFiltering}
+        onCloseSearch={() => setSearchBarVisible(false)}
+        colors={facets.colors}
+        styles={facets.styles}
+        excludedColors={excludedColors}
+        excludedStyles={excludedStyles}
+        onFilterKindChange={setFilterKind}
+        onSearchInputChange={setSearchInput}
+        onToggleColor={toggleColor}
+        onToggleStyle={toggleStyle}
+        onResetFilters={resetFilters}
+      />
       <div ref={listHostRef}>
         {isEmpty && isFiltering ? (
           <div className='glossa-reader-empty-region'>
@@ -415,22 +392,7 @@ const BooknoteView: React.FC<{
           </div>
         ) : isEmpty ? (
           <div className='glossa-reader-empty-region'>
-            <EmptyState
-              Icon={type === 'annotation' ? NotebookPen : Bookmark}
-              label={type === 'annotation' ? _('No Annotations') : _('No Bookmarks')}
-              action={
-                type === 'bookmark' ? (
-                  <button
-                    type='button'
-                    className='glossa-button glossa-reader-empty-action max-w-full flex-nowrap'
-                    onClick={() => eventDispatcher.dispatch('toggle-bookmark', { bookKey })}
-                  >
-                    <Plus size={16} className='shrink-0' aria-hidden='true' />
-                    <span className='min-w-0 truncate'>{_('Bookmark This Page')}</span>
-                  </button>
-                ) : undefined
-              }
-            />
+            <EmptyState Icon={NotebookPen} label={_('No Annotations')} />
           </div>
         ) : (
           <div
