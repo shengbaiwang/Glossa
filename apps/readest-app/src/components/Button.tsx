@@ -1,11 +1,13 @@
 import clsx from 'clsx';
 import React from 'react';
 import { useEnv } from '@/context/EnvContext';
+import { useLongPress } from '@/hooks/useLongPress';
 
 interface ButtonProps
   extends Pick<React.AriaAttributes, 'aria-pressed' | 'aria-expanded' | 'aria-controls'> {
   icon: React.ReactNode;
   onClick: () => void;
+  onLongPress?: () => void;
   disabled?: boolean;
   label?: string;
   className?: string;
@@ -14,12 +16,16 @@ interface ButtonProps
 const Button: React.FC<ButtonProps> = ({
   icon,
   onClick,
+  onLongPress,
   disabled = false,
   label,
   className,
   ...ariaProps
 }) => {
   const { appService } = useEnv();
+  const { handlers } = useLongPress({ onTap: onClick, onLongPress }, [onClick, onLongPress]);
+  const interactionProps =
+    onLongPress && !disabled ? handlers : { onClick: disabled ? undefined : onClick };
   return (
     <button
       type='button'
@@ -36,7 +42,7 @@ const Button: React.FC<ButtonProps> = ({
       )}
       title={label}
       aria-label={label}
-      onClick={disabled ? undefined : onClick}
+      {...interactionProps}
     >
       {icon}
     </button>

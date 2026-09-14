@@ -564,13 +564,17 @@ input[type='range'].slider-input {
 }
 
 /* Emphasized query term inside search result excerpts — shared by the library
-   results and the reader sidebar so custom CSS can restyle both at once. */
+   results and the reader sidebar so custom CSS can restyle both at once.
+   Paper-and-ink marker style, matching the in-book search highlights. */
 .search-term-highlight {
-  color: theme('colors.red.500');
+  background-color: color-mix(in srgb, #d6c9a8 32%, transparent);
+  border-radius: 2px;
+  padding: 0 1px;
   font-weight: 600;
 }
 
 [data-eink='true'] .search-term-highlight {
+  background-color: transparent;
   color: theme('colors.base-content') !important;
   font-weight: bold;
 }

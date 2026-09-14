@@ -18,6 +18,7 @@ import { refreshEinkScreen } from '@/utils/bridge';
 import { isTauriAppPlatform } from '@/services/environment';
 import { tauriGetWindowLogicalPosition } from '@/utils/window';
 import { getReadingRulerMoveDirection } from '../utils/readingRuler';
+import { goToAdjacentSection } from '../utils/sectionNav';
 import { useTouchInterceptor } from './useTouchInterceptor';
 
 export type ScrollSource = 'touch' | 'mouse';
@@ -129,6 +130,7 @@ export const viewPagination = (
   side: PaginationSide,
   mode: PaginationMode = 'page',
   panDistance: number = 50,
+  cfi?: string,
 ) => {
   if (!view || !viewSettings) return;
   const renderer = view.renderer;
@@ -145,11 +147,11 @@ export const viewPagination = (
     const distance = size - scrollingOverlap;
     switch (mode) {
       case 'section':
-        if (side === 'left' || side === 'up') {
-          return view.renderer.prevSection?.();
-        } else {
-          return view.renderer.nextSection?.();
-        }
+        return goToAdjacentSection(
+          view,
+          view.lastLocation?.cfi ?? cfi,
+          side === 'left' || side === 'up' ? -1 : 1,
+        );
       case 'pan':
       case 'page':
       default: {
@@ -175,11 +177,11 @@ export const viewPagination = (
   } else {
     switch (mode) {
       case 'section':
-        if (side === 'left' || side === 'up') {
-          return view.renderer.prevSection?.();
-        } else {
-          return view.renderer.nextSection?.();
-        }
+        return goToAdjacentSection(
+          view,
+          view.lastLocation?.cfi ?? cfi,
+          side === 'left' || side === 'up' ? -1 : 1,
+        );
       case 'pan':
       case 'page':
       default:
@@ -195,7 +197,7 @@ export const usePagination = (
 ) => {
   const { appService } = useEnv();
   const { getBookData } = useBookDataStore();
-  const { getViewSettings, getViewState } = useReaderStore();
+  const { getViewSettings, getViewState, getProgress } = useReaderStore();
   const { hoveredBookKey, setHoveredBookKey } = useReaderStore();
   const {
     acquireVolumeKeyInterception,
@@ -405,7 +407,7 @@ export const usePagination = (
     ) {
       return true;
     }
-    viewPagination(viewRef.current, viewSettings, side, mode);
+    viewPagination(viewRef.current, viewSettings, side, mode, 50, getProgress(bookKey)?.location);
     return true;
   };
 

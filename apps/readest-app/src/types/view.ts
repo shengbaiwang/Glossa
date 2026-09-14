@@ -100,6 +100,7 @@ export interface FoliateView extends HTMLElement {
   ) => { index: number; label: string };
   search: (config: BookSearchConfig) => AsyncGenerator<BookSearchResult | string, void, void>;
   clearSearch: () => void;
+  setSearchMatchActive: (cfi: string | null) => Promise<void>;
   select: (target: string | number | { fraction: number }) => void;
   deselect: () => void;
   initTTS: (

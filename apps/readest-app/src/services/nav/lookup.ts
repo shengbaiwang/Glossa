@@ -1,4 +1,5 @@
 import { CFI, TOCItem } from '@/libs/document';
+import { collectAllTocItems } from './grouping';
 
 export const findParentPath = (toc: TOCItem[], href: string): TOCItem[] => {
   for (const item of toc) {
@@ -42,4 +43,18 @@ export const findTocItemBS = (toc: TOCItem[], cfi: string): TOCItem | null => {
   }
 
   return result;
+};
+
+// Chapter jumps follow the TOC rather than raw spine order: a chapter may span
+// several spine sections, so renderer.prevSection/nextSection can land
+// mid-chapter. Returns null when the current position can't be located or the
+// jump runs past either end of the book.
+export const findAdjacentTocItem = (toc: TOCItem[], cfi: string, dir: 1 | -1): TOCItem | null => {
+  if (!cfi || !toc.length) return null;
+  const current = findTocItemBS(toc, cfi);
+  if (!current) return null;
+  const flat = collectAllTocItems(toc);
+  const index = flat.indexOf(current);
+  if (index === -1) return null;
+  return flat[index + dir] ?? null;
 };

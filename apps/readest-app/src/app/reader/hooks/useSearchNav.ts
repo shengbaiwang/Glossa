@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useBookProgress } from '@/store/readerProgressStore';
@@ -61,6 +61,17 @@ export function useSearchNav(bookKey: string) {
 
     return { firstIndex, lastIndex };
   }, [flattenedResults, currentLocation, bookKey, setSearchResultIndex]);
+
+  // Highlight the current match in the book with a stronger style; clearing
+  // when the index leaves the result range (e.g. search closed or re-run).
+  useEffect(() => {
+    const view = getView(bookKey);
+    const cfi =
+      searchResultIndex >= 0 && searchResultIndex < flattenedResults.length
+        ? flattenedResults[searchResultIndex]?.cfi
+        : null;
+    view?.setSearchMatchActive(cfi ?? null);
+  }, [bookKey, getView, flattenedResults, searchResultIndex]);
 
   // Navigate to a specific search result
   const navigateToResult = useCallback(

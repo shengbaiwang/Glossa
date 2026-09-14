@@ -10,6 +10,7 @@ import { FIXED_LAYOUT_FORMATS } from '@/types/book';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useDeviceControlStore } from '@/store/deviceStore';
 import { eventDispatcher } from '@/utils/event';
+import { goToAdjacentSection } from '@/app/reader/utils/sectionNav';
 import type { FooterBarProps, NavigationHandlers, FooterBarChildProps } from './types';
 
 import MobileFooterBar from './MobileFooterBar';
@@ -75,12 +76,14 @@ const FooterBar: React.FC<FooterBarProps> = ({
   }, [view]);
 
   const handleGoPrevSection = useCallback(() => {
-    view?.renderer.prevSection?.();
-  }, [view]);
+    const cfi = view?.lastLocation?.cfi ?? getConfig(bookKey)?.location;
+    void goToAdjacentSection(view ?? null, cfi, -1);
+  }, [view, bookKey, getConfig]);
 
   const handleGoNextSection = useCallback(() => {
-    view?.renderer.nextSection?.();
-  }, [view]);
+    const cfi = view?.lastLocation?.cfi ?? getConfig(bookKey)?.location;
+    void goToAdjacentSection(view ?? null, cfi, 1);
+  }, [view, bookKey, getConfig]);
 
   const handleGoBack = useCallback(() => {
     view?.history.back();

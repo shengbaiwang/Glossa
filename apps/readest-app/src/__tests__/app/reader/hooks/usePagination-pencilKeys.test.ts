@@ -28,6 +28,7 @@ vi.mock('@/store/readerStore', () => ({
     () => ({
       getViewSettings: () => h.viewSettings,
       getViewState: () => h.viewState,
+      getProgress: () => undefined,
       hoveredBookKey: null,
       setHoveredBookKey: vi.fn(),
     }),

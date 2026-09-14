@@ -1,10 +1,11 @@
 import clsx from 'clsx';
 import React, { useCallback } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from '@/components/GlossaIcons';
+import { ChevronLeft, ChevronRight } from '@/components/GlossaIcons';
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useBookProgress } from '@/store/readerProgressStore';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useLongPress } from '@/hooks/useLongPress';
 import { viewPagination } from '../hooks/usePagination';
 import { useBookDataStore } from '@/store/bookDataStore';
 
@@ -42,16 +43,25 @@ const PageNavigationButtons: React.FC<PageNavigationButtonsProps> = ({
   }, [view, viewSettings]);
 
   const handleGoLeftSection = useCallback(() => {
-    viewPagination(view, viewSettings, 'left', 'section');
-  }, [view, viewSettings]);
+    viewPagination(view, viewSettings, 'left', 'section', 50, progress?.location);
+  }, [view, viewSettings, progress?.location]);
 
   const handleGoRightPage = useCallback(() => {
     viewPagination(view, viewSettings, 'right', 'page');
   }, [view, viewSettings]);
 
   const handleGoRightSection = useCallback(() => {
-    viewPagination(view, viewSettings, 'right', 'section');
-  }, [view, viewSettings]);
+    viewPagination(view, viewSettings, 'right', 'section', 50, progress?.location);
+  }, [view, viewSettings, progress?.location]);
+
+  const { handlers: leftHandlers } = useLongPress(
+    { onTap: handleGoLeftPage, onLongPress: handleGoLeftSection },
+    [handleGoLeftPage, handleGoLeftSection],
+  );
+  const { handlers: rightHandlers } = useLongPress(
+    { onTap: handleGoRightPage, onLongPress: handleGoRightSection },
+    [handleGoRightPage, handleGoRightSection],
+  );
 
   const getLeftPageLabel = () => {
     const baseLabel = viewSettings?.rtl ? _('Next Page') : _('Previous Page');
@@ -61,20 +71,12 @@ const PageNavigationButtons: React.FC<PageNavigationButtonsProps> = ({
     return baseLabel;
   };
 
-  const getLeftSectionLabel = () => {
-    return viewSettings?.rtl ? _('Next Section') : _('Previous Section');
-  };
-
   const getRightPageLabel = () => {
     const baseLabel = viewSettings?.rtl ? _('Previous Page') : _('Next Page');
     if (currentPage !== undefined) {
       return `${baseLabel}, ${_('Page {{number}}', { number: currentPage + 1 })}`;
     }
     return baseLabel;
-  };
-
-  const getRightSectionLabel = () => {
-    return viewSettings?.rtl ? _('Previous Section') : _('Next Section');
   };
 
   return (
@@ -94,28 +96,7 @@ const PageNavigationButtons: React.FC<PageNavigationButtonsProps> = ({
         )}
       >
         <button
-          onClick={handleGoLeftSection}
-          className={clsx(
-            'flex h-20 w-20 items-center justify-center focus:outline-none',
-            !isPageNavigationButtonsVisible && appService?.isAndroidApp && 'h-4 w-4',
-          )}
-          aria-hidden={false}
-          aria-label={getLeftSectionLabel()}
-          tabIndex={0}
-        >
-          <span
-            className={clsx(
-              'flex h-12 w-12 items-center justify-center rounded-full',
-              'bg-base-100/90 shadow-lg backdrop-blur-sm',
-              'eink:border eink:border-base-content not-eink:group-hover:bg-base-200',
-              'transition-transform active:scale-95',
-            )}
-          >
-            <ChevronsLeft size={24} />
-          </span>
-        </button>
-        <button
-          onClick={handleGoLeftPage}
+          {...leftHandlers}
           className={clsx(
             'flex h-20 w-20 items-center justify-center focus:outline-none',
             !isPageNavigationButtonsVisible && appService?.isAndroidApp && 'h-4 w-4',
@@ -146,7 +127,7 @@ const PageNavigationButtons: React.FC<PageNavigationButtonsProps> = ({
         )}
       >
         <button
-          onClick={handleGoRightPage}
+          {...rightHandlers}
           className={clsx(
             'flex h-20 w-20 items-center justify-center focus:outline-none',
             !isPageNavigationButtonsVisible && appService?.isAndroidApp && 'h-4 w-4',
@@ -164,27 +145,6 @@ const PageNavigationButtons: React.FC<PageNavigationButtonsProps> = ({
             )}
           >
             <ChevronRight size={24} />
-          </span>
-        </button>
-        <button
-          onClick={handleGoRightSection}
-          className={clsx(
-            'flex h-20 w-20 items-center justify-center focus:outline-none',
-            !isPageNavigationButtonsVisible && appService?.isAndroidApp && 'h-4 w-4',
-          )}
-          aria-hidden={false}
-          aria-label={getRightSectionLabel()}
-          tabIndex={0}
-        >
-          <span
-            className={clsx(
-              'flex h-12 w-12 items-center justify-center rounded-full',
-              'bg-base-100/90 shadow-lg backdrop-blur-sm',
-              'eink:border eink:border-base-content not-eink:group-hover:bg-base-200',
-              'transition-transform active:scale-95',
-            )}
-          >
-            <ChevronsRight size={24} />
           </span>
         </button>
       </div>

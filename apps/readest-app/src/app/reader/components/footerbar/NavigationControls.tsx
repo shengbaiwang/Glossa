@@ -1,12 +1,5 @@
 import React from 'react';
-import {
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-  Undo2,
-  Redo2,
-} from '@/components/GlossaIcons';
+import { ChevronLeft, ChevronRight, Undo2, Redo2 } from '@/components/GlossaIcons';
 import Button from '@/components/Button';
 import { useTranslation } from '@/hooks/useTranslation';
 import type { NavigationHandlers } from './types';
@@ -32,6 +25,7 @@ export const PageNavigation: React.FC<
         <Button
           icon={getNavigationIcon(rtl, <ChevronLeft size={18} />, <ChevronRight size={18} />)}
           onClick={handlers.onPrevPage}
+          onLongPress={handlers.onPrevSection}
           label={_('Previous Page')}
         />
       )}
@@ -40,6 +34,7 @@ export const PageNavigation: React.FC<
         <Button
           icon={getNavigationIcon(rtl, <ChevronRight size={18} />, <ChevronLeft size={18} />)}
           onClick={handlers.onNextPage}
+          onLongPress={handlers.onNextSection}
           label={_('Next Page')}
         />
       )}
@@ -67,24 +62,6 @@ export const HistoryNavigation: React.FC<
         onClick={handlers.onGoForward}
         label={_('Go Forward')}
         disabled={!canGoForward}
-      />
-    </div>
-  );
-};
-
-export const SectionNavigation: React.FC<NavigationControlProps> = ({ rtl, handlers }) => {
-  const _ = useTranslation();
-  return (
-    <div className='glossa-navigation-secondary'>
-      <Button
-        icon={getNavigationIcon(rtl, <ChevronsLeft size={18} />, <ChevronsRight size={18} />)}
-        onClick={handlers.onPrevSection}
-        label={_('Previous Section')}
-      />
-      <Button
-        icon={getNavigationIcon(rtl, <ChevronsRight size={18} />, <ChevronsLeft size={18} />)}
-        onClick={handlers.onNextSection}
-        label={_('Next Section')}
       />
     </div>
   );

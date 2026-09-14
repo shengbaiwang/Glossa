@@ -3,7 +3,7 @@ import React from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { NavigationHandlers } from './types';
-import { HistoryNavigation, PageNavigation, SectionNavigation } from './NavigationControls';
+import { HistoryNavigation, PageNavigation } from './NavigationControls';
 import ProgressSlider from './ProgressSlider';
 
 interface NavigationPanelProps {
@@ -60,7 +60,6 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
           canGoBack={view?.history.canGoBack}
           canGoForward={view?.history.canGoForward}
         />
-        <SectionNavigation {...controls} />
       </div>
     </div>
   );

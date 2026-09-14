@@ -50,7 +50,7 @@ import { enrichTocFromNavElements } from './enrichment';
  */
 const NAV_BUILD_CONCURRENCY = 128;
 
-export { findParentPath, findTocItemBS } from './lookup';
+export { findParentPath, findTocItemBS, findAdjacentTocItem } from './lookup';
 export type { SectionFragment };
 
 // -----------------------------------------------------------------------------

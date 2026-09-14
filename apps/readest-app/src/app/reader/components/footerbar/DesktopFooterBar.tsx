@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import React from 'react';
 import { useReaderStore } from '@/store/readerStore';
 import type { FooterBarChildProps } from './types';
-import { HistoryNavigation, PageNavigation, SectionNavigation } from './NavigationControls';
+import { HistoryNavigation, PageNavigation } from './NavigationControls';
 import ProgressSlider from './ProgressSlider';
 
 const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
@@ -47,11 +47,7 @@ const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
           onCommit={navigationHandlers.onProgressChange}
         />
       </div>
-      {showButtons ? (
-        <SectionNavigation {...controls} />
-      ) : (
-        <div className='glossa-navigation-spacer' />
-      )}
+      <div className='glossa-navigation-spacer' />
     </div>
   );
 };
