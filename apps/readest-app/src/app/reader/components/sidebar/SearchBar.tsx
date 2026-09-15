@@ -1,7 +1,5 @@
-import { Search, ChevronDown, X, Trash2 } from '@/components/GlossaIcons';
-import clsx from 'clsx';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-
+import { Search, X, Trash2, Square } from '@/components/GlossaIcons';
+import { useEffect, useRef, useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
@@ -11,24 +9,32 @@ import { useTranslation } from '@/hooks/useTranslation';
 import {
   createLibrarySearchSession,
   resolveSearchResultCfis,
+  resolveSearchChapterRange,
   searchLibraryBooks,
   type LibrarySearchSession,
+  type SearchSectionRange,
 } from '@/services/librarySearchService';
-import { BookSearchConfig, BookSearchMatch, BookSearchResult } from '@/types/book';
-import { useResponsiveSize } from '@/hooks/useResponsiveSize';
-import { debounce } from '@/utils/debounce';
-import { isCJKStr } from '@/utils/lang';
-import Dropdown from '@/components/Dropdown';
+import type { BookSearchConfig, BookSearchMatch, BookSearchResult } from '@/types/book';
+import {
+  getChapterSearchRange,
+  isMatchInChapter,
+  type ChapterSearchRange,
+} from '@/utils/chapterSearch';
 import SearchOptions from './SearchOptions';
 
-const MINIMUM_SEARCH_TERM_LENGTH_DEFAULT = 2;
-const MINIMUM_SEARCH_TERM_LENGTH_CJK = 1;
-const SEARCH_HISTORY_KEY = 'search-history';
-// Pre-search.db per-(term,config) JSON caches lived here; wiped once at
-// startup now that reader search runs on the shared per-book search.db.
-const LEGACY_SEARCH_CACHE_DIR = 'search';
-let legacySearchCacheCleared = false;
 const MAX_SEARCH_HISTORY = 10;
+const loadHistory = (key: string): string[] => {
+  try {
+    const data: unknown = JSON.parse(localStorage.getItem(key) ?? '[]');
+    return Array.isArray(data)
+      ? data
+          .filter((value): value is string => typeof value === 'string' && !!value.trim())
+          .slice(0, MAX_SEARCH_HISTORY)
+      : [];
+  } catch {
+    return [];
+  }
+};
 
 interface SearchBarProps {
   isVisible: boolean;
@@ -36,408 +42,365 @@ interface SearchBarProps {
   onHideSearchBar: () => void;
 }
 
-const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchBar }) => {
+export default function SearchBar({ isVisible, bookKey, onHideSearchBar }: SearchBarProps) {
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
   const { settings } = useSettingsStore();
-  const { getBookData } = useBookDataStore();
-  const { getConfig, setConfig, saveConfig } = useBookDataStore();
+  const { getBookData, getConfig, setConfig, saveConfig } = useBookDataStore();
   const { getView, getProgress, getViewSettings } = useReaderStore();
-  const { setSearchTerm, setSearchResults, setSearchProgress, setSearchError } = useSidebarStore();
-  const { getSearchNavState, getSearchStatus, setSearchStatus } = useSidebarStore();
-  const viewSettings = getViewSettings(bookKey);
-  const searchNavState = getSearchNavState(bookKey);
-
-  const { searchTerm, searchError } = searchNavState;
-  const queuedSearchTerm = useRef('');
+  const {
+    getSearchNavState,
+    getSearchStatus,
+    setSearchTerm,
+    setSearchResults,
+    setSearchProgress,
+    setSearchError,
+    setSearchStatus,
+    setSearchResultIndex,
+    setSearchOrigin,
+  } = useSidebarStore();
+  const { searchTerm, searchError } = getSearchNavState(bookKey);
+  const config = getConfig(bookKey)!.searchConfig as BookSearchConfig;
+  const historyKey = `search-history-${bookKey.split('-')[0]}`;
+  const [history, setHistory] = useState<string[]>(() => loadHistory(historyKey));
+  const [composing, setComposing] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const [scopeLabel, setScopeLabel] = useState('');
+  const [truncated, setTruncated] = useState(false);
+  const [interrupted, setInterrupted] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const inputFocusedRef = useRef(false);
+  const controllerRef = useRef<AbortController | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sessionRef = useRef<LibrarySearchSession | null>(null);
+  const configKey = JSON.stringify(config);
+  const searching = getSearchStatus(bookKey) === 'searching';
 
-  const bookHash = useMemo(() => bookKey.split('-')[0]!, [bookKey]);
-  const historyStorageKey = useMemo(() => `${SEARCH_HISTORY_KEY}-${bookHash}`, [bookHash]);
-
-  const [searchHistory, setSearchHistory] = useState<string[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(historyStorageKey);
-      return saved ? JSON.parse(saved) : [];
-    }
-    return [];
-  });
-
-  useEffect(() => {
-    const saved = localStorage.getItem(historyStorageKey);
-    setSearchHistory(saved ? JSON.parse(saved) : []);
-  }, [historyStorageKey]);
-
-  const addToHistory = useCallback(
-    (term: string) => {
-      const filtered = searchHistory.filter((t) => t !== term);
-      const updated = [term, ...filtered].slice(0, MAX_SEARCH_HISTORY);
-      localStorage.setItem(historyStorageKey, JSON.stringify(updated));
-      setSearchHistory(updated);
-    },
-    [historyStorageKey, searchHistory],
-  );
-
-  const handleHistoryClick = (term: string) => {
+  const cancel = () => {
+    controllerRef.current?.abort();
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+  };
+  const reset = (pending = false) => {
+    cancel();
+    setSearchResults(bookKey, pending ? [] : null);
+    setSearchResultIndex(bookKey, 0);
+    setSearchOrigin(bookKey, null);
+    setSearchProgress(bookKey, pending ? 0 : 1);
+    setSearchError(bookKey, null);
+    setSearchStatus(bookKey, pending ? 'searching' : 'terminated');
+    getView(bookKey)?.clearSearch();
+    setTruncated(false);
+    setInterrupted(false);
+  };
+  const changeTerm = (term: string) => {
+    reset(Boolean(term.trim()) && !composing);
     setSearchTerm(bookKey, term);
-    handleSearchTermChange(term);
+  };
+  const changeConfig = (searchConfig: BookSearchConfig) => {
+    reset(Boolean(searchTerm.trim()));
+    setConfig(bookKey, { searchConfig });
+    void saveConfig(envConfig, bookKey, getConfig(bookKey)!, settings);
+    setRevision((n) => n + 1);
   };
 
-  const handleClearInput = () => {
-    setSearchTerm(bookKey, '');
-    resetSearch();
-    inputRef.current?.focus();
-  };
-
-  const handleClearHistory = async () => {
-    setSearchHistory([]);
-    localStorage.removeItem(historyStorageKey);
-  };
-
-  const view = getView(bookKey)!;
-  // Reader search runs against the same per-book search.db the library page
-  // uses; the session caches the opened book and index handle across queries.
-  const searchSessionRef = useRef<LibrarySearchSession | null>(null);
-  const searchControllerRef = useRef<AbortController | null>(null);
   useEffect(() => {
-    if (!legacySearchCacheCleared && appService) {
-      legacySearchCacheCleared = true;
-      void appService.deleteDir(LEGACY_SEARCH_CACHE_DIR, 'Cache', true).catch(() => {});
-    }
-  }, [appService]);
-  useEffect(
-    () => () => {
-      searchControllerRef.current?.abort();
-      void searchSessionRef.current?.close();
-      searchSessionRef.current = null;
-    },
-    [],
-  );
-  const config = getConfig(bookKey)!;
-  const bookData = getBookData(bookKey)!;
-  const progress = getProgress(bookKey);
-  const searchMode = (config.searchConfig as BookSearchConfig).mode;
-
-  const iconSize12 = useResponsiveSize(12);
-  const iconSize16 = useResponsiveSize(16);
-
+    setHistory(loadHistory(historyKey));
+    return () => {
+      cancel();
+      void sessionRef.current?.close();
+      sessionRef.current = null;
+    };
+  }, [historyKey]);
   useEffect(() => {
-    handleSearchTermChange(searchTerm);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookKey, searchTerm]);
+    if (isVisible && !appService?.isMobile) inputRef.current?.focus();
+  }, [isVisible, appService]);
 
-  useEffect(() => {
-    if (isVisible && inputRef.current) {
-      inputRef.current.onblur = () => {
-        inputFocusedRef.current = false;
-      };
-      inputRef.current.onfocus = () => {
-        inputFocusedRef.current = true;
-      };
-      if (!appService?.isMobile) {
-        inputRef.current.focus();
-      }
-    }
-    if (isVisible && searchTerm) {
-      handleSearchTermChange(searchTerm);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appService, isVisible]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (inputRef.current && inputFocusedRef.current) {
-          inputRef.current.blur();
+  // Keep changing service/store closures out of scheduling dependencies. Only a
+  // query/config change starts work; navigation through its hits never re-scopes it.
+  const runRef = useRef<() => Promise<void>>(async () => {});
+  runRef.current = async () => {
+    const book = getBookData(bookKey)?.book;
+    const view = getView(bookKey);
+    if (!book || !view || !appService) return;
+    const searchConfig = { ...(getConfig(bookKey)!.searchConfig as BookSearchConfig) };
+    const term = searchConfig.mode === 'regex' ? searchTerm : searchTerm.trim();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    const session = (sessionRef.current ??= createLibrarySearchSession(appService));
+    const stopped = () => controller.signal.aborted || controllerRef.current !== controller;
+    setSearchOrigin(bookKey, getProgress(bookKey)?.location ?? view.lastLocation?.cfi ?? null);
+    const results: BookSearchResult[] = [];
+    try {
+      let sectionIndex: number | undefined;
+      let sectionRange: SearchSectionRange | undefined;
+      let label = '';
+      let chapter: ChapterSearchRange | null = null;
+      if (searchConfig.scope === 'section') {
+        const progress = getProgress(bookKey);
+        const location = view.lastLocation?.cfi ?? progress?.location;
+        const range = getChapterSearchRange(view.book?.toc ?? [], location ?? '');
+        chapter = range;
+        if (range) {
+          label = range.label;
+          sectionRange = await resolveSearchChapterRange(session, book, range);
+        } else if (progress?.section.current != null && !view.book?.toc?.length) {
+          sectionIndex = progress.section.current;
         } else {
-          onHideSearchBar();
+          if (!stopped()) {
+            setSearchError(bookKey, _('Current chapter is unavailable'));
+            setSearchProgress(bookKey, 1);
+            setSearchStatus(bookKey, 'completed');
+          }
+          return;
         }
       }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [onHideSearchBar]);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setSearchTerm(bookKey, value);
-    handleSearchTermChange(value);
-  };
-
-  const handleSearchConfigChange = (searchConfig: BookSearchConfig) => {
-    setConfig(bookKey, { searchConfig: { ...searchConfig } });
-    // setConfig is synchronous, so getConfig now returns the merged config to persist.
-    saveConfig(envConfig, bookKey, getConfig(bookKey)!, settings);
-    handleSearchTermChange(searchTerm);
-  };
-
-  const exceedMinSearchTermLength = (searchTerm: string) => {
-    // Regex patterns can be a single character (e.g. \d), so bypass the gate.
-    if (searchMode === 'regex') return searchTerm.length >= 1;
-    const minLength = isCJKStr(searchTerm)
-      ? MINIMUM_SEARCH_TERM_LENGTH_CJK
-      : MINIMUM_SEARCH_TERM_LENGTH_DEFAULT;
-
-    return searchTerm.length >= minLength;
-  };
-
-  const handleSearch = useCallback(
-    async (term: string) => {
-      console.log('searching for:', term);
-      const book = bookData.book;
-      if (!book || !appService) return;
-
-      // Read the latest config from the store, not the render closure: an option
-      // change (e.g. "within N words") calls setConfig then triggers this search
-      // synchronously, before this callback is recreated — so the closure's
-      // `config` is stale by one change. getConfig reflects the just-set value.
-      const searchConfig = getConfig(bookKey)!.searchConfig as BookSearchConfig;
-
-      searchControllerRef.current?.abort();
-      const controller = new AbortController();
-      searchControllerRef.current = controller;
-      const session = (searchSessionRef.current ??= createLibrarySearchSession(appService));
-
-      setSearchProgress(bookKey, 0);
-      setSearchStatus(bookKey, 'searching');
-      setSearchError(bookKey, null);
-      view.clearSearch();
-
-      // progress is null until the book emits its first relocate event, so a
-      // search fired right after opening has no current section to scope to.
-      // Fall back to searching the whole book rather than throwing.
-      const sectionIndex = searchConfig.scope === 'section' ? progress?.section.current : undefined;
-
-      const results: BookSearchResult[] = [];
-      const stopped = () =>
-        controller.signal.aborted ||
-        getSearchStatus(bookKey) === 'terminated' ||
-        queuedSearchTerm.current !== term;
-
-      try {
-        for await (const event of searchLibraryBooks(appService, [book], term, {
-          config: searchConfig,
-          signal: controller.signal,
-          session,
-          sectionIndex,
-        })) {
+      if (stopped()) return;
+      setScopeLabel(label);
+      for await (const event of searchLibraryBooks(appService, [book], term, {
+        config: searchConfig,
+        signal: controller.signal,
+        session,
+        sectionIndex,
+        sectionRange,
+      })) {
+        if (stopped()) return;
+        if (event.type === 'progress') setSearchProgress(bookKey, event.bookProgress);
+        else if (event.type === 'result') {
+          const resolved = await resolveSearchResultCfis(
+            session,
+            book,
+            event.result.subitems.map((match) => match.locator),
+          );
           if (stopped()) return;
-          if (event.type === 'progress') {
-            setSearchProgress(bookKey, event.bookProgress);
-          } else if (event.type === 'result') {
-            // Results carry text-offset locators; resolve them to CFIs section
-            // by section so the list and in-page highlights can address the DOM.
-            const resolved = await resolveSearchResultCfis(
-              session,
-              book,
-              event.result.subitems.map((match) => match.locator),
-            );
-            if (stopped()) return;
-            const subitems: BookSearchMatch[] = [];
-            event.result.subitems.forEach((match, index) => {
-              const entry = resolved[index];
-              if (!entry) return;
+          const subitems: BookSearchMatch[] = [];
+          event.result.subitems.forEach((match, index) => {
+            const entry = resolved[index];
+            if (entry && (!chapter || isMatchInChapter(entry.cfi, chapter)))
               subitems.push({
                 cfi: entry.cfi,
                 ...(entry.cfis ? { cfis: entry.cfis } : {}),
                 excerpt: match.excerpt,
               });
-            });
-            if (subitems.length) {
-              results.push({ index: event.result.index, label: event.result.label, subitems });
-              setSearchResults(bookKey, [...results]);
-            }
-          } else if (event.type === 'book-error' || event.type === 'book-skipped') {
-            const code = event.type === 'book-error' ? event.code : undefined;
-            const message =
-              code === 'INVALID_REGEX'
-                ? _('Invalid regular expression')
-                : code === 'NEARBY_NEEDS_TWO_WORDS'
-                  ? _('Enter at least two words')
-                  : code === 'FUZZY_QUERY_TOO_LONG'
-                    ? _('Search query is too long')
-                    : _('Search failed');
-            if (event.type === 'book-error' && !code) {
-              console.error('search failed:', event.error);
-            }
-            setSearchError(bookKey, message);
-            setSearchResults(bookKey, []);
-            setSearchStatus(bookKey, 'completed');
-            setSearchProgress(bookKey, 1);
-            return;
-          } else if (event.type === 'book-completed') {
-            setSearchStatus(bookKey, 'completed');
+          });
+          if (subitems.length) {
+            const previous = results.at(-1);
+            if (label && previous) previous.subitems.push(...subitems);
+            else
+              results.push({
+                index: event.result.index,
+                label: label || event.result.label,
+                subitems,
+              });
             setSearchResults(bookKey, [...results]);
-            setSearchProgress(bookKey, 1);
-            if (results.length > 0) {
-              addToHistory(term);
-            }
-            console.log('search done');
           }
-          await new Promise((resolve) => setTimeout(resolve, 0));
+        } else if (event.type === 'book-error' || event.type === 'book-skipped') {
+          const code = event.type === 'book-error' ? event.code : undefined;
+          setSearchError(
+            bookKey,
+            code === 'INVALID_REGEX'
+              ? _('Invalid regular expression')
+              : code === 'NEARBY_NEEDS_TWO_WORDS'
+                ? _('Enter at least two words')
+                : _('Search failed'),
+          );
+          setSearchResults(bookKey, []);
+          setSearchStatus(bookKey, 'completed');
+          setSearchProgress(bookKey, 1);
+          return;
+        } else if (event.type === 'book-completed') {
+          setTruncated(Boolean(event.truncated));
         }
-
-        // Replay the resolved matches through the view so every CFI gets its
-        // search highlight; the view does no searching of its own here.
-        if (!stopped() && results.length > 0) {
-          for await (const item of view.search({ ...searchConfig, query: term, results })) {
-            if (stopped()) return;
-            if (item === 'done') break;
-          }
-        }
-      } catch (err) {
-        if (controller.signal.aborted) return;
-        console.error('search failed:', err);
-        setSearchError(bookKey, _('Search failed'));
-        setSearchResults(bookKey, []);
-        setSearchStatus(bookKey, 'completed');
-        setSearchProgress(bookKey, 1);
       }
-    },
+      if (stopped()) return;
+      setSearchResults(bookKey, [...results]);
+      if (results.length) {
+        for await (const item of view.search({ ...searchConfig, query: term, results })) {
+          if (stopped()) return;
+          if (item === 'done') break;
+        }
+        if (stopped()) return;
+        const next = [term, ...loadHistory(historyKey).filter((t) => t !== term)].slice(
+          0,
+          MAX_SEARCH_HISTORY,
+        );
+        setHistory(next);
+        try {
+          localStorage.setItem(historyKey, JSON.stringify(next));
+        } catch {
+          /* Optional local history. */
+        }
+      }
+      setSearchStatus(bookKey, 'completed');
+      setSearchProgress(bookKey, 1);
+    } catch {
+      if (stopped()) return;
+      setSearchError(bookKey, _('Search failed'));
+      setSearchResults(bookKey, []);
+      setSearchStatus(bookKey, 'completed');
+      setSearchProgress(bookKey, 1);
+    }
+  };
+
+  useEffect(() => {
+    if (!isVisible || composing || !searchTerm.trim()) {
+      reset();
+      return;
+    }
+    reset(true);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      void runRef.current();
+    }, 350);
+    return cancel;
+    // Scheduling deliberately depends on the query and serialized options only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      progress,
-      bookKey,
-      bookData,
-      appService,
-      getConfig,
-      setSearchResults,
-      setSearchProgress,
-      setSearchError,
-      addToHistory,
-    ],
-  );
-
-  const resetSearch = useCallback(() => {
-    searchControllerRef.current?.abort();
-    setSearchResults(bookKey, []);
-    view?.clearSearch();
-  }, [bookKey, view, setSearchResults]);
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const handleSearchTermChange = useCallback(
-    debounce((term: string) => {
-      queuedSearchTerm.current = term;
-      if (exceedMinSearchTermLength(term)) {
-        handleSearch(term);
-      } else {
-        resetSearch();
-      }
-    }, 500),
-    [handleSearch, resetSearch],
-  );
+  }, [bookKey, searchTerm, configKey, isVisible, composing, revision]);
 
   return (
-    <div className='relative flex flex-col gap-3 p-2'>
-      <div className='bg-base-100 flex h-8 items-center rounded-lg'>
-        <div className='absolute ps-3'>
-          <Search size={iconSize16} className='text-base-content/50' />
-        </div>
-
+    <div className='glossa-reader-search'>
+      <div className='glossa-search-field eink-bordered'>
+        <Search size={16} aria-hidden='true' />
         <input
           ref={inputRef}
           type='text'
           value={searchTerm}
           spellCheck={false}
-          onChange={handleInputChange}
-          placeholder={
-            searchMode === 'regex'
-              ? _('Search with regex')
-              : searchMode === 'nearby-words'
-                ? _('Words to find near each other')
-                : _('Search in Book')
-          }
-          className='search-input w-full bg-transparent p-2 pr-0 ps-10 font-sans text-sm font-light focus:outline-none'
+          aria-label={_('Search in Book')}
+          aria-invalid={Boolean(searchError)}
+          placeholder={_('Search book text')}
+          onChange={(event) => changeTerm(event.target.value)}
+          onCompositionStart={() => {
+            reset();
+            setComposing(true);
+          }}
+          onCompositionEnd={(event) => {
+            setSearchTerm(bookKey, event.currentTarget.value);
+            setComposing(false);
+          }}
+          onKeyDown={(event) => {
+            event.stopPropagation();
+            if (event.nativeEvent.isComposing || composing) return;
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              onHideSearchBar();
+            }
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              const nav = getSearchNavState(bookKey);
+              const matches = (nav.searchResults ?? []).flatMap((result) =>
+                'subitems' in result ? result.subitems : [result],
+              );
+              if (!searching && matches.length) {
+                const index = Math.max(
+                  0,
+                  Math.min(matches.length - 1, nav.searchResultIndex + (event.shiftKey ? -1 : 1)),
+                );
+                setSearchResultIndex(bookKey, index);
+                void getView(bookKey)?.goTo(matches[index]!.cfi);
+                return;
+              }
+              cancel();
+              reset(Boolean(searchTerm.trim()));
+              if (searchTerm.trim()) void runRef.current();
+            }
+          }}
         />
-
         {searchTerm && (
           <button
-            onClick={handleClearInput}
-            className='absolute end-10 flex h-8 w-8 items-center justify-center bg-transparent'
+            type='button'
+            className='glossa-icon-button'
             aria-label={_('Clear search')}
+            onClick={() => {
+              changeTerm('');
+              inputRef.current?.focus();
+            }}
           >
-            <X size={iconSize16} className='text-base-content/75' />
+            <X size={16} />
           </button>
         )}
-
-        <div
-          className={clsx(
-            'absolute end-2 flex h-8 w-8 items-center rounded-r-lg',
-            viewSettings?.isEink ? 'bg-transparent' : 'bg-base-300',
-          )}
-        >
-          <Dropdown
-            label={_('Search Options')}
-            className={clsx(
-              window.innerWidth < 640 ? 'dropdown-end' : 'dropdown-center',
-              'dropdown-bottom',
-            )}
-            menuClassName={clsx('no-triangle mt-1', window.innerWidth < 640 ? '' : '!relative')}
-            buttonClassName={clsx(
-              'btn btn-ghost h-8 min-h-8 w-8 p-0 rounded-none rounded-r-lg',
-              viewSettings?.isEink ? '!bg-transparent hover:!bg-transparent' : '',
-            )}
-            toggleButton={<ChevronDown size={iconSize12} className='text-base-content/50' />}
-          >
-            <SearchOptions
-              isEink={!!viewSettings?.isEink}
-              searchConfig={config.searchConfig as BookSearchConfig}
-              onSearchConfigChanged={handleSearchConfigChange}
-            />
-          </Dropdown>
-        </div>
       </div>
-
-      {searchError && <div className='text-error px-2 text-xs'>{searchError}</div>}
-
-      {searchHistory.length > 0 && !searchTerm && (
-        <div className='relative flex'>
-          <div
-            className={clsx(
-              'from-base-200 pointer-events-none absolute left-0 top-0 h-full w-3 bg-gradient-to-r to-transparent',
-              viewSettings?.isEink ? 'hidden' : '',
-            )}
-            aria-hidden='true'
-          />
-          <div
-            className='scrollbar-hidden flex flex-1 gap-1.5 overflow-x-auto'
-            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      <div className='glossa-search-toolbar'>
+        <div className='glossa-search-scope' role='group' aria-label={_('Search scope')}>
+          <button
+            type='button'
+            aria-pressed={config.scope === 'book'}
+            onClick={() => changeConfig({ ...config, scope: 'book' })}
           >
-            {searchHistory.map((term, index) => (
-              <button
-                key={index}
-                onClick={() => handleHistoryClick(term)}
-                className='hover:bg-base-200/20 text-base-content/70 bg-base-100 max-w-[60%] flex-shrink-0 whitespace-nowrap rounded-full px-3 py-0.5 text-xs'
-              >
-                <p className='truncate'>{term}</p>
+            {_('Entire book')}
+          </button>
+          <button
+            type='button'
+            aria-pressed={config.scope === 'section'}
+            title={scopeLabel || undefined}
+            onClick={() => changeConfig({ ...config, scope: 'section' })}
+          >
+            {_('Current chapter')}
+          </button>
+        </div>
+        <SearchOptions
+          isEink={!!getViewSettings(bookKey)?.isEink}
+          searchConfig={config}
+          onSearchConfigChanged={changeConfig}
+        />
+      </div>
+      {searching && (
+        <div className='glossa-search-status' role='status'>
+          <span>{_('Searching…')}</span>
+          <button
+            className='glossa-icon-button'
+            aria-label={_('Stop search')}
+            onClick={() => {
+              cancel();
+              setInterrupted(true);
+              setSearchStatus(bookKey, 'terminated');
+              setSearchProgress(bookKey, 1);
+            }}
+          >
+            <Square size={12} />
+          </button>
+        </div>
+      )}
+      {interrupted && (
+        <div className='glossa-search-status' role='status'>
+          {_('Search stopped')}
+        </div>
+      )}
+      {searchError && (
+        <div className='glossa-search-status text-error' role='alert'>
+          <span>{searchError}</span>
+          <button onClick={() => setRevision((n) => n + 1)}>{_('Retry')}</button>
+        </div>
+      )}
+      {truncated && (
+        <div className='glossa-supporting-text' role='status'>
+          {_('Result limit reached')}
+        </div>
+      )}
+      {!!history.length && !searchTerm && (
+        <div className='glossa-search-history'>
+          <div>
+            {history.map((term) => (
+              <button key={term} title={term} onClick={() => changeTerm(term)}>
+                {term}
               </button>
             ))}
           </div>
-          <div
-            className={clsx(
-              'from-base-200 pointer-events-none absolute right-6 top-0 h-full w-6 bg-gradient-to-l to-transparent',
-              viewSettings?.isEink ? 'hidden' : '',
-            )}
-            aria-hidden='true'
-          />
           <button
-            onClick={handleClearHistory}
-            className={clsx(
-              'text-base-content/50 hover:text-base-content/80 flex-shrink-0 items-center',
-              'flex h-6 min-h-6 w-8 min-w-8 items-center justify-center p-0',
-            )}
-            title={_('Clear search history')}
+            className='glossa-icon-button'
             aria-label={_('Clear search history')}
+            onClick={() => {
+              setHistory([]);
+              try {
+                localStorage.removeItem(historyKey);
+              } catch {
+                /* Optional history. */
+              }
+            }}
           >
-            <Trash2 size={iconSize16} />
+            <Trash2 size={14} />
           </button>
         </div>
       )}
     </div>
   );
-};
-
-export default SearchBar;
+}

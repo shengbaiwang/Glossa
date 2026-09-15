@@ -2,6 +2,7 @@
 @import './glossa-conversation.css';
 @import './glossa-icons.css';
 @import './glossa-foundations.css';
+@import './glossa-search.css';
 /* Glossa: the icon's rounded ink strokes, carried through the application.
    All surfaces derive from the selected theme, including custom palettes. */
 :root {

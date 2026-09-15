@@ -1,3 +1,4 @@
+import { findCfiTextOffset, type ChapterSearchRange } from '@/utils/chapterSearch';
 import { DocumentLoader, type BookDoc } from '@/libs/document';
 import type {
   Book,
@@ -97,6 +98,14 @@ export interface LibrarySearchOptions {
   // Restrict matching to one section (reader "current chapter" scope). Index
   // population is never restricted: a live scan still writes every section.
   sectionIndex?: number;
+  sectionRange?: SearchSectionRange;
+}
+
+export interface SearchSectionRange {
+  startIndex: number;
+  endIndex: number;
+  startOffset: number;
+  endOffset?: number;
 }
 
 const DEFAULT_CONFIG: LibrarySearchConfig = {
@@ -514,9 +523,36 @@ export async function* searchLibraryBooks(
     }
   }
 
+  const includesSection = (index: number) => {
+    if (options.sectionRange)
+      return index >= options.sectionRange.startIndex && index <= options.sectionRange.endIndex;
+    return options.sectionIndex == null || index === options.sectionIndex;
+  };
+  const matchSectionText = async (
+    book: Book,
+    index: number,
+    text: string,
+    locale: string,
+    limit: number,
+  ): Promise<SectionMatchOutcome> => {
+    const range = options.sectionRange;
+    const start = range && index === range.startIndex ? range.startOffset : 0;
+    const end = range && index === range.endIndex ? range.endOffset : undefined;
+    const outcome = await matchText(book, index, text.slice(start, end), locale, limit);
+    return {
+      ...outcome,
+      matches: outcome.matches.map((match) => ({
+        ...match,
+        start: match.start + start,
+        end: match.end + start,
+        runs: match.runs.map((run) => ({ start: run.start + start, end: run.end + start })),
+      })),
+    };
+  };
+
   const usesSearchWorker = config.mode === 'fuzzy' || config.mode === 'nearby-words';
 
-  const matchSectionText = async (
+  const matchText = async (
     book: Book,
     sectionIndex: number,
     text: string,
@@ -525,7 +561,7 @@ export async function* searchLibraryBooks(
   ): Promise<SectionMatchOutcome> => {
     if (usesSearchWorker) {
       const payload = {
-        sectionKey: `${book.hash}:${book.updatedAt}:${sectionIndex}`,
+        sectionKey: `${book.hash}:${book.updatedAt}:${sectionIndex}:${options.sectionRange?.startOffset ?? 0}:${options.sectionRange?.endOffset ?? ''}`,
         text,
         query,
         mode: config.mode as 'fuzzy' | 'nearby-words',
@@ -630,9 +666,7 @@ export async function* searchLibraryBooks(
         let sections: SearchIndexSection[] = usePrefilter
           ? await loadSearchIndexCandidates(indexDb, query)
           : await loadSearchIndexSections(indexDb);
-        if (options.sectionIndex != null) {
-          sections = sections.filter((section) => section.idx === options.sectionIndex);
-        }
+        sections = sections.filter((section) => includesSection(section.idx));
         if (signal?.aborted) return;
         const totalSections = meta!.totalSections;
         for (const section of sections) {
@@ -761,7 +795,7 @@ export async function* searchLibraryBooks(
                 );
               }
               const remaining = MAX_BOOK_SEARCH_RESULTS - bookMatches;
-              if (options.sectionIndex != null && options.sectionIndex !== sectionIndex) {
+              if (!includesSection(sectionIndex)) {
                 // Scoped search: this section is only extracted for the index.
               } else if (remaining <= 0) {
                 bookTruncated = true;
@@ -929,3 +963,43 @@ export const resolveSearchResultCfi = async (
   locator: SearchResultLocator,
 ): Promise<string | null> =>
   (await resolveSearchResultCfis(session, book, [locator]))[0]?.cfi ?? null;
+
+// Resolve only the two boundary documents; interior files need no DOM work.
+export const resolveSearchChapterRange = async (
+  session: LibrarySearchSession,
+  book: Book,
+  range: ChapterSearchRange,
+): Promise<SearchSectionRange> => {
+  const { bookDoc } = await session.open(book);
+  await loadTextWalker();
+  const indexOf = (cfi: string) => CFI.fake.toIndex(CFI.parse(CFI.collapse(cfi))[0]);
+  // CFI.parse returns an array of indirections for point CFIs.
+  const startIndex = indexOf(range.start);
+  const endIndex = range.end ? indexOf(range.end) : bookDoc.sections.length - 1;
+  if (
+    !Number.isInteger(startIndex) ||
+    !Number.isInteger(endIndex) ||
+    startIndex < 0 ||
+    endIndex < startIndex ||
+    endIndex >= bookDoc.sections.length
+  )
+    throw new Error('Invalid chapter range');
+  const offsetOf = async (index: number, boundary: string) => {
+    const section = bookDoc.sections[index]!;
+    const doc = await section.createDocument();
+    if (!doc) throw new Error('Chapter document unavailable');
+    const prepared = prepareSearchSection('chapter', doc, makeAcceptNode(book));
+    const base = section.cfi ?? CFI.fake.fromIndex(index);
+    return findCfiTextOffset(prepared.text.length, boundary, (offset) => {
+      const from = findNodeOffset(prepared.cumulative, offset, 'right');
+      const point = prepared.makeRange(from.index, from.offset, from.index, from.offset);
+      return CFI.joinIndir(base, CFI.fromRange(point));
+    });
+  };
+  return {
+    startIndex,
+    endIndex,
+    startOffset: await offsetOf(startIndex, range.start),
+    endOffset: range.end ? await offsetOf(endIndex, range.end) : undefined,
+  };
+};

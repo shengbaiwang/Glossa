@@ -125,7 +125,8 @@ it('shares typography, menu geometry and visible keyboard focus without flatteni
   await page.viewport(390, 850);
   expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
   expect(getComputedStyle(screen.getByRole('menu')).boxShadow).toBe('none');
-  expect(getComputedStyle(screen.getByRole('menuitemcheckbox')).outlineStyle).toBe('solid');
+  expect(getComputedStyle(screen.getByRole('menuitemcheckbox')).outlineStyle).toBe('none');
+  expect(screen.getByRole('menuitemcheckbox').getAttribute('aria-checked')).toBe('true');
   await page.screenshot({ path: '../../../../../.glossa-dev/qa/design-foundations-rtl-eink.png' });
 });
 it('keeps dialogs elevated above menus with aligned actions and a reachable close control', async () => {

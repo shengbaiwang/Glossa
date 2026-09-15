@@ -130,8 +130,9 @@
 }
 .glossa-choice-row[data-highlighted] {
   background: var(--glossa-hover);
-  outline: 2px solid var(--glossa-focus);
-  outline-offset: -2px;
+}
+.glossa-choice-row[data-highlighted][data-state='checked'] {
+  background: var(--glossa-selected);
 }
 
 /* Complete forms have framed fields; values attached to settings rows stay
@@ -320,6 +321,22 @@
 }
 [data-eink='true'] :is(.glossa-action, .glossa-toggle, .glossa-choice-row) {
   transition: none;
+}
+
+/* Menu rows share the sidebar's quiet selection. Focus stays visible through
+   an underline, without turning hover or selection into a framed control. */
+.glossa-menu-surface :is(.glossa-choice-row, .glossa-menu-item),
+[data-eink='true'] .glossa-menu-surface :is(.glossa-choice-row, .glossa-menu-item),
+.glossa-menu-surface[data-eink='true'] :is(.glossa-choice-row, .glossa-menu-item) {
+  outline: none;
+  box-shadow: none;
+}
+.glossa-menu-surface :is(.glossa-choice-row, .glossa-menu-item):focus-visible {
+  outline: none;
+  box-shadow: none;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
 }
 
 /* Same menu role inside compact workspaces; surrounding toolbar typography

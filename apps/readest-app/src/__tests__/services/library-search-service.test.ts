@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createLibrarySearchSession,
   resolveSearchResultCfi,
+  resolveSearchChapterRange,
   resolveSearchResultCfis,
   searchLibraryBooks,
 } from '@/services/librarySearchService';
@@ -524,6 +525,76 @@ describe('searchLibraryBooks', () => {
     expect(
       indexedScoped.filter((event) => event.type === 'result').map((event) => event.result.index),
     ).toEqual([0]);
+  });
+
+  it('searches a chapter across files and clips boundary text before applying limits', async () => {
+    const book = makeBook('chapter-range', 'Chapter');
+    const service = makeService(
+      new Map([
+        [
+          'chapter-range',
+          makeFile(
+            '# One\nneedle outside needle inside\n\n# Two\nneedle middle\n\n# Three\nneedle end needle outside',
+          ),
+        ],
+      ]),
+    );
+    const initial = [];
+    for await (const event of searchLibraryBooks(service, [book], 'needle', { config }))
+      initial.push(event);
+    const sections = initial.filter((e) => e.type === 'result').map((e) => e.result);
+    const range = {
+      startIndex: 0,
+      endIndex: 2,
+      startOffset: sections[0]!.subitems[1]!.locator.start,
+      endOffset: sections[2]!.subitems[1]!.locator.start,
+    };
+    for (const mode of ['contains', 'whole-words', 'regex'] as const) {
+      const events = [];
+      for await (const event of searchLibraryBooks(service, [book], 'needle', {
+        config: { ...config, mode },
+        sectionRange: range,
+      }))
+        events.push(event);
+      const results = events.filter((e) => e.type === 'result');
+      expect(results.map((e) => e.result.index)).toEqual([0, 1, 2]);
+      expect(results.map((e) => e.result.subitems.length)).toEqual([1, 1, 1]);
+      expect(results[0]!.result.subitems[0]!.locator.start).toBe(range.startOffset);
+    }
+  });
+
+  it('resolves CFI chapter boundaries through the same text walker as matches', async () => {
+    const book = makeBook('boundaries', 'Boundaries');
+    const service = makeService(
+      new Map([
+        [
+          'boundaries',
+          makeFile('# One\nfirst needle second needle\n\n# Two\nthird needle fourth needle'),
+        ],
+      ]),
+    );
+    const session = createLibrarySearchSession(service);
+    const results = [];
+    for await (const event of searchLibraryBooks(service, [book], 'needle', { config, session })) {
+      if (event.type === 'result') results.push(...event.result.subitems);
+    }
+    const cfis = await resolveSearchResultCfis(
+      session,
+      book,
+      results.map((match) => match.locator),
+    );
+    const bounds = await resolveSearchChapterRange(session, book, {
+      start: cfis[1]!.cfi,
+      end: cfis[3]!.cfi,
+      label: 'Chapter',
+    });
+    expect(bounds).toEqual({
+      startIndex: 0,
+      endIndex: 1,
+      startOffset: results[1]!.locator.start,
+      endOffset: results[3]!.locator.start,
+    });
+    await session.close();
   });
 
   it('resolves locator batches to CFIs matching the single resolver', async () => {

@@ -86,10 +86,9 @@ describe('SearchResults chapter sections', () => {
     // DESIGN.md 2.8: logical properties only, the sidebar flips direction for RTL books.
     expect(header.innerHTML).not.toMatch(/\bml-2\b/);
     expect(header.innerHTML).toMatch(/\bms-2\b/);
-    // The sidebar itself is bg-base-100 under e-ink, so a bare bg-base-200 header
-    // would render as a grey band there.
+    // The sticky header uses the paper surface in every theme, without a grey band.
     const sticky = header.closest('h3')!;
-    expect(sticky.className).toContain('eink:bg-base-100');
-    expect(sticky.className).toContain('not-eink:bg-base-200');
+    expect(sticky.className).toContain('bg-base-100');
+    expect(sticky.className).not.toContain('bg-base-200');
   });
 });

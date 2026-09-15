@@ -6,6 +6,7 @@ type SearchStatus = 'searching' | 'completed' | 'terminated';
 // Per-book search navigation state
 interface SearchNavState {
   searchTerm: string;
+  searchOrigin: string | null;
   searchResults: BookSearchResult[] | BookSearchMatch[] | null;
   searchResultIndex: number;
   searchProgress: number; // 0 to 1, where 1 means search complete
@@ -40,6 +41,7 @@ interface SidebarState {
   setSearchBarVisible: (visible: boolean) => void;
   // Search actions (per bookKey)
   getSearchNavState: (bookKey: string) => SearchNavState;
+  setSearchOrigin: (bookKey: string, location: string | null) => void;
   setSearchTerm: (bookKey: string, term: string) => void;
   setSearchStatus: (bookKey: string, status: SearchStatus) => void;
   getSearchStatus: (bookKey: string) => SearchStatus | null;
@@ -61,6 +63,7 @@ interface SidebarState {
 
 const defaultSearchNavState: SearchNavState = {
   searchTerm: '',
+  searchOrigin: null,
   searchResults: null,
   searchResultIndex: 0,
   searchProgress: 1,
@@ -99,6 +102,16 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
   getSearchNavState: (bookKey: string) => {
     return get().searchNavStates[bookKey] || defaultSearchNavState;
   },
+  setSearchOrigin: (bookKey, location) =>
+    set((state) => ({
+      searchNavStates: {
+        ...state.searchNavStates,
+        [bookKey]: {
+          ...(state.searchNavStates[bookKey] || defaultSearchNavState),
+          searchOrigin: location,
+        },
+      },
+    })),
   setSearchTerm: (bookKey: string, term: string) =>
     set((state) => ({
       searchNavStates: {

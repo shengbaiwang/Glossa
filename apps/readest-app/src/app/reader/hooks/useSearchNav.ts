@@ -11,7 +11,8 @@ export function useSearchNav(bookKey: string) {
   const { getSearchNavState, setSearchResultIndex, clearSearch } = useSidebarStore();
 
   const searchNavState = getSearchNavState(bookKey);
-  const { searchTerm, searchResults, searchResultIndex, searchProgress } = searchNavState;
+  const { searchTerm, searchResults, searchResultIndex, searchProgress, searchOrigin } =
+    searchNavState;
 
   // Reactive: search nav re-derives current-page boundaries when the user
   // turns the page. Subscribes to readerProgressStore only.
@@ -55,12 +56,17 @@ export function useSearchNav(bookKey: string) {
         lastIndex = i;
       }
     }
-    if (firstIndex !== -1) {
-      setTimeout(() => setSearchResultIndex(bookKey, firstIndex), 0);
-    }
 
     return { firstIndex, lastIndex };
   }, [flattenedResults, currentLocation, bookKey, setSearchResultIndex]);
+
+  useEffect(() => {
+    const { firstIndex, lastIndex } = currentPageResults;
+    const index = getSearchNavState(bookKey).searchResultIndex;
+    if (firstIndex >= 0 && (index < firstIndex || index > lastIndex)) {
+      setSearchResultIndex(bookKey, firstIndex);
+    }
+  }, [bookKey, currentPageResults, getSearchNavState, setSearchResultIndex]);
 
   // Highlight the current match in the book with a stronger style; clearing
   // when the index leaves the result range (e.g. search closed or re-run).
@@ -90,7 +96,8 @@ export function useSearchNav(bookKey: string) {
 
   const handleShowResults = useCallback(() => {
     setSideBarVisible(true);
-  }, [setSideBarVisible]);
+    setSearchBarVisible(true);
+  }, [setSideBarVisible, setSearchBarVisible]);
 
   const handleCloseSearch = useCallback(() => {
     clearSearch(bookKey);
@@ -100,42 +107,27 @@ export function useSearchNav(bookKey: string) {
     getView(bookKey)?.clearSearch();
   }, [clearSearch, bookKey, getView, setSearchBarVisible]);
 
-  // Navigate to the previous page with results (last result before current page)
-  const handlePreviousResult = useCallback(() => {
-    const { firstIndex } = currentPageResults;
-
-    if (firstIndex > 0) {
-      // Navigate to the result just before the first result on current page
-      navigateToResult(firstIndex - 1);
-    } else if (firstIndex === -1 && searchResultIndex > 0) {
-      // No results on current page, just go to previous result
-      navigateToResult(searchResultIndex - 1);
+  const handlePreviousResult = useCallback(
+    () => navigateToResult(searchResultIndex - 1),
+    [navigateToResult, searchResultIndex],
+  );
+  const handleNextResult = useCallback(
+    () => navigateToResult(searchResultIndex + 1),
+    [navigateToResult, searchResultIndex],
+  );
+  const hasPreviousPage = searchResultIndex > 0;
+  const hasNextPage = searchResultIndex < totalResults - 1;
+  const handleReturnToReading = useCallback(() => {
+    if (searchOrigin) {
+      void getView(bookKey)?.goTo(searchOrigin);
+      handleCloseSearch();
     }
-  }, [currentPageResults, searchResultIndex, navigateToResult]);
-
-  // Navigate to the next page with results (first result after current page)
-  const handleNextResult = useCallback(() => {
-    const { lastIndex } = currentPageResults;
-
-    if (lastIndex >= 0 && lastIndex < totalResults - 1) {
-      // Navigate to the result just after the last result on current page
-      navigateToResult(lastIndex + 1);
-    } else if (lastIndex === -1 && searchResultIndex < totalResults - 1) {
-      // No results on current page, just go to next result
-      navigateToResult(searchResultIndex + 1);
-    }
-  }, [currentPageResults, totalResults, searchResultIndex, navigateToResult]);
-
-  // Check if there are results before/after the current page
-  const hasPreviousPage =
-    currentPageResults.firstIndex > 0 ||
-    (currentPageResults.firstIndex === -1 && searchResultIndex > 0);
-  const hasNextPage =
-    (currentPageResults.lastIndex >= 0 && currentPageResults.lastIndex < totalResults - 1) ||
-    (currentPageResults.lastIndex === -1 && searchResultIndex < totalResults - 1);
+  }, [bookKey, searchOrigin, getView, handleCloseSearch]);
 
   return {
     searchTerm,
+    searchOrigin,
+    handleReturnToReading,
     searchProgress,
     currentSection,
     searchResultIndex,

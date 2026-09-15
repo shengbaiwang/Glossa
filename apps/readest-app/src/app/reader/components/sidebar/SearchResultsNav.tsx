@@ -5,7 +5,7 @@ import { BookSearchMatch, BookSearchResult } from '@/types/book';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useReaderStore } from '@/store/readerStore';
 import { useSearchNav } from '../../hooks/useSearchNav';
-import ContentNavBar from './ContentNavBar';
+import { ArrowLeft, ChevronLeft, ChevronRight, List, X } from '@/components/GlossaIcons';
 
 interface SearchResultsNavProps {
   bookKey: string;
@@ -15,8 +15,10 @@ interface SearchResultsNavProps {
 const SearchResultsNav: React.FC<SearchResultsNavProps> = ({ bookKey, gridInsets }) => {
   const {
     searchTerm,
-    searchProgress,
-    currentSection,
+    searchResultIndex,
+    totalResults,
+    searchOrigin,
+    handleReturnToReading,
     showSearchNav,
     hasPreviousPage,
     hasNextPage,
@@ -33,23 +35,67 @@ const SearchResultsNav: React.FC<SearchResultsNavProps> = ({ bookKey, gridInsets
   }
 
   return (
-    <ContentNavBar
-      bookKey={bookKey}
-      gridInsets={gridInsets}
-      title={_("Search results for '{{term}}'", { term: searchTerm })}
-      section={currentSection}
-      progress={searchProgress}
-      hasPrevious={hasPreviousPage}
-      hasNext={hasNextPage}
-      previousTitle={_('Previous Result')}
-      nextTitle={_('Next Result')}
-      showResultsTitle={_('Show Search Results')}
-      closeTitle={_('Close Search')}
-      onShowResults={handleShowResults}
-      onClose={handleCloseSearch}
-      onPrevious={handlePreviousResult}
-      onNext={handleNextResult}
-    />
+    <div
+      className='glossa-search-nav-position'
+      style={{
+        left: gridInsets.left,
+        right: gridInsets.right,
+        bottom: Math.max(8, gridInsets.bottom / 4),
+      }}
+    >
+      <nav className='glossa-search-nav eink-bordered' aria-label={_('Search results')}>
+        {searchOrigin && (
+          <button
+            className='glossa-icon-button'
+            title={_('Return to reading')}
+            aria-label={_('Return to reading')}
+            onClick={handleReturnToReading}
+          >
+            <ArrowLeft size={16} className='rtl:rotate-180' />
+          </button>
+        )}
+        <button
+          className='glossa-icon-button'
+          title={_('Show Search Results')}
+          aria-label={_('Show Search Results')}
+          onClick={handleShowResults}
+        >
+          <List size={16} />
+        </button>
+        <span className='glossa-search-nav-term' title={searchTerm} dir='auto'>
+          {searchTerm}
+        </span>
+        <span className='glossa-search-nav-count' role='status' dir='ltr'>
+          {searchResultIndex + 1} / {totalResults}
+        </span>
+        <button
+          className='glossa-icon-button'
+          title={_('Previous Result')}
+          aria-label={_('Previous Result')}
+          disabled={!hasPreviousPage}
+          onClick={handlePreviousResult}
+        >
+          <ChevronLeft size={16} className='rtl:rotate-180' />
+        </button>
+        <button
+          className='glossa-icon-button'
+          title={_('Next Result')}
+          aria-label={_('Next Result')}
+          disabled={!hasNextPage}
+          onClick={handleNextResult}
+        >
+          <ChevronRight size={16} className='rtl:rotate-180' />
+        </button>
+        <button
+          className='glossa-icon-button'
+          title={_('Close Search')}
+          aria-label={_('Close Search')}
+          onClick={handleCloseSearch}
+        >
+          <X size={16} />
+        </button>
+      </nav>
+    </div>
   );
 };
 

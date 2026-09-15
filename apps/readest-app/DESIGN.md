@@ -53,14 +53,33 @@ retain their own typography. Avoid shrinking essential instructions into caption
 - Pane destinations use the existing exclusive `ReaderPaneTabs`. Menu switches use
   `menuitemcheckbox` + `aria-checked`; ordinary commands use `menuitem`. Radix radio
   and checkbox items keep their native semantics and visible check indicators.
-- Keyboard focus is a 2px theme-ink outline. Use a 2px outside offset on standalone
-  controls and an inset outline on menu/navigation rows that could clip. A settings
-  select draws the ring on its value+chevron wrapper; a translucent custom slider
-  draws it on the visible slider wrapper. Never hide focus on both wrapper and input.
+- Standalone controls use a 2px theme-ink keyboard outline with a 2px outside
+  offset; navigation rows use an inset outline. Menus follow the borderless row
+  state rules below. A settings select draws the ring on its value+chevron wrapper;
+  a translucent custom slider draws it on the visible slider wrapper. Never hide
+  focus on both wrapper and input.
 - Disabled actions use native `disabled` and 0.45 opacity. Do not simulate disabled
   behavior solely with CSS or tabIndex. A disabled row dims once, not twice. Number
   steppers disable unavailable directions at their limits. Invalid fields keep a
   semantic error boundary; error text must remain available beside the field.
+
+#### Reusable menu row states — 2026-09-15
+
+- Match the reading sidebar: resting rows are transparent; hover uses
+  `--glossa-hover`; selected/checked rows use `--glossa-selected` and theme ink.
+  A selected row keeps its selected fill when hovered or focused. Use the same
+  size, alignment and weight for peer choices; never promote one to a framed button.
+- No white outline, perimeter ring or shadow on menu row hover, selection or
+  focus. Radix `data-highlighted` represents pointer hover as well as focus, so it
+  must never add a focus ring. The menu surface keeps its own quiet border.
+- Keyboard `:focus-visible` adds a 1px text underline with a 4px offset. Keep
+  native radio dots/checkbox checks to identify selection independently of focus.
+  Preserve arrow-key navigation, disabled semantics, Escape and focus restoration.
+- These rules apply to shared `.glossa-menu-surface` rows (`.glossa-choice-row`
+  and `.glossa-menu-item`) via `glossa-foundations.css`. Reuse them for future
+  menus instead of local outline overrides. In e-ink, preserve selection indicators,
+  underline keyboard focus and the surface border; do not outline selected rows.
+  Standalone fields, buttons and navigation retain their own focus treatments.
 
 #### Menus, dialogs and actions
 
@@ -115,6 +134,41 @@ retain their own typography. Avoid shrinking essential instructions into caption
   </DialogFooter>
 </DialogContent>
 ```
+
+### Search workspace — 2026-09-15
+
+- Reader search uses a 36px framed field with an inline clear action, then a
+  compact “Entire book / Current chapter” scope group and a trailing options
+  trigger. Use 16px side insets, 8px vertical rhythm, shared 13px chrome and
+  paper/ink tokens. Controls flow onto a second line at narrow widths instead
+  of overlapping; touch targets grow to 44px.
+- Use one options menu with a single mode group: 普通 / 全词 / 邻近 / 正则
+  (Normal / Whole word / Nearby / Regex), under 方式 (Method). Below a divider,
+  show independent 区分大小写 / 区分变音符号 switches. Whole word appears only in
+  the mode group, never again as a checkbox. Regex retains the disabled diacritics
+  behavior. No advanced page or repeated search-options heading.
+- The trigger stays 选项 (Options); the input placeholder stays 搜索书内文字
+  (Search book text), with 全书 / 本章 expressing scope. Use 搜索 consistently
+  for user-facing search actions; do not alternate 查找 and 检索 in search chrome.
+  Preserve precise established terms such as 变音符号 rather than shortening
+  every label to the same character count.
+- Show the inline 5 / 10 / 20 / 50 radio group under 距离（词） only for Nearby.
+  Changes stay in the same open menu so multiple settings can be adjusted.
+  恢复默认 appears after a divider only for non-default settings and resets mode,
+  switches and distance. Restore trigger focus on Escape or dismissal. Follow the
+  shared borderless menu states above; preserve native radio/checkbox semantics.
+- Results are transparent compact rows, with a quiet sticky chapter heading,
+  three-line text previews, shared paper highlights and an inset focus ring.
+  Keep source text direction independent of interface direction. Use one
+  small floating navigation surface with query, LTR numeric position/total,
+  previous/next match, list, close and return-to-reading actions. No separate
+  framed previous/next buttons and no tutorial captions.
+- Loading, cancellation, retry and result-cap messages appear only when
+  relevant. Keep content and history local, do not log queries, and retain
+  ordinary search modes and old configuration compatibility.
+- Implementation: `glossa-search.css`, reader `SearchBar`, `SearchOptions`,
+  `SearchResults`, `SearchResultsNav`. Keep shared library search behavior
+  unchanged; its existing retrieval modes remain available.
 
 ### Bookmarks — saved positions, 2026-09-15
 

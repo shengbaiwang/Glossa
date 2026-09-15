@@ -147,6 +147,12 @@ const SideBar = ({}) => {
 
   const handleSearchResultClick = (cfi: string) => {
     onNavigateEvent();
+    const matches = (searchResults ?? []).flatMap((result) =>
+      'subitems' in result ? result.subitems : [result],
+    );
+    const index = matches.findIndex((match) => match.cfi === cfi);
+    if (index >= 0 && sideBarBookKey)
+      useSidebarStore.getState().setSearchResultIndex(sideBarBookKey, index);
     getView(sideBarBookKey)?.goTo(cfi);
   };
 

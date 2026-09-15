@@ -69,21 +69,21 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
       // eslint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role
       role='button'
       ref={viewRef}
-      className={clsx(
-        'my-2 cursor-pointer rounded-lg p-2 text-sm',
-        isCurrent ? 'bg-base-300 hover:bg-gray-300/70' : 'hover:bg-base-300 bg-base-100',
-      )}
+      className='glossa-search-result'
+      aria-current={isCurrent ? 'true' : undefined}
       tabIndex={0}
       onClick={() => onSelectResult(cfi)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
           onSelectResult(cfi);
         } else {
           e.stopPropagation();
         }
       }}
     >
-      <div className='line-clamp-3'>
+      <div className='line-clamp-3' dir='auto'>
         <ExcerptBody excerpt={excerpt} />
       </div>
     </li>
@@ -150,10 +150,7 @@ const ChapterSection: React.FC<ChapterSectionProps> = ({
     <ul>
       {/* The sticky band carries the surface color so results scrolling underneath
           stay occluded; the button inside owns the hover and focus affordances. */}
-      <h3
-        ref={headerRef}
-        className='not-eink:bg-base-200 eink:bg-base-100 sticky top-0 z-10 font-normal'
-      >
+      <h3 ref={headerRef} className='bg-base-100 sticky top-0 z-10 font-normal'>
         <button
           type='button'
           className='not-eink:hover:bg-base-300 focus-visible:ring-base-content/15 flex w-full select-none items-center justify-between rounded px-1 py-1 text-start focus-visible:outline-none focus-visible:ring-2'
@@ -202,7 +199,7 @@ interface SearchResultsProps {
 const SearchResults: React.FC<SearchResultsProps> = ({ bookKey, results, onSelectResult }) => {
   const _ = useTranslation();
   const { getProgress } = useReaderStore();
-  const { getSearchNavState } = useSidebarStore();
+  const { getSearchNavState, getSearchStatus } = useSidebarStore();
   const progress = getProgress(bookKey);
   const { searchProgress, searchError } = getSearchNavState(bookKey);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => new Set());
@@ -244,7 +241,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({ bookKey, results, onSelec
   // The error itself is surfaced in the search bar; once the search has finished
   // with no hits, say so instead of leaving a blank panel.
   if (results.length === 0) {
-    if (searchError || searchProgress < 1) return null;
+    if (searchError || searchProgress < 1 || getSearchStatus?.(bookKey) === 'terminated')
+      return null;
     return (
       <div className='search-results text-base-content/60 p-4 text-center text-sm'>
         {_('No results found')}
@@ -253,8 +251,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({ bookKey, results, onSelec
   }
 
   return (
-    <div className='search-results overflow-y-auto px-2 font-sans text-sm font-light'>
-      <ul className='px-2'>
+    <div className='search-results glossa-search-results overflow-y-auto font-sans'>
+      <ul>
         {results.map((result, index) => {
           if ('subitems' in result) {
             const sectionKey = `${index}-${result.label}`;
@@ -285,7 +283,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({ bookKey, results, onSelec
         })}
       </ul>
       {searchProgress >= 1 && (
-        <div className='text-base-content/60 px-2 py-2 text-center text-xs'>
+        <div className='glossa-search-count' role='status'>
           {_('{{count}} results', { count: totalMatches })}
         </div>
       )}
