@@ -159,7 +159,7 @@ retain their own typography. Avoid shrinking essential instructions into caption
   paper/ink tokens. Controls flow onto a second line at narrow widths instead
   of overlapping; touch targets grow to 44px.
 - Use one options menu with a single mode group: 普通 / 全词 / 邻近 / 正则
-  (Normal / Whole word / Nearby / Regex), under 方式 (Method). Below a divider,
+  (Normal / Whole word / Nearby / Regex), under 模式 (Mode). Below a divider,
   show independent 区分大小写 / 区分变音符号 switches. Whole word appears only in
   the mode group, never again as a checkbox. Regex retains the disabled diacritics
   behavior. No advanced page or repeated search-options heading.
