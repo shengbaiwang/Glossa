@@ -1,5 +1,6 @@
 import { FoliateView } from '@/types/view';
 import { findAdjacentTocItem } from '@/services/nav/lookup';
+import { collectAllTocItems } from '@/services/nav/grouping';
 
 // Chapter jumps navigate by TOC entry so the landing page is the target
 // chapter's first page: view.goTo resolves the chapter heading and also pushes
@@ -11,7 +12,17 @@ export const goToAdjacentSection = async (
   dir: 1 | -1,
 ): Promise<void> => {
   if (!view) return;
-  const target = findAdjacentTocItem(view.book?.toc ?? [], cfi ?? '', dir);
+  const toc = view.book?.toc ?? [];
+  const flat = collectAllTocItems(toc);
+  const location = view.lastLocation;
+  // A paginated page can begin before the heading we just jumped to. Use the
+  // renderer's TOC progress (which considers the visible range), not just its
+  // start CFI, or the next jump can keep targeting the same chapter.
+  const currentIndex = location?.tocItem ? flat.indexOf(location.tocItem) : -1;
+  const target =
+    currentIndex >= 0
+      ? flat[currentIndex + dir]
+      : findAdjacentTocItem(toc, location?.cfi ?? cfi ?? '', dir);
   if (target?.href) {
     await view.goTo(target.href);
     return;

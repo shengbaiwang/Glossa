@@ -1,4 +1,4 @@
-import { BookDoc } from '@/libs/document';
+import { BookDoc, TOCItem } from '@/libs/document';
 import { BookNote, BookSearchConfig, BookSearchResult } from '@/types/book';
 import { TTSGranularity } from '@/services/tts/types';
 import { TTS } from 'foliate-js/tts.js';
@@ -112,7 +112,7 @@ export interface FoliateView extends HTMLElement {
   tts: ViewTTS | null;
   // The most recent relocate location, set synchronously by foliate on every
   // relocate — fresher than the rAF-debounced readerStore progress.
-  lastLocation?: { cfi?: string; range?: Range | null };
+  lastLocation?: { cfi?: string; range?: Range | null; tocItem?: TOCItem | null };
   isFixedLayout: boolean;
   language: {
     locale?: LocaleWithTextInfo;

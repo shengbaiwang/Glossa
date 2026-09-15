@@ -31,7 +31,7 @@ export const useLongPress = (
     threshold = 500,
     moveThreshold = 10,
   }: UseLongPressOptions,
-  deps: React.DependencyList,
+  _deps: React.DependencyList,
 ): UseLongPressResult => {
   const [pressing, setPressing] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(null);
@@ -41,6 +41,14 @@ export const useLongPress = (
   const hasPointerEventsRef = useRef(false);
   const pointerEventTimeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
   const isLongPressTriggered = useRef(false);
+  const onLongPressRef = useRef(onLongPress);
+
+  // Callback updates (e.g. reading progress) must not cancel an active gesture.
+  // Keep the dependency argument for existing callers, but tie timer cleanup
+  // to unmount rather than to those changing values.
+  useEffect(() => {
+    onLongPressRef.current = onLongPress;
+  }, [onLongPress]);
 
   const reset = useCallback(() => {
     setPressing(false);
@@ -78,12 +86,12 @@ export const useLongPress = (
       timerRef.current = setTimeout(() => {
         if (startPosRef.current) {
           isLongPressTriggered.current = true;
-          onLongPress?.();
+          onLongPressRef.current?.();
           setPressing(false);
         }
       }, threshold);
     },
-    [onLongPress, threshold],
+    [threshold],
   );
 
   const handlePointerMove = useCallback(
@@ -162,9 +170,14 @@ export const useLongPress = (
       if (timerRef.current) {
         clearTimeout(timerRef.current);
       }
+      if (pressDelayRef.current) {
+        clearTimeout(pressDelayRef.current);
+      }
+      if (pointerEventTimeoutRef.current) {
+        clearTimeout(pointerEventTimeoutRef.current);
+      }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, []);
 
   return {
     pressing,
