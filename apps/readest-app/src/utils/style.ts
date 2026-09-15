@@ -16,6 +16,7 @@ import { readStoredAmbientIsDarkMode } from './ambientLight';
 import { INLINE_FORMATTING_SELECTOR } from './inlineTags';
 import { getOSPlatform } from './misc';
 import { SCROLL_WRAPPER_CLASS, SCROLL_WRAPPER_FIT_CLASS } from './scrollable';
+import { inlineGlyphColorStyles } from './inlineGlyphImages';
 
 /**
  * Resolve the body font-family string (serif or sans-serif chain, per the
@@ -278,6 +279,7 @@ const getColorStyles = (
     p img.has-text-siblings, span img.has-text-siblings, sup img.has-text-siblings {
       mix-blend-mode: ${isDarkMode ? 'screen' : 'multiply'};
     }
+    ${inlineGlyphColorStyles}
     table:has(> colgroup) {
       table-layout: fixed;
     }

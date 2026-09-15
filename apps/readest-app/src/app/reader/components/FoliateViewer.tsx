@@ -40,6 +40,7 @@ import {
   transformStylesheet,
 } from '@/utils/style';
 import { applyScrollableStyle, applyTableTouchScroll } from '@/utils/scrollable';
+import { adaptInlineGlyphImages } from '@/utils/inlineGlyphImages';
 import { mountAdditionalFonts, mountCustomFont } from '@/styles/fonts';
 import { layoutWarichu, relayoutWarichu } from '@/utils/warichu';
 
@@ -367,6 +368,9 @@ const FoliateViewer: React.FC<{
       }
 
       applyImageStyle(detail.doc);
+      if (bookData.book?.format === 'EPUB' && !bookData.isFixedLayout) {
+        adaptInlineGlyphImages(detail.doc);
+      }
       applyScrollableStyle(detail.doc);
       applyTableTouchScroll(detail.doc);
       applyThemeModeClass(detail.doc, isDarkMode);
