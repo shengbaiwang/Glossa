@@ -10,7 +10,7 @@ import SettingsInput from '@/components/settings/primitives/SettingsInput';
 import SettingsSelect from '@/components/settings/primitives/SettingsSelect';
 import SettingsSwitchRow from '@/components/settings/primitives/SettingsSwitchRow';
 import NavigationRow from '@/components/settings/primitives/NavigationRow';
-import { CloudSync } from '@/components/GlossaIcons';
+import { CloudSync, Pin, FilePlus2, Trash2 } from '@/components/GlossaIcons';
 import { Input } from '@/components/primitives/input';
 import Slider from '@/components/Slider';
 import { Button } from '@/components/primitives/button';
@@ -72,10 +72,10 @@ function SettingsFixture() {
         <Slider label='亮度' initialValue={65} minLabel='暗' maxLabel='亮' bubbleLabel='65' />
       </div>
       <div className='glossa-menu-surface' role='menu' aria-label='阅读菜单'>
-        <MenuItem label='固定侧栏' toggled />
-        <MenuItem label='导入文件' shortcut='⌘O' />
+        <MenuItem label='固定侧栏' Icon={<Pin size={16} />} shortcut='Shift+J' toggled />
+        <MenuItem label='导入文件' Icon={<FilePlus2 size={16} />} shortcut='⌘O' />
         <hr className='glossa-menu-separator' />
-        <MenuItem label='不可用操作' disabled />
+        <MenuItem label='不可用操作' Icon={<Trash2 size={16} />} disabled />
       </div>
     </main>
   );
@@ -113,6 +113,13 @@ it('shares typography, menu geometry and visible keyboard focus without flatteni
     expect((disabled as HTMLButtonElement).disabled).toBe(true);
     expect(getComputedStyle(disabled).opacity).toBe('0.45');
     const choice = screen.getByRole('menuitemcheckbox');
+    const icon = choice.querySelector('.glossa-menu-icon')!.getBoundingClientRect();
+    const label = choice.querySelector('.glossa-menu-label')!.getBoundingClientRect();
+    const check = choice.querySelector('.glossa-menu-check')!.getBoundingClientRect();
+    expect(icon.width).toBe(16);
+    expect(label.left - icon.right).toBe(8);
+    expect(check.left).toBeGreaterThan(label.right);
+    expect(choice.querySelectorAll('svg')).toHaveLength(2);
     const selectedBackground = getComputedStyle(choice).backgroundColor;
     await page.getByRole('menuitemcheckbox').hover();
     expect(getComputedStyle(choice).backgroundColor).toBe(selectedBackground);
@@ -123,6 +130,10 @@ it('shares typography, menu geometry and visible keyboard focus without flatteni
   document.documentElement.dir = 'rtl';
   document.documentElement.setAttribute('data-eink', 'true');
   await page.viewport(390, 850);
+  const rtlChoice = screen.getByRole('menuitemcheckbox');
+  expect(
+    rtlChoice.querySelector('.glossa-menu-icon')!.getBoundingClientRect().left,
+  ).toBeGreaterThan(rtlChoice.querySelector('.glossa-menu-check')!.getBoundingClientRect().right);
   expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
   expect(getComputedStyle(screen.getByRole('menu')).boxShadow).toBe('none');
   expect(getComputedStyle(screen.getByRole('menuitemcheckbox')).outlineStyle).toBe('none');

@@ -37,6 +37,7 @@ import {
   GripVertical as GripVerticalGlyph,
   Hand as HandGlyph,
   Headphones as HeadphonesGlyph,
+  ListOrdered as ListOrderedGlyph,
   ListX as ListXGlyph,
   LoaderCircle as LoaderCircleGlyph,
   Lock as LockGlyph,
@@ -122,6 +123,7 @@ export const Gauge = /* @__PURE__ */ glossaGlyph(GaugeGlyph);
 export const GripVertical = /* @__PURE__ */ glossaGlyph(GripVerticalGlyph);
 export const Hand = /* @__PURE__ */ glossaGlyph(HandGlyph);
 export const Headphones = /* @__PURE__ */ glossaGlyph(HeadphonesGlyph);
+export const ListOrdered = /* @__PURE__ */ glossaGlyph(ListOrderedGlyph);
 export const ListX = /* @__PURE__ */ glossaGlyph(ListXGlyph);
 export const LoaderCircle = /* @__PURE__ */ glossaGlyph(LoaderCircleGlyph);
 export const Lock = /* @__PURE__ */ glossaGlyph(LockGlyph);

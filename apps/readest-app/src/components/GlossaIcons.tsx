@@ -519,6 +519,7 @@ export {
   GripVertical,
   Hand,
   Headphones,
+  ListOrdered,
   ListX,
   LoaderCircle,
   Lock,

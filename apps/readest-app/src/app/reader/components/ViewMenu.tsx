@@ -1,5 +1,11 @@
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import {
+  BookOpen,
+  Volume,
+  Type,
+  MoveVertical,
+  Gauge,
+  Palette,
   Moon,
   Sun,
   SunMoon,
@@ -47,7 +53,7 @@ import { nextThemeMode } from '@/utils/ambientLight';
 import dayjs from 'dayjs';
 import { saveViewSettings } from '@/helpers/settings';
 import { tauriHandleToggleFullScreen } from '@/utils/window';
-import { Check, Info, Plus, Highlight, X } from '@/components/GlossaIcons';
+import { Info, Plus, Highlight, X } from '@/components/GlossaIcons';
 import { getReadingQuickAction } from '@/utils/annotationToolbar';
 import QuickActionMenu from './annotator/QuickActionMenu';
 import MenuItem from '@/components/MenuItem';
@@ -413,11 +419,17 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
 
             <MenuItem
               label={_('Separate Cover Page')}
-              Icon={keepCoverSpread ? <Check size={iconSize} aria-hidden='true' /> : undefined}
+              Icon={<BookOpen size={iconSize} />}
+              toggled={keepCoverSpread}
               onClick={() => setKeepCoverSpread(!keepCoverSpread)}
               disabled={spreadMode === 'none'}
             />
-            <MenuItem label={_('Webtoon Mode')} toggled={webtoonMode} onClick={toggleWebtoonMode} />
+            <MenuItem
+              label={_('Webtoon Mode')}
+              Icon={<GalleryVertical size={iconSize} />}
+              toggled={webtoonMode}
+              onClick={toggleWebtoonMode}
+            />
           </>
           <hr aria-hidden='true' className='border-base-300 my-1' />
         </>
@@ -425,13 +437,19 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
 
       <MenuItem
         label={_('Read Aloud')}
+        Icon={<Volume size={iconSize} />}
         onClick={() => {
           eventDispatcher.dispatch('tts-start', { bookKey });
           setIsDropdownOpen?.(false);
         }}
       />
 
-      <MenuItem label={_('Font & Layout')} shortcut='Shift+F' onClick={openFontLayoutMenu} />
+      <MenuItem
+        label={_('Font & Layout')}
+        Icon={<Type size={iconSize} />}
+        shortcut='Shift+F'
+        onClick={openFontLayoutMenu}
+      />
 
       {viewSettings.enableAnnotationQuickActions && (
         <MenuItem
@@ -464,7 +482,8 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
         <MenuItem
           label={_('Scrolled Mode')}
           shortcut='Shift+J'
-          Icon={isScrolledMode ? <Check size={iconSize} aria-hidden='true' /> : undefined}
+          Icon={<MoveVertical size={iconSize} />}
+          toggled={isScrolledMode}
           onClick={toggleScrolledMode}
         />
       )}
@@ -472,9 +491,8 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
       <MenuItem
         label={_('Auto Scroll')}
         shortcut='Shift+A'
-        Icon={
-          viewState?.autoScrollEnabled ? <Check size={iconSize} aria-hidden='true' /> : undefined
-        }
+        Icon={<Gauge size={iconSize} />}
+        toggled={viewState?.autoScrollEnabled ?? false}
         onClick={toggleAutoScroll}
         disabled={!isScrolledMode}
       />
@@ -520,7 +538,13 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
 
       <hr aria-hidden='true' className='border-base-300 my-1' />
 
-      {appService?.hasWindow && <MenuItem label={_('Fullscreen')} onClick={handleFullScreen} />}
+      {appService?.hasWindow && (
+        <MenuItem
+          label={_('Fullscreen')}
+          Icon={<Expand size={iconSize} />}
+          onClick={handleFullScreen}
+        />
+      )}
       <MenuItem
         label={
           themeMode === 'dark'
@@ -547,14 +571,16 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
       {bookData.book?.format === 'PDF' && appService?.supportsCanvasContext2DFilter && (
         <MenuItem
           label={_('Apply Theme Colors to PDF')}
-          Icon={applyThemeToPDF ? <Check size={iconSize} aria-hidden='true' /> : undefined}
+          Icon={<Palette size={iconSize} />}
+          toggled={applyThemeToPDF}
           onClick={() => setApplyThemeToPDF(!applyThemeToPDF)}
         />
       )}
       <MenuItem
         label={_('Invert Image In Dark Mode')}
         disabled={!isDarkMode}
-        Icon={invertImgColorInDark ? <Check size={iconSize} aria-hidden='true' /> : undefined}
+        Icon={<Contrast size={iconSize} />}
+        toggled={invertImgColorInDark}
         onClick={() => setInvertImgColorInDark(!invertImgColorInDark)}
       />
 

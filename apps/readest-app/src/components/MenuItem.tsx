@@ -64,10 +64,13 @@ const MenuItem: React.FC<MenuItemProps> = ({
 
   const buttonContent = (
     <>
-      <div className='flex w-full items-center justify-between'>
+      <div className='flex w-full items-center justify-between gap-2'>
         <div className='flex min-w-0 items-center'>
           {!noIcon && (
-            <span style={{ minWidth: `${iconSize}px` }}>
+            <span
+              className='glossa-menu-icon inline-flex shrink-0 items-center justify-center'
+              style={{ width: `${iconSize}px` }}
+            >
               {typeof IconType === 'function' ? (
                 <IconType
                   className={clsx(
@@ -91,17 +94,28 @@ const MenuItem: React.FC<MenuItemProps> = ({
             {label}
           </span>
         </div>
-        {shortcut && (
-          <kbd
-            className={clsx(
-              'border-base-300/40 bg-base-300/75 hidden rounded-md border shadow-sm sm:flex',
-              'shrink-0 px-1.5 py-0.5 text-xs font-medium',
-              disabled ? 'text-neutral-content' : 'text-neutral-content',
-            )}
-          >
-            {shortcut}
-          </kbd>
-        )}
+        <div className='flex shrink-0 items-center gap-2'>
+          {shortcut && (
+            <kbd
+              className={clsx(
+                'border-base-300/40 bg-base-300/75 hidden rounded-md border shadow-sm sm:flex',
+                'shrink-0 px-1.5 py-0.5 text-xs font-medium',
+                disabled ? 'text-neutral-content' : 'text-neutral-content',
+              )}
+            >
+              {shortcut}
+            </kbd>
+          )}
+          {Icon && toggled !== undefined && (
+            <span
+              className='glossa-menu-check inline-flex shrink-0 items-center justify-center'
+              style={{ width: `${iconSize}px` }}
+              aria-hidden='true'
+            >
+              {toggled && <Check size={iconSize} />}
+            </span>
+          )}
+        </div>
       </div>
       <div className='flex w-full'>
         {description && (

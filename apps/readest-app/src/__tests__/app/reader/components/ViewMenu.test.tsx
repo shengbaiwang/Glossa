@@ -95,6 +95,7 @@ vi.mock('@/components/AboutWindow', () => ({ setAboutDialogVisible: vi.fn() }));
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.progress = undefined;
+  mocks.viewSettings.scrolled = false;
   useSidebarStore.setState({
     sideBarBookKey: 'book-1',
     isSideBarVisible: false,
@@ -108,6 +109,19 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('reader ViewMenu', () => {
+  it('keeps the scroll icon while exposing a separate checked state', () => {
+    render(<ViewMenu bookKey='book-2' />);
+    const row = screen.getByRole('menuitemcheckbox', { name: 'Scrolled Mode - OFF' });
+    const icon = row.querySelector('.glossa-menu-icon svg');
+    expect(icon).not.toBeNull();
+    expect(row.querySelector('.glossa-menu-check svg')).toBeNull();
+    fireEvent.click(row);
+    expect(row.getAttribute('aria-checked')).toBe('true');
+    expect(row.querySelector('.glossa-menu-icon svg')).toBe(icon);
+    expect(row.querySelector('.glossa-menu-check svg')).not.toBeNull();
+    expect(row.textContent).toContain('Shift+J');
+  });
+
   it.each([
     undefined,
     [42, 317] as [number, number],
@@ -167,7 +181,7 @@ describe('reader ViewMenu', () => {
 
   it('sorts the current book even when another book owns the sidebar', () => {
     render(<ViewMenu bookKey='book-2' />);
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Sort TOC by Page' }));
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Sort TOC by Page - OFF' }));
     expect(mocks.saveViewSettings).toHaveBeenCalledWith(
       mocks.envConfig,
       'book-2',

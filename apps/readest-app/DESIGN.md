@@ -45,6 +45,22 @@ retain their own typography. Avoid shrinking essential instructions into caption
 - Preserve existing 2px pane-icon gaps, 4px library-icon gaps, safe areas, measured
   reading insets and settings' explicitly compact 20px reader-sheet inset.
 
+#### Action-menu icon grammar (2026-09-15)
+
+- Reading “more” menu commands and submenu headings always carry a stable leading
+  functional icon from `GlossaIcons`: 16px, 24-unit grid, 1.8-unit rounded stroke,
+  theme ink. Reuse existing glyphs; no per-item decorative badges or colored tiles.
+- `MenuItem` reserves a non-shrinking icon column with an 8px gap before the label.
+  Icons remain visible in both enabled and disabled states; disabled styling dims
+  the whole row. Text stays the primary name of the action.
+- With a functional `Icon`, pass `toggled` for boolean settings. Keep the functional
+  icon at the start and show a check in a reserved trailing slot when enabled.
+  Shortcuts precede that slot; submenu expansion keeps its own trailing chevron.
+  Use logical start/end order so the arrangement mirrors in RTL.
+- Pure radio/checkbox option lists use their choice indicators without requiring
+  a separate icon for every value. Book selectors may retain cover thumbnails.
+  Do not add icons to separators or explanatory/group text.
+
 #### Interaction states
 
 - Resting actions are neutral. Hover uses `--glossa-hover` (7% theme ink); a selected

@@ -1,7 +1,18 @@
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import React from 'react';
 
-import { Check, Pin, PinOff } from '@/components/GlossaIcons';
+import {
+  Pin,
+  PinOff,
+  Columns2,
+  BookOpen,
+  Download,
+  FilePlus2,
+  Trash2,
+  ListOrdered,
+  RefreshCw,
+  Info,
+} from '@/components/GlossaIcons';
 import { useEnv } from '@/context/EnvContext';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
@@ -135,11 +146,7 @@ const BookMenuItems: React.FC<BookMenuProps> = ({ bookKey, setIsDropdownOpen }) 
         label={_('Parallel Read')}
         buttonClass={bookKeys.length > 1 ? 'lg:tooltip lg:tooltip-bottom' : ''}
         tooltip={parallelViews.length > 0 ? _('Disable') : _('Enable')}
-        Icon={
-          parallelViews.length > 0 && bookKeys.length > 1 ? (
-            <Check size={iconSize} aria-hidden='true' />
-          ) : undefined
-        }
+        Icon={<Columns2 size={iconSize} />}
       >
         <ul className='max-h-60 overflow-y-auto'>
           {getVisibleLibrary()
@@ -170,27 +177,60 @@ const BookMenuItems: React.FC<BookMenuProps> = ({ bookKey, setIsDropdownOpen }) 
       </MenuItem>
       {bookKeys.length > 1 &&
         (parallelViews.length > 0 ? (
-          <MenuItem label={_('Exit Parallel Read')} onClick={handleUnsetParallel} />
+          <MenuItem
+            label={_('Exit Parallel Read')}
+            Icon={<BookOpen size={iconSize} />}
+            onClick={handleUnsetParallel}
+          />
         ) : (
-          <MenuItem label={_('Enter Parallel Read')} onClick={handleSetParallel} />
+          <MenuItem
+            label={_('Enter Parallel Read')}
+            Icon={<Columns2 size={iconSize} />}
+            onClick={handleSetParallel}
+          />
         ))}
       <hr aria-hidden='true' className='border-base-200 my-1' />
-      <MenuItem label={_('Export Annotations')} onClick={handleExportAnnotations} />
-      <MenuItem label={_('Import Annotations')} onClick={handleImportAnnotations} />
+      <MenuItem
+        label={_('Export Annotations')}
+        Icon={<Download size={iconSize} />}
+        onClick={handleExportAnnotations}
+      />
+      <MenuItem
+        label={_('Import Annotations')}
+        Icon={<FilePlus2 size={iconSize} />}
+        onClick={handleImportAnnotations}
+      />
       <MenuItem
         label={_('Clear Annotations')}
+        Icon={<Trash2 size={iconSize} />}
         disabled={annotationsToClear === 0}
         onClick={handleClearAnnotations}
       />
       <MenuItem
         label={_('Sort TOC by Page')}
-        Icon={isSortedTOC ? <Check size={iconSize} aria-hidden='true' /> : undefined}
+        Icon={<ListOrdered size={iconSize} />}
+        toggled={isSortedTOC}
         onClick={handleToggleSortTOC}
       />
-      <MenuItem label={_('Reload Page')} shortcut='Shift+R' onClick={handleReloadPage} />
+      <MenuItem
+        label={_('Reload Page')}
+        Icon={<RefreshCw size={iconSize} />}
+        shortcut='Shift+R'
+        onClick={handleReloadPage}
+      />
       <hr aria-hidden='true' className='border-base-200 my-1' />
-      {isWebAppPlatform() && <MenuItem label={_('Download Glossa')} onClick={downloadGlossa} />}
-      <MenuItem label={_('About Glossa')} onClick={showAboutGlossa} />
+      {isWebAppPlatform() && (
+        <MenuItem
+          label={_('Download Glossa')}
+          Icon={<Download size={iconSize} />}
+          onClick={downloadGlossa}
+        />
+      )}
+      <MenuItem
+        label={_('About Glossa')}
+        Icon={<Info size={iconSize} />}
+        onClick={showAboutGlossa}
+      />
     </>
   );
 };
