@@ -20,10 +20,9 @@ import {
   shouldActivatePull,
   type BookmarkPullHandlers,
 } from '@/app/reader/utils/bookmarkPullGesture';
-import Ribbon from './Ribbon';
+import Ribbon, { RIBBON_BODY_HEIGHT, RIBBON_NOTCH_DEPTH, RIBBON_WIDTH } from './Ribbon';
 
 const SPRING_MS = 250;
-const RIBBON_BODY_HEIGHT = 44; // matches Ribbon.tsx: safe-area top + header bar height
 const HINT_PIN_INSET = 12;
 const HINT_BOTTOM_GAP = 6;
 
@@ -63,7 +62,6 @@ const BookmarkPullDown: React.FC<BookmarkPullDownProps> = ({ bookKey, ribbonHidd
 
   const bandRef = useRef<HTMLDivElement | null>(null);
   const hintRef = useRef<HTMLDivElement | null>(null);
-  const ribbonBoxRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const polygonRef = useRef<SVGPolygonElement | null>(null);
 
@@ -104,10 +102,9 @@ const BookmarkPullDown: React.FC<BookmarkPullDownProps> = ({ bookKey, ribbonHidd
       const polygon = polygonRef.current;
       if (svg && polygon) {
         const rest = restHeightRef.current;
-        const width = ribbonBoxRef.current?.clientWidth || 32;
-        // The resting ribbon notches at 22% of its height; freeze that depth
-        // in px so the notch doesn't stretch into a spike as the tail grows.
-        const notch = Math.round(rest * 0.22);
+        const width = RIBBON_WIDTH;
+        // Keep the resting notch depth through safe-area changes and pulling.
+        const notch = RIBBON_NOTCH_DEPTH;
         const height = pullRibbonHeight(offset, rest);
         svg.setAttribute('height', `${height}`);
         svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
@@ -349,8 +346,9 @@ const BookmarkPullDown: React.FC<BookmarkPullDownProps> = ({ bookKey, ribbonHidd
             </div>
           </div>
           <div
-            ref={ribbonBoxRef}
-            className='bookmark-pull-ribbon absolute right-0 top-0 flex w-8 justify-center sm:w-6'
+            className='bookmark-pull-ribbon glossa-reader-ribbon absolute top-0'
+            aria-hidden='true'
+            style={{ width: RIBBON_WIDTH }}
           >
             <svg
               ref={svgRef}
@@ -362,7 +360,7 @@ const BookmarkPullDown: React.FC<BookmarkPullDownProps> = ({ bookKey, ribbonHidd
             >
               <polygon
                 ref={polygonRef}
-                fill={filled ? '#F44336' : 'none'}
+                fill={filled ? 'currentColor' : 'none'}
                 stroke={filled ? 'none' : 'rgba(255,255,255,0.9)'}
                 strokeWidth={filled ? 0 : 2}
                 strokeLinejoin='round'

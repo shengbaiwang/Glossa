@@ -66,6 +66,24 @@ export function Bookmark(props: GlossaIconProps) {
   );
 }
 
+export function Bookmarks(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <path d='M9 3.5h8.5a2 2 0 0 1 2 2V17' />
+      <path d='M4.5 20V8a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v12L10 16.5Z' />
+    </Icon>
+  );
+}
+
+export function BookmarkPlus(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <path d='M14 4H7a2 2 0 0 0-2 2v14l5.5-3.5L16 20v-8' />
+      <path d='M18.5 3.5v6M15.5 6.5h6' />
+    </Icon>
+  );
+}
+
 export function NotebookPen(props: GlossaIconProps) {
   return (
     <Icon {...props}>

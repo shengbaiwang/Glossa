@@ -1,11 +1,27 @@
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, expect, it } from 'vitest';
-import { Contents, Pencil, CloudUpload, Lock, Palette } from '@/components/GlossaIcons';
+import {
+  Contents,
+  Bookmarks,
+  BookmarkPlus,
+  Pencil,
+  CloudUpload,
+  Lock,
+  Palette,
+} from '@/components/GlossaIcons';
 
 afterEach(cleanup);
 
 it('keeps navigation, editing, settings and sync glyphs on the same accessible drawing contract', () => {
-  for (const [name, Glyph] of Object.entries({ Contents, Pencil, CloudUpload, Lock, Palette })) {
+  for (const [name, Glyph] of Object.entries({
+    Contents,
+    Bookmarks,
+    BookmarkPlus,
+    Pencil,
+    CloudUpload,
+    Lock,
+    Palette,
+  })) {
     const { container, unmount } = render(
       <Glyph size={18} className='role-fixture' aria-hidden={false} aria-label={name} />,
     );

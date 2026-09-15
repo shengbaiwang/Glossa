@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Bookmark } from '@/components/GlossaIcons';
+import { Bookmark, BookmarkPlus } from '@/components/GlossaIcons';
 
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
@@ -130,11 +130,11 @@ const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey }) => {
   return (
     <Button
       icon={
-        <Bookmark
-          size={iconSize18}
-          fill={isBookmarked ? 'currentColor' : 'none'}
-          aria-hidden='true'
-        />
+        isBookmarked ? (
+          <Bookmark size={iconSize18} fill='currentColor' aria-hidden='true' />
+        ) : (
+          <BookmarkPlus size={iconSize18} aria-hidden='true' />
+        )
       }
       className='glossa-icon-button'
       aria-pressed={isBookmarked}

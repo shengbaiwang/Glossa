@@ -26,6 +26,8 @@ export default defineConfig({
       '@testing-library/react',
       '@radix-ui/react-dialog',
       '@radix-ui/react-slot',
+      '@radix-ui/react-dropdown-menu',
+      'react-virtuoso',
       'class-variance-authority',
       'tailwind-merge',
       'react-markdown',

@@ -3,7 +3,7 @@ import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { useOverlayScrollbars } from 'overlayscrollbars-react';
 import 'overlayscrollbars/overlayscrollbars.css';
 import * as CFI from 'foliate-js/epubcfi.js';
-import { Bookmark, Plus } from '@/components/GlossaIcons';
+import { Bookmarks } from '@/components/GlossaIcons';
 
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useBookProgress } from '@/store/readerProgressStore';
@@ -11,16 +11,13 @@ import { useSidebarStore } from '@/store/sidebarStore';
 import { findTocItemBS } from '@/services/nav';
 import { findNearestCfi } from '@/utils/cfi';
 import { TOCItem } from '@/libs/document';
-import { BookNote, BooknoteGroup } from '@/types/book';
+import { BookNote } from '@/types/book';
 import { useTranslation } from '@/hooks/useTranslation';
-import { eventDispatcher } from '@/utils/event';
 import { isCanonicalCfi } from '../../utils/bookmark';
 import BookmarkItem from './BookmarkItem';
 import EmptyState from '../EmptyState';
 
-type FlatBookmarkRow =
-  | { kind: 'group-header'; key: string; group: BooknoteGroup }
-  | { kind: 'bookmark'; key: string; item: BookNote };
+type FlatBookmarkRow = { key: string; item: BookNote; chapterLabel: string };
 
 // Sort by canonical CFI; a malformed cfi (synced garbage) must not crash the
 // whole list, so it sorts as equal and stays visible.
@@ -47,53 +44,30 @@ const BookmarkView: React.FC<{
     [config?.booknotes],
   );
 
-  // Group by chapter and keep reading order inside each chapter.
-  const sortedGroups = useMemo<BooknoteGroup[]>(() => {
-    const groups: { [href: string]: BooknoteGroup } = {};
-    for (const bookmark of bookmarks) {
-      const tocItem = findTocItemBS(toc ?? [], bookmark.cfi);
-      const href = tocItem?.href || '';
-      const label = tocItem?.label || '';
-      const id = tocItem?.id || 0;
-      if (!groups[href]) {
-        groups[href] = { id, href, label, booknotes: [] };
-      }
-      groups[href].booknotes.push(bookmark);
-    }
-    Object.values(groups).forEach((g) => {
-      g.booknotes.sort((a, b) => compareCfi(a.cfi, b.cfi));
-    });
-    return Object.values(groups).sort((a, b) => a.id - b.id);
-  }, [bookmarks, toc]);
-
-  const flatItems = useMemo<FlatBookmarkRow[]>(() => {
-    const rows: FlatBookmarkRow[] = [];
-    for (const group of sortedGroups) {
-      rows.push({ kind: 'group-header', key: `h-${group.href}`, group });
-      group.booknotes.forEach((item) => {
-        rows.push({ kind: 'bookmark', key: `b-${group.href}-${item.id}`, item });
-      });
-    }
-    return rows;
-  }, [sortedGroups]);
+  // Reading order; each row carries its own chapter heading so the list stays
+  // flat and light instead of stacking a card per chapter group.
+  const rows = useMemo<FlatBookmarkRow[]>(
+    () =>
+      [...bookmarks]
+        .sort((a, b) => compareCfi(a.cfi, b.cfi))
+        .map((item) => ({
+          key: `b-${item.id}`,
+          item,
+          chapterLabel: findTocItemBS(toc ?? [], item.cfi)?.label || '',
+        })),
+    [bookmarks, toc],
+  );
 
   // Nearest cfi for the "current" highlight; recomputed when bookmarks change
   // so deleted/edited rows don't leave a stale target behind.
-  const nearestCfi = useMemo(() => {
-    const allSorted = sortedGroups
-      .flatMap((g) => g.booknotes)
-      .map((b) => b.cfi)
-      .filter(isCanonicalCfi)
-      .sort(compareCfi);
-    return findNearestCfi(allSorted, progress?.location);
-  }, [sortedGroups, progress?.location]);
+  const nearestCfi = useMemo(
+    () => findNearestCfi(rows.map((r) => r.item.cfi).filter(isCanonicalCfi), progress?.location),
+    [rows, progress?.location],
+  );
 
   const nearestIndex = useMemo(
-    () =>
-      nearestCfi
-        ? flatItems.findIndex((row) => row.kind === 'bookmark' && row.item.cfi === nearestCfi)
-        : -1,
-    [nearestCfi, flatItems],
+    () => (nearestCfi ? rows.findIndex((row) => row.item.cfi === nearestCfi) : -1),
+    [nearestCfi, rows],
   );
 
   // Feed the bottom prev/next bookmark navigation after a row is clicked.
@@ -222,55 +196,34 @@ const BookmarkView: React.FC<{
 
   const renderItem = useCallback(
     (index: number) => {
-      const row = flatItems[index];
+      const row = rows[index];
       if (!row) return null;
-      if (row.kind === 'group-header') {
-        return (
-          <div className='px-2 pt-2'>
-            <h3 className='content font-size-base line-clamp-1 px-2 font-normal'>
-              {row.group.label}
-            </h3>
-          </div>
-        );
-      }
       return (
-        <ul className='px-2'>
+        <ul>
           <BookmarkItem
             bookKey={bookKey}
             item={row.item}
+            chapterLabel={row.chapterLabel}
             isNearest={row.item.cfi === nearestCfi}
             onClick={handleBrowseBookmarks}
           />
         </ul>
       );
     },
-    [flatItems, bookKey, nearestCfi, handleBrowseBookmarks],
+    [rows, bookKey, nearestCfi, handleBrowseBookmarks],
   );
 
   // Always mount the listHostRef host so the height-measurement effect (and
   // its ResizeObserver) can attach on first mount, even when starting from
   // the empty state.
-  const isEmpty = sortedGroups.length === 0;
+  const isEmpty = rows.length === 0;
 
   return (
     <div className='booknote-list rounded' role='tree'>
       <div ref={listHostRef}>
         {isEmpty ? (
           <div className='glossa-reader-empty-region'>
-            <EmptyState
-              Icon={Bookmark}
-              label={_('No Bookmarks')}
-              action={
-                <button
-                  type='button'
-                  className='glossa-button glossa-reader-empty-action max-w-full flex-nowrap'
-                  onClick={() => eventDispatcher.dispatch('toggle-bookmark', { bookKey })}
-                >
-                  <Plus size={16} className='shrink-0' aria-hidden='true' />
-                  <span className='min-w-0 truncate'>{_('Bookmark This Page')}</span>
-                </button>
-              }
-            />
+            <EmptyState Icon={Bookmarks} label={_('No Bookmarks')} />
           </div>
         ) : (
           <div
@@ -288,8 +241,8 @@ const BookmarkView: React.FC<{
                 visibleCenterRef.current = Math.floor((startIndex + endIndex) / 2);
               }}
               style={{ height: containerHeight }}
-              totalCount={flatItems.length}
-              computeItemKey={(index) => flatItems[index]?.key ?? index}
+              totalCount={rows.length}
+              computeItemKey={(index) => rows[index]?.key ?? index}
               itemContent={renderItem}
               overscan={500}
             />

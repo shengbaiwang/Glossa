@@ -21,20 +21,23 @@ describe('Ribbon', () => {
     expect(ribbon.classList.contains('pointer-events-none')).toBe(true);
   });
 
-  it('hangs at the top-right corner (#1359)', () => {
+  it('hangs inside the top-right corner without blocking page input (#1359)', () => {
     const { container } = render(<Ribbon />);
     const ribbon = container.querySelector('.ribbon') as HTMLElement;
 
-    expect(ribbon.classList.contains('right-0')).toBe(true);
+    expect(ribbon.classList.contains('glossa-reader-ribbon')).toBe(true);
     expect(ribbon.classList.contains('top-0')).toBe(true);
     // `inset-0` anchored it to the left edge; the ribbon lives on the right now.
     expect(ribbon.classList.contains('inset-0')).toBe(false);
   });
 
-  it('spans the safe-area inset plus the header bar height', () => {
+  it('extends through the safe area while keeping a shallow notch', () => {
     const { container } = render(<Ribbon />);
     const ribbon = container.querySelector('.ribbon') as HTMLElement;
 
-    expect(ribbon.style.height).toBe('92px'); // 48px safe-area top + 44px header bar
+    expect(ribbon.style.height).toBe('82px'); // 48px safe-area top + 34px ribbon
+    const points = container.querySelector('polygon')!.getAttribute('points')!;
+    const [, notchY] = points.split(' ')[1]!.split(',').map(Number);
+    expect(82 - notchY!).toBe(6);
   });
 });

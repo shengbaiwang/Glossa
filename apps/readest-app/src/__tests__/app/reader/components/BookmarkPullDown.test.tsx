@@ -155,7 +155,7 @@ describe('BookmarkPullDown', () => {
     // past the trigger: "release" hint; filled ribbon previews "will be bookmarked"
     dispatchTouch('touchmove', 300 + BOOKMARK_PULL_TRIGGER_PX + 10);
     expect(getByText('Release to add bookmark')).toBeTruthy();
-    expect(polygon.getAttribute('fill')).toBe('#F44336');
+    expect(polygon.getAttribute('fill')).toBe('currentColor');
 
     // offset applied to the slide wrapper on the next frame (1:1 in the linear range)
     act(() => flushRaf(0));

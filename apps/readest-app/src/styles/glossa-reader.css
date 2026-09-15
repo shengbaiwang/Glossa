@@ -70,6 +70,116 @@
   outline-offset: -2px;
 }
 
+/* Inset the ribbon beyond the page corner so both shoulders stay straight. */
+.glossa-reader-ribbon {
+  right: 12px;
+  color: color-mix(in srgb, #b56b59 85%, var(--glossa-ink));
+}
+
+[data-eink='true'] .glossa-reader-ribbon {
+  color: var(--glossa-ink);
+}
+
+/* Saved positions pair chapter/page metadata above a compact preview.
+   The delete action appears on hover or focus without moving the content. */
+.glossa-reader-bookmark-item {
+  border-radius: var(--glossa-radius-detail);
+  transition: background-color 150ms;
+}
+
+.glossa-reader-bookmark-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  margin-bottom: 4px;
+}
+
+.glossa-reader-bookmark-heading {
+  min-width: 0;
+  color: var(--glossa-ink);
+  font-size: var(--glossa-text-compact);
+  font-weight: var(--glossa-weight-label);
+  line-height: var(--glossa-leading-ui);
+}
+
+.glossa-reader-bookmark-preview {
+  min-width: 0;
+  flex: 1;
+  color: var(--glossa-muted);
+  font-size: var(--glossa-text-compact);
+  font-weight: 400;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.glossa-reader-bookmark-body {
+  display: flex;
+  min-width: 0;
+  min-height: var(--glossa-target-detail);
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.glossa-reader-bookmark-item:hover {
+  background: color-mix(in srgb, var(--glossa-hover) 70%, transparent);
+}
+
+.glossa-reader-bookmark-item[aria-current='page'] {
+  background: color-mix(in srgb, var(--glossa-selected) 75%, transparent);
+}
+
+.glossa-reader-bookmark-item:focus-visible {
+  outline: 2px solid var(--glossa-focus);
+  outline-offset: -2px;
+}
+
+@media (hover: hover) {
+  .glossa-reader-bookmark-item[aria-current='page']:hover {
+    background: color-mix(in srgb, var(--glossa-selected) 75%, transparent);
+  }
+}
+
+.glossa-reader-bookmark-delete {
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+
+.glossa-reader-bookmark-item:hover .glossa-reader-bookmark-delete,
+.glossa-reader-bookmark-item:focus-within .glossa-reader-bookmark-delete,
+.glossa-reader-bookmark-delete:focus-visible {
+  pointer-events: auto;
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .glossa-reader-bookmark-delete {
+    pointer-events: auto;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glossa-reader-bookmark-item,
+  .glossa-reader-bookmark-delete {
+    transition: none;
+  }
+}
+
+[data-eink='true'] .glossa-reader-bookmark-item {
+  transition: none;
+}
+
+[data-eink='true'] .glossa-reader-bookmark-item[aria-current='page'] {
+  outline: 1px solid var(--glossa-ink);
+  outline-offset: -1px;
+}
+
+[data-eink='true'] .glossa-reader-bookmark-delete {
+  transition: none;
+}
+
 .glossa-reader-page-input {
   min-height: 30px;
   font-size: 12px;

@@ -116,6 +116,34 @@ retain their own typography. Avoid shrinking essential instructions into caption
 </DialogContent>
 ```
 
+### Bookmarks — saved positions, 2026-09-15
+
+- Bookmarks navigate; notes record. Pair the chapter heading and trailing page
+  label on one baseline, followed by a muted two-line, read-only location preview.
+  Place Delete at the trailing edge of the preview, without a separate footer. No editing or
+  copy actions; a small trailing Delete icon acts directly. Reveal it on row hover
+  or keyboard focus, and disable pointer hits while hidden; touch keeps it visible. Creation time
+  remains available through the row metadata tooltip.
+- Use 13px/500 chapter headings, 13px/400 previews with 1.5 line height, and
+  12px page labels. Keep 4px between metadata and preview. Rows use 8px
+  outer insets plus 8px inner padding, 10px vertical padding, 4px vertical margins
+  and shared 8px detail corners. Preview controls reserve their space while hidden. No separators or resting card backgrounds;
+  soften shared hover/current washes to 70%/75% of their original strength;
+  keep the shared keyboard focus outline. Keep the deletion button clear of
+  preview text, with 44px targets on touch and keyboard access.
+- The left Bookmarks destination uses overlapping ribbons (`Bookmarks`); the
+  reader header uses a single ribbon with a plus (`BookmarkPlus`) for adding,
+  and a filled ribbon (`Bookmark`) when saved. All use the shared drawing grid.
+- The empty list shows only its symbol and “No Bookmarks”. Adding lives in the
+  reader header; do not add another sidebar action or explanatory caption.
+- Preserve existing bookmark records, location anchors, soft deletion and sync.
+- The decorative page ribbon sits 12px inside the right edge, clear of the
+  reading page's 10px corner. Use an 18px width, 34px body plus the top safe area,
+  and a fixed 6px notch so the tail stays shallow on devices with a notch.
+  Its warm red (#b56b59 at 85%, blended with theme ink) is a small bookmark
+  accent; e-ink uses solid theme ink. Pull-to-bookmark shares these dimensions
+  and fill. Keep the marker flat, without shadows or input interception.
+
 ### Icon hierarchy — 2026-09-14
 
 Use `GlossaIcons.tsx` for app navigation, reading controls, selection tools and

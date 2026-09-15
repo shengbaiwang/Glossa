@@ -176,8 +176,7 @@ describe('BookmarkView', () => {
       makeBookmark('epubcfi(/6/6!/4/2:0)'),
     ];
     render(<BookmarkView bookKey='book1' toc={[]} />);
-    // 2 bookmarks → 2 headers + 2 rows.
-    expect(capturedVirtuosoProps?.['totalCount']).toBe(4);
+    expect(capturedVirtuosoProps?.['totalCount']).toBe(2);
   });
 
   it('hides soft-deleted bookmarks', () => {
@@ -186,19 +185,16 @@ describe('BookmarkView', () => {
       makeBookmark('epubcfi(/6/6!/4/2:0)'),
     ];
     render(<BookmarkView bookKey='book1' toc={[]} />);
-    expect(capturedVirtuosoProps?.['totalCount']).toBe(2);
+    expect(capturedVirtuosoProps?.['totalCount']).toBe(1);
   });
 
-  it('shows the empty state with a direct "Bookmark This Page" action', () => {
+  it('shows a quiet empty state without a duplicate add-bookmark action', () => {
     mockBooknotes = [];
-    const { getByText } = render(<BookmarkView bookKey='book1' toc={[]} />);
+    const { getByText, queryByRole } = render(<BookmarkView bookKey='book1' toc={[]} />);
     expect(getByText('No Bookmarks')).toBeTruthy();
     expect(capturedVirtuosoProps).toBeUndefined();
-
-    act(() => {
-      getByText('Bookmark This Page').closest('button')!.click();
-    });
-    expect(dispatchSpy).toHaveBeenCalledWith('toggle-bookmark', { bookKey: 'book1' });
+    expect(queryByRole('button')).toBeNull();
+    expect(dispatchSpy).not.toHaveBeenCalled();
   });
 
   it('re-applies the auto-scroll to the nearest bookmark when OverlayScrollbars initializes after the reading position arrives', () => {
@@ -213,8 +209,8 @@ describe('BookmarkView', () => {
 
     fireOverlayScrollbarsInitialized();
 
-    // Flat list: [h4, n4, h6, n6, h8, n8, h10, n10, h26, n26]; nearest = index 9.
-    expect(scrollToIndexSpy).toHaveBeenCalledWith(expect.objectContaining({ index: 9 }));
+    // Flat list of 5 bookmarks in reading order; the nearest is index 4.
+    expect(scrollToIndexSpy).toHaveBeenCalledWith(expect.objectContaining({ index: 4 }));
   });
 
   it('does not force a scroll on OverlayScrollbars init when there is no reading position', () => {
@@ -234,30 +230,32 @@ describe('BookmarkView', () => {
     });
 
     expect(capturedVirtuosoProps?.['initialTopMostItemIndex']).toEqual({
-      index: 9,
+      index: 4,
       align: 'center',
     });
     expect(scrollToIndexSpy).not.toHaveBeenCalled();
 
     fireOverlayScrollbarsInitialized();
-    expect(scrollToIndexSpy).toHaveBeenCalledWith(expect.objectContaining({ index: 9 }));
+    expect(scrollToIndexSpy).toHaveBeenCalledWith(expect.objectContaining({ index: 4 }));
   });
 
   it('jumps instantly (behavior auto) for a far scroll instead of animating it', () => {
-    mockBooknotes = Array.from({ length: 12 }, (_, i) =>
+    mockBooknotes = Array.from({ length: 30 }, (_, i) =>
       makeBookmark(`epubcfi(/6/${4 + i * 2}!/4/2:0)`),
     );
 
     mockProgress = null;
     const { rerender } = render(<BookmarkView bookKey='book1' toc={[]} />);
 
-    mockProgress = { location: 'epubcfi(/6/26!/4/10:0)' };
+    // The reading position is past the last bookmark, so the nearest sits at
+    // index 29 — far from the top of the list.
+    mockProgress = { location: 'epubcfi(/6/70!/4/10:0)' };
     act(() => {
       rerender(<BookmarkView bookKey='book1' toc={[]} />);
     });
 
     expect(scrollToIndexSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ index: 23, behavior: 'auto' }),
+      expect.objectContaining({ index: 29, behavior: 'auto' }),
     );
     expect(scrollToIndexSpy).not.toHaveBeenCalledWith(
       expect.objectContaining({ behavior: 'smooth' }),

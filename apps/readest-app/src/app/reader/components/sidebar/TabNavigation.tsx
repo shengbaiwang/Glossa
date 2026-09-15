@@ -1,4 +1,4 @@
-import { Contents, Bookmark, Search } from '@/components/GlossaIcons';
+import { Contents, Bookmarks, Search } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import ReaderPaneTabs from '../ReaderPaneTabs';
 
@@ -21,7 +21,7 @@ export default function TabNavigation({
       idPrefix={idPrefix}
       tabs={[
         { id: 'toc', label: _('Contents'), Icon: Contents, panelId },
-        { id: 'bookmarks', label: _('Bookmarks'), Icon: Bookmark, panelId },
+        { id: 'bookmarks', label: _('Bookmarks'), Icon: Bookmarks, panelId },
         { id: 'search', label: _('Search'), Icon: Search, panelId },
       ]}
     />
