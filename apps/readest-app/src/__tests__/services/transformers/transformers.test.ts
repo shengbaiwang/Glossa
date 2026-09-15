@@ -651,6 +651,97 @@ describe('styleTransformer', () => {
     expect(result).toBe('');
     expect(transformStylesheet).not.toHaveBeenCalled();
   });
+
+  describe('dark text color adaptation', () => {
+    test('lifts dark colors in inline style attributes', async () => {
+      const html =
+        '<p style="color: #000080; font-weight: bold">x</p><p style="color: white">y</p>';
+      const result = await styleTransformer.transform(makeCtx({ content: html }));
+      expect(result).toContain(
+        'style="color: light-dark(#000080, color-mix(in oklch, #000080 45%, white)); font-weight: bold"',
+      );
+      expect(result).toContain('<p style="color: white">');
+    });
+
+    test('lifts dark colors in single-quoted inline style attributes', async () => {
+      const html = "<p style='color: maroon'>x</p>";
+      const result = await styleTransformer.transform(makeCtx({ content: html }));
+      expect(result).toContain(
+        "style='color: light-dark(maroon, color-mix(in oklch, maroon 45%, white))'",
+      );
+    });
+
+    test('keeps embedded double quotes intact when rewriting single-quoted styles', async () => {
+      const html = '<p style=\'font-family: "Kai"; color: #333\'>x</p>';
+      const result = await styleTransformer.transform(makeCtx({ content: html }));
+      expect(result).toContain(
+        `style='font-family: "Kai"; color: light-dark(#333, color-mix(in srgb, var(--theme-fg-color) 94%, var(--theme-bg-color)))'`,
+      );
+    });
+
+    test('wraps inline light backgrounds and lifts their text together', async () => {
+      const html = '<p style="background-color: #fff; color: #333">x</p>';
+      const result = await styleTransformer.transform(makeCtx({ content: html }));
+      expect(result).toContain('background-color: light-dark(#fff, var(--theme-bg-color))');
+      expect(result).toContain('color: light-dark(#333, color-mix(in srgb, var(--theme-fg-color)');
+    });
+
+    test('keeps inline mid-tone backgrounds and their text unchanged', async () => {
+      const html = '<p style="background-color: #bbb; color: #222">x</p>';
+      const result = await styleTransformer.transform(makeCtx({ content: html }));
+      expect(result).toBe(html);
+    });
+
+    test('keeps bright inline colors unchanged', async () => {
+      const html = '<p style="color: #fc0">x</p>';
+      const result = await styleTransformer.transform(makeCtx({ content: html }));
+      expect(result).toBe(html);
+    });
+
+    test('adds an adaptive style to dark font color attributes and keeps the original', async () => {
+      const html = '<p><font color="#000080">x</font><font color="#ffffff">y</font></p>';
+      const result = await styleTransformer.transform(makeCtx({ content: html }));
+      expect(result).toContain(
+        '<font color="#000080" style="color: light-dark(#000080, color-mix(in oklch, #000080 45%, white));">',
+      );
+      expect(result).toContain('<font color="#ffffff">');
+    });
+
+    test('merges adaptive color into an existing font style attribute', async () => {
+      const html = '<font color="#333" style="font-size: 0.8em">x</font>';
+      const result = await styleTransformer.transform(makeCtx({ content: html }));
+      expect(result).toContain(
+        '<font color="#333" style="font-size: 0.8em; color: light-dark(#333, color-mix(in srgb, var(--theme-fg-color) 94%, var(--theme-bg-color)));">',
+      );
+      expect(result.match(/style=/g)).toHaveLength(1);
+    });
+
+    test('leaves inline colors untouched for fixed layout', async () => {
+      const html = '<p style="color: #000080">x</p><font color="#333">y</font>';
+      const result = await styleTransformer.transform(
+        makeCtx({ content: html, isFixedLayout: true }),
+      );
+      expect(result).toBe(html);
+    });
+
+    test('adapted values survive the sanitizer transformer', async () => {
+      const { sanitizerTransformer } = await import('@/services/transformers/sanitizer');
+      const html =
+        '<html><head></head><body><p style="color: #000080">a</p>' +
+        '<font color="#333">b</font>' +
+        '<p style="background-color: #fff; color: #333">c</p></body></html>';
+      const styled = await styleTransformer.transform(makeCtx({ content: html }));
+      const sanitized = await sanitizerTransformer.transform(
+        makeCtx({ content: styled, viewSettings: { allowScript: false } as ViewSettings }),
+      );
+      expect(sanitized).toContain('light-dark(#000080, color-mix(in oklch, #000080 45%, white))');
+      expect(sanitized).toContain(
+        'color: light-dark(#333, color-mix(in srgb, var(--theme-fg-color) 94%',
+      );
+      expect(sanitized).toContain('background-color: light-dark(#fff, var(--theme-bg-color))');
+      expect(sanitized).toContain('<font color="#333"');
+    });
+  });
 });
 
 // =============================================================================

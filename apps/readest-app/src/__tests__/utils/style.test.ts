@@ -340,15 +340,22 @@ describe('transformStylesheet', () => {
   });
 
   describe('dark mode light backgrounds', () => {
-    it('rewrites white backgrounds in EPUB CSS to theme bg', () => {
+    it('wraps white backgrounds as light-dark so they follow the theme live', () => {
       localStorage.setItem('themeMode', 'dark');
       localStorage.setItem('themeColor', 'default');
       localStorage.setItem('systemIsDarkMode', 'false');
       const css = '.callout { background-color: #ffffff; padding: 1em; }';
       const result = transformStylesheet(css, VW, VH, VERTICAL);
-      expect(result).toMatch(/background-color:\s*#[0-9a-f]{6}/i);
-      expect(result).not.toContain('background-color: #ffffff');
+      expect(result).toContain('background-color: light-dark(#ffffff, var(--theme-bg-color))');
       localStorage.removeItem('themeMode');
+    });
+
+    it('wraps light backgrounds even when transformed in light mode', () => {
+      // The wrapped value is inert under a light color-scheme and switches to
+      // the theme background when the user goes dark — no re-transform needed.
+      const css = '.callout { background-color: #fff; }';
+      const result = transformStylesheet(css, VW, VH, VERTICAL);
+      expect(result).toContain('background-color: light-dark(#fff, var(--theme-bg-color))');
     });
 
     it('leaves dark backgrounds unchanged in dark mode', () => {
@@ -357,6 +364,78 @@ describe('transformStylesheet', () => {
       const result = transformStylesheet(css, VW, VH, VERTICAL);
       expect(result).toContain('background-color: #222');
       localStorage.removeItem('themeMode');
+    });
+
+    it('still flattens light image backgrounds to the theme bg when transformed in dark mode', () => {
+      localStorage.setItem('themeMode', 'dark');
+      const css = '.paper { background: #fff url(paper.png); padding: 1em; }';
+      const result = transformStylesheet(css, VW, VH, VERTICAL);
+      expect(result).toMatch(/background-color:\s*#[0-9a-f]{6}/i);
+      expect(result).not.toContain('light-dark(');
+      localStorage.removeItem('themeMode');
+    });
+
+    it('keeps light image backgrounds untouched when transformed in light mode', () => {
+      const css = '.paper { background: #fff url(paper.png); padding: 1em; }';
+      const result = transformStylesheet(css, VW, VH, VERTICAL);
+      expect(result).toContain('background: #fff url(paper.png)');
+    });
+  });
+
+  describe('dark mode dark text colors', () => {
+    it('lifts dark gray text toward the theme foreground', () => {
+      const css = '.note { color: #555; }';
+      const result = transformStylesheet(css, VW, VH, VERTICAL);
+      expect(result).toContain(
+        'color: light-dark(#555, color-mix(in srgb, var(--theme-fg-color) 85%, var(--theme-bg-color)))',
+      );
+    });
+
+    it('lifts dark chromatic colors with hue-preserving oklch mixes', () => {
+      const css = '.navy { color: #000080; } .green { color: darkgreen; }';
+      const result = transformStylesheet(css, VW, VH, VERTICAL);
+      expect(result).toContain(
+        'color: light-dark(#000080, color-mix(in oklch, #000080 45%, white))',
+      );
+      expect(result).toContain(
+        'color: light-dark(darkgreen, color-mix(in oklch, darkgreen 45%, white))',
+      );
+    });
+
+    it('does not corrupt #000080 through the black color rewrites', () => {
+      const css = '.navy { color: #000080; }';
+      const result = transformStylesheet(css, VW, VH, VERTICAL);
+      expect(result).not.toContain('var(--theme-fg-color)080');
+      expect(result).toContain('#000080');
+    });
+
+    it('lifts dark text on rules with wrapped light backgrounds', () => {
+      const css = '.box { background-color: #ffffff; color: #333; }';
+      const result = transformStylesheet(css, VW, VH, VERTICAL);
+      expect(result).toContain('background-color: light-dark(#ffffff, var(--theme-bg-color))');
+      expect(result).toContain(
+        'color: light-dark(#333, color-mix(in srgb, var(--theme-fg-color) 94%, var(--theme-bg-color)))',
+      );
+    });
+
+    it('keeps bright book colors unchanged', () => {
+      const css = '.accent { color: #fc0; }';
+      const result = transformStylesheet(css, VW, VH, VERTICAL);
+      expect(result).toContain('color: #fc0');
+      expect(result).not.toContain('light-dark(#fc0');
+    });
+
+    it('still rewrites pure black text to the theme foreground', () => {
+      const css = '.body { color: #000; }';
+      const result = transformStylesheet(css, VW, VH, VERTICAL);
+      expect(result).toContain('color: var(--theme-fg-color)');
+    });
+
+    it('keeps text on kept mid-tone backgrounds unchanged', () => {
+      const css = '.badge { background-color: #bbb; color: #222; }';
+      const result = transformStylesheet(css, VW, VH, VERTICAL);
+      expect(result).toContain('background-color: #bbb');
+      expect(result).toContain('color: #222');
     });
   });
 });

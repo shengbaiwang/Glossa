@@ -17,6 +17,11 @@ import { INLINE_FORMATTING_SELECTOR } from './inlineTags';
 import { getOSPlatform } from './misc';
 import { SCROLL_WRAPPER_CLASS, SCROLL_WRAPPER_FIT_CLASS } from './scrollable';
 import { inlineGlyphColorStyles } from './inlineGlyphImages';
+import {
+  adaptDeclarationBlockForDark,
+  getThemeDarkPalette,
+  isLightCssColor,
+} from './adaptiveTextColor';
 
 /**
  * Resolve the body font-family string (serif or sans-serif chain, per the
@@ -134,37 +139,6 @@ const getFontStyles = (
     ${overrideFont ? bodyFontSizeOverride : ''}
   `;
   return fontStyles;
-};
-
-/** True for #fff, #f5f5f5, rgb(255,…), etc. Used when rewriting EPUB CSS in dark mode. */
-const isLightCssColor = (value: string): boolean => {
-  const v = value.trim().toLowerCase();
-  if (v === 'white') return true;
-  const hex = v.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
-  if (hex) {
-    const h = hex[1]!;
-    const expand =
-      h.length === 3
-        ? h
-            .split('')
-            .map((c) => c + c)
-            .join('')
-        : h;
-    const r = parseInt(expand.slice(0, 2), 16);
-    const g = parseInt(expand.slice(2, 4), 16);
-    const b = parseInt(expand.slice(4, 6), 16);
-    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    return luminance > 0.85;
-  }
-  const rgb = v.match(/^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/);
-  if (rgb?.[1] != null && rgb[2] != null && rgb[3] != null) {
-    const r = parseInt(rgb[1], 10);
-    const g = parseInt(rgb[2], 10);
-    const b = parseInt(rgb[3], 10);
-    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    return luminance > 0.85;
-  }
-  return false;
 };
 
 const getDarkModeLightBackgroundOverrides = (bg: string) => `
@@ -1124,24 +1098,39 @@ export const transformStylesheet = (css: string, vw: number, vh: number, vertica
     .replace(/READEST_GF_(sans-serif|serif|monospace)_PLACEHOLDER/gi, 'var(--$1, $1)')
     .replace(/([\s;])font-weight\s*:\s*normal/gi, '$1font-weight: var(--font-weight)')
     .replace(/([\s;])color\s*:\s*black/gi, '$1color: var(--theme-fg-color)')
-    .replace(/([\s;])color\s*:\s*#000000/gi, '$1color: var(--theme-fg-color)')
-    .replace(/([\s;])color\s*:\s*#000/gi, '$1color: var(--theme-fg-color)')
+    // The hex lookaheads keep `#000080`-style colors intact: without them the
+    // `#000` pass below would rewrite the prefix and leave an invalid
+    // `var(--theme-fg-color)080` declaration that the engine drops.
+    .replace(/([\s;])color\s*:\s*#000000(?![0-9a-f])/gi, '$1color: var(--theme-fg-color)')
+    .replace(/([\s;])color\s*:\s*#000(?![0-9a-f])/gi, '$1color: var(--theme-fg-color)')
     .replace(/([\s;])color\s*:\s*rgb\(0,\s*0,\s*0\)/gi, '$1color: var(--theme-fg-color)');
 
   const { isDarkMode, bg } = getThemeCode();
-  if (isDarkMode) {
-    css = css.replace(ruleRegex, (match, selector, block) => {
-      const rewritten = block.replace(
+  const darkPalette = getThemeDarkPalette();
+  css = css.replace(ruleRegex, (match, selector, block) => {
+    let rewritten = block;
+    if (isDarkMode) {
+      // Legacy path: book backgrounds with images/gradients that start from a
+      // light color are flattened to the theme bg so text stays readable;
+      // pure-color light backgrounds are handled below by the theme-live
+      // light-dark() wrap instead.
+      rewritten = rewritten.replace(
         /background(-color)?\s*:\s*([^;!}]+)(\s*!important)?(?=\s*[;!}])/gi,
         (decl: string, _prop: string, value: string, important?: string) => {
+          if (!/url\(|gradient\(|image\(/i.test(value)) return decl;
           const raw = value.trim().split(/\s+/)[0] ?? '';
           if (!isLightCssColor(raw)) return decl;
           return `background-color: ${bg}${important ?? ''}`;
         },
       );
-      return rewritten === block ? match : selector + rewritten;
-    });
-  }
+    }
+    // Theme-live adaptation (both modes): wrap pure light backgrounds and
+    // lift text colors that fail contrast on the dark page as
+    // light-dark(original, adapted) values. Inert under a light color-scheme;
+    // follows theme switches without re-transforming the section.
+    const adapted = adaptDeclarationBlockForDark(rewritten, darkPalette);
+    return adapted === block ? match : selector + adapted;
+  });
 
   return css;
 };

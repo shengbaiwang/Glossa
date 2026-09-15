@@ -2,6 +2,25 @@
 
 最后更新：2026-09-15
 
+### 2026-09-15 深色模式原书文字颜色自动校正（light-dark 长期方案）
+
+- 按用户四点方向（深黑/深灰转暖白浅灰且注释稍弱、彩色保色相转柔和亮色、按实际背景校正、随主题自动切换且仅改显示）重新实现，取代已撤回的 stash `backup-before-rollback-dark-colors-2026-09-15`（备份保留未动）。问题截图为《世说新语笺疏》深色页：深灰注释、深蓝「笺疏」、暗绿标题在深色背景几乎不可见。
+- 根因：`transformStylesheet` 只重写纯黑族与浅色背景，其余深色原样穿透；内联 `style` 与 `<font color>` 完全未覆盖；`#000` 重写无边界会把 `#000080` 腐蚀成非法的 `var(--theme-fg-color)080`。已撤回方案按变换时主题烘焙且全色统一 40% 混合，主题切换后失效、颜色层次模糊。
+- 新 `utils/adaptiveTextColor.ts`：tinycolor 解析后输出 `light-dark(原色, 校正值)`——浅色分支保留原书颜色，深色分支生效，借助阅读页在正文 iframe 上已有的 `color-scheme` 随主题即时切换，不重载书籍、不重跑变换。无彩色按原始亮度保序映射为 `color-mix(in srgb, var(--theme-fg-color) R%, var(--theme-bg-color))`（纯黑→100%，最弱约 70%，正文最强、注释稍弱）；彩色用 `color-mix(in oklch, 原色 45%, white)`（白色在 oklch 中色相无效，故保留原色相、提升明度、柔化彩度）。对比度 ≥4.5 已可读的原色不动。
+- 背景感知：同规则/同内联属性内的浅色背景同步包为 `light-dark(原色, var(--theme-bg-color))`，前景背景一致切换；保留的深色背景按该背景计算对比度；中间调、半透明、图片/渐变背景上的文字不提亮，避免提亮后反而看不清。含图片/渐变的浅底沿用原有「深色加载时压平为主题底」路径。
+- `utils/style.ts` 在 `transformStylesheet` 接入上述改写并修复 `#000`/`#000000` 前瞻边界；`services/transformers/style.ts` 新增内联 style（保留原引号风格，避免嵌套引号损坏）与 `<font color>` 处理——font 保留原 color 属性作旧引擎回退，校正值经 style 属性携带，已有 style 且显式声明 color 时不追加。
+- 只改显示层变换管道：不改书籍文件、正文节点结构、CFI 或批注定位；fixed-layout 保持既有整体跳过。不支持 light-dark/color-mix/oklch 的引擎丢弃声明并回退为可读的主题前景。不处理图片/SVG fill/border-color/-webkit-text-fill-color 与跨元素底色关系；不新增设置项。
+- 测试先行（先复现失败再实现）：新增 `adaptive-text-color.test.ts` 18 项（分类、保序映射、背景判定、幂等、关键字/透明/半透明跳过）；`style.test.ts` 增至 60 项（`#000080` 边界腐蚀回归、浅底 light-dark 包装、文字校正、保留灰底不动）；`transformers.test.ts` 增至 100 项（内联单双引号与嵌引号、font 追加/合并/回退、固定版式跳过、sanitizer 链后校正值保留）。
+- Chromium `adaptive-text-color.browser.test.ts` **1 文件 / 4 项通过**：真实 styleTransformer 与 `getStyles` 注入 iframe。深色下注释对比度 ≥4.5 且明度弱于正文、笺疏 navy/暗绿/maroon 色相保留并提亮、浅底随文字一起转深、保留灰底上的文字原样不动；仅替换阅读样式（模拟 setStyles 主题切换、不重载）即恢复全部原书颜色，再切回深色重新校正。已查看 `src/__tests__/utils/.glossa-dev/qa/adaptive-color-{dark,light-restored,dark-readapted}.png` 截图。
+- 全量单测 **618 文件 / 7,468 项通过，3 文件 / 7 项既有跳过**（167.73 秒，Node 24.19.0、项目 dotenv 环境、进程级 canvas NODE_PATH）；`tsgo --noEmit`、全量 Biome lint（1,706 文件）、7 个变更代码/测试文件 Biome check 与 `git diff --check` 通过。系统 Node 26 的原生 localStorage 会使 jsdom 测试环境 `localStorage` 未定义而整文件报错，按既有配方改用 Node 24 后消失。日志 `/tmp/glossa-adaptive-color-{full,final-full,final2}.log`。
+- 未修改用户书籍、批注、同步数据与既有 foliate-js 工作区改动，未调用外部服务，未重新打包安装版。下一步：在包含本轮源码的开发版打开《世说新语笺疏》同章节，核对深色页实际显示与主题切换。
+
+### 2026-09-15 撤回深色文字修复
+
+- 按用户要求，将未提交的深色文字修复、相关测试及原完成记录备份到 Git stash `backup-before-rollback-dark-colors-2026-09-15`，并从工作区撤回；样式源码与原有测试恢复至 `ec236e89`，新增 `style-dark-colors.test.ts` 已随备份收起。
+- 验证：上述已跟踪代码与 HEAD 无差异，新增测试文件已不存在；`packages/foliate-js/view.js` 与撤回前的 Git 内容哈希一致，既有搜索高亮改动保留。此次仅撤回代码，未重跑测试或重新构建安装版，未改动用户阅读数据。
+- 下一步：重新打开开发版核对原有显示；深色文字可读性问题仍未解决，本次方案不再视为完成，无撤回阻塞。
+
 ### 2026-09-15 EPUB 白底替字图片长期适配
 
 - 按用户授权在 `utils/inlineGlyphImages.ts` 新增可重排 EPUB 专用处理，由 FoliateViewer 章节加载接入。识别条件包含相邻正文（含原书 font 包装）、原始 4–128px/字符形状比例、显示不超过 2em，以及不透明灰阶、纸白/黑墨比例和白色边缘；排除链接、插图容器、装饰图、彩色、透明、大图、独立图。像素检查作为独立延后任务，不等待阅读加载，图片延迟加载可补处理，章节移除及读取失败时放弃；不请求网络或写入持久缓存。
