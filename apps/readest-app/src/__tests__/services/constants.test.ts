@@ -553,7 +553,9 @@ describe('services/constants', () => {
     it('DEFAULT_MOBILE_VIEW_SETTINGS has expected overrides', () => {
       expect(typeof DEFAULT_MOBILE_VIEW_SETTINGS).toBe('object');
       expect(DEFAULT_MOBILE_VIEW_SETTINGS.fullJustification).toBe(false);
-      expect(DEFAULT_MOBILE_VIEW_SETTINGS.animated).toBe(true);
+      // Page-turn animation defaults off everywhere: mobile no longer
+      // overrides `animated`, so fresh installs start with instant turns.
+      expect(DEFAULT_MOBILE_VIEW_SETTINGS.animated).toBeUndefined();
       expect(typeof DEFAULT_MOBILE_VIEW_SETTINGS.defaultFont).toBe('string');
       expect(DEFAULT_MOBILE_VIEW_SETTINGS.disableDoubleClick).toBe(true);
       expect(typeof DEFAULT_MOBILE_VIEW_SETTINGS.spreadMode).toBe('string');

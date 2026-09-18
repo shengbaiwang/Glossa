@@ -1,6 +1,34 @@
 # Glossa 项目进度
 
-最后更新：2026-09-15
+最后更新：2026-09-17
+
+### 2026-09-17 翻页动画默认关闭、三档命名统一
+
+- 用户要求：默认翻页动画应该是关闭的，需要用户主动打开；三档名字参差不齐（平移 / 纸页轻移 / 仿真），统一为同一种风格。
+- 命名（已落地）：英文统一为单动词 `Push / Flip / Curl`，简中统一为 2 字动作词 `平移 / 翻页 / 卷页`，繁中 `平移 / 翻頁 / 捲頁`。只改显示 label：`ControlPanel.tsx` 的 `turnStyleOptions` 换新 key，内部 `PageTurnStyle` 类型值（`push/paper/curl`）、存储值、同步字段一律不动；退役 `slide` 的显示映射改为指向 Flip。旧英文 key（`Paper`/`Page Curl`/`Slide`）的各语言译文残留不动；`Flip`/`Curl` 为新 key，简繁已填，其余 30+ 语言暂回落显示英文（key-as-content 惯例）。
+- 默认关闭（已落地，仅新默认值）：`DEFAULT_VIEW_CONFIG.animated` 本来就是 `false`；删掉 `DEFAULT_MOBILE_VIEW_SETTINGS` 的 `animated: true` 覆盖，移动端新用户默认也是关。存量用户不受影响（`loadSettings` 的 defaults + 存量展开让存过的 `animated: true` 照旧生效），重置设置回到关闭。`pageTurnStyle: 'paper'` 默认值保留，用户打开开关后直接得到 Flip 效果。fingerprint：渲染链路（`FoliateViewer`、`applyPageTurnAttributes`、`getCapturedTurnStyle`、paginator 的 animated/eink/reduced-motion 门点）本来就以 `animated` 为开关，关 = 即时切页，无需改动。
+- 测试：dotenv 环境下定向 5 文件 / 255 项通过（`constants`、`useCapturedTurn`、`useCapturedTurn-scrollLock`、`useTouchEvent`、`ControlPanelScrolledMode`；此前裸跑 `useTouchEvent` 会因缺 SUPABASE env 报 `InvalidCharacterError`，与本次无关）；`tsgo --noEmit` 通过；Biome lint（3 代码文件）与 JSON format 通过。`constants.test.ts` 的 mobile animated 断言改为 `toBeUndefined`。
+- 未提交任何仓库改动（遵照惯例由用户把关）；未修改用户书籍、同步数据。下一步：开发版核对新用户开关默认为关、打开后默认 Flip，三语下拉显示。
+
+### 2026-09-17 翻页动画：纸张触感加强、双页书脊摆动、slide 退役为三模式
+
+- 用户要求：纸张翻动触感对标优秀实现、双页下书页绕书脊旋转、各翻页模式差异化。前置工作（2026-09-16 的 paper 初版）已合入工作区，未提交。
+- 落地：单栏 paper 适度增强（300ms、`perspective(1400px)`、中段 rotateY ±3.6°、阴影加深）；双栏 spread 新增 `foliate-vt-spread` 编排，整幅快照绕中点摆动（中段 ±7°）+ 静止层稍深的亮度沉降，读作书叶翻动；push / paper / curl 职责拉开——push 无纸感整体平移最快，paper 为默认轻抬薄影，curl 为卷角弯曲最强纸感；设置面板只保留 平移 / 纸页轻移 / 仿真（slide 退役，存量与同步来的旧值统一归一为 paper，Tauri 捕获管线仍用既有 2D 平移渲染器作降级）。
+- 否决记录：曾尝试在静止层叠 `background-image` 中央压痕模拟书脊凹槽，Chromium 下该声明覆盖快照自身图像导致整页空白（临时截图已验证并回退，截图已删）；结论是 VT 伪元素上一律只用 transform / shadow / border / filter 表达纸感，不用 mask / gradient 覆盖。
+- `packages/foliate-js/paginator.js`（子模块未提交）：删除 slide VT 关键帧与样式，`#layeredTurn` 将旧 `slide` 归一为 paper，手势 `paperLikeStyle()`、settle 配置、`#vtSetup` 的 spread 判定（仅分页重排、columnCount>1）与深色减淡延续既有门点；fixed-layout 渲染器无 columnCount，走既有路径不受影响。
+- 测试：`paginator-turn-styles.browser.test.ts` 43/43 通过（含新增 slide 归一、spread 双向、单栏对照）；`useCapturedTurn`、`useCapturedTurn-scrollLock`、`useTouchEvent`、ControlPanel 相关单测通过；`tsgo --noEmit` 通过。浏览器全套曾出现一次 `touchcancel` 时序 flake（单跑通过），与本次改动无关。
+- 未提交任何仓库改动（遵照惯例由用户把关）；未修改用户书籍、同步数据。下一步：开发版实际阅读核对连续翻页与拖拽手感，必要时微调角度/阴影/时长常量。
+
+### 2026-09-16 「纸页轻移」翻页动画（paper）与减少动态适配
+
+- 按用户视觉方向（纸页顺阅读方向轻移、页缘微光随角度隐去、薄影抬起散开落下收拢、深色减淡、减少动态与电子墨水即时切页、工具栏侧栏安定）在 foliate-js 分层翻页架构（View Transitions，readest#555 的 slide/curl 同构）新增第三种样式 `paper`，并设为默认翻页样式（`DEFAULT_VIEW_CONFIG.pageTurnStyle: 'paper'`；存量用户设置不受影响，不支持 VT 的引擎运行时回落 push，Tauri 捕获管线把 paper 映射为既有 2D 平移）。
+- `packages/foliate-js/paginator.js`（子模块未提交改动，与既有 view.js 改动并存）：`#layeredTurn` 识别 paper；`injectViewTransitionStyles()` 新增编排——340ms `cubic-bezier(0.3,0,0.2,1)`，keyframes 含位移 + `perspective(1600px) rotateY(≤2.8°)` 中段轻抬（终点回平、文字清晰）+ box-shadow「细线→散开→收线」弧线 + 自由缘 2px border 颜色动画作为页缘微光（画在快照自身盒缘，内侧露出 2px 纸色底呈现页缘厚度，不溢到露出页）；静止页以 `filter: brightness(0.985↔1)` 承接（已像素验证 Chromium 对 live new 层逐帧重绘）。主题经 `--paper-edge/--paper-shadow-*` 变量，`.foliate-vt-dark` 由 `#vtSetup` 读书籍文档 `theme-dark` 类（回退 computed color-scheme）切换为柔和灰阶与减淡阴影。手势复用 Slide 模型（`slideLikeStyle()`：flat-at-claim、投影提交），settle 速率 `{0.2, 1, 1.75}`。
+- `prefers-reduced-motion` 首次接入翻页：模块级实时 matchMedia 检查（无监听缓存，测试可逐例 stub），挂在与 eink 相同的四个门点（`#layeredTurn`、`#scrollTo` 动画门、`snap()` 两支、拖动跟手门）——减少动态用户全部翻页即时切换；电子墨水链路未动。
+- 应用层接线：`PageTurnStyle` 加 `'paper'`，ControlPanel 动画样式选项顺序 平移→纸页轻移→覆盖→仿真（zh-CN/zh-TW 已译，en 与其余语种按惯例回落），`useIframeEvents` 分层候选元组与 `getCapturedTurnStyle` 降级映射同步。
+- 测试：浏览器套件 `paginator-turn-styles.browser.test.ts` **45/45 通过**（新增 10 例：程序翻页双向动画名与落点、vertical-rl、拖动 scrub 相位/线性/跟手/提交、短拖取消、settle 速率表两行、`theme-dark` 类的出现与清理、reduced-motion 下 paper 与 push 均无动画即时落页、无 VT API 回落 push）；单元 `useCapturedTurn.test.ts` 16 项（新增 6 例：paper 的捕获降级/属性写删）、`useTouchEvent.test.tsx` 六处参数化列表补 paper 共 41 项通过。
+- 视觉验证：临时截图测试（用后已删）驱动真实拖拽 scrub 定格，逐帧像素采样确认——页缘微光为页缘 2 CSS px 亮线（250,247,240 对纸色 246,240,228）；薄影在 12%/35%/70% 进度呈 16→35→21px 散开弧度、最深 −13%，深色 −9%/−7% 减淡；后退滑入与前进镜像一致。截图留存于 `.glossa-dev/qa/paper/`（忽略目录）。
+- 验证：Node 24 全量单测 **7,487 项通过 / 0 失败 / 7 项既有跳过**（188.9s）；Node 26 基线对照实验（stash 前后各跑一次）失败数 290=290 证明本机环境既有失败与本次无关；`tsgo --noEmit` + 全量 Biome lint（1,709 文件）、两个仓库 `git diff --check` 通过。记忆文件 `page-turn-styles-viewtransitions-555.md` 已补 paper 与 reduced-motion 一节（含「浏览器测试床只渲染当前节、后退拖拽需先程序翻一页」的测试床事实）。
+- 未提交任何仓库改动（遵照惯例由用户把关）；未修改用户书籍、同步数据；未实测 WebKit（VT 门原本就排除）与真实 e-ink 屏。下一步：开发版实际阅读中核对连续翻页与拖动跟手的手感，必要时微调透明度/角度/时长常量。
 
 ### 2026-09-15 修复连续长按翻章失效
 

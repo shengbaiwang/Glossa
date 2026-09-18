@@ -181,7 +181,7 @@ describe('useTouchEvent pinch vs two-finger scroll', () => {
 
   test.each([
     'curl',
-    'slide',
+    'paper',
   ] as const)('does not start hiding the toolbar before a captured %s turn claims the swipe', (pageTurnStyle) => {
     mocks.hoveredBookKey = 'book-1';
     mocks.getBookData.mockReturnValue({ isFixedLayout: false });
@@ -252,7 +252,7 @@ describe('useTouchEvent pinch vs two-finger scroll', () => {
 
   test.each([
     'curl',
-    'slide',
+    'paper',
   ] as const)('leaves web %s toolbar hiding to the layered transition lifecycle', (pageTurnStyle) => {
     mocks.hoveredBookKey = 'book-1';
     mocks.getBookData.mockReturnValue({ isFixedLayout: false });
@@ -285,7 +285,7 @@ describe('useTouchEvent pinch vs two-finger scroll', () => {
 
   test.each([
     'curl',
-    'slide',
+    'paper',
   ] as const)('keeps the toolbar visible when a web %s turn claims after the pre-claim gap', (pageTurnStyle) => {
     mocks.hoveredBookKey = 'book-1';
     mocks.getBookData.mockReturnValue({ isFixedLayout: false });
@@ -325,7 +325,7 @@ describe('useTouchEvent pinch vs two-finger scroll', () => {
 
   test.each([
     'curl',
-    'slide',
+    'paper',
   ] as const)('does not hide the toolbar when an unclaimed web %s turn is cancelled', (pageTurnStyle) => {
     mocks.hoveredBookKey = 'book-1';
     mocks.getBookData.mockReturnValue({ isFixedLayout: false });
@@ -359,14 +359,14 @@ describe('useTouchEvent pinch vs two-finger scroll', () => {
       zoomLevel: 100,
       scrolled: false,
       vertical: false,
-      pageTurnStyle: 'slide',
+      pageTurnStyle: 'paper',
       animated: true,
       isEink: false,
       disableSwipe: false,
     });
     mocks.getView.mockReturnValue({
       renderer: {
-        getAttribute: (name: string) => (name === 'captured-turn-style' ? 'slide' : null),
+        getAttribute: (name: string) => (name === 'captured-turn-style' ? 'paper' : null),
       },
     });
     const h = renderTouchHook();
@@ -389,7 +389,7 @@ describe('useTouchEvent pinch vs two-finger scroll', () => {
       zoomLevel: 100,
       scrolled: false,
       vertical: false,
-      pageTurnStyle: 'slide',
+      pageTurnStyle: 'paper',
     });
     const unregister = registerTouchInterceptor(
       'direct-parent-layered-turn-test',
@@ -427,7 +427,7 @@ describe('useTouchEvent pinch vs two-finger scroll', () => {
       zoomLevel: 100,
       scrolled: false,
       vertical: false,
-      pageTurnStyle: 'slide',
+      pageTurnStyle: 'paper',
     });
     const h = renderTouchHook();
 
@@ -473,7 +473,7 @@ describe('useTouchEvent pinch vs two-finger scroll', () => {
 
   test.each([
     'curl',
-    'slide',
+    'paper',
   ] as const)('defers an unclaimed web %s toolbar update until touchend', (pageTurnStyle) => {
     mocks.hoveredBookKey = 'book-1';
     mocks.getBookData.mockReturnValue({ isFixedLayout: false });
@@ -503,7 +503,7 @@ describe('useTouchEvent pinch vs two-finger scroll', () => {
 
   test.each([
     'curl',
-    'slide',
+    'paper',
   ] as const)('does not fade the web %s toolbar before a fast flick snapshot settles', (pageTurnStyle) => {
     mocks.hoveredBookKey = 'book-1';
     mocks.getBookData.mockReturnValue({ isFixedLayout: false });
@@ -537,13 +537,13 @@ describe('useTouchEvent pinch vs two-finger scroll', () => {
       zoomLevel: 100,
       scrolled: false,
       vertical: false,
-      pageTurnStyle: 'slide',
+      pageTurnStyle: 'paper',
       animated: true,
       isEink: false,
       disableSwipe: false,
     });
     mocks.getView.mockReturnValue({
-      renderer: { getAttribute: (name: string) => (name === 'turn-style' ? 'slide' : null) },
+      renderer: { getAttribute: (name: string) => (name === 'turn-style' ? 'paper' : null) },
     });
     setLayeredTurnGestureActive('book-1', true);
     const h = renderTouchHook();
@@ -567,14 +567,14 @@ describe('useTouchEvent pinch vs two-finger scroll', () => {
       zoomLevel: 100,
       scrolled: false,
       vertical: false,
-      pageTurnStyle: 'slide',
+      pageTurnStyle: 'paper',
       animated: true,
       isEink: false,
       disableSwipe: false,
       ...override,
     });
     mocks.getView.mockReturnValue({
-      renderer: { getAttribute: (name: string) => (name === 'turn-style' ? 'slide' : null) },
+      renderer: { getAttribute: (name: string) => (name === 'turn-style' ? 'paper' : null) },
     });
     const h = renderTouchHook();
 
@@ -591,7 +591,7 @@ describe('useTouchEvent pinch vs two-finger scroll', () => {
       zoomLevel: 100,
       scrolled: false,
       vertical: false,
-      pageTurnStyle: 'slide',
+      pageTurnStyle: 'paper',
     });
     const h = renderTouchHook();
 

@@ -290,9 +290,13 @@ export interface BookLanguage {
   convertChineseVariant: ConvertChineseVariant;
 }
 
-// 'push' slides the whole strip; 'slide' and 'curl' layer the outgoing page
-// over the still incoming page (Apple Books style, needs View Transitions).
-export type PageTurnStyle = 'push' | 'slide' | 'curl';
+// 'push' slides the whole strip; 'paper' and 'curl' layer the outgoing
+// page over the still incoming page (Kindle-like drift vs corner fold,
+// needs View Transitions). 'paper' is Glossa's signature drift: spine
+// pivot in spreads, edge light + soft shadow.
+// ('slide' retired: stored/synced values normalize to 'paper'; its flat
+// travel survives only as paper's Tauri capture form.)
+export type PageTurnStyle = 'push' | 'slide' | 'curl' | 'paper';
 export interface ViewConfig {
   sideBarTab: string;
   uiLanguage: string;

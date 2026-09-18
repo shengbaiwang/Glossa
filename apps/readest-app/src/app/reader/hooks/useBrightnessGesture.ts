@@ -191,7 +191,7 @@ export const useBrightnessGesture = (bookKey: string) => {
         const dy = t.screenY - startYRef.current;
         // Gesture ownership is one-way. Once the same activation distance is
         // clearly horizontal, brightness may not claim the sequence later if
-        // the trajectory bends vertically; Slide/Curl can safely own it.
+        // the trajectory bends vertically; Paper/Curl can safely own it.
         if (
           !activeRef.current &&
           Math.abs(dx) >= BRIGHTNESS_GESTURE_ACTIVATION_PX &&

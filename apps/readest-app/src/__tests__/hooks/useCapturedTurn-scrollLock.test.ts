@@ -11,9 +11,12 @@ import type { TouchDetail } from '@/app/reader/hooks/useTouchInterceptor';
 // same gate so a hold-then-swipe extends the highlight instead of paginating.
 const h = vi.hoisted(() => ({
   controllerHost: null as null | {
-    onBeforeCapture?: (style: 'curl' | 'slide') => Promise<void> | void;
-    onCovered?: (style: 'curl' | 'slide', surfaceAlreadyPainted?: boolean) => Promise<void> | void;
-    onCancelled?: (style: 'curl' | 'slide') => Promise<void> | void;
+    onBeforeCapture?: (style: 'curl' | 'slide' | 'paper') => Promise<void> | void;
+    onCovered?: (
+      style: 'curl' | 'slide' | 'paper',
+      surfaceAlreadyPainted?: boolean,
+    ) => Promise<void> | void;
+    onCancelled?: (style: 'curl' | 'slide' | 'paper') => Promise<void> | void;
     preparePixelCapture?: () =>
       | void
       | (() => void | Promise<void>)
@@ -192,7 +195,7 @@ afterEach(() => {
 
 describe('useCapturedTurn scroll-lock gate', () => {
   test('starts an eligible snapshot warm-up immediately on touchstart', () => {
-    h.viewSettings.pageTurnStyle = 'slide';
+    h.viewSettings.pageTurnStyle = 'paper';
     renderHook(() => useCapturedTurn('book-1', { current: makeView() }));
 
     dispatchTouchInterceptors('book-1', detail('start', 0, 0, 0, 150));
@@ -504,8 +507,8 @@ describe('useCapturedTurn scroll-lock gate', () => {
     expect(h.controller.beginDrag).toHaveBeenCalledWith(true, false, 'curl');
   });
 
-  test('starts a claimed Slide flat and follows only post-claim finger travel', () => {
-    h.viewSettings.pageTurnStyle = 'slide';
+  test('starts a claimed Paper turn flat and follows only post-claim finger travel', () => {
+    h.viewSettings.pageTurnStyle = 'paper';
     const cell = document.createElement('div');
     cell.id = 'gridcell-book-1';
     vi.spyOn(cell, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 500));
@@ -523,8 +526,8 @@ describe('useCapturedTurn scroll-lock gate', () => {
     expect(h.controller.moveDrag).toHaveBeenLastCalledWith(30 / 300, 0.5);
   });
 
-  test('keeps a short Slide flick visually flat at claim but uses its full release intent', () => {
-    h.viewSettings.pageTurnStyle = 'slide';
+  test('keeps a short Paper flick visually flat at claim but uses its full release intent', () => {
+    h.viewSettings.pageTurnStyle = 'paper';
     const cell = document.createElement('div');
     cell.id = 'gridcell-book-1';
     vi.spyOn(cell, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 500));
@@ -700,8 +703,8 @@ describe('useCapturedTurn scroll-lock gate', () => {
     expect(h.controller.endDrag).toHaveBeenCalledWith(true, 0.4);
   });
 
-  test('lets distance and sub-flick release speed combine to commit a Slide', () => {
-    h.viewSettings.pageTurnStyle = 'slide';
+  test('lets distance and sub-flick release speed combine to commit a Paper turn', () => {
+    h.viewSettings.pageTurnStyle = 'paper';
     const cell = document.createElement('div');
     cell.id = 'gridcell-book-1';
     vi.spyOn(cell, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 500));
@@ -714,12 +717,12 @@ describe('useCapturedTurn scroll-lock gate', () => {
     dispatchTouchInterceptors('book-1', detail('end', -120, 0, 500));
 
     // Neither 40% distance nor 0.2px/ms speed passes the old independent
-    // threshold. Together they project to 56%, so the Slide commits.
+    // threshold. Together they project to 56%, so the Paper turn commits.
     expect(h.controller.endDrag).toHaveBeenCalledWith(true, 0.2);
   });
 
-  test('cancels a rested Slide below halfway', () => {
-    h.viewSettings.pageTurnStyle = 'slide';
+  test('cancels a rested Paper turn below halfway', () => {
+    h.viewSettings.pageTurnStyle = 'paper';
     const cell = document.createElement('div');
     cell.id = 'gridcell-book-1';
     vi.spyOn(cell, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 500));
@@ -733,8 +736,8 @@ describe('useCapturedTurn scroll-lock gate', () => {
     expect(h.controller.endDrag).toHaveBeenCalledWith(false, 0);
   });
 
-  test('lets a sub-flick reverse release pull projected Slide progress back', () => {
-    h.viewSettings.pageTurnStyle = 'slide';
+  test('lets a sub-flick reverse release pull projected Paper progress back', () => {
+    h.viewSettings.pageTurnStyle = 'paper';
     const cell = document.createElement('div');
     cell.id = 'gridcell-book-1';
     vi.spyOn(cell, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 500));
@@ -747,7 +750,7 @@ describe('useCapturedTurn scroll-lock gate', () => {
     dispatchTouchInterceptors('book-1', detail('end', -165, 0, 600));
 
     // Distance alone is 55%, but projecting the -0.1px/ms release returns it
-    // to 47%, so the Slide cancels.
+    // to 47%, so the Paper turn cancels.
     expect(h.controller.endDrag).toHaveBeenCalledWith(false, -0.1);
   });
 
@@ -965,7 +968,7 @@ describe('useCapturedTurn scroll-lock gate', () => {
 
   test.each([
     'curl',
-    'slide',
+    'paper',
   ] as const)('hides live toolbar without transitions once the %s snapshot covers it', async (style) => {
     const gridCell = document.createElement('div');
     gridCell.id = 'gridcell-book-1';
@@ -993,7 +996,7 @@ describe('useCapturedTurn scroll-lock gate', () => {
 
   test.each([
     'curl',
-    'slide',
+    'paper',
   ] as const)('restores a previously visible toolbar when a %s turn is cancelled', async (style) => {
     const gridCell = document.createElement('div');
     gridCell.id = 'gridcell-book-1';
@@ -1146,7 +1149,7 @@ describe('useCapturedTurn scroll-lock gate', () => {
 
   test.each([
     'curl',
-    'slide',
+    'paper',
   ] as const)('synchronizes toolbar state with a web layered %s lifecycle', (style) => {
     vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'web');
     const gridCell = document.createElement('div');

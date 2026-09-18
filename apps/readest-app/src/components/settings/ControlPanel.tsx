@@ -77,16 +77,20 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
 
   // The layered styles need an engine with full View Transitions support or
   // the Tauri captured-turn fallback; engines like iOS 18 WebKit crash on
-  // the VT turns, so on the web they only get Push (readest#555).
+  // the VT turns, so on the web they only get Push (readest#555). A synced
+  // slide/curl setting from another device still reads as push here when
+  // this engine cannot animate it.
   const turnStyleOptions = [
     { value: 'push', label: _('Push') },
     ...(appService?.supportsViewTransitionGroup || isTauriAppPlatform()
       ? [
-          { value: 'slide', label: _('Slide') },
-          { value: 'curl', label: _('Page Curl') },
+          { value: 'paper', label: _('Flip') },
+          { value: 'curl', label: _('Curl') },
         ]
       : []),
   ];
+  // Retired `slide` (stored or synced before its removal) reads as Flip.
+  const displayedTurnStyle = pageTurnStyle === 'slide' ? 'paper' : pageTurnStyle;
 
   const handleReset = () => {
     resetToDefaults({
@@ -457,10 +461,10 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
         />
         <SettingsRow label={_('Animation Style')} data-setting-id='settings.control.pageTurnStyle'>
           <SettingsSelect
-            // A synced slide/curl setting from another device still reads as
-            // push here when this engine cannot animate it.
             value={
-              turnStyleOptions.some((opt) => opt.value === pageTurnStyle) ? pageTurnStyle : 'push'
+              turnStyleOptions.some((opt) => opt.value === displayedTurnStyle)
+                ? displayedTurnStyle
+                : 'push'
             }
             onChange={(e) => setPageTurnStyle(e.target.value as PageTurnStyle)}
             ariaLabel={_('Animation Style')}

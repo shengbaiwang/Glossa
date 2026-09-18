@@ -1,4 +1,17 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
+
+// The real themeStore module body reads localStorage at creation time, which
+// is absent in this jsdom environment; turn-style logic never touches themes.
+vi.mock('@/store/themeStore', () => ({
+  useThemeStore: Object.assign(
+    () => ({ themeCode: { bg: '#ffffff' }, isDarkMode: false }),
+    {
+      getState: () => ({ themeCode: { bg: '#ffffff' }, isDarkMode: false }),
+      subscribe: () => () => {},
+    },
+  ),
+}));
+
 import { applyPageTurnAttributes, getCapturedTurnStyle } from '@/app/reader/hooks/useCapturedTurn';
 import type { FoliateView } from '@/types/view';
 import type { ViewSettings } from '@/types/book';
@@ -47,19 +60,19 @@ afterEach(() => {
 });
 
 describe('getCapturedTurnStyle', () => {
-  it('captures the slide on Tauri when the engine cannot layer View Transitions', () => {
+  it('maps retired slide settings to the paper capture path', () => {
     vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'tauri');
     stubEngine({ startViewTransition: true, nestedGroups: false });
     expect(getCapturedTurnStyle(settings('slide'), false, false)).toBe('slide');
   });
 
-  it('leaves the slide to View Transitions on fully supporting desktop Tauri engines', () => {
+  it('leaves retired slide settings to paper View Transitions on fully supporting engines', () => {
     vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'tauri');
     stubEngine({ startViewTransition: true, nestedGroups: true });
     expect(getCapturedTurnStyle(settings('slide'), false, false)).toBeNull();
   });
 
-  it('keeps the slide on the pre-warmed capture path on mobile Tauri engines', () => {
+  it('keeps retired slide settings on the pre-warmed capture path on mobile Tauri engines', () => {
     vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'tauri');
     stubEngine({ startViewTransition: true, nestedGroups: true });
     expect(getCapturedTurnStyle(settings('slide'), false, true)).toBe('slide');
@@ -69,12 +82,39 @@ describe('getCapturedTurnStyle', () => {
     vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'web');
     stubEngine({ startViewTransition: true, nestedGroups: false });
     expect(getCapturedTurnStyle(settings('slide'), false)).toBeNull();
+    expect(getCapturedTurnStyle(settings('paper'), false)).toBeNull();
     expect(getCapturedTurnStyle(settings('curl'), false)).toBeNull();
+  });
+
+  it('captures paper as a flat slide when the engine cannot layer View Transitions', () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'tauri');
+    stubEngine({ startViewTransition: true, nestedGroups: false });
+    expect(getCapturedTurnStyle(settings('paper'), false, false)).toBe('slide');
+  });
+
+  it('leaves paper to View Transitions on fully supporting desktop Tauri engines', () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'tauri');
+    stubEngine({ startViewTransition: true, nestedGroups: true });
+    expect(getCapturedTurnStyle(settings('paper'), false, false)).toBeNull();
+  });
+
+  it('keeps paper on the pre-warmed capture path on mobile Tauri engines', () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'tauri');
+    stubEngine({ startViewTransition: true, nestedGroups: true });
+    expect(getCapturedTurnStyle(settings('paper'), false, true)).toBe('slide');
   });
 });
 
 describe('applyPageTurnAttributes', () => {
-  it('keeps the View Transition slide on fully supporting engines', () => {
+  it('keeps the paper View Transition on fully supporting engines', () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'web');
+    stubEngine({ startViewTransition: true, nestedGroups: true });
+    const { view, renderer } = makeView();
+    applyPageTurnAttributes(view, settings('paper'), false, false);
+    expect(renderer.getAttribute('turn-style')).toBe('paper');
+  });
+
+  it('passes retired slide settings through; the paginator normalizes them to paper', () => {
     vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'web');
     stubEngine({ startViewTransition: true, nestedGroups: true });
     const { view, renderer } = makeView();
@@ -86,18 +126,18 @@ describe('applyPageTurnAttributes', () => {
     vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'web');
     stubEngine({ startViewTransition: true, nestedGroups: false });
     const { view, renderer } = makeView();
-    renderer.setAttribute('turn-style', 'slide');
+    renderer.setAttribute('turn-style', 'paper');
     renderer.setAttribute('captured-turn-style', 'slide');
-    applyPageTurnAttributes(view, settings('slide'), false, false);
+    applyPageTurnAttributes(view, settings('paper'), false, false);
     expect(renderer.hasAttribute('turn-style')).toBe(false);
     expect(renderer.hasAttribute('captured-turn-style')).toBe(false);
   });
 
-  it('hands the slide to the capture pipeline on Tauri without full support', () => {
+  it('hands paper to the capture pipeline on Tauri without full support', () => {
     vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'tauri');
     stubEngine({ startViewTransition: true, nestedGroups: false });
     const { view, renderer } = makeView();
-    applyPageTurnAttributes(view, settings('slide'), false, false);
+    applyPageTurnAttributes(view, settings('paper'), false, false);
     // The app slides the captured page itself: the paginator must not run
     // its own View Transition nor its swipe tracking.
     expect(renderer.hasAttribute('turn-style')).toBe(false);
@@ -105,21 +145,21 @@ describe('applyPageTurnAttributes', () => {
     expect(renderer.getAttribute('captured-turn-style')).toBe('slide');
   });
 
-  it('keeps the View Transition slide on fully supporting desktop Tauri engines', () => {
+  it('keeps the paper View Transition on fully supporting desktop Tauri engines', () => {
     vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'tauri');
     stubEngine({ startViewTransition: true, nestedGroups: true });
     const { view, renderer } = makeView();
-    applyPageTurnAttributes(view, settings('slide'), false, false);
-    expect(renderer.getAttribute('turn-style')).toBe('slide');
+    applyPageTurnAttributes(view, settings('paper'), false, false);
+    expect(renderer.getAttribute('turn-style')).toBe('paper');
     expect(renderer.hasAttribute('no-swipe')).toBe(false);
     expect(renderer.hasAttribute('captured-turn-style')).toBe(false);
   });
 
-  it('hands the slide to the capture pipeline on fully supporting mobile Tauri engines', () => {
+  it('hands paper to the capture pipeline on fully supporting mobile Tauri engines', () => {
     vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'tauri');
     stubEngine({ startViewTransition: true, nestedGroups: true });
     const { view, renderer } = makeView();
-    applyPageTurnAttributes(view, settings('slide'), false, true);
+    applyPageTurnAttributes(view, settings('paper'), false, true);
     expect(renderer.hasAttribute('turn-style')).toBe(false);
     expect(renderer.hasAttribute('no-swipe')).toBe(true);
     expect(renderer.getAttribute('captured-turn-style')).toBe('slide');
@@ -129,12 +169,39 @@ describe('applyPageTurnAttributes', () => {
     vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'tauri');
     stubEngine({ startViewTransition: true, nestedGroups: false });
     const { view, renderer } = makeView();
-    const disabled = settings('slide');
+    const disabled = settings('paper');
     disabled.disableSwipe = true;
 
     applyPageTurnAttributes(view, disabled, false, false);
 
     expect(renderer.hasAttribute('no-swipe')).toBe(true);
     expect(renderer.hasAttribute('captured-turn-style')).toBe(false);
+  });
+
+  it('keeps the View Transition paper on fully supporting engines', () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'web');
+    stubEngine({ startViewTransition: true, nestedGroups: true });
+    const { view, renderer } = makeView();
+    applyPageTurnAttributes(view, settings('paper'), false, false);
+    expect(renderer.getAttribute('turn-style')).toBe('paper');
+  });
+
+  it('falls paper back to push on web engines without full View Transitions support', () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'web');
+    stubEngine({ startViewTransition: true, nestedGroups: false });
+    const { view, renderer } = makeView();
+    applyPageTurnAttributes(view, settings('paper'), false, false);
+    expect(renderer.hasAttribute('turn-style')).toBe(false);
+    expect(renderer.hasAttribute('captured-turn-style')).toBe(false);
+  });
+
+  it('hands paper to the capture pipeline as a slide on Tauri without full support', () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'tauri');
+    stubEngine({ startViewTransition: true, nestedGroups: false });
+    const { view, renderer } = makeView();
+    applyPageTurnAttributes(view, settings('paper'), false, false);
+    expect(renderer.hasAttribute('turn-style')).toBe(false);
+    expect(renderer.hasAttribute('no-swipe')).toBe(true);
+    expect(renderer.getAttribute('captured-turn-style')).toBe('slide');
   });
 });

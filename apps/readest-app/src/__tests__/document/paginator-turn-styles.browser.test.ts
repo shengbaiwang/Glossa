@@ -3,11 +3,12 @@ import { DocumentLoader } from '@/libs/document';
 import type { BookDoc } from '@/libs/document';
 import type { Renderer } from '@/types/view';
 
-// Tests for readest#555: Apple Books style page-turn animations. The `slide`
+// Tests for readest#555: Kindle-style page-turn animations. The `paper`
 // and `curl` turn styles layer a View Transitions snapshot of the outgoing
 // page over the live incoming page, so the page underneath stays still while
-// the top page slides away or curls open. When the View Transitions API is
+// the top page drifts away or curls open. When the View Transitions API is
 // unavailable the paginator falls back to the existing push animation.
+// (`slide` was retired: the paginator normalizes it to `paper`.)
 
 const LTR_EPUB_URL = new URL('../fixtures/data/sample-alice.epub', import.meta.url).href;
 const VERTICAL_EPUB_URL = new URL('../fixtures/data/sample-vertical-rl.epub', import.meta.url).href;
@@ -133,32 +134,6 @@ describe('Page turn styles (browser)', () => {
     return null;
   };
 
-  it('slide keeps the incoming page still while the outgoing page slides away', async () => {
-    await setup(ltrBook, 'slide');
-    const size = paginator.size;
-    const before = paginator.containerPosition;
-
-    const turn = paginator.next();
-    const sampled = await sampleTransition();
-    expect(sampled).not.toBeNull();
-    // Forward: the outgoing snapshot animates out; the incoming page has no
-    // motion of its own (it sits still underneath).
-    expect(sampled!.oldAnim).toContain('foliate-turn-slide-out');
-    expect(sampled!.newAnim).toBe('none');
-    await turn;
-    // The live content jumped to the destination under the snapshot.
-    expect(paginator.containerPosition).toBe(before + size);
-
-    const back = paginator.prev();
-    const sampledBack = await sampleTransition();
-    expect(sampledBack).not.toBeNull();
-    // Backward: the incoming snapshot slides in over the still outgoing page.
-    expect(sampledBack!.newAnim).toContain('foliate-turn-slide-in');
-    expect(sampledBack!.oldAnim).toBe('none');
-    await back;
-    expect(paginator.containerPosition).toBe(before);
-  });
-
   it('curl folds the outgoing page open over the incoming page', async () => {
     await setup(ltrBook, 'curl');
     const before = paginator.containerPosition;
@@ -194,21 +169,128 @@ describe('Page turn styles (browser)', () => {
     expect(paginator.containerPosition).toBe(before);
   });
 
-  it('works for vertical-rl books where pages stack along the scroll axis', async () => {
-    await setup(verticalBook, 'slide', 0);
+  it('retired slide settings normalize to the paper turn', async () => {
+    await setup(ltrBook, 'slide');
     const size = paginator.size;
     const before = paginator.containerPosition;
 
     const turn = paginator.next();
     const sampled = await sampleTransition();
     expect(sampled).not.toBeNull();
-    expect(sampled!.oldAnim).toContain('foliate-turn-slide-out');
+    // The paginator maps the retired `slide` turn-style to paper: the
+    // outgoing snapshot turns with the paper choreography, never a flat
+    // slide travel.
+    expect(sampled!.oldAnim).toContain('foliate-turn-paper-spread-out');
+    expect(sampled!.newAnim).toContain('foliate-turn-paper-new-brighten-spine');
+    await turn;
+    expect(paginator.containerPosition).toBe(before + size);
+    expect(document.documentElement.className).not.toContain('foliate-vt-slide');
+  });
+
+  it('paper drifts the outgoing sheet away while the incoming page brightens', async () => {
+    await setup(ltrBook, 'paper');
+    // The 800px test paginator is a two-column spread, so paper turns use
+    // the spine-pivot choreography (covered by the spread test below); the
+    // single-column drift is pinned by a narrow paginator instead.
+    expect(paginator.columnCount).toBe(2);
+    const size = paginator.size;
+    const before = paginator.containerPosition;
+
+    const turn = paginator.next();
+    const sampled = await sampleTransition();
+    expect(sampled).not.toBeNull();
+    // Forward: the outgoing snapshot swings around the spine. The still
+    // layer is not inert — the revealed incoming page carries the brighten
+    // half of the choreography plus the spine groove.
+    expect(sampled!.oldAnim).toContain('foliate-turn-paper-spread-out');
+    expect(sampled!.newAnim).toContain('foliate-turn-paper-new-brighten-spine');
+    await turn;
+    // The live content jumped to the destination under the snapshot.
+    expect(paginator.containerPosition).toBe(before + size);
+
+    const back = paginator.prev();
+    const sampledBack = await sampleTransition();
+    expect(sampledBack).not.toBeNull();
+    // Backward: the incoming sheet swings in around the spine while the
+    // outgoing page sinks a shade as it is covered.
+    expect(sampledBack!.newAnim).toContain('foliate-turn-paper-spread-in');
+    expect(sampledBack!.oldAnim).toContain('foliate-turn-paper-old-dim-spine');
+    await back;
+    expect(paginator.containerPosition).toBe(before);
+  });
+
+  it('softens the paper turn on dark book themes only', async () => {
+    await setup(ltrBook, 'paper');
+    // The app marks dark book documents with a `theme-dark` body class; the
+    // paginator reads it while preparing the turn to soften the paper shadow.
+    const bookDocs = paginator.getContents().map(({ doc }) => doc);
+    expect(bookDocs.length).toBeGreaterThan(0);
+    for (const doc of bookDocs) doc.body?.classList.add('theme-dark');
+
+    const darkTurn = paginator.next();
+    await vi.waitFor(() => {
+      expect(document.documentElement.classList.contains('foliate-vt-dark')).toBe(true);
+    });
+    await darkTurn;
+    expect(document.documentElement.classList.contains('foliate-vt-dark')).toBe(false);
+
+    for (const doc of bookDocs) doc.body?.classList.remove('theme-dark');
+    const lightTurn = paginator.next();
+    await vi.waitFor(() => {
+      expect(document.documentElement.classList.contains('foliate-vt-paper')).toBe(true);
+    });
+    expect(document.documentElement.classList.contains('foliate-vt-dark')).toBe(false);
+    await lightTurn;
+    expect(document.documentElement.className).not.toContain('foliate-vt');
+  });
+
+  it('paper drifts flat in a single-column layout (no spine pivot)', async () => {
+    paginator = createPaginator();
+    // Narrow paginator forces a single column: no spine pivot applies.
+    paginator.style.width = '500px';
+    paginator.setAttribute('animated', '');
+    paginator.setAttribute('turn-style', 'paper');
+    paginator.open(ltrBook);
+    const stabilized = waitForStabilized(paginator);
+    await paginator.goTo({ index: 3 });
+    await stabilized;
+    expect(paginator.columnCount).toBe(1);
+    const size = paginator.size;
+    const before = paginator.containerPosition;
+
+    const turn = paginator.next();
+    await vi.waitFor(() => {
+      expect(document.documentElement.classList.contains('foliate-vt-paper')).toBe(true);
+    });
+    expect(document.documentElement.classList.contains('foliate-vt-spread')).toBe(false);
+    const sampled = await sampleTransition();
+    expect(sampled).not.toBeNull();
+    expect(sampled!.oldAnim).toContain('foliate-turn-paper-out');
+    expect(sampled!.oldAnim).not.toContain('spread');
+    expect(sampled!.newAnim).toContain('foliate-turn-paper-new-brighten');
+    expect(sampled!.newAnim).not.toContain('spine');
+    await turn;
+    expect(paginator.containerPosition).toBe(before + size);
+  });
+
+  it('paper works for vertical-rl books where pages stack along the scroll axis', async () => {
+    await setup(verticalBook, 'paper', 0);
+    const size = paginator.size;
+    const before = paginator.containerPosition;
+
+    const turn = paginator.next();
+    const sampled = await sampleTransition();
+    expect(sampled).not.toBeNull();
+    // vertical-rl pages exit toward the reading direction, so the side is
+    // resolved per book; only the choreography family matters here.
+    expect(sampled!.oldAnim).toContain('foliate-turn-paper-out');
+    expect(sampled!.newAnim).toContain('foliate-turn-paper-new-brighten');
     await turn;
     expect(paginator.containerPosition).toBe(before + size);
   });
 
   it('finishes a vertical programmatic turn when a touch starts mid-transition', async () => {
-    await setup(verticalBook, 'slide', 0);
+    await setup(verticalBook, 'paper', 0);
     const size = paginator.size;
     const before = paginator.containerPosition;
 
@@ -226,7 +308,7 @@ describe('Page turn styles (browser)', () => {
   });
 
   it('cleans up an active programmatic transition when destroyed', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
 
     const turn = paginator.next();
     await vi.waitFor(() => {
@@ -268,7 +350,7 @@ describe('Page turn styles (browser)', () => {
   };
 
   it('tracks the finger: the paused snapshot follows the drag and commits on release', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
     const page = paginator.page;
     const phases: string[] = [];
     paginator.addEventListener('layered-turn-state', ((event: CustomEvent) => {
@@ -311,8 +393,75 @@ describe('Page turn styles (browser)', () => {
     expect(phases).toEqual(['before-capture', 'covered', 'ready', 'finished']);
   });
 
+  it('tracks the finger: a paper drag scrubs both paused layers and commits on release', async () => {
+    await setup(ltrBook, 'paper');
+    const page = paginator.page;
+    const phases: string[] = [];
+    paginator.addEventListener('layered-turn-state', ((event: CustomEvent) => {
+      phases.push(event.detail.phase);
+    }) as EventListener);
+
+    // ltr: finger moves LEFT to go forward.
+    let x = 700;
+    fireTouch('touchstart', x, 300);
+    for (let i = 0; i < 6; i++) {
+      x -= 30;
+      fireTouch('touchmove', x, 300);
+      await wait(16);
+    }
+    // Mid-drag: the transition exists, is paused, and its progress tracks the
+    // finger (~180px of total travel on an 800px-wide page). Paper animates
+    // both layers (the sheet drifts out, the page beneath brightens), so the
+    // whole paused set must scrub linearly with the finger.
+    const anims = scrubbedAnimations();
+    expect(anims.length).toBeGreaterThan(0);
+    expect(anims.every((a) => a.playState === 'paused')).toBe(true);
+    expect(anims.every((a) => (a.effect as KeyframeEffect).getTiming().easing === 'linear')).toBe(
+      true,
+    );
+    const timeA = Number(anims[0]!.currentTime);
+    expect(timeA).toBeGreaterThan(0);
+    x -= 60;
+    fireTouch('touchmove', x, 300);
+    await wait(30);
+    const timeB = Number(anims[0]!.currentTime);
+    expect(timeB).toBeGreaterThan(timeA);
+
+    fireTouch('touchend', x, 300);
+    const t0 = performance.now();
+    while (
+      (paginator.page !== page + 1 || !phases.includes('finished')) &&
+      performance.now() - t0 < 2000
+    ) {
+      await wait(50);
+    }
+    expect(paginator.page).toBe(page + 1);
+    expect(phases).toEqual(['before-capture', 'covered', 'ready', 'finished']);
+  });
+
+  it('cancels a paper drag on a short slow release', async () => {
+    await setup(ltrBook, 'paper');
+    const page = paginator.page;
+    const before = paginator.containerPosition;
+    const phases: string[] = [];
+    paginator.addEventListener('layered-turn-state', ((event: CustomEvent) => {
+      phases.push(event.detail.phase);
+    }) as EventListener);
+
+    fireTouch('touchstart', 700, 300, 100);
+    fireTouch('touchmove', 640, 300, 340);
+    await vi.waitFor(() => expect(phases).toContain('ready'));
+    fireTouch('touchend', 640, 300, 340);
+    await vi.waitFor(() => expect(phases.at(-1)).toBe('finished'), { timeout: 2000 });
+
+    // 7.5% distance + (0.25px/ms * 240ms / 800px) = 15%.
+    expect(paginator.page).toBe(page);
+    expect(paginator.containerPosition).toBe(before);
+    expect(phases).toEqual(['before-capture', 'covered', 'ready', 'cancelled', 'finished']);
+  });
+
   it('claims an edge-originated turn on the first clear inward move', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
     const phases: string[] = [];
     paginator.addEventListener('layered-turn-state', ((event: CustomEvent) => {
       phases.push(event.detail.phase);
@@ -331,7 +480,7 @@ describe('Page turn styles (browser)', () => {
   });
 
   it('claims an early edge gesture at a book boundary without starting a snapshot', async () => {
-    await setup(ltrBook, 'slide', 0);
+    await setup(ltrBook, 'paper', 0);
     const claims: CustomEvent[] = [];
     const phases: string[] = [];
     paginator.addEventListener('layered-turn-gesture-claimed', ((event: CustomEvent) => {
@@ -350,12 +499,12 @@ describe('Page turn styles (browser)', () => {
     await wait(50);
 
     expect(claims).toHaveLength(1);
-    expect(claims[0]!.detail).toMatchObject({ style: 'slide', forward: false });
+    expect(claims[0]!.detail).toMatchObject({ style: 'paper', forward: false });
     expect(phases).toHaveLength(0);
   });
 
   it('reserves the outermost left strip for the vertical brightness gesture', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
     paginator.setAttribute('turn-gesture-left-inset', '0.1');
     const claims: CustomEvent[] = [];
     const phases: string[] = [];
@@ -379,7 +528,7 @@ describe('Page turn styles (browser)', () => {
   });
 
   it('claims a central turn after two consistent horizontal samples below 15px', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
     const phases: string[] = [];
     paginator.addEventListener('layered-turn-state', ((event: CustomEvent) => {
       phases.push(event.detail.phase);
@@ -398,7 +547,7 @@ describe('Page turn styles (browser)', () => {
   });
 
   it('does not combine stale central samples into an early claim', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
     const phases: string[] = [];
     paginator.addEventListener('layered-turn-state', ((event: CustomEvent) => {
       phases.push(event.detail.phase);
@@ -416,7 +565,7 @@ describe('Page turn styles (browser)', () => {
   });
 
   it('permanently yields a pending gesture when scroll lock takes ownership', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
     const phases: string[] = [];
     paginator.addEventListener('layered-turn-state', ((event: CustomEvent) => {
       phases.push(event.detail.phase);
@@ -434,7 +583,7 @@ describe('Page turn styles (browser)', () => {
   });
 
   it('cleans up lifecycle state when layered capture throws synchronously', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
     const before = paginator.containerPosition;
     const phases: string[] = [];
     paginator.addEventListener('layered-turn-state', ((event: CustomEvent) => {
@@ -462,7 +611,7 @@ describe('Page turn styles (browser)', () => {
   });
 
   it('cancels an active layered drag before accepting a replacement touch', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
     const page = paginator.page;
     const before = paginator.containerPosition;
     const phases: string[] = [];
@@ -485,7 +634,7 @@ describe('Page turn styles (browser)', () => {
   });
 
   it('permanently rejects a vertical gesture after a one-frame 16px landing wobble', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
     const page = paginator.page;
     const position = paginator.containerPosition;
     const phases: string[] = [];
@@ -520,8 +669,8 @@ describe('Page turn styles (browser)', () => {
     }
   });
 
-  it('starts Slide flat at claim and uses the named transition root width afterward', async () => {
-    await setup(ltrBook, 'slide', 3, 1000);
+  it('starts Paper flat at claim and uses the named transition root width afterward', async () => {
+    await setup(ltrBook, 'paper', 3, 1000);
     const phases: string[] = [];
     paginator.addEventListener('layered-turn-state', ((event: CustomEvent) => {
       phases.push(event.detail.phase);
@@ -562,9 +711,9 @@ describe('Page turn styles (browser)', () => {
   });
 
   it.each([
-    { style: 'slide', speed: 0.9, expectedRate: 1.875 },
-    { style: 'slide', speed: 1.5, expectedRate: 2 },
     { style: 'curl', speed: 1.5, expectedRate: 1.5 },
+    { style: 'paper', speed: 0.9, expectedRate: 1.65625 },
+    { style: 'paper', speed: 1.5, expectedRate: 1.75 },
   ])('settles a $style release at $expectedRate× for a $speed px/ms flick', async ({
     style,
     speed,
@@ -596,8 +745,8 @@ describe('Page turn styles (browser)', () => {
     expect(phases).not.toContain('cancelled');
   });
 
-  it('combines sub-flick speed with distance to commit a Slide', async () => {
-    await setup(ltrBook, 'slide');
+  it('combines sub-flick speed with distance to commit a Paper turn', async () => {
+    await setup(ltrBook, 'paper');
     const page = paginator.page;
     const phases: string[] = [];
     paginator.addEventListener('layered-turn-state', ((event: CustomEvent) => {
@@ -616,8 +765,8 @@ describe('Page turn styles (browser)', () => {
     expect(phases).not.toContain('cancelled');
   });
 
-  it('lets a sub-flick reverse release cancel a Slide beyond halfway', async () => {
-    await setup(ltrBook, 'slide');
+  it('lets a sub-flick reverse release cancel a Paper turn beyond halfway', async () => {
+    await setup(ltrBook, 'paper');
     const page = paginator.page;
     const phases: string[] = [];
     paginator.addEventListener('layered-turn-state', ((event: CustomEvent) => {
@@ -637,7 +786,7 @@ describe('Page turn styles (browser)', () => {
   });
 
   it('does not boost a release after the finger has rested', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
     const phases: string[] = [];
     paginator.addEventListener('layered-turn-state', ((event: CustomEvent) => {
       phases.push(event.detail.phase);
@@ -658,7 +807,7 @@ describe('Page turn styles (browser)', () => {
   });
 
   it('boosts a fast reverse release toward the cancellation target', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
     const phases: string[] = [];
     paginator.addEventListener('layered-turn-state', ((event: CustomEvent) => {
       phases.push(event.detail.phase);
@@ -675,7 +824,8 @@ describe('Page turn styles (browser)', () => {
     fireTouch('touchend', 660, 300, 240);
 
     const releaseVelocity = 80 / 90;
-    const expectedRate = 1 + ((releaseVelocity - 0.2) / (1 - 0.2)) * (2 - 1);
+    // Paper settle config: min 0.2px/ms, max 1px/ms, maxRate 1.75x.
+    const expectedRate = 1 + ((releaseVelocity - 0.2) / (1 - 0.2)) * (1.75 - 1);
     await vi.waitFor(() => {
       for (const animation of animations) {
         expect(animation.playbackRate).toBeLessThan(-1);
@@ -687,7 +837,7 @@ describe('Page turn styles (browser)', () => {
   });
 
   it('does not boost velocity moving away from the selected settle target', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
     const phases: string[] = [];
     paginator.addEventListener('layered-turn-state', ((event: CustomEvent) => {
       phases.push(event.detail.phase);
@@ -708,7 +858,7 @@ describe('Page turn styles (browser)', () => {
   });
 
   it('cancels when the final changedTouches sample makes the whole gesture vertical', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
     const page = paginator.page;
     const phases: string[] = [];
     paginator.addEventListener('layered-turn-state', ((event: CustomEvent) => {
@@ -729,7 +879,7 @@ describe('Page turn styles (browser)', () => {
   });
 
   it('tracks the finger: a mostly-returned drag reverses without turning', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
     const page = paginator.page;
     const before = paginator.containerPosition;
     const phases: string[] = [];
@@ -761,7 +911,7 @@ describe('Page turn styles (browser)', () => {
   });
 
   it('cancels a layered drag on touchcancel and cleans up its lifecycle', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
     const page = paginator.page;
     const before = paginator.containerPosition;
     const phases: string[] = [];
@@ -794,7 +944,7 @@ describe('Page turn styles (browser)', () => {
   });
 
   it('orders lifecycle events when touchcancel arrives before capture is ready', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
     const before = paginator.containerPosition;
     const phases: string[] = [];
     paginator.addEventListener('layered-turn-state', ((event: CustomEvent) => {
@@ -821,7 +971,7 @@ describe('Page turn styles (browser)', () => {
   });
 
   it('finishes a vertical layered cancellation when another tap starts immediately', async () => {
-    await setup(verticalBook, 'slide', 0);
+    await setup(verticalBook, 'paper', 0);
     const before = paginator.containerPosition;
     const phases: string[] = [];
     paginator.addEventListener('layered-turn-state', ((event: CustomEvent) => {
@@ -833,7 +983,7 @@ describe('Page turn styles (browser)', () => {
     fireTouch('touchmove', 180, 300);
     await vi.waitFor(() => expect(phases).toContain('ready'));
     fireTouch('touchcancel', 180, 300);
-    // This second touch used to bump the shared slide generation and make the
+    // This second touch used to bump the shared turn generation and make the
     // first turn return before cleanup/finished.
     fireTouch('touchstart', 500, 300);
     fireTouch('touchend', 500, 300);
@@ -850,7 +1000,7 @@ describe('Page turn styles (browser)', () => {
   });
 
   it('finishes cancellation before accepting another programmatic turn', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
     const page = paginator.page;
     const before = paginator.containerPosition;
     const phases: string[] = [];
@@ -879,7 +1029,7 @@ describe('Page turn styles (browser)', () => {
   });
 
   it('a programmatic turn permanently rejects an already-pending touch', async () => {
-    await setup(ltrBook, 'slide');
+    await setup(ltrBook, 'paper');
     const page = paginator.page;
     const claims: CustomEvent[] = [];
     paginator.addEventListener('layered-turn-gesture-claimed', ((event: CustomEvent) => {
@@ -910,15 +1060,15 @@ describe('Page turn styles (browser)', () => {
     }
   });
 
-  // Xiaomi report (Android 16, WebView 148): with the layered slide style, a
+  // Xiaomi report (Android 16, WebView 148): with the layered paper style, a
   // vertical toolbar-toggle swipe randomly turned the page forward/backward.
   // snap() judged gesture alignment by the LAST-SAMPLE velocity ratio, so a
   // vertical swipe whose finger hooks slightly sideways in its final
   // milliseconds read as horizontal, and the layered path's displacement*10
   // heuristic amplified the tiny net x-drift into a full page turn. Alignment
   // for displacement-judged releases must weigh the whole gesture.
-  it('a vertical swipe with a sideways lift-off hook does not turn (slide)', async () => {
-    await setup(ltrBook, 'slide');
+  it('a vertical swipe with a sideways lift-off hook does not turn (paper)', async () => {
+    await setup(ltrBook, 'paper');
     const page = paginator.page;
     const before = paginator.containerPosition;
 
@@ -943,8 +1093,8 @@ describe('Page turn styles (browser)', () => {
   // committed on last-sample flick jitter — a random forward/backward turn
   // from a toolbar-toggle swipe. A drag whose whole gesture is not
   // predominantly horizontal must always cancel.
-  it('a wobble-start vertical swipe never engages the layered turn (slide)', async () => {
-    await setup(ltrBook, 'slide');
+  it('a wobble-start vertical swipe never engages the layered turn (paper)', async () => {
+    await setup(ltrBook, 'paper');
     // Away from the section edges so drags can start in both directions.
     await paginator.next();
     await paginator.next();
@@ -953,7 +1103,7 @@ describe('Page turn styles (browser)', () => {
     const before = paginator.containerPosition;
 
     // Not turning is not enough: a snapshot that engages and cancels still
-    // FLASHES a slide over the vertical swipe (seen on the Xiaomi). For a
+    // FLASHES a sheet over the vertical swipe (seen on the Xiaomi). For a
     // horizontal writing mode, only a horizontal gesture may start the
     // layered turn at all.
     const origVT = document.startViewTransition.bind(document);
@@ -997,10 +1147,10 @@ describe('Page turn styles (browser)', () => {
   // On fractional-DPR devices (Xiaomi, dpr 2.75) the container scroll rests a
   // sub-pixel off the page offset, so the release snap missed #scrollTo's
   // exact-equality short-circuit and ran a full-page layered view transition
-  // to the SAME page — a visible slide flash on every vertical toolbar-toggle
+  // to the SAME page — a visible sheet flash on every vertical toolbar-toggle
   // swipe, even with no drag and no page change.
-  it('a sub-pixel scroll offset never flashes a layered settle on release (slide)', async () => {
-    await setup(ltrBook, 'slide');
+  it('a sub-pixel scroll offset never flashes a layered settle on release (paper)', async () => {
+    await setup(ltrBook, 'paper');
     await paginator.next();
     await wait(600);
     const page = paginator.page;
@@ -1040,7 +1190,112 @@ describe('Page turn styles (browser)', () => {
     // @ts-expect-error simulate an engine without the View Transitions API
     document.startViewTransition = undefined;
     try {
-      await setup(ltrBook, 'slide');
+      await setup(ltrBook, 'paper');
+      const container = paginator.shadowRoot!.getElementById('container')!;
+      const before = paginator.containerPosition;
+      const size = paginator.size;
+
+      const turn = paginator.next();
+      // The push fallback animates the strip with per-view transforms.
+      let sawTransform = false;
+      const t0 = performance.now();
+      while (performance.now() - t0 < 500) {
+        const child = container.children[0] as HTMLElement | undefined;
+        const transform = child && getComputedStyle(child).transform;
+        if (transform && transform !== 'none') {
+          sawTransform = true;
+          break;
+        }
+        await new Promise((r) => requestAnimationFrame(r));
+      }
+      expect(sawTransform).toBe(true);
+      await turn;
+      expect(paginator.containerPosition).toBe(before + size);
+    } finally {
+      document.startViewTransition = original;
+    }
+  });
+
+  /**
+   * Stub only the reduced-motion query; every other query (the paginator
+   * itself holds a `(prefers-color-scheme: dark)` media query per instance)
+   * delegates to the real matchMedia. Returns a restore function.
+   */
+  const stubReducedMotion = () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) =>
+      query === '(prefers-reduced-motion: reduce)'
+        ? ({
+            matches: true,
+            media: query,
+            onchange: null,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            addListener: () => {},
+            removeListener: () => {},
+            dispatchEvent: () => false,
+          } as MediaQueryList)
+        : original.call(window, query)) as typeof window.matchMedia;
+    return () => {
+      window.matchMedia = original;
+    };
+  };
+
+  it('prefers-reduced-motion turns paper pages instantly with no transition', async () => {
+    const restore = stubReducedMotion();
+    try {
+      await setup(ltrBook, 'paper');
+      const size = paginator.size;
+      const before = paginator.containerPosition;
+
+      const turn = paginator.next();
+      // The reduced-motion gate cuts the page instantly: no layered
+      // transition may ever appear.
+      const sampled = await sampleTransition();
+      expect(sampled).toBeNull();
+      await turn;
+      expect(paginator.containerPosition).toBe(before + size);
+    } finally {
+      restore();
+    }
+  });
+
+  it('prefers-reduced-motion disables the push animation as well', async () => {
+    const restore = stubReducedMotion();
+    try {
+      await setup(ltrBook, '');
+      const container = paginator.shadowRoot!.getElementById('container')!;
+      const before = paginator.containerPosition;
+      const size = paginator.size;
+
+      const turn = paginator.next();
+      // Same mid-turn sampling as the push fallback test: with reduced
+      // motion no per-view transform transition may run either.
+      let sawTransform = false;
+      const t0 = performance.now();
+      while (performance.now() - t0 < 500) {
+        const child = container.children[0] as HTMLElement | undefined;
+        const transform = child && getComputedStyle(child).transform;
+        if (transform && transform !== 'none') {
+          sawTransform = true;
+          break;
+        }
+        await new Promise((r) => requestAnimationFrame(r));
+      }
+      expect(sawTransform).toBe(false);
+      await turn;
+      expect(paginator.containerPosition).toBe(before + size);
+    } finally {
+      restore();
+    }
+  });
+
+  it('falls back to the push animation for paper when view transitions are unavailable', async () => {
+    const original = document.startViewTransition;
+    // @ts-expect-error simulate an engine without the View Transitions API
+    document.startViewTransition = undefined;
+    try {
+      await setup(ltrBook, 'paper');
       const container = paginator.shadowRoot!.getElementById('container')!;
       const before = paginator.containerPosition;
       const size = paginator.size;

@@ -53,10 +53,14 @@ export const getCapturedTurnStyle = (
     return null;
   }
   if (viewSettings.pageTurnStyle === 'curl') return 'curl';
+  // Retired `slide` settings (stored or synced before its removal) behave
+  // as paper; the capture pipeline only knows the flat slide renderer.
   if (
-    viewSettings.pageTurnStyle === 'slide' &&
+    (viewSettings.pageTurnStyle === 'paper' || viewSettings.pageTurnStyle === 'slide') &&
     (prepareNativeSlide || !detectViewTransitionGroup())
   ) {
+    // Paper has no captured renderer of its own; the flat canvas slide is
+    // its closest degraded form.
     return 'slide';
   }
   return null;

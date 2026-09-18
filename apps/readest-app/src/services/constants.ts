@@ -387,7 +387,9 @@ export const DEFAULT_BOOK_STYLE: BookStyle = {
 
 export const DEFAULT_MOBILE_VIEW_SETTINGS: Partial<ViewSettings> = {
   fullJustification: false,
-  animated: true,
+  // Page-turn animation defaults off everywhere (incl. mobile): the user
+  // opts in via Settings → Animation. Stored `animated: true` values still
+  // win over this default via the settings merge in settingsService.
   defaultFont: 'Sans-serif',
   disableDoubleClick: true,
   spreadMode: 'none',
@@ -437,7 +439,9 @@ export const DEFAULT_VIEW_CONFIG: ViewConfig = {
   referencePageCount: 0,
 
   animated: false,
-  pageTurnStyle: 'push',
+  // Glossa's default animated turn; engines without View Transitions fall
+  // back to push at runtime (applyPageTurnAttributes).
+  pageTurnStyle: 'paper',
   isEink: false,
   isColorEink: false,
 
