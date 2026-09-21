@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { StrictMode } from 'react';
 import ConversationAnswer from '@/glossa/ui/ConversationAnswer';
 import type { BookDoc } from '@/libs/document';
 import type { ChapterSource } from '@/glossa/context/types';
@@ -50,6 +51,25 @@ it('numbers only cited allowed sources in answer order, reuses numbers and opens
   expect(f.resolve).not.toHaveBeenCalled();
   fireEvent.click(links[2]!);
   expect(f.open).toHaveBeenCalledWith(sources[0], [sources[1], sources[0]]);
+});
+
+it('previews saved direct source-ID fragments and canonical links as the same citation', async () => {
+  const saved = source('s-14-abcdef123456');
+  render(
+    <ConversationAnswer
+      {...props}
+      sources={[saved]}
+      text={`Claim [3](#${saved.sourceId}), repeated [4](#source-${saved.sourceId}). [5](#s-14-missing)`}
+    />,
+  );
+  const links = screen.getAllByRole('link', { name: /^Open source passage/ });
+  expect(links.map((link) => link.textContent)).toEqual(['1', '1']);
+  expect(document.querySelector('a[href="#s-14-missing"]')).toBeNull();
+  fireEvent.mouseOver(links[0]!);
+  await screen.findByText(`Local ${saved.sourceId}`);
+  expect(f.open).not.toHaveBeenCalled();
+  fireEvent.click(links[0]!);
+  expect(f.open).toHaveBeenCalledWith(saved, [saved]);
 });
 
 it('previews freshly verified local text on keyboard focus without navigating and dismisses with Escape', async () => {
@@ -159,4 +179,24 @@ it('preserves meaningful linked prose, strips invented citations and never treat
   expect(screen.getAllByRole('link')).toHaveLength(1);
   expect(document.querySelector('a[href="#source-fake"]')).toBeNull();
   expect(document.querySelector('code')?.textContent).toBe('[1](#source-b)');
+});
+
+it('keeps citation bindings after development effect replay and unrelated parent updates', async () => {
+  const view = render(
+    <StrictMode>
+      <ConversationAnswer {...props} />
+    </StrictMode>,
+  );
+  view.rerender(
+    <StrictMode>
+      <ConversationAnswer {...props} onSource={(...args) => f.open(...args)} />
+    </StrictMode>,
+  );
+  const link = screen.getAllByRole('link', { name: /^Open source passage/ })[0]!;
+  expect(link.classList.contains('glossa-chat-source-link')).toBe(true);
+  fireEvent.focusIn(link);
+  await screen.findByText('Local b');
+  fireEvent.keyDown(link, { key: 'Escape' });
+  fireEvent.focusIn(link);
+  await screen.findByText('Local b');
 });

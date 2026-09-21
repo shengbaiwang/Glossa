@@ -10,6 +10,7 @@ import {
   type ToolDefinition,
 } from '@/glossa/ai/provider';
 import { checkAborted } from '@/glossa/context/text';
+import { citationSourceId } from '@/glossa/citations/links';
 import type { ChapterSource } from '@/glossa/context/types';
 import {
   chatIdentitySchema,
@@ -124,16 +125,23 @@ const instructions = [
 
 const sourceWire = (source: ChapterSource) => ({ sourceId: source.sourceId, text: source.text });
 
-/** Rendering must also whitelist links; this removes invented links before saving or streaming. */
+/** Rendering also validates saved answers; normalize both exact source fragment spellings. */
 export function sanitizeReadingCitations(text: string, sources: ChapterSource[]): string {
   const ids = new Set(sources.map((source) => source.sourceId));
+  const normalize = (prefix: string, fragment: string, suffix: string, invalid: string) => {
+    const id = citationSourceId(`#${fragment}`, ids);
+    return id ? `${prefix}#source-${id}${suffix}` : invalid;
+  };
   return text
     .replace(
-      /\[([^\]\n]*)\]\(<?#source-([^\s)>]+)>?(?:\s+["'][^\n]*?["'])?\)/g,
-      (link, _label: string, id: string) => (ids.has(id) ? link : '[?]'),
+      /(\[[^\]\n]*\]\(<?)#([^\s)>]+)(>?(?:\s+["'][^\n]*?["'])?\))/g,
+      (_link, prefix: string, fragment: string, suffix: string) =>
+        normalize(prefix, fragment, suffix, '[?]'),
     )
-    .replace(/^\s{0,3}\[[^\]\n]+\]:\s*<?#source-([^\s>]+)>?.*$/gm, (line, id: string) =>
-      ids.has(id) ? line : '',
+    .replace(
+      /(^\s{0,3}\[[^\]\n]+\]:\s*<?)#([^\s>]+)(>?.*)$/gm,
+      (_line, prefix: string, fragment: string, suffix: string) =>
+        normalize(prefix, fragment, suffix, ''),
     );
 }
 
@@ -207,7 +215,9 @@ export async function generateReadingConversation(
     )
       continue;
     const citedIds = new Set(
-      [...turn.text.matchAll(/#source-([^\s)>]+)/g)].map((match) => match[1]),
+      [...sanitizeReadingCitations(turn.text, previousSources).matchAll(/#source-([^\s)>]+)/g)].map(
+        (match) => match[1],
+      ),
     );
     const cited = previousSources.filter((source) => citedIds.has(source.sourceId));
     // Preserve the discussion's cited passages rather than every explored search result.

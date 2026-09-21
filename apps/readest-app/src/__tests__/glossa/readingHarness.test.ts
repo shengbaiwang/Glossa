@@ -344,4 +344,19 @@ describe('bounded reading harness', () => {
     expect(clean).toContain('[?]');
     expect(clean).not.toContain('#source-missing');
   });
+
+  it('normalizes exact source-ID fragments and rejects undelivered fragments in both link forms', () => {
+    const clean = sanitizeReadingCitations(
+      '[1](#s-1) [2](<#s-1> "passage") [3](#s-2) [4](#unknown)\n\n[x]: #s-1\n[y]: <#s-2>',
+      [sources[0]!],
+    );
+    expect(clean).toContain('[1](#source-s-1)');
+    expect(clean).toContain('[2](<#source-s-1> "passage")');
+    expect(clean).toContain('[x]: #source-s-1');
+    expect(clean).not.toMatch(/#s-2|#unknown|\[y\]/);
+    expect(clean.match(/\[\?\]/g)).toHaveLength(2);
+    expect(sanitizeReadingCitations('[label #s-1](#s-1 "title #s-1")', [sources[0]!])).toBe(
+      '[label #s-1](#source-s-1 "title #s-1")',
+    );
+  });
 });

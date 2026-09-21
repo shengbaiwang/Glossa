@@ -5,6 +5,7 @@ import type { ChapterSource } from '@/glossa/context/types';
 import { renderAnswerHtml } from './answerMarkdown';
 import type { BookDoc } from '@/libs/document';
 import ConversationCitationPreview from './ConversationCitationPreview';
+import { citationSourceId } from '@/glossa/citations/links';
 
 const COPY_ICON =
   '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M6.5 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v.5"/></svg>';
@@ -60,14 +61,16 @@ export default function ConversationAnswer({
     const timers = new Set<number>();
     const cited: ChapterSource[] = [];
     const citations = new Map<HTMLElement, { source: ChapterSource; number: number }>();
+    const allowed = new Set(evidence.current.sources?.map((source) => source.sourceId));
     container.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((anchor) => {
       const href = anchor.getAttribute('href') ?? '';
-      if (href.startsWith('#source-')) {
-        const id = href.slice('#source-'.length);
+      if (href.startsWith('#')) {
+        const id = citationSourceId(href, allowed);
         const source = evidence.current.sources?.find((source) => source.sourceId === id);
         if (!source) {
           anchor.removeAttribute('href');
         } else {
+          anchor.setAttribute('href', `#source-${source.sourceId}`);
           let index = cited.findIndex((item) => item.sourceId === id);
           if (index < 0) index = cited.push(source) - 1;
           const label = anchor.textContent?.trim() ?? '';

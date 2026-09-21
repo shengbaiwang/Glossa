@@ -6,7 +6,7 @@ import { DocumentLoader } from '@/libs/document';
 import { listChapters } from '@/glossa/context/chapters';
 import type { FoliateView } from '@/types/view';
 import type { CompletionRequest, ToolCompletionRequest } from '@/glossa/ai/provider';
-import { loadConversations } from '@/glossa/conversation/store';
+import { loadConversations, saveConversations } from '@/glossa/conversation/store';
 import { currentAnswerVersion } from '@/glossa/conversation/schema';
 import ConversationPanel from '@/glossa/ui/ConversationPanel';
 import '@/styles/globals.css';
@@ -158,7 +158,10 @@ const call = (name: string, args: Record<string, unknown>) => ({
   ],
 });
 
-it('attaches a real visible EPUB page, runs scoped tools, restores its snapshot and opens verified citations with return navigation', async () => {
+it.each([
+  'canonical',
+  'direct',
+] as const)('restores a real EPUB snapshot and previews %s citations with verified return navigation', async (format) => {
   const { book, panel, wrapper } = await setup();
   fireEvent.click(screen.getByRole('button', { name: 'Use book text' }));
   await screen.findByRole('button', { name: 'Current page' });
@@ -186,7 +189,7 @@ it('attaches a real visible EPUB page, runs scoped tools, restores its snapshot 
       sourceId = JSON.parse(results[1]!.content).sources[0].sourceId;
       return call('read_passage', { sourceIds: [sourceId] });
     }
-    const text = `作者建议先找问题，再核对理由如何支持结论。[原文](#source-${sourceId})\n\n**我的理解：** 把结论放回它回答的问题中，能更清楚地判断理由是否充分。`;
+    const text = `作者建议先找问题，再核对理由如何支持结论。[原文](#${format === 'canonical' ? 'source-' : ''}${sourceId})\n\n**我的理解：** 把结论放回它回答的问题中，能更清楚地判断理由是否充分。`;
     request.onDelta?.(text);
     return { text, toolCalls: [] };
   });
@@ -210,6 +213,16 @@ it('attaches a real visible EPUB page, runs scoped tools, restores its snapshot 
   await view!.goTo('two.xhtml');
   const origin = view!.lastLocation!.cfi!;
   panel.unmount();
+  if (format === 'direct') {
+    // Reproduce historical answers saved before fragment normalization existed.
+    const history = (await loadConversations(book.hash))!;
+    const turn = history.sessions[0]!.turns[0]!;
+    for (const block of turn.blocks) block.text = block.text.replaceAll('#source-', '#');
+    if ('versions' in turn)
+      for (const version of turn.versions ?? [])
+        version.text = version.text.replaceAll('#source-', '#');
+    await saveConversations(history);
+  }
   render(wrapper());
   await screen.findByRole('button', { name: 'Current page' });
   expect((await loadConversations(book.hash))!.sessions[0]!.readingScope).toEqual(originalScope);
@@ -222,7 +235,9 @@ it('attaches a real visible EPUB page, runs scoped tools, restores its snapshot 
   await waitFor(() => expect(tooltip.querySelector('[role="status"]')).toBeNull());
   expect(view!.lastLocation?.cfi).toBe(origin);
   expect(navigation).not.toHaveBeenCalled();
-  await page.screenshot({ path: '../../../../../.glossa-dev/qa/citations/preview-light.png' });
+  await page.screenshot({
+    path: `../../../../../.glossa-dev/qa/citations/preview-${format}-light.png`,
+  });
   fireEvent.keyDown(citation, { key: 'Escape' });
   expect(screen.queryByRole('tooltip')).toBeNull();
   fireEvent.click(await screen.findByRole('link', { name: /^Open source passage/ }));
