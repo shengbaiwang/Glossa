@@ -1,0 +1,216 @@
+diff --git a/dist-js/index.js b/dist-js/index.js
+--- a/dist-js/index.js
++++ b/dist-js/index.js
+@@ -101,23 +101,48 @@
+             danger
+         }
+     });
+-    const abort = () => invoke('plugin:http|fetch_cancel', { rid });
++    // Event listeners cannot return their rejection to the fetch caller.
++    const abort = () => { void invoke('plugin:http|fetch_cancel', { rid }).catch(() => {}); };
+     // Optimistically check for abort signal
+     // and avoid doing any work after doing intial work on the Rust side
+     if (signal?.aborted) {
+-        // we don't care about the result of this proimse
+-        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+         abort();
+         throw new Error(ERROR_REQUEST_CANCELLED);
+     }
+-    signal?.addEventListener('abort', () => void abort());
+-    const { status, statusText, url, headers: responseHeaders, rid: responseRid } = await invoke('plugin:http|fetch_send', {
+-        rid
+-    });
++    signal?.addEventListener('abort', abort, { once: true });
++    let response;
++    try {
++        response = await invoke('plugin:http|fetch_send', { rid });
++    }
++    finally {
++        signal?.removeEventListener('abort', abort);
++    }
++    const { status, statusText, url, headers: responseHeaders, rid: responseRid } = response;
++    let bodyFinished = false;
++    let bodyAbort;
++    let dropping;
++    const finishBody = () => {
++        bodyFinished = true;
++        if (bodyAbort) signal?.removeEventListener('abort', bodyAbort);
++    };
+     const dropBody = () => {
+-        return invoke('plugin:http|fetch_cancel_body', { rid: responseRid });
++        if (bodyFinished) return dropping ?? Promise.resolve();
++        finishBody();
++        dropping = invoke('plugin:http|fetch_cancel_body', { rid: responseRid }).catch((error) => {
++            // Rust releases the body at EOF, before the EOF IPC reaches JS.
++            // Only that already-released resource is a successful cleanup.
++            const message = `The resource id ${responseRid} is invalid.`;
++            if (error !== message && !(error instanceof Error && error.message === message)) throw error;
++        });
++        return dropping;
+     };
++    // Abort can win while fetch_send is delivering a successful response.
++    if (signal?.aborted) {
++        await dropBody().catch(() => {});
++        throw new Error(ERROR_REQUEST_CANCELLED);
++    }
+     const readChunk = async (controller) => {
++        if (bodyFinished) return;
+         let data;
+         try {
+             data = await invoke('plugin:http|fetch_read_body', {
+@@ -125,17 +150,21 @@
+             });
+         }
+         catch (e) {
++            if (bodyFinished) return;
+             // close the stream if an error occurs
+             // and drop the body on Rust side
+             controller.error(e);
+-            void dropBody();
++            await dropBody().catch(() => {});
+             return;
+         }
++        // A cancel/abort may have settled the stream during this IPC read.
++        if (bodyFinished) return;
+         const dataUint8 = new Uint8Array(data);
+         const lastByte = dataUint8[dataUint8.byteLength - 1];
+         const actualData = dataUint8.slice(0, dataUint8.byteLength - 1);
+         // close when the signal to close (last byte is 1) is sent from the IPC.
+         if (lastByte === 1) {
++            finishBody();
+             controller.close();
+             return;
+         }
+@@ -148,17 +177,17 @@
+         : new ReadableStream({
+             start: (controller) => {
+                 // listen for abort events to cancel reading
+-                signal?.addEventListener('abort', () => {
++                bodyAbort = () => {
++                    if (bodyFinished) return;
+                     controller.error(ERROR_REQUEST_CANCELLED);
+-                    void dropBody();
+-                });
++                    void dropBody().catch(() => {});
++                };
++                signal?.addEventListener('abort', bodyAbort, { once: true });
+             },
+             pull: (controller) => readChunk(controller),
+-            cancel: () => {
+-                // Ensure body resources are released on stream cancellation
+-                void dropBody();
+-            }
++            cancel: () => dropBody()
+         });
++    if (body === null) await dropBody();
+     const res = new Response(body, {
+         status,
+         statusText
+diff --git a/dist-js/index.cjs b/dist-js/index.cjs
+--- a/dist-js/index.cjs
++++ b/dist-js/index.cjs
+@@ -103,23 +103,48 @@
+             danger
+         }
+     });
+-    const abort = () => core.invoke('plugin:http|fetch_cancel', { rid });
++    // Event listeners cannot return their rejection to the fetch caller.
++    const abort = () => { void core.invoke('plugin:http|fetch_cancel', { rid }).catch(() => {}); };
+     // Optimistically check for abort signal
+     // and avoid doing any work after doing intial work on the Rust side
+     if (signal?.aborted) {
+-        // we don't care about the result of this proimse
+-        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+         abort();
+         throw new Error(ERROR_REQUEST_CANCELLED);
+     }
+-    signal?.addEventListener('abort', () => void abort());
+-    const { status, statusText, url, headers: responseHeaders, rid: responseRid } = await core.invoke('plugin:http|fetch_send', {
+-        rid
+-    });
++    signal?.addEventListener('abort', abort, { once: true });
++    let response;
++    try {
++        response = await core.invoke('plugin:http|fetch_send', { rid });
++    }
++    finally {
++        signal?.removeEventListener('abort', abort);
++    }
++    const { status, statusText, url, headers: responseHeaders, rid: responseRid } = response;
++    let bodyFinished = false;
++    let bodyAbort;
++    let dropping;
++    const finishBody = () => {
++        bodyFinished = true;
++        if (bodyAbort) signal?.removeEventListener('abort', bodyAbort);
++    };
+     const dropBody = () => {
+-        return core.invoke('plugin:http|fetch_cancel_body', { rid: responseRid });
++        if (bodyFinished) return dropping ?? Promise.resolve();
++        finishBody();
++        dropping = core.invoke('plugin:http|fetch_cancel_body', { rid: responseRid }).catch((error) => {
++            // Rust releases the body at EOF, before the EOF IPC reaches JS.
++            // Only that already-released resource is a successful cleanup.
++            const message = `The resource id ${responseRid} is invalid.`;
++            if (error !== message && !(error instanceof Error && error.message === message)) throw error;
++        });
++        return dropping;
+     };
++    // Abort can win while fetch_send is delivering a successful response.
++    if (signal?.aborted) {
++        await dropBody().catch(() => {});
++        throw new Error(ERROR_REQUEST_CANCELLED);
++    }
+     const readChunk = async (controller) => {
++        if (bodyFinished) return;
+         let data;
+         try {
+             data = await core.invoke('plugin:http|fetch_read_body', {
+@@ -127,17 +152,21 @@
+             });
+         }
+         catch (e) {
++            if (bodyFinished) return;
+             // close the stream if an error occurs
+             // and drop the body on Rust side
+             controller.error(e);
+-            void dropBody();
++            await dropBody().catch(() => {});
+             return;
+         }
++        // A cancel/abort may have settled the stream during this IPC read.
++        if (bodyFinished) return;
+         const dataUint8 = new Uint8Array(data);
+         const lastByte = dataUint8[dataUint8.byteLength - 1];
+         const actualData = dataUint8.slice(0, dataUint8.byteLength - 1);
+         // close when the signal to close (last byte is 1) is sent from the IPC.
+         if (lastByte === 1) {
++            finishBody();
+             controller.close();
+             return;
+         }
+@@ -150,17 +179,17 @@
+         : new ReadableStream({
+             start: (controller) => {
+                 // listen for abort events to cancel reading
+-                signal?.addEventListener('abort', () => {
++                bodyAbort = () => {
++                    if (bodyFinished) return;
+                     controller.error(ERROR_REQUEST_CANCELLED);
+-                    void dropBody();
+-                });
++                    void dropBody().catch(() => {});
++                };
++                signal?.addEventListener('abort', bodyAbort, { once: true });
+             },
+             pull: (controller) => readChunk(controller),
+-            cancel: () => {
+-                // Ensure body resources are released on stream cancellation
+-                void dropBody();
+-            }
++            cancel: () => dropBody()
+         });
++    if (body === null) await dropBody();
+     const res = new Response(body, {
+         status,
+         statusText

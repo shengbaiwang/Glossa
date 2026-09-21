@@ -2,6 +2,24 @@
 
 最后更新：2026-09-21
 
+### 2026-09-21 原生 HTTP 流结束／取消清理竞态修复
+
+- 按用户要求，沿用仓库 `patchedDependencies` 为 `@tauri-apps/plugin-http` 2.5.9 增加 ESM/CommonJS 同步补丁；没有升级依赖或更改 provider 请求、密钥、原生权限和阅读范围。请求发送结束即移除请求 abort 监听；响应体 EOF、取消、错误统一结束状态并移除 body abort 监听，取消期间迟到的读结果不再操作已结束的流。
+- 清理 promise 返回给 `reader.cancel()`，同一响应最多主动释放一次；只将对应 response RID 的确切 invalid-resource 错误作为已释放处理，其他主动取消清理失败仍返回调用方。事件监听中的清理拒绝被收束，保留请求取消／读取失败的主错误；补齐取消时迟到响应和无 JS body 响应的释放。
+- 测试先行：以实际已安装插件和模拟 Rust IPC 在独立进程复现，原版 ESM/CommonJS 共 **20 项失败**；同一回归在补丁后 **20 项通过**，覆盖 EOF 释放与 IPC 返回间隙、正常结束后 abort、读取中取消、迟到读结果、请求分配/发送中取消、读/发送错误、非预期清理错误、204 与监听器移除。新增真实 provider → 实际插件 → 模拟 IPC 集成 3 项，验证普通回答、末次 delta 取消、共用 signal 的连续工具/文本请求；含既有 provider 专项共 **4 文件 / 94 项通过**。全部离线，无真实模型或网络请求。
+- `tsgo --noEmit`、全应用 Biome lint（1,722 文件）、3 个测试文件 Biome check、fixture 语法检查与 `git diff --check` 通过。Node 24 / dotenv / 关闭实验性 Web Storage / 进程级 canvas NODE_PATH 下，全量单测 **627 文件 / 7,567 项通过，3 文件 / 7 项既有跳过，0 失败**（122.07 秒）。日志 `/tmp/glossa-http-{red,focused,provider,full,types,lint,frozen-lock}.log`。Rust 与 Lua 未改动，不运行对应专项；模拟 IPC 不计作原生真实服务验收。
+- 依赖补丁命令受本机 registry 离线限制，离线重新解析另缺 `@sentry/cli` 元数据；未升级/重装其余包。仅补充当前锁文件的 patch SHA-256 与对应引用后，pnpm 11.1.1 的 `install --lockfile-only --frozen-lockfile --offline --ignore-scripts` 通过。本机 ESM/CJS 通过原子替换应用同一补丁，避免写入共享缓存硬链接；从原始插件副本重新应用补丁后与测试中安装文件逐字节一致。补丁维护说明见 `patches/README.md`。
+- 保留原 PROGRESS.md 与 foliate-js 改动，未修改用户书籍/笔记/设置，未重启正在阅读的开发版或重新打包安装版。下一步为开发版重启后原生实际会话复核；已运行进程可能仍使用缓存代码，安装版需重新构建才包含补丁。
+
+### 2026-09-21 最近开发版错误与对话状态核查（诊断）
+
+- 用户询问截图中的 `1 Issue` 与对话改进运行状态。本轮核对当前源码、Next 开发日志、原生日志及既有验证输出；未修改产品代码或用户数据，未调用真实模型。
+- 开发日志 `.next/dev/logs/next-development.log` 最后错误为 `unhandledRejection: "The resource id … is invalid."`（运行相对时间 `00:47:57`，日志文件最后写入本地 23:28:14）。同一异常被 Browser/Server 重复记录。更早开发热更新期间的 scope 模块/导出缺失随后已有编译成功记录，且最终类型检查、测试与生产构建通过，不视作当前缺文件。
+- 当前 `@tauri-apps/plugin-http` 2.5.9 在 EOF 由 Rust 释放响应资源；JS 的 cancel / abort / read-error 清理调用存在未等待、未捕获的 `dropBody()`。使用实际已安装 JS 模块、模拟 Rust IPC（零网络）复现：EOF 已释放资源但其 IPC 结果尚未抵达 JS 时，收到 SSE DONE 后调用 reader.cancel，即使应用层 catch 了 cancel，仍出现同文 invalid resource 的未处理拒绝；无该时序的两个对照未报错。这证明 HTTP 收尾竞态可触发该错误，不能仅凭无栈日志认定当次唯一调用点。原生 UI 工具超时，未能展开截图对应的 Issue 现场核验。
+- 截图中引用入口显示未附加时的「引用原文」，没有范围标题；源码确认无范围走普通对话，只自动发送书名、作者、目录路径。截图证明回答已显示，不能证明这次使用过阅读工具，也不能排除此前附加后又移除；没有检查或输出用户聊天数据库。回答中的作者观点尚不能据此认作本机原文核验结果。
+- 既有 23:13 单测日志确认 625 文件 / 7,544 项通过，3 文件 / 7 项跳过；23:14 阅读浏览器日志确认 8 文件 / 32 项通过；23:36 安装包构建成功。这些是既有工程验证，不计作本轮重跑、真实服务工具兼容性或解释质量实测。
+- 下一步：修复原生 HTTP 流结束/取消的资源清理竞态并增加相应回归；实际附加当前页或明确阅读段后验证来源点击、追问、工具兼容与等待时间。本轮仅诊断，异常修复与真实模型效果验收尚未完成。
+
 ### 2026-09-21 桌面应用重新打包与安装
 
 - 按用户授权，使用当前工作区（包括未提交的阅读 harness 与 foliate-js 改动）重新构建并安装 `/Applications/Glossa.app`，约 140 MB，应用身份保持 `app.glossa.reader`。未修改产品源码、依赖或锁文件。

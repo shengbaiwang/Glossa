@@ -46,6 +46,7 @@ overrides:
   '@emnapi/runtime': 1.8.1
 
 patchedDependencies:
+  '@tauri-apps/plugin-http@2.5.9': 99ea875d0db6fbdba343fd84206b3a097539259320048385b53659f608e33863
   mdast-util-gfm-autolink-literal@2.0.1: a119b196bac546b8f07e1a9600ced6f526b0676e2b959914868e393ecffbaff8
 
 importers:
@@ -195,7 +196,7 @@ importers:
         version: 2.3.2
       '@tauri-apps/plugin-http':
         specifier: ^2.5.7
-        version: 2.5.9
+        version: 2.5.9(patch_hash=99ea875d0db6fbdba343fd84206b3a097539259320048385b53659f608e33863)
       '@tauri-apps/plugin-log':
         specifier: ^2.8.0
         version: 2.8.0
@@ -10654,7 +10655,7 @@ snapshots:
     dependencies:
       '@tauri-apps/api': 2.10.1
 
-  '@tauri-apps/plugin-http@2.5.9':
+  '@tauri-apps/plugin-http@2.5.9(patch_hash=99ea875d0db6fbdba343fd84206b3a097539259320048385b53659f608e33863)':
     dependencies:
       '@tauri-apps/api': 2.11.0
 
