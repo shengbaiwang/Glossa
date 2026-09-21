@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { validateProviderConfig } from '@/glossa/ai/provider';
 import { ConversationError, turnSchema, validBlockSources, type ConversationTurn } from './schema';
 import { stubTranslation as _ } from '@/utils/misc';
+import { readingScopeSchema } from '@/glossa/harness/scope';
 
 const sessionSchema = z
   .object({
@@ -13,6 +14,7 @@ const sessionSchema = z
           .object({
             id: z.string().min(1),
             title: z.string().trim().min(1).max(120).optional(),
+            readingScope: readingScopeSchema.optional(),
             turns: z.array(turnSchema).max(40),
           })
           .strict(),
@@ -35,11 +37,23 @@ export function validateHistory(raw: unknown): ConversationHistory {
     new Set(history.sessions.map((s) => s.id)).size !== history.sessions.length
   )
     throw storageError();
-  for (const session of history.sessions)
+  for (const session of history.sessions) {
+    if (session.readingScope && session.readingScope.documentHash !== history.bookId)
+      throw storageError();
     for (const turn of session.turns) {
+      if (
+        'reading' in turn &&
+        turn.reading?.scope.documentHash !== undefined &&
+        turn.reading.scope.documentHash !== history.bookId
+      )
+        throw storageError();
       validateProviderConfig(turn.provider);
       if ('versions' in turn && turn.versions)
-        for (const version of turn.versions) validateProviderConfig(version.provider);
+        for (const version of turn.versions) {
+          validateProviderConfig(version.provider);
+          if (version.reading && version.reading.scope.documentHash !== history.bookId)
+            throw storageError();
+        }
       if (!validBlockSources(turn.blocks, turn.sources)) throw storageError();
       if (turn.context) {
         const ids = new Set(turn.sources.map((source) => source.sourceId));
@@ -54,6 +68,7 @@ export function validateHistory(raw: unknown): ConversationHistory {
           throw storageError();
       }
     }
+  }
   return history;
 }
 function openDatabase(): Promise<IDBDatabase> {

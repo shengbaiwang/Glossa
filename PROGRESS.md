@@ -1,6 +1,33 @@
 # Glossa 项目进度
 
-最后更新：2026-09-17
+最后更新：2026-09-21
+
+### 2026-09-21 桌面应用重新打包与安装
+
+- 按用户授权，使用当前工作区（包括未提交的阅读 harness 与 foliate-js 改动）重新构建并安装 `/Applications/Glossa.app`，约 140 MB，应用身份保持 `app.glossa.reader`。未修改产品源码、依赖或锁文件。
+- 使用 Node 24 与 `scripts/build-glossa-macos.mjs`；默认 Homebrew pnpm 未推进后已中止，改用本机既有备用 pnpm，并仅为本进程设置 `pnpm_config_verify_deps_before_run=warn`。Webpack 生产编译、TypeScript、19 个静态页面生成/导出、Rust Release 编译、Tauri app bundle 与 ad-hoc 签名校验全部通过；保留既有 Next 配置及 Rust 依赖/宏警告。构建日志 `/tmp/glossa-build-20260921.log`。
+- 新包先在 `/Applications` 暂存并核验，旧版备份至 `.glossa-build/backups/20260921-desktop-update/Glossa.app`；替换带失败回滚。安装后整包比较一致，`codesign --verify --deep --strict` 通过。没有修改 Application Support、书库、笔记、设置或钥匙串数据。
+- 已通过 `open` 启动新版，确认运行进程来自 `/Applications/Glossa.app/Contents/MacOS/glossa` 且 identifier 对应；系统未授予 osascript 辅助访问，未完成窗口内容自动检查，不将进程启动计作完整阅读/真实模型验收。本轮仅打包安装，未重复此前已通过的功能测试。
+- 下一步：在新版日常阅读中体验引用原文与实际服务；无构建或安装阻塞，旧版备份可用于回退。
+
+### 2026-09-21 轻量阅读 harness 首版
+
+- 用户采纳调研建议并明确授权实施。新增对话「引用原文」：主动附加可重排 EPUB 当前可见页、原生选区或明确选择的章节阅读段；附加前后均不自动请求模型。当前页/选区严格裁剪，固定附件随会话保存，翻页不更换范围；新会话为空，附件可预览与移除。英/简中/繁中文案已补。
+- 新增 `glossa/harness/{scope,epub,generate}.ts`，复用现有章节/阅读段、来源锚点与 provider。模型可在所附范围内使用 `get_outline`、`search_book`、`read_passage`；没有全书/网络搜索、写入工具、向量库或新增依赖。最多 3 次工具执行、4 次模型请求、90 秒，去重原文最多 12,000 字符；页与选区完整发送或提前拒绝，阅读段采用确定性初选加有限补读。
+- provider 新增标准 Chat Completions function tools 的流式调用，校验分片参数、调用 ID、工具名与数量。仅明确表示不支持 tools 的 400/422 响应允许退回所附证据直接回答，其他错误正常报告。保留取消、超时、部分回答和迟到流丢弃；未实现厂商专有 reasoning 字段回传或 Responses API，真实兼容服务仍需实测。
+- 来源链接仅允许已提供的 ID；本机重新核验文字和 CFI 后跳转，展示原文并可返回。真实浏览器测试发现共用来源面板延迟读取返回点的竞态，已改为跳转前同步快照，并用精确返回 CFI 回归覆盖。引用可定位不代表模型解读正确。
+- 沿用 `conversation-3` 与原数据库，新增可选会话范围和每版本阅读证据；旧记录继续可读。跨书、改写来源或脱离快照的证据被拒绝；阅读追问只携带同书同范围完整轮次并重供所需原文，移除附件后阅读回答不进入普通聊天。重新生成各版本分别保留依据。
+- 验证：Node 24 / `--no-experimental-webstorage` / dotenv 环境下，全量 Vitest **625 文件通过、3 文件既有跳过；7,544 项通过、7 项既有跳过、0 失败**（166.32 秒）。阅读相关 Chromium 浏览器 **8 文件 / 32 项通过**，包括新增 3 项真实原创 EPUB 流程：页/选区范围哨兵、未发送前无模型调用、三个工具、IndexedDB 恢复、核验跳转与返回、移除转普通对话、阅读段选择。provider 集成另通过真实 harness → provider → 模拟 SSE HTTP 多轮协议验证。
+- `tsgo --noEmit`、全量 Biome lint（1,719 文件）、21 个变更代码/语言文件 Biome check 与 `git diff --check` 均通过。420px 浅深色、320px RTL/电子墨水与 320×480 阅读段选择器截图已检查，位于忽略目录 `.glossa-dev/qa/harness/`。模拟服务测试，不计作真实模型效果或桌面安装包实测。
+- `AGENTS.md`、`PLAN.md`、`docs/design/conversation.md` 已更新最新授权，协议与验收整理于 `docs/design/reading-harness.md`。未访问或上传用户书籍、未调用真实模型、未构建/替换已安装应用、未提交改动；保留原 foliate-js 子模块工作区。
+- 下一步：开发版用实际阅读问题检验引用是否支持解释、补读是否有收益、追问连续性与等待时间，再判断是否扩大范围。当前无工程阻塞，不提前增加全书或自主研究能力。
+
+### 2026-09-21 阅读 harness 案例调研与方向评估（研究）
+
+- 用户询问是否值得为简单 API 对话开发可读取文本、调用工具的阅读 harness。本轮核对当前对话/provider、章节与阅读段、来源验证、书内搜索和历史精简研究，并查阅 Readwise Global Ghostreader、Google Gemini Notebook（NotebookLM）、PaperQA2 与 Anthropic 的一手文档。
+- 研究结论：值得验证内嵌的轻量阅读执行层，先比较现有对话、固定正文/检索流程与有限自主工具调用的实际收益；暂不建设通用 agent 平台。竞品能力证明可行性，不构成留存或商业价值证据。
+- 详细依据、最小工具建议、权限/引用边界与两周对照方案记录于 `docs/research/reading-harness-assessment-2026-09-21.md`。全部为建议，未替换 PLAN.md、AGENTS.md 或现行简单对话范围，未恢复旧 AI 功能。
+- 验证：源码与公开官方文档核对；仅文档变更，未运行产品测试、真实模型或竞品实测。未读取/上传用户书籍，保留现有 foliate-js 子模块改动。下一步候选为采纳方向后确定小规模问题集与最小验证规格；阅读收益、工具调用兼容性和商业需求仍待验证。
 
 ### 2026-09-17 翻页动画默认关闭、三档命名统一
 

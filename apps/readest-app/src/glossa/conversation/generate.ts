@@ -34,6 +34,8 @@ export function conversationMessages(turns: ConversationTurn[]): CompletionMessa
     if (turn.promptVersion !== CONVERSATION_PROMPT_VERSION) continue;
     const selected = currentAnswerVersion(turn);
     if (selected.status !== 'complete') continue;
+    // Detaching a reading scope also detaches all answers derived from its text.
+    if (selected.reading) continue;
     const answer = selected.text;
     size += selected.question.length + answer.length;
     if (size > 48000 || messages.length >= 24) break;

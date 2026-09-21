@@ -91,9 +91,43 @@ export interface CompletionRequest {
   maxTokens?: number;
 }
 
+export interface ToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+    strict?: boolean;
+  };
+}
+
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
+
+export type ToolCompletionMessage =
+  | CompletionMessage
+  | { role: 'assistant'; content: string | null; tool_calls: ToolCall[] }
+  | { role: 'tool'; tool_call_id: string; content: string };
+
+export interface ToolCompletionRequest extends Omit<CompletionRequest, 'messages'> {
+  messages: ToolCompletionMessage[];
+  tools: ToolDefinition[];
+  toolChoice?: 'auto' | 'none';
+}
+
+export interface ToolCompletionResult {
+  text: string;
+  toolCalls: ToolCall[];
+}
+
 export const MODEL_SETTINGS_EVENT = 'glossa-model-settings-changed';
 const STORAGE_KEY = 'glossa.study-models.v1';
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const MAX_TOOL_CALLS = 8;
+const MAX_TOOL_ARGUMENT_CHARS = 8192;
 // Browser secrets deliberately live only in module memory, never in browser storage.
 const sessionKeys = new Map<string, string>();
 
@@ -113,7 +147,7 @@ export const PROVIDER_PRESETS: readonly ProviderConfig[] = [
 export class ModelServiceError extends Error {
   constructor(
     message: string,
-    public readonly code: 'length' | 'service' = 'service',
+    public readonly code: 'length' | 'service' | 'unsupported_tools' = 'service',
   ) {
     super(message);
     this.name = 'ModelServiceError';
@@ -314,6 +348,7 @@ async function request(
   path: string,
   signal?: AbortSignal,
   body?: object,
+  toolRequest = false,
 ): Promise<Response> {
   checkAbort(signal);
   const key = await readApiKey(config);
@@ -340,6 +375,13 @@ async function request(
     throw safeRequestError(error, signal);
   }
   if (!response.ok) {
+    if (toolRequest && [400, 422].includes(response.status)) {
+      if (await explicitlyRejectsTools(response, signal))
+        throw new ModelServiceError(
+          _('This model service does not support reading tools.'),
+          'unsupported_tools',
+        );
+    }
     await response.body?.cancel();
     if (response.status === 401 || response.status === 403) {
       throw new ModelServiceError(
@@ -365,6 +407,7 @@ async function consumeText(
   response: Response,
   signal: AbortSignal | undefined,
   onText: (text: string) => boolean | void,
+  maxBytes = MAX_RESPONSE_BYTES,
 ): Promise<void> {
   if (!response.body)
     throw new ModelServiceError(_('The model service returned an empty response.'));
@@ -382,7 +425,7 @@ async function consumeText(
       checkAbort(signal);
       if (done) break;
       bytes += value['byteLength'];
-      if (bytes > MAX_RESPONSE_BYTES)
+      if (bytes > maxBytes)
         throw new ModelServiceError(_('The model response is too large. Try a smaller chapter.'));
       if (onText(decoder.decode(value, { stream: true })) === false) break;
     }
@@ -391,6 +434,42 @@ async function consumeText(
     signal?.removeEventListener('abort', cancel);
     await reader.cancel().catch(() => {});
     reader.releaseLock();
+  }
+}
+
+/** Inspect only bounded JSON error metadata; never expose the server's message. */
+async function explicitlyRejectsTools(response: Response, signal?: AbortSignal): Promise<boolean> {
+  try {
+    let body = '';
+    await consumeText(
+      response,
+      signal,
+      (part) => {
+        body += part;
+      },
+      16384,
+    );
+    const value = parseJson(body);
+    const error = isRecord(value) && isRecord(value['error']) ? value['error'] : value;
+    if (!isRecord(error) || typeof error['message'] !== 'string') return false;
+    const message = error['message'];
+    // Invalid schemas, context overflow and unrelated unsupported parameters must
+    // remain errors rather than silently triggering a second model request.
+    return (
+      /\b(?:tools?|tool_choice|function[ _-]calling)\b["'`\s:]*(?:(?:is|are)\s+)?(?:not supported|unsupported)\b/i.test(
+        message,
+      ) ||
+      /\b(?:does not support|doesn't support|cannot support)\s+(?:the\s+)?["'`]?(?:tools?|tool_choice|function[ _-]calling)\b/i.test(
+        message,
+      ) ||
+      /\b(?:unknown|unrecognized|unsupported)\s+(?:parameter|argument)\s*:?\s*["'`]?(?:tools?|tool_choice)\b/i.test(
+        message,
+      )
+    );
+  } catch (error) {
+    checkAbort(signal);
+    if (error instanceof Error && error.name === 'AbortError') throw error;
+    return false;
   }
 }
 
@@ -443,13 +522,132 @@ export async function listProviderModels(
   }
 }
 
-export async function streamCompletion({
-  config: input = getActiveProviderConfig() ?? undefined,
-  messages,
-  signal,
-  onDelta,
-  maxTokens,
-}: CompletionRequest): Promise<string> {
+function invalidToolResponse(): ModelServiceError {
+  return new ModelServiceError(_('The model service returned an invalid response.'));
+}
+
+function validateToolCall(value: unknown, names: Set<string>): ToolCall {
+  if (
+    !isRecord(value) ||
+    typeof value['id'] !== 'string' ||
+    !value['id'] ||
+    value['id'].length > 256 ||
+    /\s/.test(value['id']) ||
+    value['type'] !== 'function' ||
+    !isRecord(value['function']) ||
+    typeof value['function']['name'] !== 'string' ||
+    !names.has(value['function']['name']) ||
+    typeof value['function']['arguments'] !== 'string' ||
+    value['function']['arguments'].length > MAX_TOOL_ARGUMENT_CHARS ||
+    !isRecord(parseJson(value['function']['arguments']))
+  )
+    throw invalidToolResponse();
+  return {
+    id: value['id'],
+    type: 'function',
+    function: { name: value['function']['name'], arguments: value['function']['arguments'] },
+  };
+}
+
+function validateToolRequest({ messages, tools, toolChoice }: ToolCompletionRequest): Set<string> {
+  const invalid = () => new ModelServiceError(_('The model request is invalid.'));
+  if (
+    !Array.isArray(tools) ||
+    !tools.length ||
+    tools.length > 16 ||
+    (toolChoice !== undefined && !['auto', 'none'].includes(toolChoice))
+  )
+    throw invalid();
+  const names = new Set<string>();
+  for (const tool of tools) {
+    if (
+      !isRecord(tool) ||
+      tool['type'] !== 'function' ||
+      !isRecord(tool['function']) ||
+      typeof tool['function']['name'] !== 'string' ||
+      !/^[a-zA-Z0-9_-]{1,64}$/.test(tool['function']['name']) ||
+      names.has(tool['function']['name']) ||
+      typeof tool['function']['description'] !== 'string' ||
+      tool['function']['description'].length > 4096 ||
+      !isRecord(tool['function']['parameters']) ||
+      tool['function']['parameters']['type'] !== 'object' ||
+      (tool['function']['strict'] !== undefined && typeof tool['function']['strict'] !== 'boolean')
+    )
+      throw invalid();
+    names.add(tool['function']['name']);
+  }
+  // Tool output must answer an outstanding call from the immediately preceding
+  // assistant message. Do not send orphaned or partially answered transcripts.
+  const pending = new Set<string>();
+  if (!Array.isArray(messages) || !messages.length) throw invalid();
+  for (const message of messages) {
+    if (!isRecord(message)) throw invalid();
+    if (message['role'] === 'tool') {
+      if (
+        typeof message['content'] !== 'string' ||
+        typeof message['tool_call_id'] !== 'string' ||
+        !pending.delete(message['tool_call_id'])
+      )
+        throw invalid();
+      continue;
+    }
+    if (pending.size || !['system', 'user', 'assistant'].includes(message['role'] as string))
+      throw invalid();
+    if ('tool_calls' in message) {
+      if (
+        message['role'] !== 'assistant' ||
+        (message['content'] !== null && typeof message['content'] !== 'string') ||
+        !Array.isArray(message['tool_calls']) ||
+        !message['tool_calls'].length ||
+        message['tool_calls'].length > MAX_TOOL_CALLS
+      )
+        throw invalid();
+      for (const value of message['tool_calls']) {
+        let call: ToolCall;
+        try {
+          call = validateToolCall(value, names);
+        } catch {
+          throw invalid();
+        }
+        if (pending.has(call.id)) throw invalid();
+        pending.add(call.id);
+      }
+    } else if (typeof message['content'] !== 'string') throw invalid();
+  }
+  if (pending.size) throw invalid();
+  return names;
+}
+
+export async function streamCompletion(request: CompletionRequest): Promise<string> {
+  return (await streamModelCompletion(request)).text;
+}
+
+/** Transport only: callers enforce per-tool argument schemas and execution scope. */
+export async function streamToolCompletion(
+  request: ToolCompletionRequest,
+): Promise<ToolCompletionResult> {
+  const names = validateToolRequest(request);
+  return streamModelCompletion(request, {
+    tools: request.tools,
+    toolChoice: request.toolChoice ?? 'auto',
+    names,
+  });
+}
+
+async function streamModelCompletion(
+  {
+    config: input = getActiveProviderConfig() ?? undefined,
+    messages,
+    signal,
+    onDelta,
+    maxTokens,
+  }: Omit<CompletionRequest, 'messages'> & { messages: ToolCompletionMessage[] },
+  toolSettings?: {
+    tools: ToolDefinition[];
+    toolChoice: 'auto' | 'none';
+    names: Set<string>;
+  },
+): Promise<ToolCompletionResult> {
   if (!input) throw new ModelServiceError(_('Configure a model service first.'));
   const config = validateProviderConfig(input);
   if (!config.model) throw new ModelServiceError(_('Enter a model name first.'));
@@ -457,11 +655,12 @@ export async function streamCompletion({
   const budget = maxTokens ?? config.maxTokens ?? 6000;
   if (
     !messages.length ||
-    messages.some(
-      (message) =>
-        !['system', 'user', 'assistant'].includes(message['role']) ||
-        typeof message['content'] !== 'string',
-    ) ||
+    (!toolSettings &&
+      messages.some(
+        (message) =>
+          !['system', 'user', 'assistant'].includes(message['role']) ||
+          typeof message['content'] !== 'string',
+      )) ||
     !Number.isInteger(budget) ||
     budget < 1 ||
     budget > 65536
@@ -474,16 +673,84 @@ export async function streamCompletion({
       ? config.reasoningEffort
       : capabilities.defaultReasoningEffort;
   try {
-    const response = await request(config, 'chat/completions', signal, {
-      model: config.model,
-      messages,
-      stream: true,
-      [capabilities.maxTokensParam]: budget,
-      ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
-    });
+    const response = await request(
+      config,
+      'chat/completions',
+      signal,
+      {
+        model: config.model,
+        messages,
+        stream: true,
+        [capabilities.maxTokensParam]: budget,
+        ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+        ...(toolSettings
+          ? { tools: toolSettings.tools, tool_choice: toolSettings.toolChoice }
+          : {}),
+      },
+      !!toolSettings,
+    );
     let output = '';
     let buffer = '';
     let finished = false;
+    const pendingCalls = new Map<
+      number,
+      { id?: string; type?: string; function: { name?: string; arguments: string } }
+    >();
+    const appendCalls = (value: unknown, streaming: boolean) => {
+      if (value === undefined || value === null || !toolSettings) return;
+      if (
+        !Array.isArray(value) ||
+        value.length > MAX_TOOL_CALLS ||
+        (value.length && toolSettings.toolChoice === 'none')
+      )
+        throw invalidToolResponse();
+      for (const [position, delta] of value.entries()) {
+        if (!isRecord(delta)) throw invalidToolResponse();
+        const index = streaming ? delta['index'] : position;
+        if (
+          typeof index !== 'number' ||
+          !Number.isInteger(index) ||
+          index < 0 ||
+          index >= MAX_TOOL_CALLS
+        )
+          throw invalidToolResponse();
+        const call = pendingCalls.get(index) ?? { function: { arguments: '' } };
+        // id/type/name are metadata, not argument deltas; repeats must agree.
+        for (const key of ['id', 'type'] as const) {
+          const field = delta[key];
+          if (field === undefined || field === null) continue;
+          if (
+            typeof field !== 'string' ||
+            field.length > 256 ||
+            (call[key] !== undefined && call[key] !== field)
+          )
+            throw invalidToolResponse();
+          call[key] = field;
+        }
+        const fn = delta['function'];
+        if (fn !== undefined && fn !== null) {
+          if (!isRecord(fn)) throw invalidToolResponse();
+          const name = fn['name'];
+          if (name !== undefined && name !== null) {
+            if (
+              typeof name !== 'string' ||
+              !toolSettings.names.has(name) ||
+              (call.function.name !== undefined && call.function.name !== name)
+            )
+              throw invalidToolResponse();
+            call.function.name = name;
+          }
+          const args = fn['arguments'];
+          if (args !== undefined && args !== null) {
+            if (typeof args !== 'string') throw invalidToolResponse();
+            call.function.arguments += args;
+            if (call.function.arguments.length > MAX_TOOL_ARGUMENT_CHARS)
+              throw invalidToolResponse();
+          }
+        }
+        pendingCalls.set(index, call);
+      }
+    };
     const append = (value: unknown) => {
       if (typeof value !== 'string') return;
       output += value;
@@ -503,7 +770,17 @@ export async function streamCompletion({
       if (choice['finish_reason'] === 'content_filter')
         throw new ModelServiceError(_('The model service declined to generate these notes.'));
       const message = streaming ? choice['delta'] : choice['message'];
-      if (isRecord(message)) append(message['content']);
+      if (isRecord(message)) {
+        if (
+          toolSettings &&
+          message['content'] !== undefined &&
+          message['content'] !== null &&
+          typeof message['content'] !== 'string'
+        )
+          throw invalidToolResponse();
+        append(message['content']);
+        appendCalls(message['tool_calls'], streaming);
+      }
       if (typeof choice['finish_reason'] === 'string') finished = true;
     };
     const event = (value: string) => {
@@ -545,9 +822,17 @@ export async function streamCompletion({
       consumeChoice(parseJson(buffer), false);
     }
     checkAbort(signal);
-    if (!output.trim())
+    const toolCalls = [...pendingCalls]
+      .sort(([left], [right]) => left - right)
+      .map(([index, call], position) => {
+        if (index !== position || !toolSettings) throw invalidToolResponse();
+        return validateToolCall(call, toolSettings.names);
+      });
+    if (new Set(toolCalls.map((call) => call.id)).size !== toolCalls.length)
+      throw invalidToolResponse();
+    if (!output.trim() && !toolCalls.length)
       throw new ModelServiceError(_('The model service returned an empty response.'));
-    return output;
+    return { text: output, toolCalls };
   } catch (error) {
     throw safeRequestError(error, signal);
   }

@@ -54,7 +54,9 @@ export default function MindmapSourcePanel({
       const view = reader.getView(bookKey);
       if (!view) throw new Error('Missing reader');
       // Keep the return point even if Foliate finishes moving after cancellation.
-      setOrigin((previous) => previous || reader.getProgress(bookKey)?.location || '');
+      const previousLocation =
+        view.lastLocation?.cfi || reader.getProgress(bookKey)?.location || '';
+      setOrigin((previous) => previous || previousLocation);
       await navigateSource(view, resolved.cfi, controller.signal);
       if (!controller.signal.aborted) onNavigate?.();
     } catch {

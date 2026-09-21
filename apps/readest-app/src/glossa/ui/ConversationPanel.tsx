@@ -42,6 +42,7 @@ import {
   selectAnswerVersion,
   type ChatIdentity,
   type ConversationTurn,
+  type ReadingAnswer,
 } from '@/glossa/conversation/schema';
 import { generateConversation, generateConversationTitle } from '@/glossa/conversation/generate';
 import {
@@ -69,6 +70,11 @@ import { renderAnswerHtml } from './answerMarkdown';
 import ConversationModelPicker from './ConversationModelPicker';
 import ConversationPromptPicker from './ConversationPromptPicker';
 import ConversationSessionPicker, { sessionLabel } from './ConversationSessionPicker';
+import ConversationReadingScope from './ConversationReadingScope';
+import MindmapSourcePanel, { type MindmapSourceSelection } from './MindmapSourcePanel';
+import type { ReadingScope } from '@/glossa/harness/scope';
+import type { ChapterSource } from '@/glossa/context/types';
+import { generateReadingConversation } from '@/glossa/harness/generate';
 
 interface Props {
   book: Book;
@@ -86,20 +92,42 @@ const COPY_ICON =
   '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M6.5 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v.5"/></svg>';
 const CHECK_ICON =
   '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
-function Answer({ text }: { text: string }) {
+function Answer({
+  text,
+  sources,
+  onSource,
+}: {
+  text: string;
+  sources?: ChapterSource[];
+  onSource?: (source: ChapterSource) => void;
+}) {
   const _ = useTranslation();
   const translate = useRef(_);
   translate.current = _;
   const root = useRef<HTMLDivElement>(null);
+  const evidence = useRef({ sources, onSource });
+  evidence.current = { sources, onSource };
   // Keep this object stable so React does not replace the enhanced code blocks
   // when the composer or conversation menu rerenders the parent.
-  const markup = useMemo(() => ({ __html: renderAnswerHtml(text) }), [text]);
+  const sourceIdentity = sources?.map((source) => source.sourceId).join('\n') ?? '';
+  const markup = useMemo(() => ({ __html: renderAnswerHtml(text) }), [text, sourceIdentity]);
   const copyError = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
     const container = root.current;
     if (!container) return;
     const timers = new Set<number>();
     container.querySelectorAll('a[href]').forEach((anchor) => {
+      const href = anchor.getAttribute('href') ?? '';
+      if (href.startsWith('#source-')) {
+        const id = href.slice('#source-'.length);
+        if (!evidence.current.sources?.some((source) => source.sourceId === id)) {
+          anchor.removeAttribute('href');
+        } else {
+          anchor.setAttribute('class', 'glossa-chat-source-link');
+          anchor.setAttribute('aria-label', translate.current('Open source passage'));
+        }
+        return;
+      }
       anchor.setAttribute('target', '_blank');
       anchor.setAttribute('rel', 'noopener noreferrer');
     });
@@ -118,6 +146,16 @@ function Answer({ text }: { text: string }) {
       wrap.append(button);
     }
     const onClick = (event: Event) => {
+      const anchor = (event.target as Element | null)?.closest('a');
+      const href = anchor?.getAttribute('href');
+      if (href?.startsWith('#source-')) {
+        event.preventDefault();
+        const source = evidence.current.sources?.find(
+          (item) => item.sourceId === href.slice('#source-'.length),
+        );
+        if (source) evidence.current.onSource?.(source);
+        return;
+      }
       const button = (event.target as Element | null)?.closest('.glossa-chat-code-copy');
       if (!(button instanceof HTMLElement)) return;
       const code = button.parentElement?.querySelector('pre')?.textContent ?? '';
@@ -179,7 +217,13 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
   const [config, setConfig] = useState<ProviderConfig | null>(null);
   const [prompt, setPrompt] = useState(() => getActiveConversationPrompt()?.content ?? '');
   const [ready, setReady] = useState(false);
-  const [pending, setPending] = useState<{ question: string; text: string } | null>(null);
+  const [pending, setPending] = useState<{
+    question: string;
+    text: string;
+    sources?: ChapterSource[];
+  } | null>(null);
+  const [preparingReading, setPreparingReading] = useState(false);
+  const [sourceSelection, setSourceSelection] = useState<MindmapSourceSelection | null>(null);
   const [error, setError] = useState('');
   const [failedQuestion, setFailedQuestion] = useState('');
   const [copied, setCopied] = useState('');
@@ -203,6 +247,9 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
   const transcript = useRef<HTMLDivElement>(null);
   const busy = pending !== null;
   const turns = history?.sessions.find((s) => s.id === history.activeId)?.turns ?? [];
+  const readingScope = history?.sessions.find((s) => s.id === history.activeId)?.readingScope;
+  const showSource = (source: ChapterSource) =>
+    setSourceSelection({ nodeId: crypto.randomUUID(), sources: [source] });
   const draftKey = (id: string) => `${book.hash}:${id}`;
   const updateDraft = (value: string) => {
     setDraft(value);
@@ -395,7 +442,7 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
     const question = (
       options?.question ?? (regenerate ? (turns[index!]?.question ?? '') : draft.trim())
     ).trim();
-    if (request.current || !current || !config || !ready || !question) return;
+    if (request.current || preparingReading || !current || !config || !ready || !question) return;
     if (!regenerate && turns.length >= 40) return;
     if (regenerate) {
       const turn = turns[index!];
@@ -413,6 +460,11 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
     const id = crypto.randomUUID();
     const before = regenerate ? turns.slice(0, index) : turns;
     const snapshot = { ...metadata };
+    const scope = current.sessions.find((session) => session.id === sessionId)?.readingScope;
+    let reading: ReadingAnswer | undefined = scope
+      ? { scope, sources: [], mode: 'tools' }
+      : undefined;
+    if (scope) snapshot.chapterTitle = scope.chapterTitle;
     let text = '',
       settled = false;
     const finish = (status: 'complete' | 'stopped' | 'failed') => {
@@ -428,6 +480,7 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
           createdAt: Date.now(),
           provider: providerIdentity(config),
           status,
+          ...(reading ? { reading } : {}),
         };
         const latest = historyRef.current;
         if (latest && latest.activeId === sessionId) {
@@ -442,6 +495,7 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
               promptVersion: CONVERSATION_PROMPT_VERSION,
               metadata: snapshot,
               status,
+              ...(reading ? { reading } : {}),
             };
             persist(appendConversationTurn(latest, turn));
           } else {
@@ -482,22 +536,34 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
     setEditTurn(null);
     if (!regenerate && (!options?.question || draft.trim() === options.question)) updateDraft('');
     try {
-      const answer = await generateConversation({
+      const input = {
         metadata: snapshot,
         question,
         turns: before,
         config,
         prompt,
         signal: controller.signal,
-        onText: (value) => {
+        onText: (value: string, sources?: ChapterSource[]) => {
           if (!controller.signal.aborted && mounted.current && !settled) {
             text = value;
-            setPending({ question, text });
+            if (reading && sources) reading = { ...reading, sources };
+            setPending({ question, text, sources });
           }
         },
-      });
+      };
+      const answer = scope
+        ? await generateReadingConversation({
+            ...input,
+            scope,
+            turns: before.map(currentAnswerVersion),
+          })
+        : await generateConversation(input);
       if (controller.signal.aborted || settled) return;
-      text = answer;
+      if (typeof answer === 'string') text = answer;
+      else {
+        text = answer.text;
+        reading = { scope: scope!, sources: answer.sources, mode: answer.mode };
+      }
       finish('complete');
     } catch (cause) {
       if (settled) return;
@@ -591,6 +657,7 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
         .filter((item): item is NonNullable<typeof item> => item !== null);
   const changeSession = (id?: string) => {
     stopRequest.current?.();
+    setSourceSelection(null);
     const current = historyRef.current;
     if (!current) return;
     let next = current;
@@ -618,6 +685,7 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
   };
   const deleteSession = () => {
     stopRequest.current?.();
+    setSourceSelection(null);
     const current = historyRef.current;
     if (!current) return;
     const sessions = current.sessions.filter((s) => s.id !== current.activeId);
@@ -632,7 +700,20 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
     setAtBottom(true);
     composer.current?.focus();
   };
-  const canSend = Boolean(history && ready && config && draft.trim() && !busy && turns.length < 40);
+  const changeReadingScope = (scope?: ReadingScope) => {
+    const current = historyRef.current;
+    if (!current || busy) return;
+    setSourceSelection(null);
+    persist({
+      ...current,
+      sessions: current.sessions.map((session) =>
+        session.id === current.activeId ? { ...session, readingScope: scope } : session,
+      ),
+    });
+  };
+  const canSend = Boolean(
+    history && ready && config && draft.trim() && !busy && !preparingReading && turns.length < 40,
+  );
   return (
     <section
       className='glossa-chat-panel'
@@ -900,9 +981,16 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
                     {turn.question}
                   </div>
                 )}
-                <Answer text={turn.blocks.map((b) => b.text).join('\n\n')} />
+                <Answer
+                  text={turn.blocks.map((b) => b.text).join('\n\n')}
+                  sources={currentAnswerVersion(turn).reading?.sources}
+                  onSource={showSource}
+                />
                 <div className='glossa-chat-answer-actions'>
                   <span title={turn.provider.name}>{turn.provider.model}</span>
+                  {currentAnswerVersion(turn).reading?.mode === 'direct' && (
+                    <span>{_('From attached text')}</span>
+                  )}
                   {turn.promptVersion === CONVERSATION_PROMPT_VERSION &&
                     turn.status !== 'complete' && (
                       <span>{_(turn.status === 'stopped' ? 'Stopped' : 'Reply interrupted')}</span>
@@ -984,7 +1072,7 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
               <div className='glossa-chat-question eink-bordered' dir='auto'>
                 {pending.question}
               </div>
-              <Answer text={pending.text} />
+              <Answer text={pending.text} sources={pending.sources} onSource={showSource} />
               <span className='glossa-chat-cursor' role='status' aria-label={_('Replying…')} />
             </article>
           )}
@@ -1001,6 +1089,13 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
           </button>
         )}
       </div>
+      <MindmapSourcePanel
+        key={history?.activeId ?? 'loading'}
+        book={book}
+        bookDoc={bookDoc}
+        bookKey={bookKey}
+        selection={sourceSelection}
+      />
       {error && (
         <p className='glossa-chat-message' role='alert'>
           {_(error)}
@@ -1017,6 +1112,18 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
         </p>
       )}
       <div className='glossa-chat-composer-wrap'>
+        {book.format === 'EPUB' && history && (
+          <ConversationReadingScope
+            key={history.activeId}
+            bookDoc={bookDoc}
+            bookKey={bookKey}
+            documentHash={book.hash}
+            value={readingScope}
+            disabled={busy}
+            onChange={changeReadingScope}
+            onBusyChange={setPreparingReading}
+          />
+        )}
         {turns.length >= 40 && (
           <button className='glossa-button' type='button' onClick={() => changeSession()}>
             {_('New conversation')}

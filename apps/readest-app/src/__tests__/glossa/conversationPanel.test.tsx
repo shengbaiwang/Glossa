@@ -17,6 +17,25 @@ const f = vi.hoisted(() => ({
   effort: undefined as string | undefined,
   sectionHref: undefined as string | undefined,
   settings: vi.fn(),
+  reading: vi.fn(),
+  capture: vi.fn(),
+  resolveSource: vi.fn(),
+  navigateSource: vi.fn(),
+}));
+vi.mock('@/glossa/harness/generate', () => ({ generateReadingConversation: f.reading }));
+vi.mock('@/glossa/harness/epub', async (original) => ({
+  ...(await original<typeof import('@/glossa/harness/epub')>()),
+  captureReadingScope: f.capture,
+}));
+vi.mock('@/glossa/citations/sources', async (original) => ({
+  ...(await original<typeof import('@/glossa/citations/sources')>()),
+  resolveSource: f.resolveSource,
+}));
+vi.mock('@/glossa/citations/navigation', () => ({ navigateSource: f.navigateSource }));
+vi.mock('@/store/readerStore', () => ({
+  useReaderStore: {
+    getState: () => ({ getView: () => ({}), getProgress: () => ({ location: 'origin' }) }),
+  },
 }));
 const clipboard = vi.hoisted(() => ({ write: vi.fn() }));
 vi.mock('@/utils/clipboard', () => ({ writeTextToClipboard: clipboard.write }));
@@ -72,6 +91,7 @@ vi.mock('@/glossa/ai/provider', async (original) => ({
 }));
 import ConversationPanel from '@/glossa/ui/ConversationPanel';
 import { MODEL_SETTINGS_EVENT } from '@/glossa/ai/provider';
+import { createReadingScope } from '@/glossa/harness/scope';
 const book = () =>
   ({ hash: crypto.randomUUID(), title: 'Fixture', author: 'Writer', format: 'EPUB' }) as Book;
 beforeEach(() => {
@@ -88,6 +108,12 @@ beforeEach(() => {
   f.title.mockResolvedValue('');
   clipboard.write.mockReset().mockResolvedValue(undefined);
   f.list.mockResolvedValue(['fixture', 'second-model']);
+  f.resolveSource.mockResolvedValue({
+    cfi: 'verified',
+    text: 'Original evidence.',
+    recovered: false,
+  });
+  f.navigateSource.mockResolvedValue(undefined);
   f.saveConfig.mockImplementation(async (config) => {
     f.model = config.model;
     f.effort = config.reasoningEffort;
@@ -98,6 +124,137 @@ beforeEach(() => {
 afterEach(cleanup);
 const mount = (b = book(), doc = {} as BookDoc) =>
   render(<ConversationPanel book={b} bookDoc={doc} bookKey={b.hash} />);
+
+it('attaches original text only on request, keeps the focus through page changes, and detaches cleanly', async () => {
+  const b = book();
+  const text = 'Original evidence.';
+  const source = {
+    sourceId: 's1',
+    text,
+    kind: 'paragraph' as const,
+    anchor: {
+      sectionIndex: 0,
+      cfi: 'epubcfi(/6/2!/4/2)',
+      quote: { exact: text, prefix: '', suffix: '' },
+    },
+  };
+  const scope = createReadingScope({
+    documentHash: b.hash,
+    kind: 'page',
+    title: 'Attached page',
+    sources: [source],
+  });
+  f.capture.mockResolvedValue(scope);
+  f.reading.mockResolvedValue({
+    text: 'An explanation. [1](#source-s1)',
+    sources: [source],
+    mode: 'tools',
+  });
+  const panel = mount(b);
+  await screen.findByRole('button', { name: 'Use book text' });
+  expect(f.capture).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Use book text' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Use current page' }));
+  await screen.findByRole('button', { name: 'Attached page' });
+  expect(f.reading).not.toHaveBeenCalled();
+  f.location = 'next';
+  panel.rerender(<ConversationPanel book={b} bookDoc={{} as BookDoc} bookKey={b.hash} />);
+  await typeQuestion();
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await screen.findByRole('link', { name: 'Open source passage' });
+  expect(f.reading.mock.calls[0]![0].scope).toEqual(scope);
+  expect(f.generate).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('link', { name: 'Open source passage' }));
+  await waitFor(() => expect(f.resolveSource).toHaveBeenCalled());
+  expect(f.navigateSource).toHaveBeenCalledWith({}, 'verified', expect.any(AbortSignal));
+  fireEvent.click(screen.getByRole('button', { name: 'Remove reading source' }));
+  await typeQuestion('General question');
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await waitFor(() => expect(f.generate).toHaveBeenCalledTimes(1));
+});
+
+it('rejects an oversized selection before attaching or calling a model', async () => {
+  const b = book();
+  const text = 'A'.repeat(12001);
+  f.capture.mockResolvedValue(
+    createReadingScope({
+      documentHash: b.hash,
+      kind: 'selection',
+      title: 'Selected text',
+      sources: [
+        {
+          sourceId: 'large',
+          text,
+          kind: 'paragraph',
+          anchor: {
+            sectionIndex: 0,
+            cfi: 'epubcfi(/6/2!/4/2)',
+            quote: { exact: text, prefix: '', suffix: '' },
+          },
+        },
+      ],
+    }),
+  );
+  mount(b);
+  fireEvent.click(await screen.findByRole('button', { name: 'Use book text' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Use selected text' }));
+  await screen.findByText('Choose a shorter reading passage.');
+  expect(screen.queryByRole('button', { name: 'Remove reading source' })).toBeNull();
+  expect(f.reading).not.toHaveBeenCalled();
+  expect(f.generate).not.toHaveBeenCalled();
+});
+
+it('does not make invented reading citations clickable and preserves the saved scope after reopening', async () => {
+  const b = book();
+  const text = 'Saved original.';
+  const source = {
+    sourceId: 's1',
+    text,
+    kind: 'paragraph' as const,
+    anchor: {
+      sectionIndex: 0,
+      cfi: 'epubcfi(/6/2!/4/2)',
+      quote: { exact: text, prefix: '', suffix: '' },
+    },
+  };
+  const scope = createReadingScope({
+    documentHash: b.hash,
+    kind: 'page',
+    title: 'Saved page',
+    sources: [source],
+  });
+  f.load.mockResolvedValue({
+    version: 1,
+    bookId: b.hash,
+    activeId: 'saved',
+    sessions: [
+      {
+        id: 'saved',
+        readingScope: scope,
+        turns: [
+          {
+            id: 't',
+            question: 'Question',
+            blocks: [{ kind: 'background', text: 'Claim [1](#source-invented)', sourceIds: [] }],
+            sources: [],
+            createdAt: 1,
+            provider: { id: 'fixture', name: 'Fixture', baseUrl: f.baseUrl, model: f.model },
+            promptVersion: 'conversation-3',
+            metadata: { bookTitle: '', author: '', chapterTitle: '' },
+            status: 'complete',
+            reading: { scope, sources: [source], mode: 'tools' },
+          },
+        ],
+      },
+    ],
+  });
+  mount(b);
+  await screen.findByRole('button', { name: 'Saved page' });
+  expect(screen.queryByRole('link', { name: 'Open source passage' })).toBeNull();
+  expect(document.querySelector('a[href="#source-invented"]')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
+  await screen.findByRole('button', { name: 'Use book text' });
+});
 async function typeQuestion(question = 'Explain this') {
   fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
     target: { value: question },

@@ -3,6 +3,7 @@ import { contextReceiptSchema } from './context';
 import type { ChapterSource } from '@/glossa/context/types';
 import { passageSourcesSchema } from '@/glossa/passages/schema';
 import { stubTranslation as _ } from '@/utils/misc';
+import { readingScopeSchema } from '@/glossa/harness/scope';
 
 export class ConversationError extends Error {}
 export const CONVERSATION_PROMPT_VERSION = 'conversation-3';
@@ -35,6 +36,21 @@ export const blockSchema = z
 export type ConversationBlock = z.infer<typeof blockSchema>;
 export const bodySchema = z.object({ blocks: z.array(blockSchema).min(1).max(8) }).strict();
 
+export const readingAnswerSchema = z
+  .object({
+    scope: readingScopeSchema,
+    sources: conversationSourcesSchema,
+    mode: z.enum(['tools', 'direct']),
+  })
+  .strict()
+  .refine((reading) => {
+    const allowed = new Map(reading.scope.sources.map((source) => [source.sourceId, source]));
+    return reading.sources.every(
+      (source) => JSON.stringify(allowed.get(source.sourceId)) === JSON.stringify(source),
+    );
+  });
+export type ReadingAnswer = z.infer<typeof readingAnswerSchema>;
+
 /** One answer to one question. Regenerating or editing a question adds a version instead of overwriting. */
 export const answerVersionSchema = z
   .object({
@@ -44,6 +60,7 @@ export const answerVersionSchema = z
     createdAt: z.number().finite(),
     provider: providerSchema,
     status: z.enum(['complete', 'stopped', 'failed']),
+    reading: readingAnswerSchema.optional(),
   })
   .strict();
 export type AnswerVersion = z.infer<typeof answerVersionSchema>;
@@ -80,6 +97,7 @@ const chatTurnSchema = z
     promptVersion: z.literal(CONVERSATION_PROMPT_VERSION),
     metadata: chatIdentitySchema,
     status: z.enum(['complete', 'stopped', 'failed']),
+    reading: readingAnswerSchema.optional(),
     versions: z.array(answerVersionSchema).min(1).max(MAX_TURN_VERSIONS).optional(),
     activeVersionId: z.string().min(1).max(100).optional(),
     context: z.undefined().optional(),
@@ -111,6 +129,7 @@ export function currentAnswerVersion(turn: ConversationTurn): AnswerVersion {
     createdAt: turn.createdAt,
     provider: turn.provider,
     status: turn.promptVersion === CONVERSATION_PROMPT_VERSION ? turn.status : 'complete',
+    ...('reading' in turn && turn.reading ? { reading: turn.reading } : {}),
   };
 }
 
@@ -127,6 +146,7 @@ export function selectAnswerVersion(turn: ConversationTurn, versionId: string): 
     createdAt: version.createdAt,
     provider: version.provider,
     status: version.status,
+    reading: version.reading,
   };
 }
 
