@@ -154,17 +154,21 @@ it('attaches original text only on request, keeps the focus through page changes
   await screen.findByRole('button', { name: 'Use book text' });
   expect(f.capture).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Use book text' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Use current page' }));
   await screen.findByRole('button', { name: 'Attached page' });
+  expect(f.capture).toHaveBeenCalledWith(expect.objectContaining({ kind: 'auto' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Attached page' }));
+  expect(screen.getByText(source.text)).toBeTruthy();
+  expect(f.capture).toHaveBeenCalledTimes(1);
+  fireEvent.keyDown(screen.getByRole('button', { name: 'Attached page' }), { key: 'Escape' });
   expect(f.reading).not.toHaveBeenCalled();
   f.location = 'next';
   panel.rerender(<ConversationPanel book={b} bookDoc={{} as BookDoc} bookKey={b.hash} />);
   await typeQuestion();
   fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
-  await screen.findByRole('link', { name: 'Open source passage' });
+  await screen.findByRole('link', { name: /^Open source passage/ });
   expect(f.reading.mock.calls[0]![0].scope).toEqual(scope);
   expect(f.generate).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('link', { name: 'Open source passage' }));
+  fireEvent.click(screen.getByRole('link', { name: /^Open source passage/ }));
   await waitFor(() => expect(f.resolveSource).toHaveBeenCalled());
   expect(f.navigateSource).toHaveBeenCalledWith({}, 'verified', expect.any(AbortSignal));
   fireEvent.click(screen.getByRole('button', { name: 'Remove reading source' }));
@@ -197,11 +201,63 @@ it('rejects an oversized selection before attaching or calling a model', async (
   );
   mount(b);
   fireEvent.click(await screen.findByRole('button', { name: 'Use book text' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Use selected text' }));
   await screen.findByText('Choose a shorter reading passage.');
   expect(screen.queryByRole('button', { name: 'Remove reading source' })).toBeNull();
   expect(f.reading).not.toHaveBeenCalled();
   expect(f.generate).not.toHaveBeenCalled();
+});
+
+it('keeps manual range selection available without automatically capturing text', async () => {
+  mount();
+  fireEvent.click(await screen.findByRole('button', { name: 'Choose reading range' }));
+  expect(f.capture).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Use selected text' }));
+  await waitFor(() =>
+    expect(f.capture).toHaveBeenCalledWith(expect.objectContaining({ kind: 'selection' })),
+  );
+  expect(f.reading).not.toHaveBeenCalled();
+});
+
+it('cancels one-click capture and discards a late result', async () => {
+  const b = book();
+  let finish: (scope: ReturnType<typeof createReadingScope>) => void = () => {};
+  f.capture.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  mount(b);
+  fireEvent.click(await screen.findByRole('button', { name: 'Use book text' }));
+  await screen.findByText('Reading text…');
+  const signal = f.capture.mock.calls[0]![0].signal as AbortSignal;
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(signal.aborted).toBe(true);
+  await act(async () =>
+    finish(
+      createReadingScope({
+        documentHash: b.hash,
+        kind: 'page',
+        title: 'Late page',
+        sources: [
+          {
+            sourceId: 'late',
+            text: 'Late text',
+            kind: 'paragraph',
+            anchor: {
+              sectionIndex: 0,
+              cfi: 'epubcfi(/6/2!/4/2)',
+              quote: { exact: 'Late text', prefix: '', suffix: '' },
+            },
+          },
+        ],
+      }),
+    ),
+  );
+  expect(screen.queryByRole('button', { name: 'Late page' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Remove reading source' })).toBeNull();
+  expect(screen.queryByText('Reading text…')).toBeNull();
+  expect(f.reading).not.toHaveBeenCalled();
 });
 
 it('does not make invented reading citations clickable and preserves the saved scope after reopening', async () => {
@@ -250,7 +306,7 @@ it('does not make invented reading citations clickable and preserves the saved s
   });
   mount(b);
   await screen.findByRole('button', { name: 'Saved page' });
-  expect(screen.queryByRole('link', { name: 'Open source passage' })).toBeNull();
+  expect(screen.queryByRole('link', { name: /^Open source passage/ })).toBeNull();
   expect(document.querySelector('a[href="#source-invented"]')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
   await screen.findByRole('button', { name: 'Use book text' });

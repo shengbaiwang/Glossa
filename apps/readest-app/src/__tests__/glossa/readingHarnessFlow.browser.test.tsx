@@ -161,7 +161,6 @@ const call = (name: string, args: Record<string, unknown>) => ({
 it('attaches a real visible EPUB page, runs scoped tools, restores its snapshot and opens verified citations with return navigation', async () => {
   const { book, panel, wrapper } = await setup();
   fireEvent.click(screen.getByRole('button', { name: 'Use book text' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Use current page' }));
   await screen.findByRole('button', { name: 'Current page' });
   expect(f.complete).not.toHaveBeenCalled();
   expect(f.toolComplete).not.toHaveBeenCalled();
@@ -171,6 +170,11 @@ it('attaches a real visible EPUB page, runs scoped tools, restores its snapshot 
     ).toBeGreaterThan(0),
   );
   const originalScope = (await loadConversations(book.hash))!.sessions[0]!.readingScope!;
+  fireEvent.click(screen.getByRole('button', { name: 'Current page' }));
+  expect(
+    document.querySelector('details[open] .glossa-chat-reading-preview')?.textContent,
+  ).toContain(firstParagraph);
+  fireEvent.keyDown(screen.getByRole('button', { name: 'Current page' }), { key: 'Escape' });
   expect(JSON.stringify(originalScope)).toContain(firstParagraph);
   expect(JSON.stringify(originalScope)).not.toMatch(/OFF_PAGE_SENTINEL|FUTURE_CHAPTER_SENTINEL/);
   let sourceId = '';
@@ -187,7 +191,7 @@ it('attaches a real visible EPUB page, runs scoped tools, restores its snapshot 
     return { text, toolCalls: [] };
   });
   await ask('如何理解这段？');
-  await screen.findByRole('link', { name: 'Open source passage' });
+  await screen.findByRole('link', { name: /^Open source passage/ });
   expect(f.toolComplete).toHaveBeenCalledTimes(4);
   const requests = f.toolComplete.mock.calls.map(([request]) => request as ToolCompletionRequest);
   expect(JSON.stringify(requests.map((request) => request.messages))).not.toMatch(
@@ -210,12 +214,32 @@ it('attaches a real visible EPUB page, runs scoped tools, restores its snapshot 
   await screen.findByRole('button', { name: 'Current page' });
   expect((await loadConversations(book.hash))!.sessions[0]!.readingScope).toEqual(originalScope);
   const navigation = vi.spyOn(view!, 'goTo');
-  fireEvent.click(await screen.findByRole('link', { name: 'Open source passage' }));
+  const citation = await screen.findByRole('link', { name: /^Open source passage/ });
+  expect(citation.textContent).toBe('1');
+  await page.getByRole('link', { name: /^Open source passage/ }).hover();
+  const tooltip = await screen.findByRole('tooltip');
+  await waitFor(() => expect(tooltip.textContent).toContain(firstParagraph));
+  await waitFor(() => expect(tooltip.querySelector('[role="status"]')).toBeNull());
+  expect(view!.lastLocation?.cfi).toBe(origin);
+  expect(navigation).not.toHaveBeenCalled();
+  await page.screenshot({ path: '../../../../../.glossa-dev/qa/citations/preview-light.png' });
+  fireEvent.keyDown(citation, { key: 'Escape' });
+  expect(screen.queryByRole('tooltip')).toBeNull();
+  fireEvent.click(await screen.findByRole('link', { name: /^Open source passage/ }));
   const excerpt = await screen.findByRole('complementary', { name: 'Source excerpt' });
   await waitFor(() =>
     expect(excerpt.querySelector('blockquote')?.textContent).toBe(firstParagraph),
   );
   await waitFor(() => expect(view!.resolveCFI(view!.lastLocation!.cfi!).index).toBe(0));
+  const sourceDocument = view!.renderer.getContents()[0]!.doc;
+  const highlightWindow = sourceDocument.defaultView as Window & typeof globalThis;
+  await waitFor(() => expect(highlightWindow.CSS.highlights.has('glossa-source')).toBe(true));
+  expect(
+    [...highlightWindow.CSS.highlights.get('glossa-source')!]
+      .map((range) => range.toString())
+      .join(''),
+  ).toBe(firstParagraph);
+  expect(sourceDocument.getSelection()?.toString()).toBe('');
   expect(screen.queryByRole('alert')).toBeNull();
   for (const [theme, width, eink, dir] of [
     ['default-light', 420, false, 'ltr'],
@@ -241,6 +265,7 @@ it('attaches a real visible EPUB page, runs scoped tools, restores its snapshot 
   fireEvent.click(back);
   await waitFor(() => expect(navigation.mock.calls.at(-1)?.[0]).toBe(origin));
   await waitFor(() => expect(view!.lastLocation?.cfi).toBe(origin));
+  expect(highlightWindow.CSS.highlights.has('glossa-source')).toBe(false);
   expect(f.toolComplete).toHaveBeenCalledTimes(4);
 });
 
@@ -254,8 +279,7 @@ it('attaches only an explicit clipped selection and keeps subsequent page moves 
   const selection = doc.getSelection()!;
   selection.removeAllRanges();
   selection.addRange(range);
-  fireEvent.click(screen.getByRole('button', { name: 'Use book text' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Use selected text' }));
+  await page.getByRole('button', { name: 'Use book text' }).click();
   await screen.findByRole('button', { name: 'Selected text' });
   await waitFor(async () =>
     expect((await loadConversations(book.hash))?.sessions[0]?.readingScope?.sources).toHaveLength(
@@ -283,7 +307,7 @@ it('attaches only an explicit clipped selection and keeps subsequent page moves 
   expect(JSON.stringify(request.messages)).not.toMatch(
     /FUTURE_CHAPTER_SENTINEL|OFF_PAGE_SENTINEL|需要先找到/,
   );
-  await screen.findByRole('link', { name: 'Open source passage' });
+  await screen.findByRole('link', { name: /^Open source passage/ });
   fireEvent.click(screen.getByRole('button', { name: 'Remove reading source' }));
   await screen.findByRole('button', { name: 'Use book text' });
   await ask('现在普通聊天');
@@ -301,7 +325,7 @@ it('previews and explicitly attaches one chapter passage in a narrow window with
   const sidebar = screen.getByTestId('harness-sidebar');
   sidebar.style.width = '320px';
   sidebar.style.height = '480px';
-  fireEvent.click(screen.getByRole('button', { name: 'Use book text' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Choose reading range' }));
   fireEvent.change(screen.getByRole('combobox', { name: 'Choose a chapter' }), {
     target: { value: listChapters(bookDoc)[0]!.id },
   });
@@ -326,4 +350,83 @@ it('previews and explicitly attaches one chapter passage in a narrow window with
   expect(JSON.stringify(attached)).not.toMatch(/OFF_PAGE_SENTINEL|FUTURE_CHAPTER_SENTINEL/);
   expect(f.complete).not.toHaveBeenCalled();
   expect(f.toolComplete).not.toHaveBeenCalled();
+});
+
+it('browses citations in answer order and keeps previews inside narrow, dark and e-ink viewports', async () => {
+  const { book } = await setup();
+  fireEvent.click(screen.getByRole('button', { name: 'Use book text' }));
+  await screen.findByRole('button', { name: 'Current page' });
+  let secondPassage = '';
+  f.toolComplete.mockImplementation(async (request: ToolCompletionRequest) => {
+    const evidence = JSON.parse(request.messages[1]!.content!).sources as {
+      sourceId: string;
+      text: string;
+    }[];
+    const paragraph = evidence.find((source) => source.text === firstParagraph)!;
+    const second = evidence.find((source) => source.sourceId !== paragraph.sourceId)!;
+    secondPassage = second.text;
+    const text = `理解观点需要找出它回应的问题。[9](#source-${paragraph.sourceId})\n\n这里也谈到其他理解线索。[8](#source-${second.sourceId})\n\n理由用来支持结论。[4](#source-${paragraph.sourceId})`;
+    request.onDelta?.(text);
+    return { text, toolCalls: [] };
+  });
+  await ask('这章的主题和理解方法是什么？');
+  expect(
+    (await screen.findAllByRole('link', { name: /^Open source passage/ })).map(
+      (link) => link.textContent,
+    ),
+  ).toEqual(['1', '2', '1']);
+  await view!.goTo('two.xhtml');
+  const origin = view!.lastLocation!.cfi!;
+  for (const [theme, width, eink, dir] of [
+    ['default-light', 420, false, 'ltr'],
+    ['default-dark', 320, false, 'ltr'],
+    ['default-dark', 320, false, 'rtl'],
+    ['default-light', 320, true, 'rtl'],
+  ] as const) {
+    await page.viewport(width, 660);
+    const sidebar = screen.getByTestId('harness-sidebar');
+    sidebar.style.width = `${width}px`;
+    sidebar.style.height = '660px';
+    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-eink', String(eink));
+    document.documentElement.dir = dir;
+    const citation = screen.getAllByRole('link', { name: 'Open source passage 1' })[0]!;
+    fireEvent.focusIn(citation);
+    const preview = await screen.findByRole('tooltip');
+    await waitFor(() => expect(preview.querySelector('[role="status"]')).toBeNull());
+    const bounds = preview.getBoundingClientRect();
+    expect(bounds.left).toBeGreaterThanOrEqual(0);
+    expect(bounds.right).toBeLessThanOrEqual(width);
+    expect(bounds.bottom).toBeLessThanOrEqual(660);
+    expect(preview.scrollWidth).toBeLessThanOrEqual(preview.clientWidth);
+    expect(sidebar.scrollWidth).toBeLessThanOrEqual(width);
+    expect(view!.lastLocation?.cfi).toBe(origin);
+    await page.screenshot({
+      path: `../../../../../.glossa-dev/qa/citations/preview-${theme}-${width}-${eink ? 'eink' : dir}.png`,
+    });
+    fireEvent.keyDown(citation, { key: 'Escape' });
+  }
+  fireEvent.click(screen.getByRole('link', { name: 'Open source passage 2' }));
+  await screen.findByText('2/2');
+  const excerpt = screen.getByRole('complementary', { name: 'Source excerpt' });
+  await waitFor(() => expect(excerpt.querySelector('blockquote')?.textContent).toBe(secondPassage));
+  const previous = screen.getByRole('button', { name: 'Previous passage' });
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Back to reading position' }).hasAttribute('disabled'),
+    ).toBe(false),
+  );
+  fireEvent.click(previous);
+  await waitFor(() =>
+    expect(excerpt.querySelector('blockquote')?.textContent).toBe(firstParagraph),
+  );
+  await screen.findByText('1/2');
+  const back = screen.getByRole('button', { name: 'Back to reading position' });
+  await waitFor(() => expect(back.hasAttribute('disabled')).toBe(false));
+  fireEvent.click(back);
+  await waitFor(() => expect(view!.lastLocation?.cfi).toBe(origin));
+  expect(f.toolComplete).toHaveBeenCalledTimes(1);
+  expect(
+    (await loadConversations(book.hash))!.sessions[0]!.readingScope!.sources.length,
+  ).toBeGreaterThan(1);
 });

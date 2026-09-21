@@ -59,8 +59,9 @@ describe('EPUB reading scope capture', () => {
       bookDoc,
       view: viewFor(),
       documentHash: 'book-a',
-      kind: 'page',
+      kind: 'auto',
     });
+    expect(result.kind).toBe('page');
     expect(result.sources.map((source) => source.text)).toEqual(['visible text']);
     expect(result.sources[0]!.anchor.quote).toEqual({
       exact: 'visible text',
@@ -86,9 +87,18 @@ describe('EPUB reading scope capture', () => {
       bookDoc: book(),
       view: viewFor(doc),
       documentHash: 'book-a',
-      kind: 'selection',
+      kind: 'auto',
     });
+    expect(result.kind).toBe('selection');
     expect(result.sources.map((source) => source.text)).toEqual(['Next chapter']);
+    const page = await captureReadingScope({
+      bookDoc: book(),
+      view: viewFor(doc),
+      documentHash: 'book-a',
+      kind: 'page',
+    });
+    expect(page.kind).toBe('page');
+    expect(page.sources.map((source) => source.text)).toEqual(['visible text']);
   });
 
   it('fails closed on missing selection/page, fixed layout or transformed text that no longer matches', async () => {
@@ -109,6 +119,25 @@ describe('EPUB reading scope capture', () => {
     }
     await expect(
       captureReadingScope({ bookDoc: book(), view, documentHash: 'book-a', kind: 'selection' }),
+    ).rejects.toThrow();
+  });
+
+  it('never falls back to the page when an existing selection cannot be verified', async () => {
+    const doc = documentFor(html.replace('Next chapter', 'Changed text'));
+    const range = doc.createRange();
+    range.selectNodeContents(doc.querySelector('h2')!);
+    vi.spyOn(doc, 'getSelection').mockReturnValue({
+      isCollapsed: false,
+      rangeCount: 1,
+      getRangeAt: () => range,
+    } as unknown as Selection);
+    await expect(
+      captureReadingScope({
+        bookDoc: book(),
+        view: viewFor(doc),
+        documentHash: 'book-a',
+        kind: 'auto',
+      }),
     ).rejects.toThrow();
   });
 

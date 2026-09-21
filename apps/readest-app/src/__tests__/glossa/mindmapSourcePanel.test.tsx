@@ -62,6 +62,23 @@ beforeEach(() => {
 });
 
 describe('mind map original passage lifecycle', () => {
+  it('starts at the clicked citation and retains the first return point while browsing its siblings', async () => {
+    render(
+      <MindmapSourcePanel
+        {...props}
+        selection={{ ...selection('answer', ['one', 'two']), initialIndex: 1 }}
+      />,
+    );
+    await screen.findByText('Fresh local text two');
+    expect(screen.getByText('2/2')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Previous passage' }));
+    await screen.findByText('Fresh local text one');
+    expect(screen.getByText('1/2')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to reading position' }));
+    await waitFor(() =>
+      expect(f.navigate).toHaveBeenLastCalledWith({}, 'reading-start', expect.any(AbortSignal)),
+    );
+  });
   it('shows freshly resolved local text and navigates only to the verified location', async () => {
     mount();
     await screen.findByText('Fresh local text first');

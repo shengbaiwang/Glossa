@@ -151,6 +151,23 @@ retain their own typography. Avoid shrinking essential instructions into caption
 </DialogContent>
 ```
 
+### Conversation citations — 2026-09-22
+
+- Use compact neutral numbered links beside the supported claim. Assign numbers locally
+  by first appearance per answer; repeat references keep their number. Only whitelisted
+  delivered sources become active links. Preserve meaningful prose used as old link labels.
+- Hover/focus opens a 340px maximum paper/ink preview, clamped inside the viewport with
+  12px gutters; long local passages scroll. Show the saved chapter and excerpt, and a status
+  only during verification or on failure. Escape dismisses without moving the reader.
+- Clicking enters the existing original-passage panel at that citation. Previous/next
+  follows the answer's cited-source order with a numeric position/total. Retain a single
+  return-to-reading action across consecutive citations. Touch opens this panel directly.
+- Highlight the verified text temporarily without creating a native selection or saved
+  annotation. Theme foreground/background and an underline identify the passage; unsupported
+  engines retain the original-passage panel. No animation, decorative colors or success badges.
+- Use the shared surface, border, elevation and focus tokens. E-ink keeps crisp borders
+  without shadows; source text direction stays independent of the interface direction.
+
 ### Search workspace — 2026-09-15
 
 - Reader search uses a 36px framed field with an inline clear action, then a

@@ -4,12 +4,14 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useReaderStore } from '@/store/readerStore';
 import { resolveSource } from '@/glossa/citations/sources';
 import { navigateSource } from '@/glossa/citations/navigation';
+import { highlightSource } from '@/glossa/citations/highlight';
 import type { ChapterSource } from '@/glossa/context/types';
 import type { ReadingPanelProps } from './ReadingPassagePanel';
 
 export interface MindmapSourceSelection {
   nodeId: string;
   sources: ChapterSource[];
+  initialIndex?: number;
 }
 
 /** The excerpt is local text, independent of the editable idea and model explanation. */
@@ -32,8 +34,10 @@ export default function MindmapSourcePanel({
   const [error, setError] = useState('');
   const [errorAction, setErrorAction] = useState<'source' | 'return'>('source');
   const request = useRef<AbortController | null>(null);
+  const clearHighlight = useRef<(() => void) | null>(null);
   const show = async (next: number) => {
     request.current?.abort();
+    clearHighlight.current?.();
     const source = selection?.sources[next];
     if (!source) return;
     const controller = new AbortController();
@@ -58,7 +62,10 @@ export default function MindmapSourcePanel({
         view.lastLocation?.cfi || reader.getProgress(bookKey)?.location || '';
       setOrigin((previous) => previous || previousLocation);
       await navigateSource(view, resolved.cfi, controller.signal);
-      if (!controller.signal.aborted) onNavigate?.();
+      if (!controller.signal.aborted) {
+        clearHighlight.current = highlightSource(view, resolved);
+        onNavigate?.();
+      }
     } catch {
       if (!controller.signal.aborted)
         setError(
@@ -74,12 +81,17 @@ export default function MindmapSourcePanel({
     setPreview(null);
     setError('');
     setBusy(false);
-    if (selection) void show(0);
-    return () => request.current?.abort();
+    if (selection)
+      void show(Math.max(0, Math.min(selection.initialIndex ?? 0, selection.sources.length - 1)));
+    return () => {
+      request.current?.abort();
+      clearHighlight.current?.();
+    };
   }, [selection, bookDoc, bookKey]);
 
   const goBack = async () => {
     request.current?.abort();
+    clearHighlight.current?.();
     const controller = new AbortController();
     request.current = controller;
     setBusy(true);
@@ -124,6 +136,9 @@ export default function MindmapSourcePanel({
                   >
                     <ChevronLeft size={16} />
                   </button>
+                  <span className='glossa-source-count' dir='ltr'>
+                    {index + 1}/{selection.sources.length}
+                  </span>
                   <button
                     type='button'
                     aria-label={_('Next passage')}
@@ -141,6 +156,7 @@ export default function MindmapSourcePanel({
                 title={_('Close source excerpt')}
                 onClick={() => {
                   request.current?.abort();
+                  clearHighlight.current?.();
                   setPreview(null);
                   setBusy(false);
                   setError('');

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, X } from '@/components/GlossaIcons';
+import { BookOpen, ChevronDown, X } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useReaderStore } from '@/store/readerStore';
 import type { BookDoc } from '@/libs/document';
@@ -74,12 +74,13 @@ export default function ConversationReadingScope({
     setOpen(false);
     setError('');
   };
-  const capture = async (kind: 'page' | 'selection') => {
+  const capture = async (kind: 'page' | 'selection' | 'auto') => {
     cancel();
     const controller = new AbortController();
     request.current = controller;
     setBusy(true);
     onBusyChange(true);
+    setOpen(true);
     setError('');
     try {
       const view = useReaderStore.getState().getView(bookKey);
@@ -156,17 +157,35 @@ export default function ConversationReadingScope({
         <button
           type='button'
           className='glossa-chat-text-button'
-          disabled={disabled}
-          aria-expanded={open}
+          disabled={disabled || busy}
+          aria-expanded={value ? open : undefined}
           onPointerDown={(event) => event.preventDefault()}
           onClick={() => {
-            cancel();
-            setOpen(!open);
-            setError('');
+            if (value) {
+              setOpen(!open);
+              setError('');
+            } else {
+              void capture('auto');
+            }
           }}
         >
           <BookOpen size={15} />
           <span>{value ? _(value.title) : _('Use book text')}</span>
+        </button>
+        <button
+          type='button'
+          className='glossa-chat-text-button'
+          disabled={disabled || busy}
+          aria-label={_('Choose reading range')}
+          title={_('Choose reading range')}
+          aria-expanded={open}
+          onPointerDown={(event) => event.preventDefault()}
+          onClick={() => {
+            setOpen(!open);
+            setError('');
+          }}
+        >
+          <ChevronDown size={14} />
         </button>
         {value && (
           <button
@@ -187,6 +206,16 @@ export default function ConversationReadingScope({
       </div>
       {open && (
         <div className='glossa-chat-reading-options eink-bordered'>
+          {value && (
+            <details open>
+              <summary>{_('Attached text')}</summary>
+              <div className='glossa-chat-reading-preview' dir='auto'>
+                {value.sources.map((source) => (
+                  <p key={source.sourceId}>{source.text}</p>
+                ))}
+              </div>
+            </details>
+          )}
           <div className='glossa-chat-reading-actions'>
             <button
               type='button'
@@ -261,23 +290,13 @@ export default function ConversationReadingScope({
           )}
           {busy && (
             <div role='status' className='glossa-chat-reading-actions'>
-              {_('Reading chapter…')}
+              {_('Reading text…')}
               <button type='button' className='glossa-chat-text-button' onClick={cancel}>
                 {_('Cancel')}
               </button>
             </div>
           )}
           {error && <p role='alert'>{_(error)}</p>}
-          {value && (
-            <details>
-              <summary>{_('Attached text')}</summary>
-              <div className='glossa-chat-reading-preview' dir='auto'>
-                {value.sources.map((source) => (
-                  <p key={source.sourceId}>{source.text}</p>
-                ))}
-              </div>
-            </details>
-          )}
         </div>
       )}
     </div>

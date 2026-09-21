@@ -66,7 +66,7 @@ import {
   type ConversationFontSize,
 } from '@/glossa/conversation/display';
 import { writeTextToClipboard } from '@/utils/clipboard';
-import { renderAnswerHtml } from './answerMarkdown';
+import Answer from './ConversationAnswer';
 import ConversationModelPicker from './ConversationModelPicker';
 import ConversationPromptPicker from './ConversationPromptPicker';
 import ConversationSessionPicker, { sessionLabel } from './ConversationSessionPicker';
@@ -88,110 +88,6 @@ const errorMessage = (cause: unknown, fallback: string) =>
   cause instanceof ConversationError || cause instanceof ModelServiceError
     ? cause.message
     : fallback;
-const COPY_ICON =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M6.5 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v.5"/></svg>';
-const CHECK_ICON =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
-function Answer({
-  text,
-  sources,
-  onSource,
-}: {
-  text: string;
-  sources?: ChapterSource[];
-  onSource?: (source: ChapterSource) => void;
-}) {
-  const _ = useTranslation();
-  const translate = useRef(_);
-  translate.current = _;
-  const root = useRef<HTMLDivElement>(null);
-  const evidence = useRef({ sources, onSource });
-  evidence.current = { sources, onSource };
-  // Keep this object stable so React does not replace the enhanced code blocks
-  // when the composer or conversation menu rerenders the parent.
-  const sourceIdentity = sources?.map((source) => source.sourceId).join('\n') ?? '';
-  const markup = useMemo(() => ({ __html: renderAnswerHtml(text) }), [text, sourceIdentity]);
-  const copyError = useRef<HTMLParagraphElement>(null);
-  useEffect(() => {
-    const container = root.current;
-    if (!container) return;
-    const timers = new Set<number>();
-    container.querySelectorAll('a[href]').forEach((anchor) => {
-      const href = anchor.getAttribute('href') ?? '';
-      if (href.startsWith('#source-')) {
-        const id = href.slice('#source-'.length);
-        if (!evidence.current.sources?.some((source) => source.sourceId === id)) {
-          anchor.removeAttribute('href');
-        } else {
-          anchor.setAttribute('class', 'glossa-chat-source-link');
-          anchor.setAttribute('aria-label', translate.current('Open source passage'));
-        }
-        return;
-      }
-      anchor.setAttribute('target', '_blank');
-      anchor.setAttribute('rel', 'noopener noreferrer');
-    });
-    for (const pre of Array.from(container.querySelectorAll('pre'))) {
-      if (pre.parentElement?.classList.contains('glossa-chat-code')) continue;
-      const wrap = document.createElement('div');
-      wrap.className = 'glossa-chat-code';
-      pre.replaceWith(wrap);
-      wrap.append(pre);
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'glossa-chat-code-copy';
-      button.setAttribute('aria-label', translate.current('Copy code'));
-      button.setAttribute('title', translate.current('Copy code'));
-      button.innerHTML = COPY_ICON;
-      wrap.append(button);
-    }
-    const onClick = (event: Event) => {
-      const anchor = (event.target as Element | null)?.closest('a');
-      const href = anchor?.getAttribute('href');
-      if (href?.startsWith('#source-')) {
-        event.preventDefault();
-        const source = evidence.current.sources?.find(
-          (item) => item.sourceId === href.slice('#source-'.length),
-        );
-        if (source) evidence.current.onSource?.(source);
-        return;
-      }
-      const button = (event.target as Element | null)?.closest('.glossa-chat-code-copy');
-      if (!(button instanceof HTMLElement)) return;
-      const code = button.parentElement?.querySelector('pre')?.textContent ?? '';
-      if (copyError.current) copyError.current.hidden = true;
-      void writeTextToClipboard(code)
-        .then(() => {
-          button.classList.add('is-copied');
-          button.setAttribute('aria-label', translate.current('Copied'));
-          button.innerHTML = CHECK_ICON;
-          const timer = window.setTimeout(() => {
-            timers.delete(timer);
-            button.classList.remove('is-copied');
-            button.setAttribute('aria-label', translate.current('Copy code'));
-            button.innerHTML = COPY_ICON;
-          }, 1600);
-          timers.add(timer);
-        })
-        .catch(() => {
-          if (copyError.current) copyError.current.hidden = false;
-        });
-    };
-    container.addEventListener('click', onClick);
-    return () => {
-      container.removeEventListener('click', onClick);
-      timers.forEach((timer) => window.clearTimeout(timer));
-    };
-  }, [markup]);
-  return (
-    <>
-      <div className='glossa-chat-answer' dir='auto' ref={root} dangerouslySetInnerHTML={markup} />
-      <p ref={copyError} hidden className='glossa-chat-message' role='alert'>
-        {_('The code could not be copied.')}
-      </p>
-    </>
-  );
-}
 export default function ConversationPanel(props: Props) {
   return <ConversationBook key={`${props.book.hash}:${props.bookKey}`} {...props} />;
 }
@@ -223,7 +119,9 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
     sources?: ChapterSource[];
   } | null>(null);
   const [preparingReading, setPreparingReading] = useState(false);
-  const [sourceSelection, setSourceSelection] = useState<MindmapSourceSelection | null>(null);
+  const [sourceSelection, setSourceSelection] = useState<
+    (MindmapSourceSelection & { label?: string }) | null
+  >(null);
   const [error, setError] = useState('');
   const [failedQuestion, setFailedQuestion] = useState('');
   const [copied, setCopied] = useState('');
@@ -248,8 +146,13 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
   const busy = pending !== null;
   const turns = history?.sessions.find((s) => s.id === history.activeId)?.turns ?? [];
   const readingScope = history?.sessions.find((s) => s.id === history.activeId)?.readingScope;
-  const showSource = (source: ChapterSource) =>
-    setSourceSelection({ nodeId: crypto.randomUUID(), sources: [source] });
+  const showSource = (source: ChapterSource, sources: ChapterSource[], label?: string) =>
+    setSourceSelection({
+      nodeId: crypto.randomUUID(),
+      sources,
+      initialIndex: sources.indexOf(source),
+      label,
+    });
   const draftKey = (id: string) => `${book.hash}:${id}`;
   const updateDraft = (value: string) => {
     setDraft(value);
@@ -586,6 +489,7 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
   const switchVersion = (index: number, versionId: string) => {
     const latest = historyRef.current;
     if (!latest || busy) return;
+    setSourceSelection(null);
     const sessionId = latest.activeId;
     persist({
       ...latest,
@@ -982,9 +886,18 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
                   </div>
                 )}
                 <Answer
+                  key={currentAnswerVersion(turn).id}
                   text={turn.blocks.map((b) => b.text).join('\n\n')}
                   sources={currentAnswerVersion(turn).reading?.sources}
-                  onSource={showSource}
+                  bookDoc={bookDoc}
+                  sourceLabel={currentAnswerVersion(turn).reading?.scope.chapterTitle}
+                  onSource={(source, cited) =>
+                    showSource(
+                      source,
+                      cited,
+                      currentAnswerVersion(turn).reading?.scope.chapterTitle,
+                    )
+                  }
                 />
                 <div className='glossa-chat-answer-actions'>
                   <span title={turn.provider.name}>{turn.provider.model}</span>
@@ -1072,7 +985,13 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
               <div className='glossa-chat-question eink-bordered' dir='auto'>
                 {pending.question}
               </div>
-              <Answer text={pending.text} sources={pending.sources} onSource={showSource} />
+              <Answer
+                text={pending.text}
+                sources={pending.sources}
+                bookDoc={bookDoc}
+                sourceLabel={readingScope?.chapterTitle}
+                onSource={(source, cited) => showSource(source, cited, readingScope?.chapterTitle)}
+              />
               <span className='glossa-chat-cursor' role='status' aria-label={_('Replying…')} />
             </article>
           )}
@@ -1095,6 +1014,7 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
         bookDoc={bookDoc}
         bookKey={bookKey}
         selection={sourceSelection}
+        contextLabel={sourceSelection?.label}
       />
       {error && (
         <p className='glossa-chat-message' role='alert'>

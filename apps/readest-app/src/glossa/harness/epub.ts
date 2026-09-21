@@ -26,7 +26,7 @@ export async function captureReadingScope({
   bookDoc: BookDoc;
   view: ReadingCaptureView;
   documentHash: string;
-  kind: 'page' | 'selection';
+  kind: 'page' | 'selection' | 'auto';
   signal?: AbortSignal;
 }): Promise<ReadingScope> {
   checkAborted(signal);
@@ -34,15 +34,20 @@ export async function captureReadingScope({
     if (view.isFixedLayout)
       throw new ReadingScopeError(_('Reading ranges are available for reflowable EPUBs.'));
     const contents = view.renderer.getContents();
+    // Decide once, synchronously at the user's click. An invalid existing selection
+    // must fail verification rather than silently grant access to the whole page.
+    const selections =
+      kind === 'page'
+        ? []
+        : contents.flatMap(({ doc }) => {
+            const selection = doc.getSelection();
+            return selection && !selection.isCollapsed ? [selection] : [];
+          });
+    const captureKind = kind === 'auto' ? (selections.length ? 'selection' : 'page') : kind;
     let range: Range | undefined;
-    if (kind === 'selection') {
-      const selections = contents.flatMap(({ doc }) => {
-        const selection = doc.getSelection();
-        return selection && !selection.isCollapsed && selection.rangeCount === 1
-          ? [selection.getRangeAt(0).cloneRange()]
-          : [];
-      });
-      if (selections.length === 1) range = selections[0];
+    if (captureKind === 'selection') {
+      if (selections.length === 1 && selections[0]!.rangeCount === 1)
+        range = selections[0]!.getRangeAt(0).cloneRange();
     } else {
       range = view.lastLocation?.range?.cloneRange();
     }
@@ -95,8 +100,8 @@ export async function captureReadingScope({
     });
     return createReadingScope({
       documentHash,
-      kind,
-      title: kind === 'selection' ? _('Selected text') : _('Current page'),
+      kind: captureKind,
+      title: captureKind === 'selection' ? _('Selected text') : _('Current page'),
       chapterTitle,
       sources,
     });
