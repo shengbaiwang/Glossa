@@ -1,5 +1,9 @@
 ## Glossa Design Language
 
+### Conversation citation preview — 2026-09-22
+
+Use a quiet 12px regular-weight chapter title with a plain citation number. Resolve the title from the local outline at the verified source position; retain the saved scope label when the outline cannot locate it. Keep the preview at most 320px wide with 12px insets and a 6px header gap. Excerpts use 13px type with 1.65 line height, no quote rail or indentation, and scroll beyond 240px (40dvh on short windows). Preserve local verification, viewport bounds, selectable text and e-ink borders.
+
 ### Conversation usage — 2026-09-22
 
 Keep the popover small: a 368px maximum width, 14px insets (12px on narrow screens), 10px section spacing, 14px model title and 16px primary numbers. Detail values stay at 13px with 12px labels; the desktop disclosure row is 28px tall, while touch targets remain 44px. Compactness comes mainly from spacing, with readable values and room for wrapping.

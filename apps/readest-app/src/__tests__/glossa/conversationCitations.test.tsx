@@ -99,6 +99,73 @@ it('marks saved text unverified on failure and still routes clicks through the e
   expect(f.open).toHaveBeenCalledOnce();
 });
 
+it('titles a verified preview with its local chapter instead of the whole-book answer scope', async () => {
+  f.resolve.mockResolvedValue({ text: 'Local b', cfi: 'epubcfi(/6/2!/4/6/2:0)' });
+  render(
+    <ConversationAnswer
+      {...props}
+      sourceLabel='Whole book'
+      bookDoc={{
+        ...props.bookDoc,
+        toc: [
+          {
+            id: 0,
+            index: 0,
+            label: '第一章',
+            href: 'one.xhtml',
+            cfi: 'epubcfi(/6/2!/4/2)',
+            subitems: [
+              {
+                id: 1,
+                index: 0,
+                label: '  理解与理由  ',
+                href: 'one.xhtml#reasons',
+                cfi: 'epubcfi(/6/2!/4/6)',
+              },
+            ],
+          },
+        ],
+      }}
+    />,
+  );
+  fireEvent.focusIn(screen.getAllByRole('link', { name: /^Open source passage/ })[0]!);
+  await waitFor(() =>
+    expect(screen.getByRole('tooltip').querySelector('header')?.textContent).toBe('1理解与理由'),
+  );
+  expect(f.open).not.toHaveBeenCalled();
+});
+
+it('keeps the scope title when the local outline cannot locate a verified source', async () => {
+  render(<ConversationAnswer {...props} bookDoc={{ ...props.bookDoc, toc: [] }} />);
+  fireEvent.focusIn(screen.getAllByRole('link', { name: /^Open source passage/ })[0]!);
+  await screen.findByText('Local b');
+  expect(screen.getByRole('tooltip').querySelector('header')?.textContent).toBe('1Chapter one');
+});
+
+it('uses the cited section when outline CFIs have not been prepared', async () => {
+  f.resolve.mockResolvedValue({ text: 'Local b', cfi: 'epubcfi(/6/2!/4/6/2:0)' });
+  render(
+    <ConversationAnswer
+      {...props}
+      sourceLabel='Whole book'
+      bookDoc={
+        {
+          ...props.bookDoc,
+          sections: [{ id: 'one.xhtml' }, { id: 'two.xhtml' }],
+          splitTOCHref: (href: string) => href.split('#'),
+          toc: [
+            { id: 0, index: 0, label: 'First chapter', href: 'one.xhtml' },
+            { id: 1, index: 1, label: 'Second chapter', href: 'two.xhtml' },
+          ],
+        } as BookDoc
+      }
+    />,
+  );
+  fireEvent.focusIn(screen.getAllByRole('link', { name: /^Open source passage/ })[0]!);
+  await screen.findByText('Local b');
+  expect(screen.getByRole('tooltip').querySelector('header')?.textContent).toBe('1First chapter');
+});
+
 it('aborts a stale preview when moving to another citation and ignores its late result', async () => {
   let finish!: (value: { text: string; cfi: string }) => void;
   f.resolve.mockReturnValueOnce(

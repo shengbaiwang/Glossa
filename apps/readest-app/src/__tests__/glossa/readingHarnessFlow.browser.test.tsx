@@ -455,6 +455,8 @@ it('browses citations in answer order and keeps previews inside narrow, dark and
     fireEvent.focusIn(citation);
     const preview = await screen.findByRole('tooltip');
     await waitFor(() => expect(preview.querySelector('[role="status"]')).toBeNull());
+    expect(preview.querySelector('header')?.textContent).toContain('第一章');
+    expect(preview.querySelector('header')?.textContent).not.toContain('第二章');
     const bounds = preview.getBoundingClientRect();
     expect(bounds.left).toBeGreaterThanOrEqual(0);
     expect(bounds.right).toBeLessThanOrEqual(width);

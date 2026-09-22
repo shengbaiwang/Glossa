@@ -4,6 +4,8 @@ import type { BookDoc } from '@/libs/document';
 import type { ChapterSource } from '@/glossa/context/types';
 import { resolveSource } from '@/glossa/citations/sources';
 import { useTranslation } from '@/hooks/useTranslation';
+import { findTocItemBS } from '@/services/nav/lookup';
+import { collectAllTocItems } from '@/services/nav/grouping';
 
 /** Read only the cited local anchor. Previewing never changes the reader location. */
 export default function ConversationCitationPreview({
@@ -30,22 +32,47 @@ export default function ConversationCitationPreview({
   const root = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
-  const [passage, setPassage] = useState({ text: source.text, status: 'loading' });
+  const [passage, setPassage] = useState({ text: source.text, status: 'loading', title: '' });
   const [position, setPosition] = useState({ left: 0, top: 0 });
 
   useEffect(() => {
     const controller = new AbortController();
-    setPassage({ text: source.text, status: 'loading' });
+    setPassage({ text: source.text, status: 'loading', title: '' });
     void resolveSource(bookDoc, source, { signal: controller.signal })
       .then((resolved) => {
+        let title = '';
+        if (resolved) {
+          try {
+            const toc = bookDoc.toc ?? [];
+            const items = collectAllTocItems(toc);
+            if (items.length && items.every((item) => item.cfi)) {
+              title = findTocItemBS(toc, resolved.cfi)?.label.trim() ?? '';
+            } else {
+              // An unprepared outline cannot locate fragments. Use only a direct
+              // section label, without reading other sections to build navigation.
+              const section = bookDoc.sections?.[source.anchor.sectionIndex];
+              title =
+                items
+                  .find((item) => {
+                    const [path, fragment] = bookDoc.splitTOCHref(item.href);
+                    return section && !fragment && (path === section.id || path === section.href);
+                  })
+                  ?.label.trim() ?? '';
+            }
+          } catch {
+            // Older outlines may lack usable CFIs; keep the saved scope label.
+          }
+        }
         if (!controller.signal.aborted)
           setPassage({
             text: resolved?.text ?? source.text,
             status: resolved ? 'verified' : 'unverified',
+            title,
           });
       })
       .catch(() => {
-        if (!controller.signal.aborted) setPassage({ text: source.text, status: 'unverified' });
+        if (!controller.signal.aborted)
+          setPassage({ text: source.text, status: 'unverified', title: '' });
       });
     anchor.setAttribute('aria-describedby', id);
     const dismiss = () => close.current();
@@ -97,7 +124,9 @@ export default function ConversationCitationPreview({
     >
       <header>
         <span className='glossa-chat-citation-number'>{number}</span>
-        <strong dir='auto'>{label || _('Original passage')}</strong>
+        <span className='glossa-chat-citation-title' dir='auto'>
+          {passage.title || label?.trim() || _('Original passage')}
+        </span>
       </header>
       <blockquote dir='auto'>{passage.text}</blockquote>
       {passage.status !== 'verified' && (
