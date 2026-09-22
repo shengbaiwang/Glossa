@@ -2,7 +2,9 @@
 
 ### Conversation citation preview — 2026-09-22
 
-Use a quiet 12px regular-weight chapter title with a plain citation number. Resolve the title from the local outline at the verified source position; retain the saved scope label when the outline cannot locate it. Keep the preview at most 320px wide with 12px insets and a 6px header gap. Excerpts use 13px type with 1.65 line height, no quote rail or indentation, and scroll beyond 240px (40dvh on short windows). Preserve local verification, viewport bounds, selectable text and e-ink borders.
+Inline answer citations are quieter than the preview badge: 16px high, 4px corners, 10px tabular numerals and the original inline alignment, with softer theme fill/border until hover or keyboard focus. Keep following closing punctuation in the same nonbreaking span without changing copyable text. Preserve 44px touch targets and crisp e-ink borders.
+
+Use a quiet 12px regular-weight chapter title with an 18px citation badge: 5px corners, a subtle theme-ink fill and 1px border, centered 11px medium-weight tabular numerals. Allow wider badges for multiple digits; align the badge to the title's first 18px line with a 6px gap. Resolve the title from the local outline at the verified source position; retain the saved scope label when the outline cannot locate it. Keep the preview at most 320px wide with 12px insets and a 6px header gap. Excerpts use 13px type with 1.65 line height, no quote rail or indentation, and scroll beyond 240px (40dvh on short windows). Preserve local verification, viewport bounds, selectable text and e-ink borders.
 
 ### Conversation usage — 2026-09-22
 

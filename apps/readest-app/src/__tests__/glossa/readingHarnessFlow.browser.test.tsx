@@ -426,7 +426,7 @@ it('browses citations in answer order and keeps previews inside narrow, dark and
     const paragraph = evidence.find((source) => source.text === firstParagraph)!;
     const second = evidence.find((source) => source.sourceId !== paragraph.sourceId)!;
     secondPassage = second.text;
-    const text = `理解观点需要找出它回应的问题。[9](#source-${paragraph.sourceId})\n\n这里也谈到其他理解线索。[8](#source-${second.sourceId})\n\n理由用来支持结论。[4](#source-${paragraph.sourceId})`;
+    const text = `理解观点需要找出它回应的问题[9](#source-${paragraph.sourceId})。\n\n这里也谈到其他理解线索。[8](#source-${second.sourceId})\n\n理由用来支持结论。[4](#source-${paragraph.sourceId})`;
     request.onDelta?.(text);
     return { text, toolCalls: [] };
   });
@@ -452,6 +452,12 @@ it('browses citations in answer order and keeps previews inside narrow, dark and
     document.documentElement.setAttribute('data-eink', String(eink));
     document.documentElement.dir = dir;
     const citation = screen.getAllByRole('link', { name: 'Open source passage 1' })[0]!;
+    const punctuation = document.createRange();
+    punctuation.selectNodeContents(citation.nextSibling!);
+    const markBounds = punctuation.getBoundingClientRect();
+    const citationBounds = citation.getBoundingClientRect();
+    expect(markBounds.top).toBeLessThan(citationBounds.bottom);
+    expect(markBounds.bottom).toBeGreaterThan(citationBounds.top);
     fireEvent.focusIn(citation);
     const preview = await screen.findByRole('tooltip');
     await waitFor(() => expect(preview.querySelector('[role="status"]')).toBeNull());

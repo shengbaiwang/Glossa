@@ -1034,9 +1034,24 @@
   text-decoration: none;
   vertical-align: 1px;
 }
+.glossa-chat-answer a.glossa-chat-source-link {
+  min-width: 16px;
+  height: 16px;
+  padding-inline: 2px;
+  border-radius: 4px;
+  border-color: color-mix(in srgb, var(--glossa-border) 65%, transparent);
+  background: color-mix(in srgb, var(--glossa-hover) 55%, transparent);
+  color: var(--glossa-muted);
+  font-size: 10px;
+}
+.glossa-chat-citation-tail {
+  white-space: nowrap;
+}
 .glossa-chat-answer a.glossa-chat-source-link:hover,
 .glossa-chat-answer a.glossa-chat-source-link:focus-visible {
   background: var(--glossa-selected);
+  border-color: var(--glossa-border);
+  color: var(--glossa-ink);
 }
 .glossa-chat-citation-preview {
   position: fixed;
@@ -1057,27 +1072,24 @@
 }
 .glossa-chat-citation-preview header {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 6px;
   margin-block-end: 6px;
   color: var(--glossa-muted);
 }
 .glossa-chat-citation-preview .glossa-chat-citation-number {
   flex-shrink: 0;
-  min-width: 0;
-  height: auto;
+  min-width: 18px;
+  height: 18px;
   margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: none;
-  color: inherit;
+  padding-inline: 2px;
+  border-radius: 5px;
 }
 .glossa-chat-citation-title {
   min-width: 0;
   font-size: 12px;
   font-weight: 400;
-  line-height: 1.45;
+  line-height: 18px;
   overflow-wrap: anywhere;
 }
 .glossa-chat-citation-preview blockquote {
@@ -1108,6 +1120,7 @@
   }
 }
 [data-eink='true'] .glossa-chat-citation-preview,
+[data-eink='true'] .glossa-chat-citation-preview .glossa-chat-citation-number,
 [data-eink='true'] .glossa-chat-answer a.glossa-chat-source-link {
   border-color: var(--glossa-ink);
   box-shadow: none;

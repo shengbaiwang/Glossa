@@ -84,6 +84,24 @@ export default function ConversationAnswer({
             `${translate.current('Open source passage')} ${index + 1}`,
           );
           anchor.removeAttribute('title');
+          // Keep a closing mark with its citation, preserving the original text
+          // and leaving the rest of the sentence free to wrap.
+          const next = anchor.nextSibling;
+          if (
+            !anchor.parentElement?.classList.contains('glossa-chat-citation-tail') &&
+            next instanceof Text
+          ) {
+            const punctuation = next.data.match(
+              /^[ \t]*[，。！？；：、,.!?;:…）)\]】」』”’]+/u,
+            )?.[0];
+            if (punctuation) {
+              const tail = document.createElement('span');
+              tail.className = 'glossa-chat-citation-tail';
+              next.splitText(punctuation.length);
+              anchor.before(tail);
+              tail.append(anchor, next);
+            }
+          }
           citations.set(anchor, { source, number: index + 1 });
         }
         return;

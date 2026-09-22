@@ -53,6 +53,24 @@ it('numbers only cited allowed sources in answer order, reuses numbers and opens
   expect(f.open).toHaveBeenCalledWith(sources[0], [sources[1], sources[0]]);
 });
 
+it('keeps trailing punctuation beside the citation without changing copyable text or replaying wrappers', () => {
+  render(
+    <StrictMode>
+      <ConversationAnswer {...props} text={'观点[1](#source-a) 。后文[2](#source-b)，再说明。'} />
+    </StrictMode>,
+  );
+  const links = screen.getAllByRole('link', { name: /^Open source passage/ });
+  expect(links[0]!.parentElement?.className).toBe('glossa-chat-citation-tail');
+  expect(links[0]!.parentElement?.textContent).toBe('1 。');
+  expect(links[1]!.parentElement?.textContent).toBe('2，');
+  expect(document.querySelectorAll('.glossa-chat-citation-tail')).toHaveLength(2);
+  expect(document.querySelector('.glossa-chat-answer')?.textContent?.trim()).toBe(
+    '观点1 。后文2，再说明。',
+  );
+  fireEvent.click(links[1]!);
+  expect(f.open).toHaveBeenCalledWith(sources[1], [sources[0], sources[1]]);
+});
+
 it('previews saved direct source-ID fragments and canonical links as the same citation', async () => {
   const saved = source('s-14-abcdef123456');
   render(
