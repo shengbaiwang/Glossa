@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { ChevronDown } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import type { AnswerVersion } from '@/glossa/conversation/schema';
 import { sumReplyCosts, sumReplyTokens } from '@/glossa/conversation/usage';
@@ -13,6 +14,7 @@ export default function ConversationUsage({ answer }: { answer: AnswerVersion })
   const popup = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [position, setPosition] = useState({ left: 0, top: 0 });
   const clear = () => {
     clearTimeout(timer.current);
@@ -20,10 +22,11 @@ export default function ConversationUsage({ answer }: { answer: AnswerVersion })
   const close = () => {
     clear();
     setOpen(false);
+    setExpanded(false);
   };
   const leave = () => {
     clear();
-    timer.current = setTimeout(() => setOpen(false), 180);
+    timer.current = setTimeout(close, 180);
   };
   const show = () => {
     clear();
@@ -35,6 +38,7 @@ export default function ConversationUsage({ answer }: { answer: AnswerVersion })
     const key = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.stopPropagation();
+        if (popup.current?.contains(document.activeElement)) trigger.current?.focus();
         close();
       }
     };
@@ -77,7 +81,7 @@ export default function ConversationUsage({ answer }: { answer: AnswerVersion })
           : Math.min(target.bottom + 8, window.innerHeight - bounds.height - 12),
       ),
     });
-  }, [open]);
+  }, [open, expanded, answer.id]);
 
   const usage = answer.usage;
   const costs = usage && sumReplyCosts(usage);
@@ -88,14 +92,19 @@ export default function ConversationUsage({ answer }: { answer: AnswerVersion })
       ? output.value / (usage.elapsedMs / 1000)
       : undefined;
   const number = (value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 1 });
-  const duration = (value: number) => `${number(value / 1000)} ${_('s')}`;
+  const duration = (value: number) => {
+    if (value < 1000) return `${Math.round(value)} ${_('ms')}`;
+    const seconds = Math.round(value / 100) / 10;
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes ? `${number(minutes)} ${_('min')} ` : ''}${number(seconds % 60)} ${_('s')}`;
+  };
   const amount = (value: number) =>
     value > 0 && value < 0.00000001
       ? value.toExponential(3)
       : value.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 8 });
   const tokens = (key: keyof TokenUsage) => {
     const sum = usage && sumReplyTokens(usage, key);
-    return sum ? `${sum.partial ? '≥ ' : ''}${number(sum.value)}` : _('Not provided');
+    return sum ? `${sum.partial ? '≥ ' : ''}${number(sum.value)}` : undefined;
   };
   const summary = total
     ? `${total.partial ? '≥ ' : ''}${number(total.value)} Tokens${speed !== undefined ? ` · ${number(speed)} ${_('Token/s')}` : ''}`
@@ -104,6 +113,25 @@ export default function ConversationUsage({ answer }: { answer: AnswerVersion })
       : _('Usage');
   const requests = usage?.requests ?? [];
   const createdAt = new Date(answer.createdAt);
+  if (!usage) return null;
+  const primary = [
+    { label: _('Input'), value: tokens('inputTokens'), unit: 'Tokens' },
+    { label: _('Output'), value: tokens('outputTokens'), unit: 'Tokens' },
+    {
+      label: _('End-to-end throughput'),
+      value: speed === undefined ? undefined : number(speed),
+      unit: _('Token/s'),
+    },
+  ].filter((item) => item.value !== undefined);
+  const details = [
+    { label: _('Reasoning tokens'), value: tokens('reasoningTokens'), unit: 'Tokens' },
+    { label: _('Cache read tokens'), value: tokens('cachedTokens'), unit: 'Tokens' },
+    {
+      label: _('Time to first text'),
+      value: usage.firstTextMs === undefined ? undefined : duration(usage.firstTextMs),
+    },
+    { label: _('Total time'), value: duration(usage.elapsedMs) },
+  ].filter((item) => item.value !== undefined);
   return (
     <>
       <button
@@ -112,7 +140,9 @@ export default function ConversationUsage({ answer }: { answer: AnswerVersion })
         dir='auto'
         className='glossa-chat-usage-trigger'
         aria-label={_('Reply usage')}
-        aria-describedby={open ? id : undefined}
+        aria-haspopup='dialog'
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
         onMouseEnter={() => {
           clear();
           timer.current = setTimeout(show, 180);
@@ -121,6 +151,12 @@ export default function ConversationUsage({ answer }: { answer: AnswerVersion })
         onFocus={show}
         onBlur={leave}
         onClick={show}
+        onKeyDown={(event) => {
+          if (!['ArrowDown', 'Enter', ' '].includes(event.key)) return;
+          event.preventDefault();
+          show();
+          requestAnimationFrame(() => popup.current?.querySelector('button')?.focus());
+        }}
       >
         {summary}
       </button>
@@ -129,110 +165,115 @@ export default function ConversationUsage({ answer }: { answer: AnswerVersion })
           <div
             ref={popup}
             id={id}
-            role='tooltip'
+            role='dialog'
+            aria-label={_('Reply usage')}
             className='glossa-chat-usage-popup eink-bordered'
             style={position}
             onMouseEnter={clear}
-            onMouseLeave={leave}
+            onMouseLeave={() => {
+              if (!popup.current?.contains(document.activeElement)) leave();
+            }}
+            onFocusCapture={clear}
+            onBlurCapture={(event) => {
+              if (
+                !event.currentTarget.contains(event.relatedTarget) &&
+                event.relatedTarget !== trigger.current
+              )
+                leave();
+            }}
           >
             <header>
-              <strong dir='auto'>{answer.provider.model}</strong>
-              <span dir='auto'>{answer.provider.name}</span>
+              <div>
+                <strong dir='auto'>{answer.provider.model}</strong>
+                <span dir='auto'>{answer.provider.name}</span>
+              </div>
               {Number.isFinite(createdAt.getTime()) && (
                 <time dir='auto' dateTime={createdAt.toISOString()}>
-                  {createdAt.toLocaleString()}
+                  {createdAt.toLocaleDateString()}
+                  <br />
+                  {createdAt.toLocaleTimeString()}
                 </time>
               )}
             </header>
-            {usage ? (
-              <>
-                <dl className='glossa-chat-usage-tokens'>
-                  <div>
-                    <dt>{_('Input tokens')}</dt>
-                    <dd dir='auto'>{tokens('inputTokens')}</dd>
+            {primary.length > 0 && (
+              <dl className='glossa-chat-usage-tokens' data-columns={primary.length}>
+                {primary.map((item) => (
+                  <div key={item.label}>
+                    <dt>{item.label}</dt>
+                    <dd dir='auto'>
+                      {item.value} <small>{item.unit}</small>
+                    </dd>
                   </div>
-                  <div>
-                    <dt>{_('Output tokens')}</dt>
-                    <dd dir='auto'>{tokens('outputTokens')}</dd>
-                  </div>
-                </dl>
-                <dl className='glossa-chat-usage-cost'>
-                  <dt>{_('Cost')}</dt>
-                  <dd>
-                    {costs ? (
-                      <>
-                        <span>{_('Provider charge')}</span>
-                        {costs.totals.map((cost) => (
-                          <span key={cost.currency ?? 'unknown'} dir='auto'>
-                            {costs.partial ? '≥ ' : ''}
-                            {cost.currency === 'USD' ? 'US$' : ''}
-                            {amount(cost.amount)}
-                            {!cost.currency && ` · ${_('Currency not provided')}`}
-                          </span>
-                        ))}
-                        {costs.partial && (
-                          <span>
-                            {_('Cost reported')} {costs.reported}/{requests.length}
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      _('Not provided')
-                    )}
+                ))}
+              </dl>
+            )}
+            {costs && (
+              <dl className='glossa-chat-usage-cost'>
+                <dt>{_('Cost')}</dt>
+                <dd>
+                  <span>{_('Provider charge')}</span>
+                  {costs.totals.map((cost) => (
+                    <span key={cost.currency ?? 'unknown'} dir='auto'>
+                      {costs.partial ? '≥ ' : ''}
+                      {cost.currency === 'USD' ? 'US$' : ''}
+                      {amount(cost.amount)}
+                      {!cost.currency && ` · ${_('Currency not provided')}`}
+                    </span>
+                  ))}
+                  {costs.partial && (
+                    <span>
+                      {_('Cost reported')} {costs.reported}/{requests.length}
+                    </span>
+                  )}
+                </dd>
+              </dl>
+            )}
+            <dl className='glossa-chat-usage-details'>
+              {details.map((item) => (
+                <div key={item.label}>
+                  <dt>{item.label}</dt>
+                  <dd dir='auto'>
+                    {item.value}
+                    {item.unit ? ` ${item.unit}` : ''}
                   </dd>
-                </dl>
-                <dl className='glossa-chat-usage-details'>
-                  <div>
-                    <dt>{_(requests.length > 1 ? 'Combined output limit' : 'Output limit')}</dt>
-                    <dd dir='auto'>
-                      {requests.length
-                        ? `${number(requests.reduce((sum, item) => sum + item.outputBudget, 0))} Tokens`
-                        : _('Not provided')}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{_('Model requests')}</dt>
-                    <dd dir='auto'>{number(requests.length)}</dd>
-                  </div>
-                  <div>
-                    <dt>{_('Reasoning tokens')}</dt>
-                    <dd dir='auto'>{tokens('reasoningTokens')}</dd>
-                  </div>
-                  <div>
-                    <dt>{_('Cache read tokens')}</dt>
-                    <dd dir='auto'>{tokens('cachedTokens')}</dd>
-                  </div>
-                  <div>
-                    <dt>{_('Time to first text')}</dt>
-                    <dd dir='auto'>
-                      {usage.firstTextMs === undefined
-                        ? _('Not provided')
-                        : duration(usage.firstTextMs)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{_('Total time')}</dt>
-                    <dd dir='auto'>{duration(usage.elapsedMs)}</dd>
-                  </div>
-                  <div>
-                    <dt>{_('End-to-end throughput')}</dt>
-                    <dd dir='auto'>
-                      {speed === undefined ? _('Not provided') : `${number(speed)} ${_('Token/s')}`}
-                    </dd>
-                  </div>
-                  {requests.some((item) => item.usage?.totalTokens === undefined) && (
+                </div>
+              ))}
+            </dl>
+            {requests.length > 0 && (
+              <div className='glossa-chat-usage-more'>
+                <button
+                  type='button'
+                  aria-expanded={expanded}
+                  aria-controls={`${id}-more`}
+                  onClick={() => setExpanded(!expanded)}
+                >
+                  {_('More information')}
+                  <ChevronDown size={16} aria-hidden='true' />
+                </button>
+                {expanded && (
+                  <dl id={`${id}-more`}>
                     <div>
-                      <dt>{_('Usage reported')}</dt>
+                      <dt>{_(requests.length > 1 ? 'Combined output limit' : 'Output limit')}</dt>
                       <dd dir='auto'>
-                        {requests.filter((item) => item.usage?.totalTokens !== undefined).length}/
-                        {requests.length}
+                        {number(requests.reduce((sum, item) => sum + item.outputBudget, 0))} Tokens
                       </dd>
                     </div>
-                  )}
-                </dl>
-              </>
-            ) : (
-              <p>{_('Usage was not recorded for this reply.')}</p>
+                    <div>
+                      <dt>{_('Model requests')}</dt>
+                      <dd dir='auto'>{number(requests.length)}</dd>
+                    </div>
+                    {total?.partial && (
+                      <div>
+                        <dt>{_('Usage reported')}</dt>
+                        <dd dir='auto'>
+                          {requests.filter((item) => item.usage?.totalTokens !== undefined).length}/
+                          {requests.length}
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
+              </div>
             )}
           </div>,
           document.body,

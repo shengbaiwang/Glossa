@@ -74,3 +74,37 @@ it('gracefully keeps the source panel usable on engines without CSS highlights',
   expect(() => highlightSource(view, source)()).not.toThrow();
   expect(document.head.querySelector('style')).toBeNull();
 });
+
+it('keeps emphasis through repeated relocation and layout updates while the passage remains visible', () => {
+  const { view, registry, p, source } = fixture();
+  const visible = document.createRange();
+  visible.selectNodeContents(p);
+  view.lastLocation = { range: visible };
+  highlightSource(view, source);
+  for (let i = 0; i < 3; i++) view.dispatchEvent(new Event('relocate'));
+  expect(registry.has('glossa-source')).toBe(true);
+  const elsewhere = document.createElement('p');
+  elsewhere.textContent = 'Next page';
+  document.body.append(elsewhere);
+  const next = document.createRange();
+  next.selectNodeContents(elsewhere);
+  view.lastLocation = { range: next };
+  view.dispatchEvent(new Event('relocate'));
+  expect(registry.has('glossa-source')).toBe(false);
+});
+
+it.each([
+  ['<p>First paragraph.</p><p>Second paragraph.</p>', 'First paragraph. Second paragraph.'],
+  [
+    '<table><tbody><tr><td>First cell</td><td>Second cell</td></tr></tbody></table>',
+    'First cell Second cell',
+  ],
+])('highlights verified block text with semantic separators: %s', (html, text) => {
+  const { view, registry, source } = fixture();
+  document.body.innerHTML = html;
+  const range = document.createRange();
+  range.selectNodeContents(document.body);
+  view.resolveCFI = () => ({ index: 0, anchor: () => range });
+  highlightSource(view, { ...source, text });
+  expect(registry.has('glossa-source')).toBe(true);
+});

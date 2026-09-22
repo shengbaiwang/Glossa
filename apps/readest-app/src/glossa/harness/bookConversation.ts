@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { md5 } from 'js-md5';
 import {
   streamCompletion,
+  streamToolCompletion,
   ModelServiceError,
   type CompletionMessage,
   type CompletionRequest,
@@ -20,7 +21,8 @@ import { checkAborted } from '@/glossa/context/text';
 import type { ChapterSource } from '@/glossa/context/types';
 import { citedSourceIds } from '@/glossa/citations/links';
 import { stubTranslation as _ } from '@/utils/misc';
-import type { BookReadingAccess } from './book';
+import { sourceWire as wire, type BookReadingAccess } from './book';
+import { answerBookSearch } from './searchAnswer';
 import {
   conversationReadingScopeSchema,
   readingScopeSchema,
@@ -32,12 +34,19 @@ import {
   type ReadingConversationResult,
   type ReadingConversationRequest,
 } from './generate';
-import { asksForOverview, asksForSelection, rankSources, sampleBookSources } from './retrieval';
+import {
+  asksForFocus,
+  asksForOverview,
+  asksForSelection,
+  rankSources,
+  sampleBookSources,
+  seedSearchQuery,
+} from './retrieval';
 
 export const BOOK_REQUEST_TIMEOUT_MS = 480000;
 export const MAX_OVERVIEW_CHARS = 240000;
 const FINAL_SOURCE_CHARS = 80000;
-const SEARCH_SOURCE_CHARS = 18000;
+const SEARCH_SOURCE_CHARS = 8000; // Reserve room for evidence selected by the model.
 const MAX_BATCHES = 24;
 const isTruncated = (error: unknown) =>
   error instanceof ModelServiceError && error.code === 'length';
@@ -49,7 +58,6 @@ const joinContinuation = (prefix: string, next: string) => {
     if (prefix.endsWith(next.slice(0, count))) return prefix + next.slice(count);
   return prefix + next;
 };
-const sourceWire = ({ sourceId, text }: ChapterSource) => ({ sourceId, text });
 const planSchema = z
   .object({
     strategy: z.enum(['overview', 'search']),
@@ -75,7 +83,7 @@ const inventorySchema = z
 // Only validated intermediate interpretations are retained, in memory, per open
 // book access. Originals remain the authority. No book text is stored in settings.
 const inventories = new WeakMap<BookReadingAccess, Map<string, z.infer<typeof inventorySchema>>>();
-const INVENTORY_VERSION = 'inventory-2';
+const INVENTORY_VERSION = 'inventory-context-3';
 function inventoryCache(access: BookReadingAccess) {
   let cache = inventories.get(access);
   if (!cache) {
@@ -108,6 +116,7 @@ const size = (sources: ChapterSource[]) =>
 export interface BookConversationRequest {
   scope: ConversationReadingScope;
   access: BookReadingAccess;
+  readFocus?: (signal: AbortSignal) => Promise<ChapterSource[]>;
   metadata: ChatIdentity;
   question: string;
   turns: Pick<AnswerVersion, 'question' | 'text' | 'status' | 'reading'>[];
@@ -122,7 +131,7 @@ export interface BookConversationRequest {
 /** A finite plan → local reads → (optional inventories) → sourced answer, not an autonomous agent. */
 export async function generateBookConversation(
   input: BookConversationRequest,
-  { complete = streamCompletion } = {},
+  { complete = streamCompletion, completeTools = streamToolCompletion } = {},
 ): Promise<ReadingConversationResult> {
   checkAborted(input.signal);
   const scope = conversationReadingScopeSchema.parse(input.scope);
@@ -173,6 +182,7 @@ export async function generateBookConversation(
       throw new ConversationError(_('The model response was too large. Choose a smaller range.'));
     return value;
   };
+  const sourceWire = (source: ChapterSource) => wire(source, input.access);
   const work = async () => {
     stage(_('Finding book passages…'));
     const history: CompletionMessage[] = [];
@@ -254,8 +264,18 @@ export async function generateBookConversation(
         throw new ConversationError(_('The selected chapter is unavailable.'));
       return result;
     };
+    const focus =
+      scope.kind === 'book' && asksForFocus(question) && input.readFocus
+        ? await input.readFocus(signal)
+        : undefined;
+    if (focus && !focus.length)
+      throw new ConversationError(
+        _('The current passage is unavailable. Include the passage in your question.'),
+      );
     let plan: z.infer<typeof planSchema>;
-    if (scope.kind !== 'book') {
+    if (focus) {
+      plan = { strategy: overview ? 'overview' : 'search', chapterIds: [], queries: [] };
+    } else if (scope.kind !== 'book') {
       plan = { strategy: 'overview', chapterIds: [], queries: [] };
     } else if (overview && (named.length === 1 || current.length === 1 || explicitWhole)) {
       plan = {
@@ -271,13 +291,16 @@ export async function generateBookConversation(
           : (named.length === 1 ? named : current.length === 1 ? current : []).map(
               (chapter) => chapter.id,
             ),
-        queries: [question.slice(0, 200)],
+        queries: [
+          asksForSelection(question) ? question.slice(0, 200) : seedSearchQuery(question, metadata),
+        ],
       };
     } else plan = await planWithModel();
     if (plan.chapterIds.some((id) => !chapters.some((chapter) => chapter.id === id)))
       throw new ConversationError(_('The selected chapter is unavailable.'));
     let target: ChapterSource[];
-    if (plan.strategy === 'overview') {
+    if (focus) target = focus;
+    else if (plan.strategy === 'overview') {
       stage(_('Reading the complete range…'));
       target = [];
       if (plan.chapterIds.length)
@@ -298,26 +321,19 @@ export async function generateBookConversation(
         plan.queries.length ? plan.queries : [question.slice(0, 200)],
         signal,
       );
-      // Only an empty local retrieval pays for query expansion. Ordinary Q&A
-      // cannot silently turn into a costly whole-book inventory via this fallback.
-      if (!target.length && !asksForSelection(question)) {
-        const expanded = await planWithModel();
-        target = await input.access.search(
-          expanded.queries.length ? expanded.queries : plan.queries,
-          signal,
-        );
-      }
     }
     checkAborted(signal);
     target = unique(target);
     const title = (
-      scope.kind !== 'book'
-        ? scope.title
-        : plan.chapterIds.length
-          ? plan.chapterIds
-              .map((id) => chapters.find((chapter) => chapter.id === id)!.title)
-              .join(' / ')
-          : _('Entire book')
+      focus
+        ? _('Current passage')
+        : scope.kind !== 'book'
+          ? scope.title
+          : plan.chapterIds.length
+            ? plan.chapterIds
+                .map((id) => chapters.find((chapter) => chapter.id === id)!.title)
+                .join(' / ')
+            : _('Entire book')
     ).slice(0, 500);
     const coverage: NonNullable<ReadingAnswer['coverage']> = {
       strategy: plan.strategy,
@@ -453,13 +469,20 @@ export async function generateBookConversation(
     const messages: CompletionMessage[] = [
       {
         role: 'system',
-        content: `${prompt ? `${prompt}\n\n` : ''}${READING_ANSWER_RULES}\nUse only the supplied original evidence for book claims. The authorized range is ${scope.kind === 'book' ? 'the current book' : 'the fixed attached range, never the rest of the book'}. A search sample is not proof that every passage was read. Coverage refers to input processing, not guaranteed correctness of interpretation. For an overview cover the complete argument inventory, preserve explicit main arguments and separate additional observations, then address comparisons or contradictions. Merge only genuinely equivalent points; do not drop distinct points for brevity. Every inventory point needs a supporting inline citation in the final answer. Inventories are intermediate model interpretations, not original text: verify them against the supplied sources. Before finishing, check the introduction, each numbered argument, qualifications, and the conclusion for omissions.`,
+        content: `${prompt ? `${prompt}\n\n` : ''}${READING_ANSWER_RULES}\nUse only the supplied original evidence for book claims. The authorized range is ${scope.kind === 'book' ? 'the current book' : 'the fixed attached range, never the rest of the book'}. A search sample is not proof that every passage was read. Coverage refers to input processing, not guaranteed correctness of interpretation.${plan.strategy === 'overview' ? ' For an overview cover the complete argument inventory, preserve explicit main arguments and separate additional observations, then address comparisons or contradictions. Merge only genuinely equivalent points; do not drop distinct points for brevity. Every inventory point needs a supporting inline citation in the final answer. Inventories are intermediate model interpretations, not original text: verify them against the supplied sources. Before finishing, check the introduction, each numbered argument, qualifications, and the conclusion for omissions.' : ''}`,
       },
       {
         role: 'user',
         content: JSON.stringify({
           metadata,
           coverage,
+          ...(plan.strategy === 'search'
+            ? {
+                chapters: chapters.filter(
+                  (c) => !plan.chapterIds.length || plan.chapterIds.includes(c.id),
+                ),
+              }
+            : {}),
           sources: evidence.map(sourceWire),
           ...(points.length ? { argumentInventory: points } : {}),
         }),
@@ -467,6 +490,20 @@ export async function generateBookConversation(
       ...history,
       { role: 'user', content: question },
     ];
+    if (plan.strategy === 'search') {
+      stage(_('Writing the answer…'));
+      const answer = await answerBookSearch({
+        input: { ...input, signal },
+        messages,
+        sources: evidence,
+        chapterIds: plan.chapterIds,
+        complete,
+        completeTools,
+      });
+      coverage.readSources = answer.sources.length;
+      coverage.totalSources = Math.max(coverage.totalSources, answer.sources.length);
+      return { ...answer, mode: 'tools' as const, coverage };
+    }
     const publish = (raw: string) => {
       checkAborted(signal);
       if (raw.length > 32000)

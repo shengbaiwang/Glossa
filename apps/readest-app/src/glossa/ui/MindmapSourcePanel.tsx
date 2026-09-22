@@ -20,10 +20,12 @@ export default function MindmapSourcePanel({
   bookKey,
   selection,
   contextLabel,
+  showExcerpt = true,
   onNavigate,
 }: ReadingPanelProps & {
   selection: MindmapSourceSelection | null;
   contextLabel?: string;
+  showExcerpt?: boolean;
   onNavigate?: () => void;
 }) {
   const _ = useTranslation();
@@ -115,7 +117,7 @@ export default function MindmapSourcePanel({
 
   return (
     <>
-      {preview && (
+      {showExcerpt && preview && (
         <aside className='glossa-workmap-source' aria-label={_('Source excerpt')}>
           <header>
             <div>
@@ -172,6 +174,7 @@ export default function MindmapSourcePanel({
           )}
         </aside>
       )}
+      {!showExcerpt && busy && <p role='status'>{_('Locating source…')}</p>}
       {error && (
         <div className='glossa-workmap-error' role='alert'>
           <p>{_(error)}</p>

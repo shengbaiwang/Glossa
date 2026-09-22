@@ -36,3 +36,21 @@ it('cancels indexing between blocks instead of blocking the reader until the end
   controller.abort();
   await expect(building).rejects.toMatchObject({ name: 'AbortError' });
 });
+
+it('removes book identification noise while keeping topical concepts', async () => {
+  const { seedSearchQuery } = await import('@/glossa/harness/retrieval');
+  const query = seedSearchQuery('林某这本《原创制度史》是在什么历史背景下写作的？', {
+    bookTitle: '原创制度史',
+    author: '林某',
+  });
+  expect(query).not.toMatch(/林某|原创制度史/);
+  const index = await buildSourceIndex(
+    [
+      source('credit', '林某 著'),
+      source('title', '原创制度史'),
+      source('preface', '历史背景与写作缘由：当时社会动荡，作者试图回应普遍误解。'),
+    ],
+    new AbortController().signal,
+  );
+  expect(index.search(query)[0]?.sourceId).toBe('preface');
+});

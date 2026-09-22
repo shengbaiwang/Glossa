@@ -15,6 +15,7 @@ const sessionSchema = z
             id: z.string().min(1),
             title: z.string().trim().min(1).max(120).optional(),
             readingScope: conversationReadingScopeSchema.optional(),
+            citationsEnabled: z.boolean().optional(),
             turns: z.array(turnSchema).max(40),
           })
           .strict(),

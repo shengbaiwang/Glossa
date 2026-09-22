@@ -153,12 +153,16 @@ it('shows a hoverable usage footer and stores actual usage with the answer', asy
   expect(footer.textContent).toContain('120 Tokens');
   expect(screen.queryByText('From book text')).toBeNull();
   fireEvent.focus(footer);
-  expect((await screen.findByRole('tooltip')).textContent).toContain('Output limit');
-  expect(screen.getByRole('tooltip').textContent).toContain('8,192');
-  expect(screen.getByRole('tooltip').textContent).toContain('Provider charge');
-  expect(screen.getByRole('tooltip').textContent).toContain('US$0.0971');
+  await screen.findByRole('dialog', { name: 'Reply usage' });
+  expect(screen.queryByText('Output limit')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'More information' }));
+  expect(screen.getByRole('dialog', { name: 'Reply usage' }).textContent).toContain('8,192');
+  expect(screen.getByRole('dialog', { name: 'Reply usage' }).textContent).toContain(
+    'Provider charge',
+  );
+  expect(screen.getByRole('dialog', { name: 'Reply usage' }).textContent).toContain('US$0.0971');
   fireEvent.keyDown(document, { key: 'Escape' });
-  expect(screen.queryByRole('tooltip')).toBeNull();
+  expect(screen.queryByRole('dialog', { name: 'Reply usage' })).toBeNull();
   await waitFor(() =>
     expect(
       f.save.mock.calls.at(-1)?.[0].sessions[0].turns[0].usage.requests[0].usage.totalTokens,
@@ -166,139 +170,48 @@ it('shows a hoverable usage footer and stores actual usage with the answer', asy
   );
 });
 
-it('attaches original text only on request, keeps the focus through page changes, and detaches cleanly', async () => {
+it('switches references without reading and persists off across reopening', async () => {
   const b = book();
-  const text = 'Original evidence.';
-  const source = {
-    sourceId: 's1',
-    text,
-    kind: 'paragraph' as const,
-    anchor: {
-      sectionIndex: 0,
-      cfi: 'epubcfi(/6/2!/4/2)',
-      quote: { exact: text, prefix: '', suffix: '' },
-    },
-  };
-  const scope = createReadingScope({
-    documentHash: b.hash,
-    kind: 'page',
-    title: 'Attached page',
-    sources: [source],
-  });
-  f.capture.mockResolvedValue(scope);
-  f.reading.mockResolvedValue({
-    text: 'An explanation. [1](#source-s1)',
-    sources: [source],
-    mode: 'tools',
-  });
-  const panel = mount(b);
-  await screen.findByRole('button', { name: 'Use book text' });
+  const read = vi.fn();
+  const doc = { sections: [{ createDocument: read }] } as unknown as BookDoc;
+  const panel = mount(b, doc);
+  const toggle = await screen.findByRole('switch', { name: 'Citations on' });
+  expect(read).not.toHaveBeenCalled();
+  fireEvent.click(toggle);
+  expect(screen.queryByRole('combobox', { name: 'Choose a chapter' })).toBeNull();
   expect(f.capture).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Use book text' }));
-  await screen.findByRole('button', { name: 'Attached page' });
-  expect(f.capture).toHaveBeenCalledWith(expect.objectContaining({ kind: 'auto' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Attached page' }));
-  expect(screen.getByText(source.text)).toBeTruthy();
-  expect(f.capture).toHaveBeenCalledTimes(1);
-  fireEvent.keyDown(screen.getByRole('button', { name: 'Attached page' }), { key: 'Escape' });
-  expect(f.reading).not.toHaveBeenCalled();
-  f.location = 'next';
-  panel.rerender(<ConversationPanel book={b} bookDoc={{} as BookDoc} bookKey={b.hash} />);
-  await typeQuestion();
-  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
-  await screen.findByRole('link', { name: /^Open source passage/ });
-  expect(f.reading.mock.calls[0]![0].scope).toEqual(scope);
-  expect(f.generate).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('link', { name: /^Open source passage/ }));
-  await waitFor(() => expect(f.resolveSource).toHaveBeenCalled());
-  expect(f.navigateSource).toHaveBeenCalledWith({}, 'verified', expect.any(AbortSignal));
-  fireEvent.click(screen.getByRole('button', { name: 'Remove reading source' }));
   await typeQuestion('General question');
-  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
-  await waitFor(() => expect(f.generate).toHaveBeenCalledTimes(1));
+  send();
+  await waitFor(() => expect(f.generate).toHaveBeenCalledOnce());
+  expect(f.bookReading).not.toHaveBeenCalled();
+  expect(read).not.toHaveBeenCalled();
+  await answer();
+  const saved = f.save.mock.lastCall![0];
+  expect(saved.sessions[0].citationsEnabled).toBe(false);
+  panel.unmount();
+  f.load.mockResolvedValue(saved);
+  mount(b, doc);
+  fireEvent.click(await screen.findByRole('switch', { name: 'Citations off' }));
+  await typeQuestion('Find the original');
+  send();
+  await waitFor(() => expect(f.bookReading).toHaveBeenCalledOnce());
+  expect(f.bookReading.mock.calls[0]![0].scope.kind).toBe('book');
 });
 
-it('rejects an oversized selection before attaching or calling a model', async () => {
-  const b = book();
-  const text = 'A'.repeat(12001);
-  f.capture.mockResolvedValue(
-    createReadingScope({
-      documentHash: b.hash,
-      kind: 'selection',
-      title: 'Selected text',
-      sources: [
-        {
-          sourceId: 'large',
-          text,
-          kind: 'paragraph',
-          anchor: {
-            sectionIndex: 0,
-            cfi: 'epubcfi(/6/2!/4/2)',
-            quote: { exact: text, prefix: '', suffix: '' },
-          },
-        },
-      ],
-    }),
-  );
-  mount(b);
-  fireEvent.click(await screen.findByRole('button', { name: 'Use book text' }));
-  await screen.findByText('Choose a shorter reading passage.');
-  expect(screen.queryByRole('button', { name: 'Remove reading source' })).toBeNull();
-  expect(f.reading).not.toHaveBeenCalled();
-  expect(f.generate).not.toHaveBeenCalled();
-});
-
-it('keeps manual range selection available without automatically capturing text', async () => {
-  mount();
-  fireEvent.click(await screen.findByRole('button', { name: 'Choose reading range' }));
-  expect(f.capture).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Use selected text' }));
-  await waitFor(() =>
-    expect(f.capture).toHaveBeenCalledWith(expect.objectContaining({ kind: 'selection' })),
-  );
-  expect(f.reading).not.toHaveBeenCalled();
-});
-
-it('cancels one-click capture and discards a late result', async () => {
-  const b = book();
-  let finish: (scope: ReturnType<typeof createReadingScope>) => void = () => {};
-  f.capture.mockImplementation(
+it('disables the reference switch while a reply is running', async () => {
+  let finish: () => void = () => {};
+  f.bookReading.mockImplementationOnce(
     () =>
       new Promise((resolve) => {
-        finish = resolve;
+        finish = () => resolve({ text: 'Done', sources: [], mode: 'tools' });
       }),
   );
-  mount(b);
-  fireEvent.click(await screen.findByRole('button', { name: 'Use book text' }));
-  await screen.findByText('Reading text…');
-  const signal = f.capture.mock.calls[0]![0].signal as AbortSignal;
-  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-  expect(signal.aborted).toBe(true);
-  await act(async () =>
-    finish(
-      createReadingScope({
-        documentHash: b.hash,
-        kind: 'page',
-        title: 'Late page',
-        sources: [
-          {
-            sourceId: 'late',
-            text: 'Late text',
-            kind: 'paragraph',
-            anchor: {
-              sectionIndex: 0,
-              cfi: 'epubcfi(/6/2!/4/2)',
-              quote: { exact: 'Late text', prefix: '', suffix: '' },
-            },
-          },
-        ],
-      }),
-    ),
-  );
-  expect(screen.queryByRole('button', { name: 'Late page' })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Remove reading source' })).toBeNull();
-  expect(screen.queryByText('Reading text…')).toBeNull();
-  expect(f.reading).not.toHaveBeenCalled();
+  mount(book(), { sections: [{ createDocument: vi.fn() }] } as unknown as BookDoc);
+  await typeQuestion();
+  send();
+  await waitFor(() => expect(screen.getByRole('switch').hasAttribute('disabled')).toBe(true));
+  await act(async () => finish());
+  await waitFor(() => expect(screen.getByRole('switch').hasAttribute('disabled')).toBe(false));
 });
 
 it('does not make invented reading citations clickable and preserves the saved scope after reopening', async () => {
@@ -345,12 +258,12 @@ it('does not make invented reading citations clickable and preserves the saved s
       },
     ],
   });
-  mount(b);
-  await screen.findByRole('button', { name: 'Saved page' });
+  mount(b, { sections: [{ createDocument: vi.fn() }] } as unknown as BookDoc);
+  await screen.findByRole('switch', { name: 'Citations off' });
   expect(screen.queryByRole('link', { name: /^Open source passage/ })).toBeNull();
   expect(document.querySelector('a[href="#source-invented"]')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
-  await screen.findByRole('button', { name: 'Use book text' });
+  await screen.findByRole('switch', { name: 'Citations on' });
 });
 async function typeQuestion(question = 'Explain this') {
   fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
@@ -682,7 +595,7 @@ it('edits the last question, retains the previous answer as a version, and can s
   const editButton = screen.getByRole('button', { name: 'Edit question' });
   expect(editButton.closest('.glossa-chat-question-group')?.textContent).toBe('First question');
   expect(editButton.closest('.glossa-chat-answer-actions')).toBeNull();
-  for (const name of ['Copy reply', 'Regenerate reply']) {
+  for (const name of ['Copy question', 'Regenerate reply']) {
     const button = screen.getByRole('button', { name });
     expect(button.closest('.glossa-chat-question-actions')).not.toBeNull();
     expect(button.closest('.glossa-chat-answer-actions')).toBeNull();
@@ -1064,4 +977,18 @@ it('keeps a draft typed during a failed reply and can retry the original questio
   await answer();
   expect(f.generate.mock.calls[1]![0].question).toBe('Original question');
   expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Next draft');
+});
+
+it('copies the question bubble instead of the answer and reports copy failures', async () => {
+  f.generate.mockResolvedValueOnce('Different answer');
+  mount();
+  await typeQuestion('Original question');
+  send();
+  const copy = await screen.findByRole('button', { name: 'Copy question' });
+  fireEvent.click(copy);
+  await waitFor(() => expect(clipboard.write).toHaveBeenCalledWith('Original question'));
+  expect(clipboard.write).not.toHaveBeenCalledWith('Different answer');
+  clipboard.write.mockRejectedValueOnce(new Error('clipboard unavailable'));
+  fireEvent.click(copy);
+  expect(await screen.findByText('The question could not be copied.')).toBeTruthy();
 });

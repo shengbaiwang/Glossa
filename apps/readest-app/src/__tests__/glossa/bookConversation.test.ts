@@ -4,13 +4,29 @@ import type { ChapterSource } from '@/glossa/context/types';
 import { readingAnswerSchema } from '@/glossa/conversation/schema';
 import { createBookReadingScope, createReadingScope } from '@/glossa/harness/scope';
 import {
-  generateBookConversation,
+  generateBookConversation as generateBookConversationImpl,
   generateScopeOverview,
   BOOK_REQUEST_TIMEOUT_MS,
   MAX_OVERVIEW_CHARS,
   type BookConversationRequest,
 } from '@/glossa/harness/bookConversation';
 import { rankSources } from '@/glossa/harness/retrieval';
+
+// Legacy direct-answer fixtures also exercise the native-tools answer path.
+const generateBookConversation = (
+  input: BookConversationRequest,
+  { complete }: { complete: (request: CompletionRequest) => Promise<string> },
+) =>
+  generateBookConversationImpl(input, {
+    complete,
+    completeTools: async (request) => ({
+      text: await complete({
+        ...request,
+        messages: request.messages as CompletionRequest['messages'],
+      }),
+      toolCalls: [],
+    }),
+  });
 
 const source = (id: string, text: string): ChapterSource => ({
   sourceId: id,
@@ -290,29 +306,6 @@ describe('book-wide reading conversation', () => {
       '版权页：本书为原创测试材料。',
     );
     expect(answer.text).toContain('没有可总结的论点');
-  });
-
-  it('expands an empty local search once and supplies only bounded hits to the answer', async () => {
-    const input = fixture(
-      Array.from({ length: 35 }, (_, i) => source(`s${i}`, `${i}: ${'evidence '.repeat(130)}`)),
-    );
-    input.question = '为什么制度会变化？';
-    vi.mocked(input.access.search).mockResolvedValueOnce([]);
-    const complete = vi.fn(async (request: CompletionRequest) =>
-      request.messages[0]!.content.startsWith('Plan a reading request')
-        ? JSON.stringify({ strategy: 'search', chapterIds: [], queries: ['制度变迁', '时代条件'] })
-        : citeAll(request),
-    );
-    const result = await generateBookConversation(input, { complete });
-    expect(input.access.search).toHaveBeenCalledWith(
-      ['制度变迁', '时代条件'],
-      expect.any(AbortSignal),
-    );
-    expect(JSON.stringify(complete.mock.calls[0]![0].messages)).not.toContain('evidence evidence');
-    expect(result.sources.reduce((sum, item) => sum + item.text.length, 0)).toBeLessThanOrEqual(
-      18000,
-    );
-    expect(result.coverage?.readSources).toBeLessThan(result.coverage!.totalSources);
   });
 
   it('reads all batches for a long overview, then repairs an omitted argument citation once', async () => {

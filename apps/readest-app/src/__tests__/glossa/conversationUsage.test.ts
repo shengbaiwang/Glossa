@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 it.each([
-  [undefined, 'Not provided'],
+  [undefined, ''],
   [{ amount: 0, currency: 'USD' as const }, 'US$0.0000'],
   [{ amount: 0.0971 }, '0.0971 · Currency not provided'],
   [{ amount: 1e-9, currency: 'USD' as const }, 'US$1.000e-9'],
@@ -51,14 +51,77 @@ it.each([
     }),
   );
   fireEvent.focus(screen.getByRole('button', { name: 'Reply usage' }));
-  const row = screen.getByText('Cost').parentElement!;
-  expect(row.textContent).toContain(expected);
   if (cost) {
+    const row = screen.getByText('Cost').parentElement!;
+    expect(row.textContent).toContain(expected);
     expect(row.textContent).toContain('≥');
     expect(row.textContent).toContain('Cost reported 1/2');
   } else {
-    expect(row.textContent).not.toContain('US$');
+    expect(screen.queryByText('Cost')).toBeNull();
+    expect(screen.queryByText('Not provided')).toBeNull();
   }
+});
+
+const answer = {
+  id: 'test',
+  question: 'Test?',
+  text: 'Answer',
+  createdAt: 1,
+  status: 'complete' as const,
+  provider: { id: 'test', name: 'Test', model: 'test', baseUrl: 'https://test.example/v1' },
+};
+
+it('hides missing metrics while retaining returned zeros and keeping technical details collapsed', () => {
+  render(
+    createElement(ConversationUsage, {
+      answer: {
+        ...answer,
+        usage: {
+          elapsedMs: 66800,
+          firstTextMs: 834,
+          requests: [
+            {
+              id: 'r1',
+              outputBudget: 8192,
+              elapsedMs: 66800,
+              finished: true,
+              usage: { inputTokens: 0, totalTokens: 0 },
+            },
+          ],
+        },
+      },
+    }),
+  );
+  fireEvent.focus(screen.getByRole('button', { name: 'Reply usage' }));
+  expect(screen.getByRole('dialog', { name: 'Reply usage' })).toBeTruthy();
+  expect(screen.getByText('Input').parentElement?.textContent).toContain('0');
+  for (const label of [
+    'Output',
+    'Cost',
+    'Reasoning tokens',
+    'Cache read tokens',
+    'End-to-end throughput',
+    'Not provided',
+    'Output limit',
+    'Model requests',
+  ]) {
+    expect(screen.queryByText(label)).toBeNull();
+  }
+  expect(screen.getByText('834 ms')).toBeTruthy();
+  expect(screen.getByText('1 min 6.8 s')).toBeTruthy();
+  const more = screen.getByRole('button', { name: 'More information' });
+  expect(more.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(more);
+  expect(more.getAttribute('aria-expanded')).toBe('true');
+  expect(screen.getByText('Output limit')).toBeTruthy();
+  expect(screen.getByText('Model requests')).toBeTruthy();
+  fireEvent.click(more);
+  expect(screen.queryByText('Output limit')).toBeNull();
+});
+
+it('omits the usage trigger for historical answers with no metrics', () => {
+  render(createElement(ConversationUsage, { answer }));
+  expect(screen.queryByRole('button', { name: 'Reply usage' })).toBeNull();
 });
 
 it('reads account charges without double counting upstream cost or guessing a relay currency', () => {

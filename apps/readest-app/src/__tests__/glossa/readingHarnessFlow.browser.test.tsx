@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { zipSync, strToU8 } from 'fflate';
 import { DocumentLoader } from '@/libs/document';
-import { listChapters } from '@/glossa/context/chapters';
+import { normalizeSourceText } from '@/glossa/context/text';
 import type { FoliateView } from '@/types/view';
 import {
   ModelServiceError,
@@ -68,6 +68,10 @@ let view: FoliateView | undefined;
 beforeEach(() => {
   f.complete.mockReset();
   f.toolComplete.mockReset();
+  f.toolComplete.mockImplementation(async (request: ToolCompletionRequest) => ({
+    text: await f.complete(request),
+    toolCalls: [],
+  }));
   f.complete.mockImplementation(async (request: CompletionRequest) =>
     request.messages[0]?.content.startsWith('Name this conversation') ? '理解与理由' : '普通对话。',
   );
@@ -95,9 +99,9 @@ async function setup() {
       '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">harness-original-fixture</dc:identifier><dc:title>理解与理由</dc:title><dc:language>zh</dc:language></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="one" href="one.xhtml" media-type="application/xhtml+xml"/><item id="two" href="two.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="one"/><itemref idref="two"/></spine></package>',
     'nav.xhtml':
       '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>目录</title></head><body><nav epub:type="toc"><ol><li><a href="one.xhtml">第一章　理解与理由</a></li><li><a href="two.xhtml">第二章　比较与应用</a></li></ol></nav></body></html>',
-    'one.xhtml': `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>理解与理由</title><style>body{font-family:serif;padding:40px;line-height:2.1}h1{font-size:26px}p{font-size:22px}</style></head><body><h1>第一章　理解与理由</h1><p id="first">${firstParagraph}</p>${Array.from({ length: 22 }, (_, i) => `<p>第${i + 1}个例子帮助我们观察条件。一个例子能够说明什么，受到这些条件限制。记录例子的同时，也应当记录条件。</p>`).join('')}<h2>稍后的讨论</h2><p>OFF_PAGE_SENTINEL：这一页没有获准进入模型请求。</p></body></html>`,
+    'one.xhtml': `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>理解与理由</title><style>body{font-family:serif;padding:40px;line-height:2.1}h1{font-size:26px}p{font-size:22px}</style></head><body><h1>第一章　理解与理由</h1><p id="first">${firstParagraph}</p>${Array.from({ length: 22 }, (_, i) => `<p>第${i + 1}个例子帮助我们观察条件。一个例子能够说明什么，受到这些条件限制。记录例子的同时，也应当记录条件。</p>`).join('')}<h2>稍后的讨论</h2><p>OFF_PAGE_SENTINEL：这是稍后的讨论材料。</p></body></html>`,
     'two.xhtml':
-      '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>比较与应用</title></head><body><h1>第二章　比较与应用</h1><p>FUTURE_CHAPTER_SENTINEL：另一章没有获准进入模型请求。</p></body></html>',
+      '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>比较与应用</title></head><body><h1>第二章　比较与应用</h1><p>FUTURE_CHAPTER_SENTINEL：另一章的比较与应用材料。</p></body></html>',
   };
   const bytes = zipSync(
     Object.fromEntries(Object.entries(files).map(([path, text]) => [path, strToU8(text)])),
@@ -138,7 +142,7 @@ async function setup() {
     </div>
   );
   const panel = render(wrapper());
-  await screen.findByRole('button', { name: 'Entire book' });
+  await screen.findByRole('switch', { name: 'Citations on' });
   return { book, bookDoc, panel, wrapper };
 }
 
@@ -186,7 +190,7 @@ it('uses whole-book access by default and restores a verified citation from a la
     return text;
   });
   await ask('后章有哪些比较材料？');
-  expect(f.toolComplete).not.toHaveBeenCalled();
+  expect(f.toolComplete).toHaveBeenCalledOnce();
   expect(view!.lastLocation!.cfi).toBe(origin);
   await waitFor(async () =>
     expect((await loadConversations(book.hash))?.sessions[0]?.turns).toHaveLength(1),
@@ -271,45 +275,30 @@ it.each([
   'direct',
 ] as const)('restores a real EPUB snapshot and previews %s citations with verified return navigation', async (format) => {
   const { book, panel, wrapper } = await setup();
-  fireEvent.click(screen.getByRole('button', { name: 'Choose reading range' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Use current page' }));
-  await screen.findByRole('button', { name: 'Current page' });
   expect(f.complete).not.toHaveBeenCalled();
   expect(f.toolComplete).not.toHaveBeenCalled();
-  await waitFor(async () =>
-    expect(
-      (await loadConversations(book.hash))?.sessions[0]?.readingScope?.sources.length,
-    ).toBeGreaterThan(0),
-  );
-  const originalScope = (await loadConversations(book.hash))!.sessions[0]!.readingScope!;
-  fireEvent.click(screen.getByRole('button', { name: 'Current page' }));
-  expect(
-    document.querySelector('details[open] .glossa-chat-reading-preview')?.textContent,
-  ).toContain(firstParagraph);
-  fireEvent.keyDown(screen.getByRole('button', { name: 'Current page' }), { key: 'Escape' });
-  expect(JSON.stringify(originalScope)).toContain(firstParagraph);
-  expect(JSON.stringify(originalScope)).not.toMatch(/OFF_PAGE_SENTINEL|FUTURE_CHAPTER_SENTINEL/);
   let sourceId = '';
   f.toolComplete.mockImplementation(async (request: ToolCompletionRequest) => {
     const results = request.messages.filter((message) => message.role === 'tool');
-    if (!results.length) return call('get_outline', {});
-    if (results.length === 1) return call('search_book', { query: '作者给出的理由', limit: 1 });
-    if (results.length === 2) {
-      sourceId = JSON.parse(results[1]!.content).sources[0].sourceId;
-      return call('read_passage', { sourceIds: [sourceId] });
+    if (!results.length)
+      return call('search_book', { queries: ['作者给出的理由'], chapterIds: [] });
+    if (results.length === 1) {
+      const { chapters } = JSON.parse(request.messages[1]!.content!);
+      return call('read_chapter', { chapterId: chapters[0].id, query: '', offset: 0 });
     }
+    sourceId = JSON.parse(results[1]!.content).sources.find(
+      (s: { text: string }) => s.text === firstParagraph,
+    ).sourceId;
     const text = `作者建议先找问题，再核对理由如何支持结论。[原文](#${format === 'canonical' ? 'source-' : ''}${sourceId})\n\n**我的理解：** 把结论放回它回答的问题中，能更清楚地判断理由是否充分。`;
     request.onDelta?.(text);
     return { text, toolCalls: [] };
   });
   await ask('如何理解这段？');
   await screen.findByRole('link', { name: /^Open source passage/ });
-  expect(f.toolComplete).toHaveBeenCalledTimes(4);
+  expect(f.toolComplete).toHaveBeenCalledTimes(3);
   const requests = f.toolComplete.mock.calls.map(([request]) => request as ToolCompletionRequest);
-  expect(JSON.stringify(requests.map((request) => request.messages))).not.toMatch(
-    /OFF_PAGE_SENTINEL|FUTURE_CHAPTER_SENTINEL|epubcfi/,
-  );
-  expect(requests.at(-1)!.messages.filter((message) => message.role === 'tool')).toHaveLength(3);
+  expect(JSON.stringify(requests.map((request) => request.messages))).not.toMatch(/epubcfi/);
+  expect(requests.at(-1)!.messages.filter((message) => message.role === 'tool')).toHaveLength(2);
   await waitFor(async () =>
     expect((await loadConversations(book.hash))?.sessions[0]?.turns).toHaveLength(1),
   );
@@ -333,8 +322,8 @@ it.each([
     await saveConversations(history);
   }
   render(wrapper());
-  await screen.findByRole('button', { name: 'Current page' });
-  expect((await loadConversations(book.hash))!.sessions[0]!.readingScope).toEqual(originalScope);
+  await screen.findByRole('switch', { name: 'Citations on' });
+  expect((await loadConversations(book.hash))!.sessions[0]!.readingScope).toBeUndefined();
   const navigation = vi.spyOn(view!, 'goTo');
   const citation = await screen.findByRole('link', { name: /^Open source passage/ });
   expect(citation.textContent).toBe('1');
@@ -350,10 +339,7 @@ it.each([
   fireEvent.keyDown(citation, { key: 'Escape' });
   expect(screen.queryByRole('tooltip')).toBeNull();
   fireEvent.click(await screen.findByRole('link', { name: /^Open source passage/ }));
-  const excerpt = await screen.findByRole('complementary', { name: 'Source excerpt' });
-  await waitFor(() =>
-    expect(excerpt.querySelector('blockquote')?.textContent).toBe(firstParagraph),
-  );
+  expect(screen.queryByRole('complementary', { name: 'Source excerpt' })).toBeNull();
   await waitFor(() => expect(view!.resolveCFI(view!.lastLocation!.cfi!).index).toBe(0));
   const sourceDocument = view!.renderer.getContents()[0]!.doc;
   const highlightWindow = sourceDocument.defaultView as Window & typeof globalThis;
@@ -363,6 +349,16 @@ it.each([
       .map((range) => range.toString())
       .join(''),
   ).toBe(firstParagraph);
+  // Same-target navigation and a later pagination update must not erase emphasis.
+  const highlightedRange = [...highlightWindow.CSS.highlights.get('glossa-source')!][0]!;
+  if (!(highlightedRange instanceof highlightWindow.Range)) throw new Error('Missing range');
+  const target = view!.getCFI(0, highlightedRange);
+  for (let repeat = 0; repeat < 2; repeat++) {
+    await view!.goTo(target);
+    expect(highlightWindow.CSS.highlights.has('glossa-source')).toBe(true);
+  }
+  view!.dispatchEvent(new CustomEvent('relocate', { detail: view!.lastLocation }));
+  expect(highlightWindow.CSS.highlights.has('glossa-source')).toBe(true);
   expect(sourceDocument.getSelection()?.toString()).toBe('');
   expect(screen.queryByRole('alert')).toBeNull();
   for (const [theme, width, eink, dir] of [
@@ -390,105 +386,37 @@ it.each([
   await waitFor(() => expect(navigation.mock.calls.at(-1)?.[0]).toBe(origin));
   await waitFor(() => expect(view!.lastLocation?.cfi).toBe(origin));
   expect(highlightWindow.CSS.highlights.has('glossa-source')).toBe(false);
-  expect(f.toolComplete).toHaveBeenCalledTimes(4);
+  expect(f.toolComplete).toHaveBeenCalledTimes(3);
 });
 
-it('attaches only an explicit clipped selection and keeps subsequent page moves outside the request', async () => {
-  const { book } = await setup();
-  const doc = view!.renderer.getContents()[0]!.doc;
-  const textNode = doc.getElementById('first')!.firstChild!;
-  const range = doc.createRange();
-  range.setStart(textNode, 0);
-  range.setEnd(textNode, 6);
-  const selection = doc.getSelection()!;
-  selection.removeAllRanges();
-  selection.addRange(range);
-  await page.getByRole('button', { name: 'Choose reading range' }).click();
-  await page.getByRole('button', { name: 'Use selected text' }).click();
-  await screen.findByRole('button', { name: 'Selected text' });
-  await waitFor(async () =>
-    expect((await loadConversations(book.hash))?.sessions[0]?.readingScope?.sources).toHaveLength(
-      1,
-    ),
-  );
-  expect((await loadConversations(book.hash))!.sessions[0]!.readingScope!.sources[0]!.text).toBe(
-    '理解一个观点',
-  );
+it('turns references off without reading book text and restores the choice', async () => {
+  const { book, bookDoc, panel, wrapper } = await setup();
+  const reads = bookDoc.sections.map((section) => vi.spyOn(section, 'createDocument'));
+  fireEvent.click(screen.getByRole('switch', { name: 'Citations on' }));
+  await ask('这本书的思想可以怎么理解？');
   expect(f.toolComplete).not.toHaveBeenCalled();
-  await view!.goTo('two.xhtml');
-  f.toolComplete.mockImplementation(async (request: ToolCompletionRequest) => {
-    const evidence = JSON.parse(request.messages[1]!.content!);
-    const text = `这段提出了理解观点这一主题。[原文](#source-${evidence.sources[0].sourceId})`;
-    request.onDelta?.(text);
-    return { text, toolCalls: [] };
-  });
-  await ask('这里的意思是什么？');
-  const request = f.toolComplete.mock.calls[0]![0] as ToolCompletionRequest;
-  expect(
-    JSON.parse(request.messages[1]!.content!).sources.map(
-      (source: { text: string }) => source.text,
-    ),
-  ).toEqual(['理解一个观点']);
-  expect(JSON.stringify(request.messages)).not.toMatch(
+  expect(reads.every((read) => read.mock.calls.length === 0)).toBe(true);
+  const requests = f.complete.mock.calls.map(([request]) => request as CompletionRequest);
+  expect(JSON.stringify(requests.map((r) => r.messages))).not.toMatch(
     /FUTURE_CHAPTER_SENTINEL|OFF_PAGE_SENTINEL|需要先找到/,
   );
-  await screen.findByRole('link', { name: /^Open source passage/ });
-  fireEvent.click(screen.getByRole('button', { name: 'Remove reading source' }));
-  await screen.findByRole('button', { name: 'Entire book' });
-  f.complete.mockImplementation(async (request: CompletionRequest) =>
-    request.messages[0]?.content.startsWith('Plan a reading request')
-      ? JSON.stringify({ strategy: 'search', chapterIds: [], queries: ['比较'] })
-      : '全书范围的新回答。',
+  await waitFor(async () =>
+    expect((await loadConversations(book.hash))?.sessions[0]?.citationsEnabled).toBe(false),
   );
-  await ask('现在从全书查找比较的内容');
-  expect(f.toolComplete).toHaveBeenCalledTimes(1);
-  expect(
-    f.complete.mock.calls
-      .map(([request]) => request as CompletionRequest)
-      .some((plain) =>
-        plain.messages.some((message) => message.content === '现在从全书查找比较的内容'),
-      ),
-  ).toBe(true);
-});
-
-it('previews and explicitly attaches one chapter passage in a narrow window without calling a model', async () => {
-  const { book, bookDoc } = await setup();
+  panel.unmount();
+  render(wrapper());
+  await screen.findByRole('switch', { name: 'Citations off' });
   await page.viewport(640, 480);
   const sidebar = screen.getByTestId('harness-sidebar');
   sidebar.style.width = '320px';
   sidebar.style.height = '480px';
-  fireEvent.click(screen.getByRole('button', { name: 'Choose reading range' }));
-  fireEvent.change(screen.getByRole('combobox', { name: 'Choose a chapter' }), {
-    target: { value: listChapters(bookDoc)[0]!.id },
-  });
-  const chooser = await screen.findByRole('combobox', { name: 'Choose a passage' });
-  const firstOption = chooser.querySelectorAll('option')[1]!;
-  fireEvent.change(chooser, { target: { value: firstOption.value } });
-  await screen.findByRole('button', { name: 'Use this passage' });
-  expect((await loadConversations(book.hash))?.sessions[0]?.readingScope).toBeUndefined();
-  expect(f.complete).not.toHaveBeenCalled();
-  expect(f.toolComplete).not.toHaveBeenCalled();
   expect(sidebar.scrollWidth).toBeLessThanOrEqual(320);
-  const sendBounds = screen.getByRole('button', { name: 'Send message' }).getBoundingClientRect();
-  expect(sendBounds.top).toBeGreaterThan(0);
-  expect(sendBounds.bottom).toBeLessThanOrEqual(480);
-  await page.screenshot({ path: '../../../../../.glossa-dev/qa/harness/passage-picker-320.png' });
-  fireEvent.click(screen.getByRole('button', { name: 'Use this passage' }));
-  await waitFor(async () =>
-    expect((await loadConversations(book.hash))?.sessions[0]?.readingScope?.kind).toBe('passage'),
-  );
-  const attached = (await loadConversations(book.hash))!.sessions[0]!.readingScope!;
-  expect(attached.sources[1]!.text).toBe(firstParagraph);
-  expect(JSON.stringify(attached)).not.toMatch(/OFF_PAGE_SENTINEL|FUTURE_CHAPTER_SENTINEL/);
-  expect(f.complete).not.toHaveBeenCalled();
-  expect(f.toolComplete).not.toHaveBeenCalled();
+  expect(screen.queryByRole('combobox', { name: 'Choose a passage' })).toBeNull();
+  await page.screenshot({ path: '../../../../../.glossa-dev/qa/harness/references-off-320.png' });
 });
 
 it('browses citations in answer order and keeps previews inside narrow, dark and e-ink viewports', async () => {
   const { book } = await setup();
-  fireEvent.click(screen.getByRole('button', { name: 'Choose reading range' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Use current page' }));
-  await screen.findByRole('button', { name: 'Current page' });
   let secondPassage = '';
   f.toolComplete.mockImplementation(async (request: ToolCompletionRequest) => {
     const evidence = JSON.parse(request.messages[1]!.content!).sources as {
@@ -540,26 +468,57 @@ it('browses citations in answer order and keeps previews inside narrow, dark and
     fireEvent.keyDown(citation, { key: 'Escape' });
   }
   fireEvent.click(screen.getByRole('link', { name: 'Open source passage 2' }));
-  await screen.findByText('2/2');
-  const excerpt = screen.getByRole('complementary', { name: 'Source excerpt' });
-  await waitFor(() => expect(excerpt.querySelector('blockquote')?.textContent).toBe(secondPassage));
-  const previous = screen.getByRole('button', { name: 'Previous passage' });
-  await waitFor(() =>
-    expect(
-      screen.getByRole('button', { name: 'Back to reading position' }).hasAttribute('disabled'),
-    ).toBe(false),
-  );
-  fireEvent.click(previous);
-  await waitFor(() =>
-    expect(excerpt.querySelector('blockquote')?.textContent).toBe(firstParagraph),
-  );
-  await screen.findByText('1/2');
+  const highlightedText = () => {
+    const doc = view!.renderer.getContents().find((content) => content.index === 0)!.doc;
+    const win = doc.defaultView as Window & typeof globalThis;
+    return normalizeSourceText(
+      [...(win.CSS.highlights.get('glossa-source') ?? [])]
+        .map((range) => range.toString())
+        .join(''),
+    );
+  };
+  await waitFor(() => expect(highlightedText()).toBe(secondPassage));
+  expect(screen.queryByRole('complementary', { name: 'Source excerpt' })).toBeNull();
+  fireEvent.click(screen.getAllByRole('link', { name: 'Open source passage 1' })[0]!);
+  await waitFor(() => expect(highlightedText()).toBe(firstParagraph));
+  expect(screen.queryByRole('complementary', { name: 'Source excerpt' })).toBeNull();
   const back = screen.getByRole('button', { name: 'Back to reading position' });
   await waitFor(() => expect(back.hasAttribute('disabled')).toBe(false));
   fireEvent.click(back);
   await waitFor(() => expect(view!.lastLocation?.cfi).toBe(origin));
   expect(f.toolComplete).toHaveBeenCalledTimes(1);
   expect(
-    (await loadConversations(book.hash))!.sessions[0]!.readingScope!.sources.length,
+    currentAnswerVersion((await loadConversations(book.hash))!.sessions[0]!.turns[0]!).reading!
+      .sources.length,
   ).toBeGreaterThan(1);
+});
+
+it('automatically reads the selection frozen at send time and ignores later page changes', async () => {
+  const { bookDoc } = await setup();
+  const doc = view!.renderer.getContents()[0]!.doc;
+  const range = doc.createRange();
+  range.setStart(doc.getElementById('first')!.firstChild!, 0);
+  range.setEnd(doc.getElementById('first')!.firstChild!, 6);
+  doc.getSelection()!.removeAllRanges();
+  doc.getSelection()!.addRange(range);
+  const { createEpubFocusReader } = await import('@/glossa/harness/epub');
+  const read = createEpubFocusReader(bookDoc, view, 'focus-fixture');
+  doc.getSelection()!.removeAllRanges();
+  await view!.goTo('two.xhtml');
+  expect((await read(new AbortController().signal)).map((s) => s.text)).toEqual(['理解一个观点']);
+  await view!.goTo('one.xhtml');
+  const current = view!.renderer.getContents()[0]!.doc;
+  const selected = current.createRange();
+  selected.setStart(current.getElementById('first')!.firstChild!, 0);
+  selected.setEnd(current.getElementById('first')!.firstChild!, 6);
+  current.getSelection()!.removeAllRanges();
+  current.getSelection()!.addRange(selected);
+  f.toolComplete.mockImplementation(async (request: ToolCompletionRequest) => {
+    const { sources } = JSON.parse(request.messages[1]!.content!);
+    expect(sources.map((s: { text: string }) => s.text)).toEqual(['理解一个观点']);
+    return { text: `这里提出理解观点。[1](#source-${sources[0].sourceId})`, toolCalls: [] };
+  });
+  await ask('解释这段话');
+  await screen.findByRole('link', { name: /^Open source passage/ });
+  expect(f.toolComplete).toHaveBeenCalledOnce();
 });

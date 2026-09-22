@@ -210,3 +210,29 @@ describe('mind map original passage lifecycle', () => {
     );
   });
 });
+
+it('supports direct citation navigation without a persistent excerpt while keeping return', async () => {
+  render(<MindmapSourcePanel {...props} selection={selection('first')} showExcerpt={false} />);
+  expect(screen.queryByRole('complementary', { name: 'Source excerpt' })).toBeNull();
+  await waitFor(() =>
+    expect(f.navigate).toHaveBeenCalledWith({}, 'verified-cfi-first', expect.any(AbortSignal)),
+  );
+  const back = screen.getByRole('button', { name: 'Back to reading position' });
+  await waitFor(() => expect(back.hasAttribute('disabled')).toBe(false));
+  expect(screen.queryByText('Fresh local text first')).toBeNull();
+  fireEvent.click(back);
+  await waitFor(() =>
+    expect(f.navigate).toHaveBeenLastCalledWith({}, 'reading-start', expect.any(AbortSignal)),
+  );
+});
+
+it('keeps verification errors and retry available without an excerpt', async () => {
+  f.resolve.mockResolvedValueOnce(null);
+  render(<MindmapSourcePanel {...props} selection={selection('first')} showExcerpt={false} />);
+  await screen.findByRole('alert');
+  expect(f.navigate).not.toHaveBeenCalled();
+  expect(screen.queryByRole('complementary', { name: 'Source excerpt' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  await waitFor(() => expect(f.navigate).toHaveBeenCalledOnce());
+  expect(screen.queryByRole('alert')).toBeNull();
+});

@@ -1,4 +1,8 @@
 {
+  "The current passage is unavailable. Include the passage in your question.": "The current passage is unavailable. Include the passage in your question.",
+  "Current passage": "Current passage",
+  "Citations on": "Citations on",
+  "Citations off": "Citations off",
   "The response was cut short. Retrying with more room…": "The response was cut short. Retrying with more room…",
   "On hold": "On hold",
   "Mark as On hold": "Mark as On hold",
@@ -264,6 +268,7 @@
   "Related text": "Related text",
   "Check source {{number}}": "Check source {{number}}",
   "Copy reply": "Copy reply",
+  "Copy question": "Copy question",
   "Ask again": "Ask again",
   "Replying…": "Replying…",
   "Thinking about this passage…": "Thinking about this passage…",
@@ -326,6 +331,7 @@
   "The source could not be opened. Try again.": "The source could not be opened. Try again.",
   "The reading position could not be restored. Try again.": "The reading position could not be restored. Try again.",
   "The reply could not be copied.": "The reply could not be copied.",
+  "The question could not be copied.": "The question could not be copied.",
   "Always included": "Always included",
   "Unknown author": "Unknown author",
   "Chapter unavailable": "Chapter unavailable",
@@ -571,5 +577,10 @@
   "Cost": "Cost",
   "Provider charge": "Provider charge",
   "Currency not provided": "Currency not provided",
-  "Cost reported": "Cost reported"
+  "Cost reported": "Cost reported",
+  "Input": "Input",
+  "Output": "Output",
+  "More information": "More information",
+  "ms": "ms",
+  "min": "min"
 }

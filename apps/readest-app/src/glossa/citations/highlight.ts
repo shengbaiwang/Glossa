@@ -1,6 +1,6 @@
 import type { FoliateView } from '@/types/view';
 import type { ResolvedSource } from './sources';
-import { normalizeSourceText, readRangeText } from '../context/text';
+import { collectTextBlocks, normalizeSourceText, readRangeText } from '../context/text';
 
 /** A disposable paint layer: no native selection, annotation record or text-node changes. */
 export function highlightSource(view: FoliateView, source: ResolvedSource): () => void {
@@ -12,7 +12,16 @@ export function highlightSource(view: FoliateView, source: ResolvedSource): () =
     if (!doc || !win?.CSS?.highlights || !win.Highlight) return noop;
     const range = anchor(doc);
     // Reflow/transforms may differ from the original document used by the verifier.
-    if (range.collapsed || readRangeText(doc, range) !== normalizeSourceText(source.text))
+    const expected = normalizeSourceText(source.text);
+    if (
+      range.collapsed ||
+      (readRangeText(doc, range) !== expected &&
+        normalizeSourceText(
+          collectTextBlocks(doc, range)
+            .map((block) => block.text)
+            .join(' '),
+        ) !== expected)
+    )
       return noop;
     const highlight = new win.Highlight(range);
     const style = doc.createElement('style');
@@ -28,10 +37,23 @@ export function highlightSource(view: FoliateView, source: ResolvedSource): () =
       if (win.CSS.highlights.get('glossa-source') === highlight)
         win.CSS.highlights.delete('glossa-source');
       style.remove();
-      view.removeEventListener('relocate', clear);
+      view.removeEventListener('relocate', onRelocate);
     };
-    // Ordinary reading resumes as soon as the reader moves away.
-    view.addEventListener('relocate', clear, { once: true });
+    const onRelocate = () => {
+      const visible = view.lastLocation?.range;
+      // A jump can emit more relocations as fonts, images and pagination settle.
+      // Keep the mark while its verified range still overlaps the visible page.
+      if (
+        visible &&
+        visible.startContainer.ownerDocument === doc &&
+        range.startContainer.isConnected &&
+        range.compareBoundaryPoints(Range.END_TO_START, visible) < 0 &&
+        range.compareBoundaryPoints(Range.START_TO_END, visible) > 0
+      )
+        return;
+      clear();
+    };
+    view.addEventListener('relocate', onRelocate);
     return clear;
   } catch {
     // Older WebViews can still show the verified passage in the source panel.

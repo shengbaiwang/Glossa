@@ -2,7 +2,7 @@ import type { ChapterSource } from '@/glossa/context/types';
 import { checkAborted, normalizeSourceText } from '@/glossa/context/text';
 
 const stopWords = new Set(
-  '的 了 是 在 和 与 有 都 哪些 什么 怎么 如何 这些 这个 那个 一个 作者 表达 观点 总结 概括 总论 the a an of in to and or is are this that what how does book author summarize summary'.split(
+  '的 了 是 在 和 与 有 都 这 本书 这本书 先生 为什么 为何 时候 吗 呢 哪些 什么 怎么 如何 这些 这个 那个 一个 作者 表达 观点 总结 概括 总论 the a an of in to and or is are this that what how does book author summarize summary'.split(
     ' ',
   ),
 );
@@ -149,3 +149,18 @@ export function sampleBookSources(sources: ChapterSource[], limit = 36): Chapter
     }
   return [...output.values()];
 }
+
+/** Remove identification boilerplate, retaining real search concepts and explicit names when needed. */
+export function seedSearchQuery(question: string, metadata: { bookTitle: string; author: string }) {
+  let topic = question;
+  for (const label of [metadata.bookTitle, metadata.author])
+    if (label.length >= 2) topic = topic.split(label).join(' ');
+  const terms = queryTerms(topic);
+  return (terms.length ? terms.join(' ') : question).slice(0, 200);
+}
+
+/** A direct reference to visible/selected text; generic follow-ups are not page references. */
+export const asksForFocus = (question: string) =>
+  /这段|這段|这句|這句|此段|此句|当前页|當前頁|选中|選中|划线|劃線|\b(?:this passage|this paragraph|this sentence|selected text|current page)\b/iu.test(
+    question,
+  );

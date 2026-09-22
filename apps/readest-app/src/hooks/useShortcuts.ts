@@ -55,6 +55,12 @@ const useShortcuts = (actions: KeyActionHandlers, dependencies: React.Dependency
     if (event instanceof KeyboardEvent) {
       const { key, ctrlKey, altKey, metaKey, shiftKey } = event;
 
+      // A selection in the app UI belongs to native copy, not the reader's
+      // cached iframe selection. Non-focusable text may leave the body focused.
+      if ((ctrlKey || metaKey) && key.toLowerCase() === 'c' && window.getSelection()?.toString()) {
+        return;
+      }
+
       if (isNoteEditor && !((key === 'Enter' && ctrlKey) || key == 'Escape')) {
         return;
       }

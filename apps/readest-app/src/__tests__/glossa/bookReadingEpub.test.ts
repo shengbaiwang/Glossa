@@ -113,3 +113,27 @@ it('does not publish a cancelled partial parse as a complete book cache', async 
   expect(all.at(-1)?.text).toBe('附注：另一处必要的限制。');
   expect(reads[1]).toHaveBeenCalledOnce();
 });
+
+it('carries section and heading context without treating a shared spine as an exact chapter', async () => {
+  const { book } = fixture();
+  const access = createEpubBookAccess(book, 'context');
+  const all = await access.readAll(new AbortController().signal);
+  const source = all.find((s) => s.text === '四、制度应随时代变化。')!;
+  expect(access.sourceContext?.(source)).toEqual({
+    sectionTitles: ['总论', '补充'],
+    heading: '补充',
+  });
+  const { sourceWire } = await import('@/glossa/harness/book');
+  expect(JSON.stringify(sourceWire(source, access))).not.toMatch(
+    /epubcfi|sectionIndex|prefix|suffix/,
+  );
+});
+
+it('lets the model read front matter absent from the table of contents', async () => {
+  const { book } = fixture();
+  const access = createEpubBookAccess(book, 'front');
+  const front = access.chapters.find((c) => c.id === 'spine-0');
+  expect(front).toBeDefined();
+  const sources = await access.readChapter(front!.id, new AbortController().signal);
+  expect(sources.map((s) => s.text)).toEqual(['目录前的序言观点。']);
+});

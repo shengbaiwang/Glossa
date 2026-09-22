@@ -416,58 +416,100 @@
 .glossa-chat-usage-popup {
   position: fixed;
   z-index: 80;
-  width: min(340px, calc(100vw - 24px));
+  width: min(368px, calc(100vw - 24px));
   max-height: calc(100dvh - 24px);
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 16px;
+  padding: 14px;
   border: 1px solid var(--glossa-border);
   border-radius: var(--glossa-radius);
   background: var(--glossa-surface);
   color: var(--glossa-ink);
   box-shadow: var(--glossa-shadow);
-  font: 12px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font: 12px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-variant-numeric: tabular-nums;
   -webkit-user-select: text;
   user-select: text;
 }
 .glossa-chat-usage-popup header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding-block-end: 10px;
+  border-block-end: 1px solid var(--glossa-border);
+  overflow-wrap: anywhere;
+}
+.glossa-chat-usage-popup header > div {
   display: flex;
   flex-direction: column;
-  padding-block-end: 12px;
-  overflow-wrap: anywhere;
+  gap: 2px;
 }
 .glossa-chat-usage-popup strong {
   font-size: 14px;
   font-weight: 600;
 }
-.glossa-chat-usage-popup :is(dt, header span, time, p) {
+.glossa-chat-usage-popup :is(dt, header span, time) {
   color: var(--glossa-muted);
 }
 .glossa-chat-usage-popup time {
-  margin-block-start: 4px;
+  font-size: 11px;
+  text-align: end;
 }
 .glossa-chat-usage-popup dl {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px 12px;
 }
-.glossa-chat-usage-tokens {
-  padding-block: 12px;
-  border-block: 1px solid var(--glossa-border);
+.glossa-chat-usage-popup .glossa-chat-usage-tokens {
+  gap: 6px;
+  padding-block: 10px;
+}
+.glossa-chat-usage-tokens[data-columns='1'] {
+  grid-template-columns: 1fr;
+}
+.glossa-chat-usage-tokens[data-columns='3'] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.glossa-chat-usage-tokens > div {
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--glossa-wash);
+}
+.glossa-chat-usage-tokens dt {
+  font-size: 11px;
 }
 .glossa-chat-usage-tokens dd {
-  font-size: 17px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 4px;
+  font-size: 16px;
+  line-height: 1.4;
   font-weight: 600;
 }
+.glossa-chat-usage-tokens small {
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
 .glossa-chat-usage-details {
-  padding-block-start: 12px;
+  padding-block: 10px;
+}
+.glossa-chat-usage-tokens + .glossa-chat-usage-details {
+  border-block-start: 1px solid var(--glossa-border);
+}
+.glossa-chat-usage-details dd {
+  font-size: 13px;
 }
 .glossa-chat-usage-popup .glossa-chat-usage-cost {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: baseline;
-  padding-block: 12px;
+  padding-block: 8px;
   border-block-end: 1px solid var(--glossa-border);
+}
+.glossa-chat-usage-tokens + .glossa-chat-usage-cost {
+  border-block-start: 1px solid var(--glossa-border);
 }
 .glossa-chat-usage-cost dd {
   display: flex;
@@ -484,12 +526,56 @@
   margin: 2px 0 0;
   overflow-wrap: anywhere;
 }
+.glossa-chat-usage-more {
+  border-block-start: 1px solid var(--glossa-border);
+  padding-block-start: 4px;
+}
+.glossa-chat-usage-more > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 28px;
+  border-radius: var(--glossa-radius-detail);
+  text-align: start;
+}
+.glossa-chat-usage-more > button:focus-visible {
+  outline: 2px solid var(--glossa-focus);
+  outline-offset: 2px;
+}
+.glossa-chat-usage-more > button[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+.glossa-chat-usage-more dl {
+  padding-block: 8px 2px;
+}
 [data-eink='true'] .glossa-chat-usage-popup {
   border-color: var(--glossa-ink);
   box-shadow: none;
 }
+[data-eink='true'] .glossa-chat-usage-tokens > div {
+  border: 1px solid var(--glossa-ink);
+  background: var(--glossa-surface);
+}
+@media (max-width: 380px) {
+  .glossa-chat-usage-popup {
+    padding: 12px;
+  }
+  .glossa-chat-usage-tokens[data-columns='3'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .glossa-chat-usage-tokens[data-columns='3'] > div:last-child {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+}
 @media (pointer: coarse) {
-  .glossa-chat-usage-trigger {
+  .glossa-chat-usage-trigger,
+  .glossa-chat-usage-more > button {
     min-height: 44px;
   }
 }

@@ -1,11 +1,15 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { zipSync, strToU8 } from 'fflate';
 import { DocumentLoader } from '@/libs/document';
 import type { FoliateView } from '@/types/view';
 import { listChapters } from '@/glossa/context/chapters';
-import type { CompletionRequest, ProviderConfig } from '@/glossa/ai/provider';
+import type {
+  CompletionRequest,
+  ProviderConfig,
+  ToolCompletionRequest,
+} from '@/glossa/ai/provider';
 import {
   hasUnsavedConversations,
   loadConversations,
@@ -13,10 +17,12 @@ import {
   validateHistory,
 } from '@/glossa/conversation/store';
 import ConversationPanel from '@/glossa/ui/ConversationPanel';
+import ConversationUsage from '@/glossa/ui/ConversationUsage';
 import '@/styles/globals.css';
 import '@/styles/glossa.css';
 const f = vi.hoisted(() => ({
   complete: vi.fn(),
+  translations: {} as Record<string, string>,
   config: {
     id: 'fixture',
     name: 'Local fixture',
@@ -26,7 +32,9 @@ const f = vi.hoisted(() => ({
 }));
 vi.mock('@/hooks/useTranslation', () => ({
   useTranslation: () => (key: string, values?: Record<string, string | number>) =>
-    key.replace(/{{(\w+)}}/g, (_, name: string) => String(values?.[name] ?? name)),
+    (f.translations[key] ?? key).replace(/{{(\w+)}}/g, (_, name: string) =>
+      String(values?.[name] ?? name),
+    ),
 }));
 vi.mock('@/store/readerStore', () => ({
   useReaderStore: { getState: () => ({ getView: () => view }) },
@@ -60,10 +68,15 @@ vi.mock('@/glossa/ai/provider', async (original) => ({
   getProviderStatus: async () => ({ configured: true }),
   validateProviderConfig: (value: ProviderConfig) => value,
   streamCompletion: f.complete,
+  streamToolCompletion: async (request: ToolCompletionRequest) => ({
+    text: await f.complete(request),
+    toolCalls: [],
+  }),
 }));
 let view: FoliateView | undefined;
 beforeEach(() => {
   f.complete.mockReset();
+  f.translations = {};
   f.config.model = 'fixture-model';
 });
 afterEach(() => {
@@ -137,7 +150,7 @@ async function setup() {
     </div>
   );
   const panel = render(wrapper());
-  await screen.findByRole('button', { name: 'Entire book' });
+  await screen.findByRole('switch', { name: 'Citations on' });
   return { ...data, panel, wrapper };
 }
 function answer(request: CompletionRequest) {
@@ -169,6 +182,117 @@ async function ask(question = '如何理解一个观点？') {
   fireEvent.click(button);
   await waitFor(() => expect(screen.queryByRole('button', { name: 'Stop reply' })).toBeNull());
 }
+it('keeps selected conversation text focused and supports native copy, paste, and cut', async () => {
+  f.complete.mockImplementation(async (request: CompletionRequest) =>
+    isTitleRequest(request) ? '' : 'Answerword',
+  );
+  await setup();
+  await ask('理解');
+  await screen.findByText('理解', { selector: '.glossa-chat-question' });
+  const transcript = document.querySelector('.glossa-chat-transcript')!;
+  const input = screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement;
+  const modifier = /Mac/.test(navigator.platform) ? 'Meta' : 'Control';
+  const shortcut = (key: string) => userEvent.keyboard(`{${modifier}>}${key}{/${modifier}}`);
+  // Use real pointer and keyboard events: jsdom cannot exercise native focus/clipboard.
+  for (const word of ['理解', 'Answerword']) {
+    await page
+      .getByRole('article')
+      .getByText(word, { exact: true })
+      .dblClick(word === 'Answerword' ? { position: { x: 20, y: 10 } } : {});
+    expect(window.getSelection()?.toString()).toBe(word);
+    expect(transcript.contains(document.activeElement)).toBe(true);
+    await shortcut('c');
+    await page.getByRole('textbox', { name: 'Message' }).click();
+    await shortcut('v');
+    expect(input.value).toBe(word);
+    await shortcut('a');
+    await shortcut('x');
+    expect(input.value).toBe('');
+    await shortcut('v');
+    expect(input.value).toBe(word);
+    fireEvent.change(input, { target: { value: '' } });
+  }
+});
+
+it('hides absent fields in the Chinese usage card and keeps expanded details within the viewport', async () => {
+  const zhCN: Record<string, string> = await (
+    await fetch('/locales/zh-CN/translation.json')
+  ).json();
+  f.translations = zhCN;
+  for (const width of [480, 320]) {
+    await page.viewport(width, 600);
+    document.documentElement.setAttribute('data-theme', 'default-dark');
+    const panel = render(
+      <div style={{ position: 'fixed', inset: 0, background: 'var(--glossa-surface)' }}>
+        <div style={{ position: 'absolute', bottom: 24, right: 16 }}>
+          <ConversationUsage
+            answer={{
+              id: 'layout',
+              question: 'Test?',
+              text: 'Answer',
+              createdAt: new Date('2026-09-22T14:46:18+08:00').getTime(),
+              status: 'complete',
+              provider: {
+                id: 'fixture',
+                name: '测试服务',
+                model: '阅读模型',
+                baseUrl: 'https://fixture.example/v1',
+              },
+              usage: {
+                elapsedMs: 66800,
+                firstTextMs: 834,
+                requests: [
+                  {
+                    id: 'one',
+                    outputBudget: 8192,
+                    elapsedMs: 66800,
+                    finished: true,
+                    usage: {
+                      inputTokens: 22,
+                      outputTokens: 6994,
+                      totalTokens: 7016,
+                      reasoningTokens: 5912,
+                    },
+                  },
+                ],
+              },
+            }}
+          />
+        </div>
+      </div>,
+    );
+    await page.getByRole('button', { name: zhCN['Reply usage'] }).hover();
+    const popup = await screen.findByRole('dialog', { name: zhCN['Reply usage'] });
+    for (const key of ['Cost', 'Cache read tokens', 'Not provided', 'Output limit'] as const) {
+      expect(popup.textContent).not.toContain(zhCN[key]);
+    }
+    expect(popup.textContent).toContain('834 毫秒');
+    expect(popup.scrollWidth).toBeLessThanOrEqual(popup.clientWidth);
+    await page.screenshot({
+      path: `../../../../../.glossa-dev/qa/conversation-usage-sparse-zh-${width}.png`,
+    });
+    screen.getByRole('button', { name: zhCN['Reply usage'] }).focus();
+    await userEvent.keyboard('{ArrowDown}');
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: zhCN['More information'] }),
+      ),
+    );
+    await page.getByRole('button', { name: zhCN['More information'] }).click();
+    expect(popup.textContent).toContain(zhCN['Output limit']);
+    expect(popup.getBoundingClientRect().top).toBeGreaterThanOrEqual(12);
+    expect(popup.getBoundingClientRect().bottom).toBeLessThanOrEqual(588);
+    await page.screenshot({
+      path: `../../../../../.glossa-dev/qa/conversation-usage-expanded-zh-${width}.png`,
+    });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: zhCN['Reply usage'] })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: zhCN['Reply usage'] }));
+    panel.unmount();
+  }
+  expect(f.complete).not.toHaveBeenCalled();
+});
+
 it('shows recorded usage on hover, survives reload, and fits narrow themed viewports', async () => {
   f.complete.mockImplementation(async (request: CompletionRequest) => {
     request.onMetrics?.({
@@ -215,7 +339,7 @@ it('shows recorded usage on hover, survives reload, and fits narrow themed viewp
       height: '800px',
     });
     await page.getByRole('button', { name: 'Reply usage' }).hover();
-    const popup = await screen.findByRole('tooltip');
+    const popup = await screen.findByRole('dialog', { name: 'Reply usage' });
     expect(popup.textContent).toContain('1,200');
     expect(popup.textContent).toContain('US$0.0971');
     const bounds = popup.getBoundingClientRect();
@@ -226,11 +350,11 @@ it('shows recorded usage on hover, survives reload, and fits narrow themed viewp
       path: `../../../../../.glossa-dev/qa/conversation-usage-${theme}-${width}-${eink}.png`,
     });
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Reply usage' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Reply usage' }));
-    await screen.findByRole('tooltip');
+    await screen.findByRole('dialog', { name: 'Reply usage' });
     fireEvent.scroll(document);
-    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Reply usage' })).toBeNull();
     await page.getByRole('textbox', { name: 'Message' }).hover();
   }
   expect(chatCalls()).toHaveLength(1);

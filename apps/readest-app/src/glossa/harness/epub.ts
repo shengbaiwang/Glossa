@@ -19,7 +19,7 @@ import {
 import { resolveSource } from '@/glossa/citations/sources';
 import type { ChapterSource } from '@/glossa/context/types';
 
-const BOOK_CACHE_VERSION = 'epub-blocks-bm25-1';
+const BOOK_CACHE_VERSION = 'epub-blocks-bm25-context-2';
 const MAX_CACHED_CHARS = 2000000;
 const bookAccesses = new WeakMap<BookDoc, { key: string; access: BookReadingAccess }>();
 
@@ -30,10 +30,40 @@ export function createEpubBookAccess(book: BookDoc, documentHash: string): BookR
   const key = `${BOOK_CACHE_VERSION}:${documentHash}`;
   const previous = bookAccesses.get(book);
   if (previous?.key === key) return previous.access;
-  const chapters = listChapters(book);
+  const tocChapters = listChapters(book);
+  // Front matter and notes often have no TOC entry. Give the model a bounded
+  // local route to these originals too, without parsing anything on construction.
+  const chapters: ChapterDescriptor[] = [...tocChapters];
+  book.sections.forEach((_section, index) => {
+    if (!tocChapters.some((chapter) => chapter.sectionIndex === index))
+      chapters.push({
+        id: `spine-${index}`,
+        title:
+          index === 0
+            ? 'Opening section (outside the table of contents)'
+            : `Section ${index + 1} (outside the table of contents)`,
+        href: '',
+        depth: 0,
+        sectionIndex: index,
+        start: { sectionIndex: index },
+        end: { sectionIndex: index + 1 },
+      });
+  });
   let cachedSources: ChapterSource[] | undefined;
   let cachedIndex: SourceSearchIndex | undefined;
   const chapterCache = new Map<string, ChapterSource[]>();
+  const headings = new Map<string, string>();
+  const rememberHeadings = (sources: ChapterSource[]) => {
+    let heading = '';
+    let section = -1;
+    for (const source of sources) {
+      if (source.anchor.sectionIndex !== section) heading = '';
+      section = source.anchor.sectionIndex;
+      if (source.kind === 'heading') heading = source.text.slice(0, 500);
+      if (heading) headings.set(source.sourceId, heading);
+    }
+    while (headings.size > 50000) headings.delete(headings.keys().next().value!);
+  };
   const clone = (sources: ChapterSource[]) => structuredClone(sources);
   const readAll = async (signal: AbortSignal) => {
     checkAborted(signal);
@@ -51,6 +81,7 @@ export function createEpubBookAccess(book: BookDoc, documentHash: string): BookR
         end: { sectionIndex: index + 1 },
       };
       const content = await extractChapter(book, chapter, { signal, includeNonlinear: true });
+      rememberHeadings(content.sources);
       sources.push(...content.sources);
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
@@ -64,6 +95,15 @@ export function createEpubBookAccess(book: BookDoc, documentHash: string): BookR
   };
   const access: BookReadingAccess = {
     documentHash,
+    sourceContext: (source) => ({
+      // Several TOC entries can share a spine file: these are candidate location
+      // labels, not a claim that a block belongs to every listed subchapter.
+      sectionTitles: tocChapters
+        .filter((chapter) => chapter.sectionIndex === source.anchor.sectionIndex)
+        .map((chapter) => chapter.title.slice(0, 500))
+        .slice(0, 12),
+      ...(headings.has(source.sourceId) ? { heading: headings.get(source.sourceId)! } : {}),
+    }),
     chapters: chapters.map(({ id, title, depth }) => ({ id, title, depth })),
     readAll,
     readChapter: async (id, signal) => {
@@ -76,8 +116,14 @@ export function createEpubBookAccess(book: BookDoc, documentHash: string): BookR
         chapterCache.set(id, cached);
         return clone(cached);
       }
-      const sources = (await extractChapter(book, chapter, { signal })).sources;
+      const sources = (
+        await extractChapter(book, chapter, {
+          signal,
+          includeNonlinear: chapter.id.startsWith('spine-'),
+        })
+      ).sources;
       checkAborted(signal);
+      rememberHeadings(sources);
       chapterCache.set(id, sources);
       while (
         chapterCache.size > 8 ||
@@ -127,6 +173,41 @@ export type ReadingCaptureView = Pick<
   FoliateView,
   'lastLocation' | 'getCFI' | 'resolveCFI' | 'isFixedLayout'
 > & { renderer: Pick<FoliateView['renderer'], 'getContents'> };
+
+/** Freeze only the live range at send time. Original parsing happens on demand. */
+export function createEpubFocusReader(
+  bookDoc: BookDoc,
+  view: ReadingCaptureView | null | undefined,
+  documentHash: string,
+) {
+  if (!view?.renderer?.getContents) return async () => [];
+  const contents = view.renderer.getContents();
+  const selections = contents.flatMap(({ doc }) => {
+    const selection = doc.getSelection();
+    return selection && !selection.isCollapsed && selection.rangeCount === 1
+      ? [selection.getRangeAt(0).cloneRange()]
+      : [];
+  });
+  const range = selections.length === 1 ? selections[0] : view.lastLocation?.range?.cloneRange();
+  const snapshot: ReadingCaptureView = {
+    isFixedLayout: view.isFixedLayout,
+    lastLocation: view.lastLocation && range ? { ...view.lastLocation, range } : undefined,
+    renderer: { getContents: () => contents },
+    getCFI: view.getCFI.bind(view),
+    resolveCFI: view.resolveCFI.bind(view),
+  };
+  let sources: ChapterSource[] | undefined;
+  return async (signal: AbortSignal) => {
+    checkAborted(signal);
+    if (!range || selections.length > 1) return [];
+    if (!sources)
+      sources = (
+        await captureReadingScope({ bookDoc, view: snapshot, documentHash, kind: 'page', signal })
+      ).sources;
+    checkAborted(signal);
+    return structuredClone(sources);
+  };
+}
 
 /** Capture the range at the click, then read its text from the original local EPUB document. */
 export async function captureReadingScope({

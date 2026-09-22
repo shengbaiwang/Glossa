@@ -1,4 +1,8 @@
 {
+  "The current passage is unavailable. Include the passage in your question.": "无法取得当前文段，请在问题中带上原文。",
+  "Current passage": "当前文段",
+  "Citations on": "引用开启",
+  "Citations off": "引用关闭",
   "The response was cut short. Retrying with more room…": "响应被截断，正在增加生成空间并重试…",
   "On hold": "搁置中",
   "Mark as On hold": "标记为搁置",
@@ -2200,6 +2204,7 @@
   "Related text": "相关原文",
   "Check source {{number}}": "核对来源 {{number}}",
   "Copy reply": "复制回答",
+  "Copy question": "复制提问",
   "Ask again": "再次提问",
   "Replying…": "正在回答…",
   "Thinking about this passage…": "正在结合原文思考…",
@@ -2261,6 +2266,7 @@
   "The source could not be opened. Try again.": "无法打开来源，请重试。",
   "The reading position could not be restored. Try again.": "无法返回原阅读位置，请重试。",
   "The reply could not be copied.": "无法复制回答。",
+  "The question could not be copied.": "无法复制提问。",
   "Always included": "始终携带",
   "Unknown author": "作者信息缺失",
   "Chapter unavailable": "章节信息暂不可用",
@@ -2523,5 +2529,10 @@
   "Cost": "费用",
   "Provider charge": "供应商计费",
   "Currency not provided": "币种未提供",
-  "Cost reported": "已返回费用"
+  "Cost reported": "已返回费用",
+  "Input": "输入",
+  "Output": "输出",
+  "More information": "更多信息",
+  "ms": "毫秒",
+  "min": "分钟"
 }

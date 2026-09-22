@@ -2,7 +2,9 @@
 
 ### Conversation usage — 2026-09-22
 
-The answer footer uses a compact usage summary in place of the generic source-origin label. Hover, focus or tap reveals a paper/ink tooltip with the model, provider and recorded numeric usage. Keep source citations in the answer. The tooltip uses a two-column definition list, 12px labels, shared surface/border tokens and viewport bounds; touch triggers remain 44px and e-ink removes the shadow. A quiet full-width cost row separates the token tiles from the detailed metrics and shows the provider-reported charge. Missing metrics stay visibly unknown, with no fabricated token counts or pricing; partial charges show the reporting count and unknown currency stays explicit. Keep model identity, interruption status and version navigation in the footer; question actions remain below the question.
+Keep the popover small: a 368px maximum width, 14px insets (12px on narrow screens), 10px section spacing, 14px model title and 16px primary numbers. Detail values stay at 13px with 12px labels; the desktop disclosure row is 28px tall, while touch targets remain 44px. Compactness comes mainly from spacing, with readable values and room for wrapping.
+
+The answer footer uses a compact usage summary in place of the generic source-origin label. Hover, focus or tap reveals a nonmodal paper/ink popover inspired by the supplied Cherry Studio layout: model/provider opposite the timestamp, prominent input/output/throughput tiles, an optional full-width provider cost row, then a quiet two-column detail grid. Show only known values, including true zeros; omit the trigger for historical answers without metrics. Keep partial counts and unknown currency explicit. Put output limits and request counts under a collapsed “More information” row. Use shared surface/border tokens, responsive tiles, viewport clamping after expansion, keyboard entry and Escape focus return. Touch controls remain 44px; e-ink uses crisp borders without shadows. Keep verified source citations in the answer, and model identity, interruption status and version navigation in the footer.
 
 ### Shared interface foundations — 2026-09-14
 
