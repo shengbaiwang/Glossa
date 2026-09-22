@@ -52,6 +52,28 @@ export const mindmapBodySchema = z
 export type MindmapNode = z.infer<typeof nodeSchema>;
 export type MindmapBody = z.infer<typeof mindmapBodySchema>;
 
+export const mapCoverageSchema = z
+  .object({
+    kind: z.enum(['chapter', 'book', 'branch']),
+    title: z.string().min(1).max(500),
+    sourceCount: z.number().int().min(1).max(4800),
+    characterCount: z.number().int().min(1).max(240000),
+    batches: z.number().int().min(1).max(24),
+    contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .strict();
+export type MapCoverage = z.infer<typeof mapCoverageSchema>;
+export const overviewSourcesSchema = z
+  .array(passageSourcesSchema.element)
+  .min(1)
+  .max(4800)
+  .refine(
+    (sources) =>
+      new Set(sources.map((s) => s.sourceId)).size === sources.length &&
+      sources.every((s) => s.text === s.anchor.quote.exact) &&
+      sources.reduce((total, s) => total + s.text.length, 0) <= 240000,
+  );
+
 export function validateMindmapSources(body: MindmapBody, sources: ChapterSource[]): boolean {
   const ids = new Set(sources.map((s) => s.sourceId));
   return (
@@ -69,18 +91,35 @@ export const readingMindmapSchema = mindmapBodySchema
     createdAt: z.iso.datetime(),
     cacheKey: z.string().regex(/^[a-f0-9]{64}$/),
     contentHash: z.string().regex(/^[a-f0-9]{64}$/),
-    promptVersion: z.enum(['mindmap-1', 'mindmap-2']),
+    promptVersion: z.enum([
+      'mindmap-1',
+      'mindmap-2',
+      'mindmap-overview-1',
+      'mindmap-overview-2',
+      'mindmap-branch-1',
+    ]),
     schemaVersion: z.literal(1),
     provider: z
       .object({ id: z.string(), name: z.string(), baseUrl: z.string(), model: z.string() })
       .strict(),
-    sources: passageSourcesSchema,
+    sources: overviewSourcesSchema,
+    coverage: mapCoverageSchema.optional(),
   })
   .strict()
   .refine(
     (map) =>
       validateMindmapSources(map, map.sources) &&
-      map.passageId === getPassageId(map.chapterId, map.sources),
+      map.passageId === getPassageId(map.chapterId, map.sources) &&
+      (map.promptVersion === 'mindmap-overview-1' ||
+      map.promptVersion === 'mindmap-overview-2' ||
+      map.promptVersion === 'mindmap-branch-1'
+        ? !!map.coverage &&
+          map.coverage.sourceCount >= map.sources.length &&
+          map.coverage.characterCount >= map.sources.reduce((sum, s) => sum + s.text.length, 0) &&
+          (map.promptVersion === 'mindmap-branch-1'
+            ? map.coverage.kind === 'branch'
+            : map.coverage.kind !== 'branch')
+        : !map.coverage && passageSourcesSchema.safeParse(map.sources).success),
   );
 
 export function parseMindmap(raw: string, sources: ChapterSource[]): MindmapBody {

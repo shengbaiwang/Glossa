@@ -22,6 +22,7 @@ import {
   Trash2,
   Undo2,
   X,
+  MessageCircle,
 } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import {
@@ -31,6 +32,7 @@ import {
   getMapNodeSources,
   descendants,
   editTree,
+  appendMapBranch,
   mapWorkspaceSchema,
   type LocalMap,
   type MapNode,
@@ -40,19 +42,31 @@ import { useMapWorkspace } from '@/glossa/mindmap/workspaceSession';
 import type { ReadingPanelProps } from './ReadingPassagePanel';
 import type { ReadingMindmap } from '@/glossa/mindmap/types';
 import type { MindmapSourceSelection } from './MindmapSourcePanel';
+import {
+  exportMapMarkdown,
+  exportMapSvg,
+  mapQuestion,
+  type MapQuestionDraft,
+} from '@/glossa/mindmap/export';
 
 const SavedMindmaps = lazy(() => import('./SavedMindmaps'));
-const GeneratedMindmapPanel = lazy(() => import('./GeneratedMindmapPanel'));
+const GeneratedMindmapPanel = lazy(() => import('./MindmapGeneration'));
+const BranchGeneration = lazy(() =>
+  import('./MindmapGeneration').then((module) => ({ default: module.BranchGeneration })),
+);
 const MindmapSourcePanel = lazy(() => import('./MindmapSourcePanel'));
 
-export default function MindmapPanel(props: ReadingPanelProps) {
+type Props = ReadingPanelProps & { onAsk?: (draft: MapQuestionDraft) => void };
+export default function MindmapPanel(props: Props) {
   return <MapBook key={props.book.hash} {...props} />;
 }
-function MapBook(props: ReadingPanelProps) {
+function MapBook(props: Props) {
   const _ = useTranslation();
   const session = useMapWorkspace(props.book.hash);
   const [legacy, setLegacy] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [branch, setBranch] = useState<{ map: LocalMap; nodeId: string } | null>(null);
+  const [branchError, setBranchError] = useState('');
   const [sourceSelection, setSourceSelection] = useState<MindmapSourceSelection | null>(null);
   const [capacityError, setCapacityError] = useState(false);
   const [importError, setImportError] = useState(false);
@@ -78,7 +92,19 @@ function MapBook(props: ReadingPanelProps) {
   }
   useEffect(() => {
     setSourceSelection(null);
+    setBranch(null);
+    setBranchError('');
   }, [map?.id]);
+  useEffect(() => {
+    if (
+      branch &&
+      (map?.selectedId !== branch.nodeId ||
+        JSON.stringify(map.nodes) !== JSON.stringify(branch.map.nodes) ||
+        generating ||
+        legacy)
+    )
+      setBranch(null);
+  }, [map?.nodes, map?.selectedId, generating, legacy, branch]);
   useEffect(() => {
     if (sourceSelection && sourceSelection.nodeId !== map?.selectedId) setSourceSelection(null);
   }, [map?.selectedId, sourceSelection]);
@@ -265,27 +291,30 @@ function MapBook(props: ReadingPanelProps) {
       }
     }
   };
-  const download = () => {
-    if (!session.data) return;
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(session.data, null, 2)], { type: 'application/json' }),
-    );
+  const downloadFile = (content: string, type: string, filename: string) => {
+    const url = URL.createObjectURL(new Blob([content], { type }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'glossa-mindmaps.json';
+    link.download = filename;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const download = () => {
+    if (!session.data) return;
+    downloadFile(JSON.stringify(session.data, null, 2), 'application/json', 'glossa-mindmaps.json');
   };
   const importBackup = async (file: File) => {
     setImportError(false);
     try {
-      if (file.size > 5_000_000) throw new Error('Backup too large');
+      if (file.size > 50_000_000) throw new Error('Backup too large');
       const imported = mapWorkspaceSchema.parse(JSON.parse(await file.text()));
       if (!imported.maps.length) throw new Error('Empty backup');
-      if (imported.bookId === props.book.hash && imported.maps.some((m) => m.origin)) {
+      if (imported.bookId === props.book.hash) {
         const { validateSavedMindmap } = await import('@/glossa/mindmap/store');
         const origins = await Promise.all(
-          imported.maps.map((m) => (m.origin ? validateSavedMindmap(m.origin) : true)),
+          imported.maps
+            .flatMap((m) => [...(m.origin ? [m.origin] : []), ...(m.extensions ?? [])])
+            .map(validateSavedMindmap),
         );
         if (origins.some((origin) => !origin)) throw new Error('Invalid original sources');
       }
@@ -300,9 +329,12 @@ function MapBook(props: ReadingPanelProps) {
             ...m,
             id: crypto.randomUUID(),
             origin: sameBook ? m.origin : undefined,
+            extensions: sameBook ? m.extensions : undefined,
             nodes: m.nodes.map((node) => ({
               ...node,
               originNodeId: sameBook ? node.originNodeId : undefined,
+              originMapId: sameBook ? node.originMapId : undefined,
+              originParentId: sameBook ? node.originParentId : undefined,
             })),
           });
         });
@@ -340,10 +372,43 @@ function MapBook(props: ReadingPanelProps) {
     setEditingId(null);
   };
   const openGeneration = () => {
+    setBranch(null);
     setEditingId(null);
     setLegacy(false);
     setGenerating(true);
     setExpanded(false);
+  };
+  const useBranch = (generated: ReadingMindmap) => {
+    if (!branch) return;
+    let accepted = false;
+    try {
+      session.update((data) => {
+        const current = data.maps.find((m) => m.id === branch.map.id);
+        if (!current || JSON.stringify(current.nodes) !== JSON.stringify(branch.map.nodes))
+          return data;
+        const next = appendMapBranch(current, branch.nodeId, generated);
+        accepted = true;
+        return { ...data, maps: data.maps.map((m) => (m.id === current.id ? next : m)) };
+      });
+    } catch {
+      /* Capacity and depth checks leave the original tree intact. */
+    }
+    if (accepted) {
+      setBranch(null);
+      setBranchError('');
+    } else
+      setBranchError(
+        'These details could not be added. Keep the map within 200 ideas and 12 levels.',
+      );
+  };
+  const askNode = () => {
+    if (!map || !selected || !props.onAsk) return;
+    setExpanded(false);
+    props.onAsk({
+      id: crypto.randomUUID(),
+      bookId: props.book.hash,
+      question: mapQuestion(map, selected.id, _),
+    });
   };
   const chooseNode = (node: MapNode) => {
     updateMap((m) => ({ ...m, selectedId: node.id }));
@@ -483,13 +548,16 @@ function MapBook(props: ReadingPanelProps) {
       [])
     : [];
   const sourceNode = map?.nodes.find((node) => node.id === sourceSelection?.nodeId);
-  const originalNode = map?.origin?.nodes.find((node) => node.id === sourceNode?.originNodeId);
+  const nodeOrigin = sourceNode?.originMapId
+    ? map?.extensions?.find((o) => o.id === sourceNode.originMapId)
+    : map?.origin;
+  const originalNode = nodeOrigin?.nodes.find((node) => node.id === sourceNode?.originNodeId);
   const sourceKind =
     sourceNode &&
     originalNode &&
     (sourceNode.label !== originalNode.label ||
       sourceNode.relation !== originalNode.relation ||
-      sourceNode.parentId !== originalNode.parentId)
+      sourceNode.parentId !== (sourceNode.originParentId ?? originalNode.parentId))
       ? 'Edited idea'
       : originalNode?.kind === 'inference'
         ? 'Interpretation'
@@ -600,6 +668,34 @@ function MapBook(props: ReadingPanelProps) {
             </label>
           )}
           <hr />
+          {map && (
+            <>
+              <button
+                type='button'
+                onClick={() =>
+                  downloadFile(
+                    exportMapSvg(map),
+                    'image/svg+xml;charset=utf-8',
+                    'glossa-mindmap.svg',
+                  )
+                }
+              >
+                {_('Export SVG image')}
+              </button>
+              <button
+                type='button'
+                onClick={() =>
+                  downloadFile(
+                    exportMapMarkdown(map),
+                    'text/markdown;charset=utf-8',
+                    'glossa-mindmap.md',
+                  )
+                }
+              >
+                {_('Export Markdown outline')}
+              </button>
+            </>
+          )}
           <button
             type='button'
             onClick={() => {
@@ -742,6 +838,22 @@ function MapBook(props: ReadingPanelProps) {
               ))}
             </nav>
           )}
+          {branch && (
+            <Suspense fallback={<p role='status'>{_('Loading…')}</p>}>
+              <BranchGeneration
+                {...props}
+                map={branch.map}
+                nodeId={branch.nodeId}
+                onUseMap={useBranch}
+                onClose={() => setBranch(null)}
+              />
+            </Suspense>
+          )}
+          {branchError && (
+            <p role='alert' className='glossa-workmap-error'>
+              {_(branchError)}
+            </p>
+          )}
           <div
             ref={viewport}
             className='glossa-workmap-viewport'
@@ -804,6 +916,31 @@ function MapBook(props: ReadingPanelProps) {
               () => (editingId ? setEditingId(null) : selected && beginEdit(selected)),
             )}
             <WorkspaceMenu label={_('Idea menu')} above>
+              {props.onAsk && (
+                <button type='button' onClick={askNode}>
+                  <MessageCircle size={16} />
+                  {_('Ask about idea')}
+                </button>
+              )}
+              <button
+                type='button'
+                disabled={
+                  !selected ||
+                  !getMapNodeSources(map, selected.id).length ||
+                  map.nodes.length >= 199 ||
+                  selectedDepth >= 12 ||
+                  (map.extensions?.length ?? 0) >= 24
+                }
+                onClick={() => {
+                  if (selected) {
+                    setEditingId(null);
+                    setBranchError('');
+                    setBranch({ map: structuredClone(map), nodeId: selected.id });
+                  }
+                }}
+              >
+                {_('Expand idea')}
+              </button>
               {(['indent', 'outdent', 'up', 'down'] as const).map((type, index) => (
                 <button
                   type='button'

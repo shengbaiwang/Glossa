@@ -3,7 +3,10 @@ import { mapWorkspaceSchema, type MapWorkspace } from './workspace';
 export class MapStorageConflict extends Error {}
 
 async function validateOrigins(workspace: MapWorkspace): Promise<void> {
-  const origins = workspace.maps.flatMap((map) => (map.origin ? [map.origin] : []));
+  const origins = workspace.maps.flatMap((map) => [
+    ...(map.origin ? [map.origin] : []),
+    ...(map.extensions ?? []),
+  ]);
   if (!origins.length) return;
   const { validateSavedMindmap } = await import('./store');
   const results = await Promise.all(origins.map(validateSavedMindmap));

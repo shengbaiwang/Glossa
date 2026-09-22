@@ -1,6 +1,6 @@
 import type { ProviderConfig } from '@/glossa/ai/provider';
 import type { ChapterSource } from '@/glossa/context/types';
-import type { MindmapBody } from './schema';
+import type { MapCoverage, MindmapBody } from './schema';
 
 export interface ReadingMindmap extends MindmapBody {
   id: string;
@@ -14,4 +14,5 @@ export interface ReadingMindmap extends MindmapBody {
   schemaVersion: 1;
   provider: ProviderConfig;
   sources: ChapterSource[];
+  coverage?: MapCoverage;
 }

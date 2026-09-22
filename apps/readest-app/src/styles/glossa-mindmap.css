@@ -600,3 +600,43 @@
     min-width: 44px;
   }
 }
+.glossa-map-generation-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 8px 0;
+}
+
+.glossa-map-generation-form .glossa-passage-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.glossa-map-generation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.glossa-map-generation-form .glossa-chat-model-picker {
+  position: relative;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.glossa-map-generation-form .glossa-chat-model {
+  align-self: flex-start;
+}
+
+.glossa-map-generation-form .glossa-chat-model-menu {
+  position: relative;
+  top: auto;
+  bottom: auto;
+  margin-top: 4px;
+  max-height: min(300px, 40dvh);
+}

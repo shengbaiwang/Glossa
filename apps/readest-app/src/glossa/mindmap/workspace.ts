@@ -15,6 +15,8 @@ const nodeSchema = z
     label: z.string().max(500),
     relation: z.string().max(80),
     originNodeId: id.optional(),
+    originMapId: z.string().min(1).max(200).optional(),
+    originParentId: id.optional(),
   })
   .strict();
 export type MapNode = z.infer<typeof nodeSchema>;
@@ -55,6 +57,7 @@ const mapSchema = z
     selectedId: id,
     zoom: z.number().min(0.4).max(1.6),
     origin: readingMindmapSchema.optional(),
+    extensions: z.array(readingMindmapSchema).max(24).optional(),
   })
   .strict()
   .superRefine((map, ctx) => {
@@ -65,10 +68,24 @@ const mapSchema = z
       map.collapsed.some((n) => !ids.has(n))
     )
       ctx.addIssue({ code: 'custom', message: 'Invalid view state' });
-    const originIds = new Set(map.origin?.nodes.map((node) => node.id));
+    const origins = [...(map.origin ? [map.origin] : []), ...(map.extensions ?? [])];
     if (
-      map.origin?.insufficientEvidence ||
-      map.nodes.some((node) => node.originNodeId && !originIds.has(node.originNodeId))
+      origins.some((origin) => origin.insufficientEvidence) ||
+      new Set(origins.map((origin) => origin.id)).size !== origins.length ||
+      origins.reduce(
+        (sum, origin) => sum + origin.sources.reduce((n, s) => n + s.text.length, 0),
+        0,
+      ) > 480000 ||
+      map.nodes.some((node) => {
+        const origin = node.originMapId
+          ? map.extensions?.find((o) => o.id === node.originMapId)
+          : map.origin;
+        return (
+          (node.originParentId && !node.originMapId) ||
+          (node.originMapId && !node.originNodeId) ||
+          (node.originNodeId && !origin?.nodes.some((n) => n.id === node.originNodeId))
+        );
+      })
     )
       ctx.addIssue({ code: 'custom', message: 'Invalid original source association' });
   });
@@ -90,7 +107,13 @@ export const mapWorkspaceSchema = z
         : !workspace.maps.some((m) => m.id === workspace.activeId))
     )
       ctx.addIssue({ code: 'custom', message: 'Invalid active map' });
-    if (workspace.maps.some((map) => map.origin && map.origin.bookId !== workspace.bookId))
+    if (
+      workspace.maps.some((map) =>
+        [...(map.origin ? [map.origin] : []), ...(map.extensions ?? [])].some(
+          (o) => o.bookId !== workspace.bookId,
+        ),
+      )
+    )
       ctx.addIssue({ code: 'custom', message: 'Original sources belong to another book' });
   });
 export type MapWorkspace = z.infer<typeof mapWorkspaceSchema>;
@@ -130,13 +153,56 @@ export function createMapFromMindmap(generated: ReadingMindmap): LocalMap {
 /** These are local source snapshots, never a verification of the user's edited wording. */
 export function getMapNodeSources(map: LocalMap, nodeId: string): ChapterSource[] {
   const node = map.nodes.find((candidate) => candidate.id === nodeId);
-  const originNode = map.origin?.nodes.find((candidate) => candidate.id === node?.originNodeId);
-  if (!originNode || !map.origin) return [];
-  const byId = new Map(map.origin.sources.map((source) => [source.sourceId, source]));
+  const origin = node?.originMapId
+    ? map.extensions?.find((o) => o.id === node.originMapId)
+    : map.origin;
+  const originNode = origin?.nodes.find((candidate) => candidate.id === node?.originNodeId);
+  if (!originNode || !origin) return [];
+  const byId = new Map(origin.sources.map((source) => [source.sourceId, source]));
   return originNode.sourceIds.flatMap((sourceId) => {
     const source = byId.get(sourceId);
     return source ? [source] : [];
   });
+}
+
+/** Append only: user wording, existing branches and original evidence are immutable here. */
+export function appendMapBranch(
+  map: LocalMap,
+  nodeId: string,
+  generated: ReadingMindmap,
+): LocalMap {
+  const extension = readingMindmapSchema.parse(generated);
+  const root = extension.nodes.find((n) => n.parentId === null);
+  if (map.origin?.bookId !== extension.bookId || extension.coverage?.kind !== 'branch')
+    throw new Error('Invalid branch origin');
+  if (
+    !map.nodes.some((n) => n.id === nodeId) ||
+    !root ||
+    extension.nodes.length < 2 ||
+    extension.insufficientEvidence
+  )
+    throw new Error('No supported details');
+  const ids = new Map(extension.nodes.map((n) => [n.id, crypto.randomUUID()]));
+  const next = {
+    ...map,
+    extensions: [...(map.extensions ?? []), extension],
+    nodes: [
+      ...map.nodes,
+      ...extension.nodes
+        .filter((n) => n.id !== root.id)
+        .map((n) => ({
+          id: ids.get(n.id)!,
+          parentId: n.parentId === root.id ? nodeId : ids.get(n.parentId!)!,
+          label: n.label,
+          relation: n.relation,
+          originNodeId: n.id,
+          originMapId: extension.id,
+          originParentId: n.parentId === root.id ? nodeId : ids.get(n.parentId!)!,
+        })),
+    ],
+    collapsed: map.collapsed.filter((id) => id !== nodeId),
+  };
+  return mapSchema.parse(next);
 }
 
 export type TreeEdit =

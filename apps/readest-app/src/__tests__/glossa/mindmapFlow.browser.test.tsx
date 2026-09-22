@@ -10,6 +10,9 @@ import { loadMindmap } from '@/glossa/mindmap/store';
 import { createMap, getMapNodeSources, mapWorkspaceSchema } from '@/glossa/mindmap/workspace';
 import { useMapWorkspace } from '@/glossa/mindmap/workspaceSession';
 import { loadMapWorkspace } from '@/glossa/mindmap/workspaceStore';
+import { exportMapSvg } from '@/glossa/mindmap/export';
+import { ModelServiceError } from '@/glossa/ai/provider';
+import MindmapGeneration from '@/glossa/ui/MindmapGeneration';
 import type { CompletionRequest, ProviderConfig } from '@/glossa/ai/provider';
 import MindmapPanel from '@/glossa/ui/GeneratedMindmapPanel';
 import MindmapWorkspace from '@/glossa/ui/MindmapPanel';
@@ -69,6 +72,8 @@ vi.mock('@/glossa/ai/provider', async (importOriginal) => {
   return {
     ...original,
     getActiveProviderConfig: () => f.config,
+    getSavedProviderConfigs: () => [f.config],
+    listProviderModels: async () => ['fixture-model'],
     getProviderStatus: async () => ({ configured: true, hasApiKey: false, storage: 'session' }),
     validateProviderConfig: (value: ProviderConfig) => value,
     streamCompletion: f.complete,
@@ -337,6 +342,9 @@ it('generates into the editable workspace, keeps verified excerpts through edits
   expect(f.complete).not.toHaveBeenCalled();
   expect(extractChapter).not.toHaveBeenCalled();
   await page.getByRole('button', { name: 'Generate mind map', exact: true }).click();
+  fireEvent.change(await screen.findByRole('combobox', { name: 'Map range' }), {
+    target: { value: 'passage' },
+  });
   const { passage, generate } = await selectFirstPassage(chapters[0]!.id);
   fireEvent.click(generate);
   await screen.findByRole('button', { name: '怎样理解一个观点' });
@@ -506,6 +514,9 @@ it('keeps a finished generation recoverable when another pane fills the workspac
     </>,
   );
   fireEvent.click(await screen.findByRole('button', { name: 'Generate mind map' }));
+  fireEvent.change(await screen.findByRole('combobox', { name: 'Map range' }), {
+    target: { value: 'passage' },
+  });
   const { generate } = await selectFirstPassage(chapters[0]!.id);
   fireEvent.click(generate);
   await waitFor(() => expect(f.complete).toHaveBeenCalledTimes(1));
@@ -530,3 +541,318 @@ it('keeps a finished generation recoverable when another pane fills the workspac
   expect(stored.maps.filter((map) => map.origin)).toHaveLength(1);
   expect(f.complete).toHaveBeenCalledTimes(1);
 }, 30_000);
+
+it('covers the whole EPUB, expands a verified node, preserves edits and hands its question to chat', async () => {
+  await page.viewport(1160, 900);
+  document.documentElement.setAttribute('data-theme', 'default-light');
+  const { book, doc } = await fixture();
+  const ask = vi.fn();
+  f.complete.mockImplementation(async (request: CompletionRequest) => {
+    const payload = JSON.parse(request.messages.at(-1)!.content) as {
+      sources?: { sourceId: string; text: string }[];
+      points?: { sourceIds: string[] }[];
+      topic?: string;
+    };
+    if (payload.sources && !payload.topic)
+      return JSON.stringify({
+        coveredSourceIds: payload.sources.map((s) => s.sourceId),
+        points: [
+          {
+            text: '理解观点要核对理由及例子的适用范围',
+            sourceIds: [payload.sources[0]!.sourceId, payload.sources.at(-1)!.sourceId],
+          },
+        ],
+      });
+    const ids =
+      payload.sources?.map((s) => s.sourceId) ?? payload.points!.flatMap((p) => p.sourceIds);
+    return JSON.stringify({
+      nodes: [
+        {
+          id: 'root',
+          parentId: null,
+          label: payload.topic || '全书结构',
+          relation: '',
+          explanation: '整理结构',
+          sourceIds: [ids[0]],
+          kind: 'source',
+        },
+        {
+          id: 'detail',
+          parentId: 'root',
+          label: payload.topic ? '核对例证边界' : '理由与条件',
+          relation: '需要',
+          explanation: '依据原文条件',
+          sourceIds: [ids.at(-1)],
+          kind: 'source',
+        },
+      ],
+      insufficientEvidence: false,
+    });
+  });
+  const workspace = () => (
+    <div
+      data-testid='explore-sidebar'
+      style={{ width: 390, height: 900, position: 'absolute', right: 0, top: 0 }}
+    >
+      <MindmapWorkspace book={book} bookDoc={doc} bookKey={book.hash} onAsk={ask} />
+    </div>
+  );
+  const panel = render(workspace());
+  fireEvent.click(await screen.findByRole('button', { name: 'Generate mind map' }));
+  fireEvent.change(await screen.findByRole('combobox', { name: 'Map range' }), {
+    target: { value: 'book' },
+  });
+  expect(f.complete).not.toHaveBeenCalled();
+  expect(extractChapter).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
+  const modelMenu = await screen.findByRole('dialog', { name: 'Choose model' });
+  const modelOption = await screen.findByRole('button', { name: 'fixture-model' });
+  const optionBounds = modelOption.getBoundingClientRect();
+  expect(
+    modelOption.contains(
+      document.elementFromPoint(
+        optionBounds.x + optionBounds.width / 2,
+        optionBounds.y + optionBounds.height / 2,
+      ),
+    ),
+  ).toBe(true);
+  const menuBounds = modelMenu.getBoundingClientRect();
+  expect(menuBounds.top).toBeGreaterThanOrEqual(0);
+  expect(menuBounds.bottom).toBeLessThanOrEqual(900);
+  expect(menuBounds.left).toBeGreaterThanOrEqual(770);
+  await page.screenshot({ path: '../../../../../.glossa-dev/qa/mindmap-explore-model-menu.png' });
+  fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
+  await page.screenshot({ path: '../../../../../.glossa-dev/qa/mindmap-explore-range.png' });
+  const generate = screen.getByRole('button', { name: 'Generate mind map' });
+  await waitFor(() => expect(generate.hasAttribute('disabled')).toBe(false));
+  fireEvent.click(generate);
+  await screen.findByRole('button', { name: '全书结构' });
+  await screen.findByText('Saved on this device');
+  expect(JSON.stringify(f.complete.mock.calls)).toContain('FUTURE_CHAPTER_SENTINEL');
+  const initial = await loadMapWorkspace(book.hash);
+  expect(initial.maps[0]!.origin?.coverage?.kind).toBe('book');
+  const allCount = initial.maps[0]!.origin!.coverage!.sourceCount;
+  expect(allCount).toBeGreaterThan(4);
+  await import('foliate-js/view.js');
+  await import('foliate-js/paginator.js');
+  view = document.createElement('foliate-view') as FoliateView;
+  Object.assign(view.style, {
+    width: '740px',
+    height: '900px',
+    position: 'absolute',
+    left: '0',
+    top: '0',
+  });
+  document.body.append(view);
+  await view.open(doc);
+  view.renderer.setAttribute('max-column-count', '1');
+  const firstSource = initial.maps[0]!.origin!.sources[0]!;
+  await view.goTo(firstSource.anchor.cfi);
+  f.progress.location = firstSource.anchor.cfi;
+  f.goTo.mockImplementation((cfi: string) => view!.goTo(cfi));
+  fireEvent.click(screen.getByRole('button', { name: '需要 理由与条件' }));
+  await waitFor(() => expect(screen.queryByText('Locating source…')).toBeNull());
+  fireEvent.click(screen.getByRole('button', { name: 'Edit idea' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Idea text' }), {
+    target: { value: '我的条件概括' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Idea menu' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Expand idea' }));
+  await screen.findByRole('button', { name: 'Generate details' });
+  await page.screenshot({ path: '../../../../../.glossa-dev/qa/mindmap-explore-branch.png' });
+  const details = screen.getByRole('button', { name: 'Generate details' });
+  await waitFor(() => expect(details.hasAttribute('disabled')).toBe(false));
+  fireEvent.click(details);
+  await screen.findByRole('button', { name: '需要 核对例证边界' });
+  await waitFor(async () =>
+    expect((await loadMapWorkspace(book.hash)).maps[0]!.extensions).toHaveLength(1),
+  );
+  const expanded = (await loadMapWorkspace(book.hash)).maps[0]!;
+  expect(expanded.nodes.find((n) => n.id === 'detail')!.label).toBe('我的条件概括');
+  expect(expanded.origin).toEqual(initial.maps[0]!.origin);
+  const extensionNode = expanded.nodes.find((n) => n.originMapId)!;
+  const extensionSources = getMapNodeSources(expanded, extensionNode.id);
+  expect(extensionSources).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+  expect(screen.queryByRole('button', { name: '需要 核对例证边界' })).toBeNull();
+  expect(screen.getByRole('button', { name: '需要 我的条件概括' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+  await screen.findByRole('button', { name: '需要 核对例证边界' });
+  fireEvent.click(screen.getByRole('button', { name: 'Idea menu' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Ask about idea' }));
+  expect(ask.mock.calls[0]![0].question).toContain('我的条件概括');
+  fireEvent.click(screen.getByRole('button', { name: '需要 核对例证边界' }));
+  await waitFor(() => expect(f.goTo).toHaveBeenLastCalledWith(extensionSources[0]!.anchor.cfi));
+  await waitFor(() => expect(screen.queryByText('Locating source…')).toBeNull());
+  const excerpt = await screen.findByRole('complementary', { name: 'Source excerpt' });
+  expect(excerpt.querySelector('blockquote')?.textContent).toBe(extensionSources[0]!.text);
+  const resolved = view.resolveCFI(extensionSources[0]!.anchor.cfi);
+  await waitFor(() =>
+    expect(view!.resolveCFI(view!.lastLocation!.cfi!).index).toBe(resolved.index),
+  );
+  expect(
+    resolved
+      .anchor?.(
+        view.renderer.getContents().find((content) => content.index === resolved.index)!.doc,
+      )
+      ?.toString(),
+  ).toBe(extensionSources[0]!.text);
+  expect(screen.queryByText('Could not open the source passage.')).toBeNull();
+  const callCount = f.complete.mock.calls.length;
+  fireEvent.click(screen.getByRole('button', { name: 'Mind map menu' }));
+  expect(screen.getByRole('button', { name: 'Export SVG image' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Export Markdown outline' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Mind map menu' }));
+  panel.unmount();
+  const reopened = render(workspace());
+  await screen.findByRole('button', { name: '需要 核对例证边界' });
+  expect(f.complete).toHaveBeenCalledTimes(callCount);
+  f.chinese = true;
+  reopened.rerender(workspace());
+  view.style.display = 'none';
+  document.documentElement.setAttribute('data-theme', 'default-dark');
+  screen.getByTestId('explore-sidebar').style.width = '320px';
+  await page.viewport(320, 900);
+  expect(screen.getByTestId('explore-sidebar').scrollWidth).toBeLessThanOrEqual(320);
+  await page.screenshot({ path: '../../../../../.glossa-dev/qa/mindmap-explore-dark-narrow.png' });
+  document.documentElement.setAttribute('dir', 'rtl');
+  document.documentElement.setAttribute('data-eink', 'true');
+  await page.screenshot({ path: '../../../../../.glossa-dev/qa/mindmap-explore-eink-rtl.png' });
+  f.chinese = false;
+  reopened.rerender(workspace());
+  fireEvent.click(screen.getByRole('button', { name: 'AI mind map' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Choose model' }));
+  const narrowOption = await screen.findByRole('button', { name: 'fixture-model' });
+  const narrowBounds = narrowOption.getBoundingClientRect();
+  expect(
+    narrowOption.contains(
+      document.elementFromPoint(
+        narrowBounds.x + narrowBounds.width / 2,
+        narrowBounds.y + narrowBounds.height / 2,
+      ),
+    ),
+  ).toBe(true);
+  expect(screen.getByTestId('explore-sidebar').scrollWidth).toBeLessThanOrEqual(320);
+  expect(f.complete).toHaveBeenCalledTimes(callCount);
+  await page.screenshot({ path: '../../../../../.glossa-dev/qa/mindmap-explore-menu-narrow.png' });
+}, 30000);
+
+it('exports complete long labels as a readable SVG with no text outside its nodes', async () => {
+  await page.viewport(800, 600);
+  const map = createMap('中英长标题 WWMM example');
+  map.nodes.push({
+    id: 'long',
+    parentId: map.nodes[0]!.id,
+    label: '完整保留导图中的观点和限定条件'.repeat(5) + 'WWWMMMM'.repeat(5),
+    relation: '需要核对原文',
+  });
+  const svgText = exportMapSvg(map);
+  const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+  expect(doc.querySelector('parsererror')).toBeNull();
+  const svg = document.importNode(doc.documentElement, true);
+  document.body.append(svg);
+  try {
+    for (const group of svg.querySelectorAll('g')) {
+      const rect = group.querySelector('rect')!.getBBox();
+      for (const text of group.querySelectorAll('text')) {
+        const bounds = text.getBBox();
+        expect(bounds.x + bounds.width).toBeLessThanOrEqual(rect.x + rect.width - 8);
+        expect(bounds.y + bounds.height).toBeLessThanOrEqual(rect.y + rect.height - 4);
+      }
+    }
+    expect(svg.querySelector('script, foreignObject, a, image')).toBeNull();
+    await page.screenshot({ path: '../../../../../.glossa-dev/qa/mindmap-explore-svg.png' });
+  } finally {
+    svg.remove();
+  }
+});
+
+it('reopens saved whole-book reading results and retries only the failed synthesis', async () => {
+  motionStyle = document.createElement('style');
+  motionStyle.textContent = '* { transition: none !important; animation: none !important; }';
+  document.head.append(motionStyle);
+  await page.viewport(390, 780);
+  document.documentElement.setAttribute('data-theme', 'default-light');
+  const { book, doc } = await fixture();
+  const useMap = vi.fn();
+  let failed = false;
+  f.complete.mockImplementation(async (request: CompletionRequest) => {
+    const payload = JSON.parse(request.messages.at(-1)!.content) as {
+      sources?: { sourceId: string }[];
+      points?: { sourceIds: string[] }[];
+    };
+    if (payload.sources)
+      return JSON.stringify({
+        coveredSourceIds: payload.sources.map((source) => source.sourceId),
+        points: [
+          {
+            text: 'Reasons and examples support a conclusion within its conditions.',
+            sourceIds: [payload.sources[0]!.sourceId],
+          },
+        ],
+      });
+    if (!failed) {
+      failed = true;
+      throw new ModelServiceError(
+        'Mind map synthesis timed out. Continue from the saved reading results.',
+      );
+    }
+    return JSON.stringify({
+      nodes: [
+        {
+          id: 'root',
+          parentId: null,
+          label: 'Conditions and conclusions',
+          relation: '',
+          explanation: 'Check conditions.',
+          sourceIds: payload.points![0]!.sourceIds,
+          kind: 'source',
+        },
+      ],
+      insufficientEvidence: false,
+    });
+  });
+  const panel = () => (
+    <div className='glossa-workmap' style={{ width: '100%', minHeight: '100vh', padding: 20 }}>
+      <MindmapGeneration book={book} bookDoc={doc} bookKey={book.hash} onUseMap={useMap} />
+    </div>
+  );
+  const first = render(panel());
+  fireEvent.change(screen.getByRole('combobox', { name: 'Map range' }), {
+    target: { value: 'book' },
+  });
+  const generate = screen.getByRole('button', { name: 'Generate mind map' });
+  await waitFor(() => expect(generate.hasAttribute('disabled')).toBe(false));
+  fireEvent.click(generate);
+  await screen.findByRole('alert');
+  const resume = await screen.findByRole('button', { name: 'Continue generation' });
+  await waitFor(() => expect(resume.hasAttribute('disabled')).toBe(false));
+  expect(useMap).not.toHaveBeenCalled();
+  expect(f.complete).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole('status').textContent).toContain('1 / 1');
+  f.chinese = true;
+  first.rerender(panel());
+  await page.screenshot({ path: '../../../../../.glossa-dev/qa/mindmap-resume-light.png' });
+  document.documentElement.setAttribute('data-theme', 'default-dark');
+  await page.viewport(320, 780);
+  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(320);
+  await page.screenshot({ path: '../../../../../.glossa-dev/qa/mindmap-resume-dark.png' });
+  document.documentElement.setAttribute('data-eink', 'true');
+  document.documentElement.setAttribute('dir', 'rtl');
+  await page.screenshot({ path: '../../../../../.glossa-dev/qa/mindmap-resume-eink.png' });
+  first.unmount();
+  f.chinese = false;
+  render(panel());
+  fireEvent.change(screen.getByRole('combobox', { name: 'Map range' }), {
+    target: { value: 'book' },
+  });
+  const restored = await screen.findByRole('button', { name: 'Continue generation' });
+  await waitFor(() => expect(restored.hasAttribute('disabled')).toBe(false));
+  expect(f.complete).toHaveBeenCalledTimes(2);
+  fireEvent.click(restored);
+  await waitFor(() => expect(useMap).toHaveBeenCalledTimes(1));
+  expect(f.complete).toHaveBeenCalledTimes(3);
+  expect(JSON.parse(f.complete.mock.calls[2]![0].messages.at(-1)!.content).sources).toBeUndefined();
+  expect(useMap.mock.calls[0]![0].coverage.kind).toBe('book');
+}, 30000);

@@ -23,6 +23,7 @@ import { getPanelTopInset } from '@/utils/insets';
 import { Overlay } from '@/components/Overlay';
 import { NOTE_PREFIX } from '@/types/view';
 import useShortcuts from '@/hooks/useShortcuts';
+import type { MapQuestionDraft } from '@/glossa/mindmap/export';
 import {
   findAnnotationAtCfi,
   removeBookNoteOverlays,
@@ -59,6 +60,8 @@ const Notebook: React.FC = ({}) => {
   const [isSearchBarVisible, setIsSearchBarVisible] = useState(false);
   const [searchResults, setSearchResults] = useState<BookNote[] | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [ideaDraft, setIdeaDraft] = useState<MapQuestionDraft | null>(null);
+  useEffect(() => setIdeaDraft(null), [sideBarBookKey]);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 640);
   const [isFullHeightInMobile, setIsFullHeightInMobile] = useState(isMobile);
   const tabId = useId();
@@ -476,7 +479,13 @@ const Notebook: React.FC = ({}) => {
                 </p>
               }
             >
-              <ConversationPanel book={book} bookDoc={bookDoc} bookKey={sideBarBookKey} />
+              <ConversationPanel
+                book={book}
+                bookDoc={bookDoc}
+                bookKey={sideBarBookKey}
+                ideaDraft={ideaDraft}
+                onIdeaDraftConsumed={() => setIdeaDraft(null)}
+              />
             </Suspense>
           </div>
         )}
@@ -495,7 +504,15 @@ const Notebook: React.FC = ({}) => {
                 </p>
               }
             >
-              <MindmapPanel book={book} bookDoc={bookDoc} bookKey={sideBarBookKey} />
+              <MindmapPanel
+                book={book}
+                bookDoc={bookDoc}
+                bookKey={sideBarBookKey}
+                onAsk={(draft) => {
+                  setIdeaDraft(draft);
+                  setNotebookActiveTab('conversation');
+                }}
+              />
             </Suspense>
           </div>
         )}

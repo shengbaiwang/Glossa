@@ -1,5 +1,6 @@
 import { validateProviderConfig, type ProviderConfig } from '@/glossa/ai/provider';
 import type { ChapterSource } from '@/glossa/context/types';
+import type { MapCoverage } from './schema';
 
 export const MINDMAP_PROMPT_VERSION = 'mindmap-2';
 export const MINDMAP_SCHEMA_VERSION = 1;
@@ -18,6 +19,7 @@ export async function getMindmapIdentity(
   sources: ChapterSource[],
   input: ProviderConfig,
   promptVersion: string = MINDMAP_PROMPT_VERSION,
+  coverage?: MapCoverage,
 ): Promise<{ contentHash: string; cacheKey: string }> {
   const config = validateProviderConfig(input);
   // Select fields explicitly so object key order never changes a persisted identity.
@@ -46,6 +48,7 @@ export async function getMindmapIdentity(
     model: config.model,
     promptVersion,
     schemaVersion: MINDMAP_SCHEMA_VERSION,
+    ...(coverage ? { coverage } : {}),
   });
   return { contentHash, cacheKey };
 }

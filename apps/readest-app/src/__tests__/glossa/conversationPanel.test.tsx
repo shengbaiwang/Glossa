@@ -131,6 +131,32 @@ afterEach(cleanup);
 const mount = (b = book(), doc = {} as BookDoc) =>
   render(<ConversationPanel book={b} bookDoc={doc} bookKey={b.hash} />);
 
+it('opens a node question as a separate editable draft without sending or altering an existing conversation', async () => {
+  const b = book();
+  const old = { id: 'old', turns: [], citationsEnabled: false };
+  f.load.mockResolvedValue({ version: 1, bookId: b.hash, activeId: 'old', sessions: [old] });
+  const panel = render(<ConversationPanel book={b} bookDoc={{} as BookDoc} bookKey={b.hash} />);
+  const input = await screen.findByRole('textbox', { name: 'Message' });
+  fireEvent.change(input, { target: { value: 'Unsent personal draft' } });
+  const consumed = vi.fn();
+  panel.rerender(
+    <ConversationPanel
+      book={b}
+      bookDoc={{} as BookDoc}
+      bookKey={b.hash}
+      ideaDraft={{ id: 'idea-1', bookId: b.hash, question: 'Explain the condition' }}
+      onIdeaDraftConsumed={consumed}
+    />,
+  );
+  await waitFor(() => expect((input as HTMLTextAreaElement).value).toBe('Explain the condition'));
+  expect(f.generate).not.toHaveBeenCalled();
+  expect(f.bookReading).not.toHaveBeenCalled();
+  expect(consumed).toHaveBeenCalledTimes(1);
+  const saved = f.save.mock.calls.at(-1)![0];
+  expect(saved.sessions).toHaveLength(2);
+  expect(saved.sessions.find((s: { id: string }) => s.id === 'old')).toEqual(old);
+});
+
 it('shows a hoverable usage footer and stores actual usage with the answer', async () => {
   f.generate.mockImplementation(async (input) => {
     input.onMetrics?.({

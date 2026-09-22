@@ -1,5 +1,11 @@
 ## Glossa Design Language
 
+### Mind map exploration — 2026-09-22
+
+The generation form uses a single range select (Whole chapter / Whole book / Reading passage), chapter selection when relevant, the shared model picker and one Generate / Stop action. Long-range reads start only on Generate. Show a compact stage indicator while working and saved segment counts after cancellation or failure. Reopening reads checkpoint metadata only; offer Continue generation or Restore generated map, plus an explicit Start again action. Distinguish local reading, segment extraction and synthesis timeouts. Resuming revalidates current book material and requests only missing work. Never replace the existing editable map with an unfinished result.
+
+The idea menu groups Ask about idea and Expand idea before structural edits. Ask moves to a separate editable conversation draft; sending remains explicit. Expand opens an inline panel above the outline/canvas and appends sourced children, with one undo step. Closing or changing the target cancels generation. Keep the node text click reserved for verified source navigation. The map menu groups SVG image and Markdown outline export with existing JSON backup operations. Reuse the paper/ink theme, narrow wrapping, keyboard targets and e-ink boundaries; no permanent explanatory cards.
+
 ### Conversation citation preview — 2026-09-22
 
 Inline answer citations are quieter than the preview badge: 16px high, 4px corners, 10px tabular numerals and the original inline alignment, with softer theme fill/border until hover or keyboard focus. Keep following closing punctuation in the same nonbreaking span without changing copyable text. Preserve 44px touch targets and crisp e-ink borders.

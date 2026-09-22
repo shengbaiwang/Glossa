@@ -31,6 +31,7 @@ export async function validateSavedMindmap(raw: unknown): Promise<ReadingMindmap
       guide.sources,
       provider,
       guide.promptVersion,
+      guide.coverage,
     );
     if (identity.contentHash !== guide.contentHash || identity.cacheKey !== guide.cacheKey)
       return null;

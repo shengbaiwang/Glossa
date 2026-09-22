@@ -79,11 +79,14 @@ import { createBookReadingScope } from '@/glossa/harness/scope';
 import type { ChapterSource } from '@/glossa/context/types';
 import { generateBookConversation } from '@/glossa/harness/bookConversation';
 import { createEpubBookAccess, createEpubFocusReader } from '@/glossa/harness/epub';
+import type { MapQuestionDraft } from '@/glossa/mindmap/export';
 
 interface Props {
   book: Book;
   bookDoc: BookDoc;
   bookKey: string;
+  ideaDraft?: MapQuestionDraft | null;
+  onIdeaDraftConsumed?: () => void;
 }
 const drafts = new Map<string, string>();
 const initialSessions = new Map<string, string>();
@@ -95,7 +98,7 @@ const errorMessage = (cause: unknown, fallback: string) =>
 export default function ConversationPanel(props: Props) {
   return <ConversationBook key={`${props.book.hash}:${props.bookKey}`} {...props} />;
 }
-function ConversationBook({ book, bookDoc, bookKey }: Props) {
+function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsumed }: Props) {
   const _ = useTranslation();
   const progress = useBookProgress(bookKey);
   const sectionPath = useMemo(
@@ -148,6 +151,7 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
   const composer = useRef<HTMLTextAreaElement>(null);
   const transcript = useRef<HTMLDivElement>(null);
   const busy = pending !== null;
+  const acceptedIdeaDraft = useRef('');
   const turns = history?.sessions.find((s) => s.id === history.activeId)?.turns ?? [];
   const defaultScope = useMemo(
     () =>
@@ -193,6 +197,44 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
       if (mounted.current) setSaveError(true);
     }
   };
+  useEffect(() => {
+    const current = historyRef.current;
+    if (
+      !current ||
+      !ideaDraft ||
+      ideaDraft.bookId !== book.hash ||
+      acceptedIdeaDraft.current === ideaDraft.id
+    )
+      return;
+    const empty = current.sessions.find(
+      (s) => !s.turns.length && !drafts.get(draftKey(s.id))?.trim(),
+    );
+    if (!empty && current.sessions.length >= 20) {
+      setError('This book has 20 conversations. Delete a conversation before starting another.');
+      return;
+    }
+    acceptedIdeaDraft.current = ideaDraft.id;
+    stopRequest.current?.();
+    const session = {
+      ...newSession(),
+      ...(empty ? { id: empty.id } : {}),
+      citationsEnabled: !!defaultScope,
+    };
+    const next = {
+      ...current,
+      activeId: session.id,
+      sessions: empty
+        ? current.sessions.map((s) => (s.id === session.id ? session : s))
+        : [...current.sessions, session],
+    };
+    persist(next);
+    updateDraft(ideaDraft.question.slice(0, MAX_QUESTION_CHARS));
+    setError('');
+    setFailedQuestion('');
+    setSourceSelection(null);
+    onIdeaDraftConsumed?.();
+    composer.current?.focus();
+  }, [history, ideaDraft, book.hash, defaultScope, onIdeaDraftConsumed]);
   useEffect(() => {
     mounted.current = true;
     return () => {
