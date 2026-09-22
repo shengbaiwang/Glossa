@@ -5,7 +5,7 @@ import type { MapCoverage } from './schema';
 export const MINDMAP_PROMPT_VERSION = 'mindmap-2';
 export const MINDMAP_SCHEMA_VERSION = 1;
 
-async function hash(value: unknown): Promise<string> {
+export async function hashMindmapData(value: unknown): Promise<string> {
   const digest = await crypto.subtle.digest(
     'SHA-256',
     new TextEncoder().encode(JSON.stringify(value)),
@@ -23,7 +23,7 @@ export async function getMindmapIdentity(
 ): Promise<{ contentHash: string; cacheKey: string }> {
   const config = validateProviderConfig(input);
   // Select fields explicitly so object key order never changes a persisted identity.
-  const contentHash = await hash(
+  const contentHash = await hashMindmapData(
     sources.map((source) => ({
       sourceId: source.sourceId,
       text: source.text,
@@ -39,7 +39,7 @@ export async function getMindmapIdentity(
       },
     })),
   );
-  const cacheKey = await hash({
+  const cacheKey = await hashMindmapData({
     bookId,
     passageId,
     contentHash,

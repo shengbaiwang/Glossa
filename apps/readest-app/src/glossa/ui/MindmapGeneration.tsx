@@ -11,11 +11,11 @@ import {
 import { createEpubBookAccess } from '@/glossa/harness/epub';
 import { expandMapNode, generateOverviewMap, type MapProgress } from '@/glossa/mindmap/explore';
 import { getMapCheckpointKey, mapCheckpointStore } from '@/glossa/mindmap/checkpoints';
+import { mapDiagnosticMessage } from '@/glossa/mindmap/diagnostics';
 import type { LocalMap } from '@/glossa/mindmap/workspace';
 import type { ReadingMindmap } from '@/glossa/mindmap/types';
 import { PassageError } from '@/glossa/passages/types';
 import type { ReadingPanelProps } from './ReadingPassagePanel';
-import GeneratedMindmapPanel from './GeneratedMindmapPanel';
 import ConversationModelPicker from './ConversationModelPicker';
 
 const errorText = (error: unknown) =>
@@ -88,7 +88,7 @@ export default function MindmapGeneration(
   props: ReadingPanelProps & { onUseMap: (map: ReadingMindmap) => void },
 ) {
   const _ = useTranslation();
-  const [kind, setKind] = useState<'chapter' | 'book' | 'passage'>('chapter');
+  const [kind, setKind] = useState<'chapter' | 'book'>('chapter');
   return (
     <div className='glossa-map-generation-form'>
       <label className='glossa-passage-label'>
@@ -101,14 +101,9 @@ export default function MindmapGeneration(
         >
           <option value='chapter'>{_('Whole chapter')}</option>
           <option value='book'>{_('Whole book')}</option>
-          <option value='passage'>{_('Reading passage')}</option>
         </select>
       </label>
-      {kind === 'passage' ? (
-        <GeneratedMindmapPanel {...props} />
-      ) : (
-        <OverviewForm key={kind} {...props} kind={kind} />
-      )}
+      <OverviewForm key={kind} {...props} kind={kind} />
     </div>
   );
 }
@@ -131,6 +126,7 @@ function OverviewForm(
   const [progress, setProgress] = useState<MapProgress | null>(null);
   const [checking, setChecking] = useState(true);
   const [resumeError, setResumeError] = useState('');
+  const [savedFailure, setSavedFailure] = useState('');
   const [result, setResult] = useState<ReadingMindmap | null>(null);
   const chapter = access?.chapters.find((c) => c.id === chapterId);
   const title = (props.kind === 'chapter' ? chapter?.title : props.book.title) || 'Mind map';
@@ -139,6 +135,7 @@ function OverviewForm(
     if (model.busy) return;
     setChecking(true);
     setResumeError('');
+    setSavedFailure('');
     const read = async () => {
       if (!model.config || (props.kind === 'chapter' && !chapterId)) {
         setProgress(null);
@@ -153,13 +150,18 @@ function OverviewForm(
           config: model.config,
         });
         const { checkpoint } = await mapCheckpointStore.load(key);
+        const failure =
+          checkpoint?.failure ?? checkpoint?.batches.find((batch) => batch.failure)?.failure;
+        if (alive && failure && !checkpoint?.result)
+          setSavedFailure(mapDiagnosticMessage(failure.kind));
         if (alive)
           setProgress(
             checkpoint
               ? {
                   phase: checkpoint.result ? 'ready' : 'inventory',
-                  completed: checkpoint.batches.filter((batch) => batch.points !== undefined)
-                    .length,
+                  completed: checkpoint.result
+                    ? checkpoint.batches.length
+                    : checkpoint.batches.filter((batch) => batch.points !== undefined).length,
                   total: checkpoint.batches.length,
                   elapsedMs: 0,
                 }
@@ -186,6 +188,7 @@ function OverviewForm(
     model.run(async (config, signal) => {
       if (!access) return;
       setResult(null);
+      setSavedFailure('');
       setProgress({ phase: 'reading', completed: 0, total: 0, elapsedMs: 0 });
       const generated = await generateOverviewMap({
         bookId: props.book.hash,
@@ -250,7 +253,9 @@ function OverviewForm(
             {progress?.phase === 'ready'
               ? _('Restore generated map')
               : progress?.total
-                ? _('Continue generation')
+                ? progress.completed
+                  ? _('Continue generation')
+                  : _('Retry generation')
                 : _('Generate mind map')}
           </button>
         )}
@@ -275,8 +280,8 @@ function OverviewForm(
           {progress?.phase === 'synthesis' || progress?.phase === 'ready'
             ? _('Organizing the mind map…')
             : progress?.phase === 'inventory'
-              ? _('Reading segments {{current}} / {{total}}…', {
-                  current: progress.completed + 1,
+              ? _('Completed {{current}} / {{total}} segments…', {
+                  current: progress.completed,
                   total: progress.total,
                 })
               : _('Checking reading material…')}
@@ -291,7 +296,9 @@ function OverviewForm(
           </p>
         )
       )}
-      {(model.error || resumeError) && <p role='alert'>{_(model.error || resumeError)}</p>}
+      {(model.error || resumeError || savedFailure) && (
+        <p role='alert'>{_(model.error || resumeError || savedFailure)}</p>
+      )}
     </div>
   );
 }

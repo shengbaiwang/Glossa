@@ -91,6 +91,8 @@ export interface CompletionRequest {
   onDelta?: (delta: string) => void;
   maxTokens?: number;
   onMetrics?: (metrics: CompletionMetrics) => void;
+  /** Opt-in for structured tasks; never imposed on ordinary conversations. */
+  responseFormat?: { type: 'json_object' };
 }
 
 export interface ToolDefinition {
@@ -149,7 +151,13 @@ export const PROVIDER_PRESETS: readonly ProviderConfig[] = [
 export class ModelServiceError extends Error {
   constructor(
     message: string,
-    public readonly code: 'length' | 'service' | 'unsupported_tools' = 'service',
+    public readonly code:
+      | 'length'
+      | 'service'
+      | 'unsupported_tools'
+      | 'unsupported_format'
+      | 'rate_limit' = 'service',
+    public readonly retryAfterMs?: number,
   ) {
     super(message);
     this.name = 'ModelServiceError';
@@ -378,10 +386,15 @@ async function request(
   }
   if (!response.ok) {
     if (
-      (toolRequest || (isRecord(body) && body['stream_options'])) &&
+      (toolRequest || (isRecord(body) && (body['stream_options'] || body['response_format']))) &&
       [400, 422].includes(response.status)
     ) {
       const rejected = await rejectedOptionalParameter(response, signal);
+      if (rejected === 'format' && isRecord(body) && body['response_format'])
+        throw new ModelServiceError(
+          _('This model service does not support JSON output.'),
+          'unsupported_format',
+        );
       if (rejected === 'usage' && isRecord(body) && body['stream_options']) {
         const { stream_options: _usage, ...withoutUsage } = body;
         return request(config, path, signal, withoutUsage, toolRequest);
@@ -398,10 +411,20 @@ async function request(
         _('The API key was rejected. Check the key and service address.'),
       );
     }
-    if (response.status === 429)
+    if (response.status === 429) {
+      const header = response.headers.get('Retry-After');
+      const delay =
+        header === null
+          ? 1000
+          : /^\d+(?:\.\d+)?$/.test(header.trim())
+            ? Number(header) * 1000
+            : Date.parse(header) - Date.now();
       throw new ModelServiceError(
         _('The model service is busy or its quota has been reached. Try again later.'),
+        'rate_limit',
+        Number.isFinite(delay) ? Math.max(1000, delay) : 1000,
       );
+    }
     if (response.status === 404)
       throw new ModelServiceError(
         _('The API endpoint or model was not found. Check the service address and model name.'),
@@ -454,7 +477,7 @@ async function consumeText(
 async function rejectedOptionalParameter(
   response: Response,
   signal?: AbortSignal,
-): Promise<'tools' | 'usage' | undefined> {
+): Promise<'tools' | 'usage' | 'format' | undefined> {
   try {
     let body = '';
     await consumeText(
@@ -469,6 +492,18 @@ async function rejectedOptionalParameter(
     const error = isRecord(value) && isRecord(value['error']) ? value['error'] : value;
     if (!isRecord(error) || typeof error['message'] !== 'string') return;
     const message = error['message'];
+    if (
+      /\b(?:response_format|json_object|json mode)\b["'`\s:]*(?:(?:is|are)\s+)?(?:not supported|unsupported)\b/i.test(
+        message,
+      ) ||
+      /\b(?:does not support|doesn't support)\s+(?:the\s+)?["'`]?(?:response_format|json_object|json mode)\b/i.test(
+        message,
+      ) ||
+      /\b(?:unknown|unrecognized|unsupported)\s+(?:parameter|argument)\s*:?\s*["'`]?(?:response_format)\b/i.test(
+        message,
+      )
+    )
+      return 'format';
     // Invalid schemas, context overflow and unrelated unsupported parameters must
     // remain errors rather than silently triggering a second model request.
     if (
@@ -669,6 +704,7 @@ async function streamModelCompletion(
     onDelta,
     maxTokens,
     onMetrics,
+    responseFormat,
   }: Omit<CompletionRequest, 'messages'> & { messages: ToolCompletionMessage[] },
   toolSettings?: {
     tools: ToolDefinition[];
@@ -691,7 +727,11 @@ async function streamModelCompletion(
       )) ||
     !Number.isInteger(budget) ||
     budget < 1 ||
-    budget > 65536
+    budget > 65536 ||
+    (responseFormat !== undefined &&
+      (!isRecord(responseFormat) ||
+        responseFormat['type'] !== 'json_object' ||
+        Object.keys(responseFormat).length !== 1))
   ) {
     throw new ModelServiceError(_('The model request is invalid.'));
   }
@@ -724,6 +764,7 @@ async function streamModelCompletion(
         ...(onMetrics ? { stream_options: { include_usage: true } } : {}),
         [capabilities.maxTokensParam]: budget,
         ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+        ...(responseFormat ? { response_format: responseFormat } : {}),
         ...(toolSettings
           ? { tools: toolSettings.tools, tool_choice: toolSettings.toolChoice }
           : {}),

@@ -59,6 +59,20 @@ beforeEach(() => {
   vi.stubGlobal('fetch', mocks.fetch);
 });
 
+it('preserves a safe rate-limit category and Retry-After delay without response content', async () => {
+  mocks.fetch.mockResolvedValue(
+    new Response('PRIVATE_LIMIT_DETAILS', {
+      status: 429,
+      headers: { 'Retry-After': '3' },
+    }),
+  );
+  await expect(streamCompletion({ config, messages })).rejects.toMatchObject({
+    code: 'rate_limit',
+    retryAfterMs: 3000,
+  });
+  expect(mocks.fetch).toHaveBeenCalledTimes(1);
+});
+
 describe('reading model configuration', () => {
   it('preserves every saved service when the list grows past thirty entries', async () => {
     for (let index = 0; index < 31; index++) {
@@ -538,4 +552,28 @@ describe('reasoning model completion budget', () => {
     });
     expect(JSON.parse(mocks.fetch.mock.calls[0]![1].body).reasoning_effort).toBe(expected);
   });
+});
+
+it('sends JSON mode only for a structured task and classifies explicit rejection without hidden retries', async () => {
+  mocks.fetch.mockResolvedValueOnce(
+    new Response(
+      JSON.stringify({ choices: [{ message: { content: '{}' }, finish_reason: 'stop' }] }),
+    ),
+  );
+  await streamCompletion({ config, messages, responseFormat: { type: 'json_object' } });
+  expect(JSON.parse(mocks.fetch.mock.calls[0]![1].body).response_format).toEqual({
+    type: 'json_object',
+  });
+  mocks.fetch.mockResolvedValueOnce(
+    new Response(
+      JSON.stringify({
+        error: { message: "Unsupported parameter: 'response_format' PRIVATE_PROVIDER_MESSAGE" },
+      }),
+      { status: 400 },
+    ),
+  );
+  await expect(
+    streamCompletion({ config, messages, responseFormat: { type: 'json_object' } }),
+  ).rejects.toMatchObject({ code: 'unsupported_format' });
+  expect(mocks.fetch).toHaveBeenCalledTimes(2);
 });

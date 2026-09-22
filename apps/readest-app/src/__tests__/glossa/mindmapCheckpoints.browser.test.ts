@@ -32,6 +32,36 @@ it('restores a checkpoint through fresh database connections without duplicating
   expect(await mapCheckpointStore.load(id)).toEqual({ revision, checkpoint });
   expect(JSON.stringify(checkpoint)).not.toContain('anchor');
 });
+it('restores bounded validation diagnostics and retry strategy through fresh database connections', async () => {
+  const id = key(),
+    checkpoint = fixture();
+  checkpoint.skipDirect = true;
+  checkpoint.promptOnly = true;
+  checkpoint.batches[1]!.failure = {
+    kind: 'structure',
+    issues: [{ path: ['map', 'nodes', 1, 'label'], rule: 'too_big' }],
+  };
+  checkpoint.requests = [
+    {
+      phase: 'direct',
+      batch: 1,
+      elapsedMs: 100,
+      outputBudget: 8192,
+      outcome: 'invalid',
+      diagnostic: checkpoint.batches[1]!.failure,
+    },
+  ];
+  const revision = await mapCheckpointStore.save(id, null, checkpoint, signal());
+  expect(await mapCheckpointStore.load(id)).toEqual({ revision, checkpoint });
+  const untrusted = {
+    ...checkpoint,
+    failure: { kind: 'structure', issues: [{ path: ['PRIVATE_RESPONSE'], rule: 'too_big' }] },
+  };
+  await expect(
+    mapCheckpointStore.save(id, revision, untrusted as MapCheckpoint, signal()),
+  ).rejects.toThrow();
+  expect(await mapCheckpointStore.load(id)).toEqual({ revision, checkpoint });
+});
 it('atomically rejects a stale writer across independent connections', async () => {
   const id = key();
   const revision = await mapCheckpointStore.save(id, null, fixture(), signal());

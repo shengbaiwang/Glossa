@@ -4,8 +4,9 @@ import { tokenUsageSchema } from '@/glossa/ai/usage';
 import { PassageError, throwIfAborted } from '@/glossa/passages/types';
 import { stubTranslation as _ } from '@/utils/misc';
 import { mindmapBodySchema } from './schema';
+import { mapDiagnosticSchema } from './diagnostics';
 
-export const OVERVIEW_VERSION = 'mindmap-overview-2';
+export const OVERVIEW_VERSION = 'mindmap-overview-4';
 export type MapTarget = { kind: 'book' } | { kind: 'chapter'; chapterId: string };
 export const inventoryPointsSchema = z
   .array(
@@ -32,22 +33,39 @@ export const mapCheckpointSchema = z
             end: z.number().int().min(1).max(4800),
             points: inventoryPointsSchema.optional(),
             elapsedMs: z.number().finite().nonnegative().optional(),
+            failure: mapDiagnosticSchema.optional(),
           })
           .strict(),
       )
       .min(1)
       .max(24),
     result: mindmapBodySchema.optional(),
+    direct: z.literal(true).optional(),
+    skipDirect: z.literal(true).optional(),
+    promptOnly: z.literal(true).optional(),
+    failure: mapDiagnosticSchema.optional(),
     requests: z
       .array(
         z
           .object({
-            phase: z.enum(['inventory', 'synthesis']),
+            phase: z.enum(['inventory', 'synthesis', 'direct']),
             batch: z.number().int().nonnegative().max(24),
+            start: z.number().int().nonnegative().max(4799).optional(),
+            end: z.number().int().min(1).max(4800).optional(),
+            queuedMs: z.number().finite().nonnegative().optional(),
             elapsedMs: z.number().finite().nonnegative(),
             firstTextMs: z.number().finite().nonnegative().optional(),
             outputBudget: z.number().int().min(1).max(65536),
-            outcome: z.enum(['received', 'timeout', 'truncated', 'failed']),
+            outcome: z.enum([
+              'received',
+              'valid',
+              'invalid',
+              'unsupported_format',
+              'timeout',
+              'truncated',
+              'failed',
+            ]),
+            diagnostic: mapDiagnosticSchema.optional(),
             usage: tokenUsageSchema.optional(),
           })
           .strict(),
@@ -66,7 +84,8 @@ export const mapCheckpointSchema = z
           batch.end - batch.start <= 200 &&
           (!i || job.batches[i - 1]!.end === batch.start),
       ) &&
-      (!job.result || job.batches.every((batch) => batch.points !== undefined)),
+      (!job.direct || job.batches.length === 1) &&
+      (!job.result || job.direct || job.batches.every((batch) => batch.points !== undefined)),
   );
 export type MapCheckpoint = z.infer<typeof mapCheckpointSchema>;
 export interface CheckpointEntry {
@@ -101,7 +120,8 @@ export async function getMapCheckpointKey(input: {
   const config = validateProviderConfig(input.config);
   return digest({
     version: OVERVIEW_VERSION,
-    batching: 2,
+    batching: 3,
+    outputProtocol: 4,
     bookId: input.bookId,
     title: input.title.slice(0, 500),
     target: input.target.kind === 'book' ? ['book'] : ['chapter', input.target.chapterId],

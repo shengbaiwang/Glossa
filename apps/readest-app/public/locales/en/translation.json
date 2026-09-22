@@ -616,5 +616,13 @@
   "Start again": "Start again",
   "Checking reading material…": "Checking reading material…",
   "Saved progress: {{completed}} / {{total}} segments": "Saved progress: {{completed}} / {{total}} segments",
-  "Reading material timed out. Try again.": "Reading material timed out. Try again."
+  "Reading material timed out. Try again.": "Reading material timed out. Try again.",
+  "Completed {{current}} / {{total}} segments…": "Completed {{current}} / {{total}} segments…",
+  "This range is too large for a complete mind map. Choose a chapter.": "This range is too large for a complete mind map. Choose a chapter.",
+  "Retry generation": "Retry generation",
+  "The model returned unreadable JSON. Continue to retry with corrected instructions.": "The model returned unreadable JSON. Continue to retry with corrected instructions.",
+  "The model returned an invalid mind map structure. Continue to repair it.": "The model returned an invalid mind map structure. Continue to repair it.",
+  "The model omitted part of the reading range. Continue to complete it.": "The model omitted part of the reading range. Continue to complete it.",
+  "The model cited a source outside the supplied evidence. Continue to correct it.": "The model cited a source outside the supplied evidence. Continue to correct it.",
+  "This model service does not support JSON output.": "This model service does not support JSON output."
 }

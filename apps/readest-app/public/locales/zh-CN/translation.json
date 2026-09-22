@@ -2568,5 +2568,13 @@
   "Start again": "重新生成",
   "Checking reading material…": "正在核对阅读材料…",
   "Saved progress: {{completed}} / {{total}} segments": "已保存进度：{{completed}} / {{total}} 段",
-  "Reading material timed out. Try again.": "本机读取材料超时，请重试。"
+  "Reading material timed out. Try again.": "本机读取材料超时，请重试。",
+  "Completed {{current}} / {{total}} segments…": "已整理 {{current}} / {{total}} 段…",
+  "This range is too large for a complete mind map. Choose a chapter.": "此范围过大，无法生成完整导图，请选择章节。",
+  "Retry generation": "重试生成",
+  "The model returned unreadable JSON. Continue to retry with corrected instructions.": "模型返回格式无法读取，可重试修正。",
+  "The model returned an invalid mind map structure. Continue to repair it.": "模型返回的导图结构有误，可重试修正。",
+  "The model omitted part of the reading range. Continue to complete it.": "模型遗漏了部分阅读材料，可重试补全。",
+  "The model cited a source outside the supplied evidence. Continue to correct it.": "模型引用了未提供的来源，可重试修正。",
+  "This model service does not support JSON output.": "当前模型服务不支持 JSON 输出。"
 }

@@ -57,6 +57,12 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it('offers only chapter and whole-book generation ranges', () => {
+  render(<MindmapGeneration {...props} />);
+  const range = screen.getByRole('combobox', { name: 'Map range' }) as HTMLSelectElement;
+  expect(Array.from(range.options, (option) => option.value)).toEqual(['chapter', 'book']);
+});
+
 it('waits for an explicit generation request and uses the chosen chapter', async () => {
   f.generate.mockResolvedValue({ id: 'generated' });
   render(<MindmapGeneration {...props} />);
@@ -89,11 +95,11 @@ it('cancels a changed range and discards a late result', async () => {
   await screen.findByRole('button', { name: 'Stop' });
   const signal = f.generate.mock.calls[0]![0].signal as AbortSignal;
   fireEvent.change(screen.getByRole('combobox', { name: 'Map range' }), {
-    target: { value: 'passage' },
+    target: { value: 'chapter' },
   });
   expect(signal.aborted).toBe(true);
   finish({ id: 'late' } as ReadingMindmap);
-  await waitFor(() => expect(screen.getByText('Original passage generator')).toBeTruthy());
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Chapter' })).toBeTruthy());
   expect(f.use).not.toHaveBeenCalled();
 });
 it('shows a useful failure and leaves generation available for retry', async () => {
@@ -137,4 +143,27 @@ it('starts a fresh attempt only when explicitly requested', async () => {
   fireEvent.click(restart);
   await waitFor(() => expect(f.generate).toHaveBeenCalled());
   expect(f.generate.mock.calls[0]![0].restart).toBe(true);
+});
+
+it('labels zero progress as a retry and restores a safe validation error without model work', async () => {
+  f.checkpoint.mockResolvedValue({
+    checkpoint: {
+      batches: [
+        {
+          failure: {
+            kind: 'sources',
+            issues: [{ path: ['nodes', 'sourceIds'], rule: 'source_whitelist' }],
+          },
+        },
+      ],
+    },
+  });
+  render(<MindmapGeneration {...props} />);
+  fireEvent.change(screen.getByRole('combobox', { name: 'Map range' }), {
+    target: { value: 'book' },
+  });
+  await screen.findByRole('button', { name: 'Retry generation' });
+  expect((await screen.findByRole('alert')).textContent).toContain('outside the supplied evidence');
+  expect(f.generate).not.toHaveBeenCalled();
+  expect(f.read).not.toHaveBeenCalled();
 });

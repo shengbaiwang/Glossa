@@ -74,7 +74,10 @@ export const overviewSourcesSchema = z
       sources.reduce((total, s) => total + s.text.length, 0) <= 240000,
   );
 
-export function validateMindmapSources(body: MindmapBody, sources: ChapterSource[]): boolean {
+export function validateMindmapSources(
+  body: MindmapBody,
+  sources: Pick<ChapterSource, 'sourceId'>[],
+): boolean {
   const ids = new Set(sources.map((s) => s.sourceId));
   return (
     ids.size === sources.length && body.nodes.every((n) => n.sourceIds.every((id) => ids.has(id)))
@@ -96,7 +99,10 @@ export const readingMindmapSchema = mindmapBodySchema
       'mindmap-2',
       'mindmap-overview-1',
       'mindmap-overview-2',
+      'mindmap-overview-3',
+      'mindmap-overview-4',
       'mindmap-branch-1',
+      'mindmap-branch-2',
     ]),
     schemaVersion: z.literal(1),
     provider: z
@@ -110,13 +116,12 @@ export const readingMindmapSchema = mindmapBodySchema
     (map) =>
       validateMindmapSources(map, map.sources) &&
       map.passageId === getPassageId(map.chapterId, map.sources) &&
-      (map.promptVersion === 'mindmap-overview-1' ||
-      map.promptVersion === 'mindmap-overview-2' ||
-      map.promptVersion === 'mindmap-branch-1'
+      (map.promptVersion.startsWith('mindmap-overview-') ||
+      map.promptVersion.startsWith('mindmap-branch-')
         ? !!map.coverage &&
           map.coverage.sourceCount >= map.sources.length &&
           map.coverage.characterCount >= map.sources.reduce((sum, s) => sum + s.text.length, 0) &&
-          (map.promptVersion === 'mindmap-branch-1'
+          (map.promptVersion.startsWith('mindmap-branch-')
             ? map.coverage.kind === 'branch'
             : map.coverage.kind !== 'branch')
         : !map.coverage && passageSourcesSchema.safeParse(map.sources).success),

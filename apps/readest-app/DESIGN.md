@@ -1,8 +1,8 @@
 ## Glossa Design Language
 
-### Mind map exploration — 2026-09-22
+### Mind map exploration — 2026-09-23
 
-The generation form uses a single range select (Whole chapter / Whole book / Reading passage), chapter selection when relevant, the shared model picker and one Generate / Stop action. Long-range reads start only on Generate. Show a compact stage indicator while working and saved segment counts after cancellation or failure. Reopening reads checkpoint metadata only; offer Continue generation or Restore generated map, plus an explicit Start again action. Distinguish local reading, segment extraction and synthesis timeouts. Resuming revalidates current book material and requests only missing work. Never replace the existing editable map with an unfinished result.
+The generation form uses a single range select (Whole chapter / Whole book), chapter selection when relevant, the shared model picker and one Generate / Stop action. Long-range reads start only on Generate. Show a compact stage indicator with genuinely completed, saved segments while working and saved counts after cancellation or failure. Keep internal routing, parallelism and cache choices out of the form. Reopening reads checkpoint metadata only; offer Continue generation or Restore generated map, plus an explicit Start again action. Distinguish local reading, segment extraction and synthesis timeouts. Resuming revalidates current book material and requests only missing work. Never replace the existing editable map with an unfinished result.
 
 The idea menu groups Ask about idea and Expand idea before structural edits. Ask moves to a separate editable conversation draft; sending remains explicit. Expand opens an inline panel above the outline/canvas and appends sourced children, with one undo step. Closing or changing the target cancels generation. Keep the node text click reserved for verified source navigation. The map menu groups SVG image and Markdown outline export with existing JSON backup operations. Reuse the paper/ink theme, narrow wrapping, keyboard targets and e-ink boundaries; no permanent explanatory cards.
 

@@ -140,10 +140,11 @@ async function fixture() {
 }
 
 const explanation = '理解观点，先找到问题，再观察理由如何支持结论。';
-function responseFor(request: CompletionRequest): string {
+function responseFor(request: CompletionRequest, chapter = false): string {
   const text = request.messages.find((message) => message.role === 'user')!.content;
   expect(text).not.toContain('FUTURE_CHAPTER_SENTINEL');
-  expect(text).not.toContain('ADJACENT_PASSAGE_SENTINEL');
+  if (chapter) expect(text).toContain('ADJACENT_PASSAGE_SENTINEL');
+  else expect(text).not.toContain('ADJACENT_PASSAGE_SENTINEL');
   const payload = JSON.parse(text) as { sources: { sourceId: string; text: string }[] };
   const idea = payload.sources.find((s) => s.text.startsWith('理解一个观点'))!.sourceId;
   const example = payload.sources.find((s) => s.text.startsWith('例子使'))!.sourceId;
@@ -197,8 +198,14 @@ function responseFor(request: CompletionRequest): string {
     ],
     insufficientEvidence: false,
   });
-  request.onDelta?.(response);
-  return response;
+  const result = chapter
+    ? JSON.stringify({
+        coveredSourceIds: payload.sources.map((source) => source.sourceId),
+        map: JSON.parse(response),
+      })
+    : response;
+  request.onDelta?.(result);
+  return result;
 }
 
 async function selectFirstPassage(chapterId: string) {
@@ -324,11 +331,21 @@ it('maps a real selected EPUB passage, restores locally and verifies source/retu
   expect(f.complete).toHaveBeenCalledTimes(1);
 }, 30_000);
 
+async function selectWholeChapter(chapterId: string) {
+  fireEvent.change(await screen.findByRole('combobox', { name: 'Chapter' }), {
+    target: { value: chapterId },
+  });
+  const generate = screen.getByRole('button', { name: 'Generate mind map' });
+  await waitFor(() => expect(generate.hasAttribute('disabled')).toBe(false));
+  expect(extractChapter).not.toHaveBeenCalled();
+  return generate;
+}
+
 it('generates into the editable workspace, keeps verified excerpts through edits and restores original provenance', async () => {
   await page.viewport(1160, 900);
   document.documentElement.setAttribute('data-theme', 'default-light');
   const { book, doc, chapters } = await fixture();
-  f.complete.mockImplementation(async (request: CompletionRequest) => responseFor(request));
+  f.complete.mockImplementation(async (request: CompletionRequest) => responseFor(request, true));
   const workspace = () => (
     <div
       data-testid='map-workspace-sidebar'
@@ -343,9 +360,9 @@ it('generates into the editable workspace, keeps verified excerpts through edits
   expect(extractChapter).not.toHaveBeenCalled();
   await page.getByRole('button', { name: 'Generate mind map', exact: true }).click();
   fireEvent.change(await screen.findByRole('combobox', { name: 'Map range' }), {
-    target: { value: 'passage' },
+    target: { value: 'chapter' },
   });
-  const { passage, generate } = await selectFirstPassage(chapters[0]!.id);
+  const generate = await selectWholeChapter(chapters[0]!.id);
   fireEvent.click(generate);
   await screen.findByRole('button', { name: '怎样理解一个观点' });
   expect(document.querySelector('.glossa-workmap-viewport')?.getAttribute('data-view')).toBe(
@@ -355,8 +372,9 @@ it('generates into the editable workspace, keeps verified excerpts through edits
   await screen.findByText('Saved on this device');
   expect(f.complete).toHaveBeenCalledTimes(1);
 
-  const expectedSource = passage.sources.find((source) => source.text.startsWith('理解一个观点'))!;
-  const returnSource = passage.sources.find((source) => source.text.startsWith('例子使'))!;
+  const material = (await loadMapWorkspace(book.hash)).maps[0]!.origin!.sources;
+  const expectedSource = material.find((source) => source.text.startsWith('理解一个观点'))!;
+  const returnSource = material.find((source) => source.text.startsWith('例子使'))!;
   await import('foliate-js/view.js');
   await import('foliate-js/paginator.js');
   view = document.createElement('foliate-view') as FoliateView;
@@ -502,7 +520,7 @@ it('keeps a finished generation recoverable when another pane fills the workspac
   f.complete.mockImplementation(
     (request: CompletionRequest) =>
       new Promise<string>((resolve) => {
-        finish = () => resolve(responseFor(request));
+        finish = () => resolve(responseFor(request, true));
       }),
   );
   render(
@@ -515,9 +533,9 @@ it('keeps a finished generation recoverable when another pane fills the workspac
   );
   fireEvent.click(await screen.findByRole('button', { name: 'Generate mind map' }));
   fireEvent.change(await screen.findByRole('combobox', { name: 'Map range' }), {
-    target: { value: 'passage' },
+    target: { value: 'chapter' },
   });
-  const { generate } = await selectFirstPassage(chapters[0]!.id);
+  const generate = await selectWholeChapter(chapters[0]!.id);
   fireEvent.click(generate);
   await waitFor(() => expect(f.complete).toHaveBeenCalledTimes(1));
   fireEvent.click(screen.getByRole('button', { name: 'Fill workspace capacity' }));
@@ -525,13 +543,13 @@ it('keeps a finished generation recoverable when another pane fills the workspac
   await act(async () => finish());
   await screen.findByText('This book already has 20 mind maps.');
   expect(screen.getByRole('region', { name: 'Generate mind map' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Edit mind map' }).hasAttribute('disabled')).toBe(
+  expect(screen.getByRole('button', { name: 'Use generated map' }).hasAttribute('disabled')).toBe(
     false,
   );
   expect((await loadMapWorkspace(book.hash)).maps).toHaveLength(20);
 
   fireEvent.click(screen.getByRole('button', { name: 'Release workspace capacity' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Edit mind map' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Use generated map' }));
   await screen.findByRole('button', { name: '怎样理解一个观点' });
   expect(screen.queryByRole('region', { name: 'Generate mind map' })).toBeNull();
   expect(screen.queryByText('This book already has 20 mind maps.')).toBeNull();
@@ -855,4 +873,65 @@ it('reopens saved whole-book reading results and retries only the failed synthes
   expect(f.complete).toHaveBeenCalledTimes(3);
   expect(JSON.parse(f.complete.mock.calls[2]![0].messages.at(-1)!.content).sources).toBeUndefined();
   expect(useMap.mock.calls[0]![0].coverage.kind).toBe('book');
+}, 30000);
+
+it('generates and restores a complete short EPUB chapter with one request and no other-chapter text', async () => {
+  const { book, doc, chapters } = await fixture();
+  const useMap = vi.fn();
+  f.complete.mockImplementation(async (request: CompletionRequest) => {
+    const payload = JSON.parse(request.messages.at(-1)!.content) as {
+      sources: { sourceId: string; text: string }[];
+    };
+    expect(JSON.stringify(payload)).not.toContain('FUTURE_CHAPTER_SENTINEL');
+    expect(JSON.stringify(payload)).toContain('ADJACENT_PASSAGE_SENTINEL');
+    const condition = payload.sources.find((source) => source.text.startsWith('例子使'))!;
+    return JSON.stringify({
+      coveredSourceIds: payload.sources.map((source) => source.sourceId),
+      map: {
+        nodes: [
+          {
+            id: 'root',
+            parentId: null,
+            label: '例证的边界',
+            relation: '',
+            explanation: '例证的说明力取决于适用条件。',
+            sourceIds: [condition.sourceId],
+            kind: 'source',
+          },
+        ],
+        insufficientEvidence: false,
+      },
+    });
+  });
+  const panel = () => (
+    <MindmapGeneration book={book} bookDoc={doc} bookKey={book.hash} onUseMap={useMap} />
+  );
+  const first = render(panel());
+  expect(
+    Array.from(
+      (screen.getByRole('combobox', { name: 'Map range' }) as HTMLSelectElement).options,
+      (option) => option.value,
+    ),
+  ).toEqual(['chapter', 'book']);
+  fireEvent.change(screen.getByRole('combobox', { name: 'Chapter' }), {
+    target: { value: chapters[0]!.id },
+  });
+  const generate = screen.getByRole('button', { name: 'Generate mind map' });
+  await waitFor(() => expect(generate.hasAttribute('disabled')).toBe(false));
+  expect(extractChapter).not.toHaveBeenCalled();
+  fireEvent.click(generate);
+  await waitFor(() => expect(useMap).toHaveBeenCalledTimes(1));
+  expect(f.complete).toHaveBeenCalledTimes(1);
+  expect(useMap.mock.calls[0]![0].coverage.kind).toBe('chapter');
+  expect(useMap.mock.calls[0]![0].sources[0].text).toContain('条件');
+  first.unmount();
+  render(panel());
+  fireEvent.change(screen.getByRole('combobox', { name: 'Chapter' }), {
+    target: { value: chapters[0]!.id },
+  });
+  const restore = await screen.findByRole('button', { name: 'Restore generated map' });
+  await waitFor(() => expect(restore.hasAttribute('disabled')).toBe(false));
+  fireEvent.click(restore);
+  await waitFor(() => expect(useMap).toHaveBeenCalledTimes(2));
+  expect(f.complete).toHaveBeenCalledTimes(1);
 }, 30000);
