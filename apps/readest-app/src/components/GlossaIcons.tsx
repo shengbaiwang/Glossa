@@ -40,6 +40,16 @@ export function BookOpen(props: GlossaIconProps) {
   );
 }
 
+export function Citation(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <rect x='4' y='5.5' width='6' height='6' rx='1.5' />
+      <rect x='14' y='5.5' width='6' height='6' rx='1.5' />
+      <path d='M10 11.5c0 3-1.5 5-4 6.5m14-6.5c0 3-1.5 5-4 6.5' />
+    </Icon>
+  );
+}
+
 export function PanelLeft(props: GlossaIconProps) {
   return (
     <Icon {...props}>

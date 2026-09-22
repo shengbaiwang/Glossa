@@ -1065,14 +1065,6 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
           </button>
         )}
       </div>
-      <MindmapSourcePanel
-        key={history?.activeId ?? 'loading'}
-        book={book}
-        bookDoc={bookDoc}
-        bookKey={bookKey}
-        selection={sourceSelection}
-        showExcerpt={false}
-      />
       {error && (
         <p className='glossa-chat-message' role='alert'>
           {_(error)}
@@ -1089,14 +1081,14 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
         </p>
       )}
       <div className='glossa-chat-composer-wrap'>
-        {defaultScope && history && (
-          <ConversationReadingScope
-            key={history.activeId}
-            enabled={citationsEnabled}
-            disabled={busy}
-            onChange={changeCitations}
-          />
-        )}
+        <MindmapSourcePanel
+          key={history?.activeId ?? 'loading'}
+          book={book}
+          bookDoc={bookDoc}
+          bookKey={bookKey}
+          selection={sourceSelection}
+          showExcerpt={false}
+        />
         {turns.length >= 40 && (
           <button className='glossa-button' type='button' onClick={() => changeSession()}>
             {_('New conversation')}
@@ -1129,37 +1121,45 @@ function ConversationBook({ book, bookDoc, bookKey }: Props) {
               }
             }}
           />
-          <div className='glossa-chat-composer-footer'>
-            <ConversationModelPicker config={config} ready={ready} openSettings={openModels} />
+          <div className='glossa-chat-composer-options'>
             <ConversationPromptPicker openSettings={openPrompts} />
+            {capabilities && capabilities.reasoningEfforts.length > 0 && (
+              <select
+                className='glossa-chat-effort'
+                aria-label={_('Reasoning effort')}
+                title={_('Reasoning effort')}
+                value={
+                  capabilities.reasoningEfforts.includes(config?.reasoningEffort as ReasoningEffort)
+                    ? (config?.reasoningEffort as string)
+                    : ''
+                }
+                onChange={(event) => void updateEffort(event.target.value)}
+              >
+                <option value=''>{_('Service default')}</option>
+                {capabilities.reasoningEfforts.map((effort) => (
+                  <option key={effort} value={effort}>
+                    {effortLabels[effort]}
+                  </option>
+                ))}
+              </select>
+            )}
+            {draft.length >= MAX_QUESTION_CHARS * 0.9 && (
+              <span className='glossa-chat-count' aria-hidden='true'>
+                {`${draft.length}/${MAX_QUESTION_CHARS}`}
+              </span>
+            )}
+          </div>
+          <div className='glossa-chat-composer-footer'>
+            {defaultScope && history && (
+              <ConversationReadingScope
+                key={history.activeId}
+                enabled={citationsEnabled}
+                disabled={busy}
+                onChange={changeCitations}
+              />
+            )}
+            <ConversationModelPicker config={config} ready={ready} openSettings={openModels} />
             <div className='glossa-chat-composer-actions'>
-              {capabilities && capabilities.reasoningEfforts.length > 0 && (
-                <select
-                  className='glossa-chat-effort'
-                  aria-label={_('Reasoning effort')}
-                  title={_('Reasoning effort')}
-                  value={
-                    capabilities.reasoningEfforts.includes(
-                      config?.reasoningEffort as ReasoningEffort,
-                    )
-                      ? (config?.reasoningEffort as string)
-                      : ''
-                  }
-                  onChange={(event) => void updateEffort(event.target.value)}
-                >
-                  <option value=''>{_('Service default')}</option>
-                  {capabilities.reasoningEfforts.map((effort) => (
-                    <option key={effort} value={effort}>
-                      {effortLabels[effort]}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {draft.length >= MAX_QUESTION_CHARS * 0.9 && (
-                <span className='glossa-chat-count' aria-hidden='true'>
-                  {`${draft.length}/${MAX_QUESTION_CHARS}`}
-                </span>
-              )}
               {busy ? (
                 <button
                   type='button'

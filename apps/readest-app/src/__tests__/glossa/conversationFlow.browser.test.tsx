@@ -150,7 +150,7 @@ async function setup() {
     </div>
   );
   const panel = render(wrapper());
-  await screen.findByRole('switch', { name: 'Citations on' });
+  await screen.findByRole('switch', { name: 'Citations', checked: true });
   return { ...data, panel, wrapper };
 }
 function answer(request: CompletionRequest) {
@@ -507,11 +507,24 @@ it('sends the prompt chosen in the composer picker as the system message', async
   expect(plain.messages[0]?.content).not.toContain('PROMPT_SENTINEL');
 });
 it('keeps the composer and model menu usable in a short narrow window', async () => {
+  f.config.model = 'a-long-provider-model-name-with-a-version-and-deployment-suffix';
+  const { saveConversationPrompt } = await import('@/glossa/conversation/prompts');
+  saveConversationPrompt({ name: '逐句讲解与论证分析', content: 'PROMPT_LAYOUT_FIXTURE' });
   await setup();
   await page.viewport(640, 480);
   const sidebar = screen.getByTestId('chat-sidebar');
   sidebar.style.width = '320px';
   sidebar.style.height = '480px';
+  const toggle = screen.getByRole('switch', { name: 'Citations', checked: true });
+  const model = screen.getByRole('button', { name: 'Choose model' });
+  const send = screen.getByRole('button', { name: 'Send message' });
+  const prompt = screen.getByRole('button', { name: 'Choose prompt' });
+  expect(toggle.getBoundingClientRect().right).toBeLessThan(model.getBoundingClientRect().left);
+  expect(model.getBoundingClientRect().right).toBeLessThan(send.getBoundingClientRect().left);
+  expect(prompt.getBoundingClientRect().bottom).toBeLessThan(toggle.getBoundingClientRect().top);
+  expect(model.querySelector('span')!.scrollWidth).toBeGreaterThan(
+    model.querySelector('span')!.clientWidth,
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
   await screen.findByRole('button', { name: 'second-model' });
   const menu = screen.getByRole('dialog').getBoundingClientRect();

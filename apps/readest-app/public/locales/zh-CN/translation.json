@@ -1,6 +1,7 @@
 {
   "The current passage is unavailable. Include the passage in your question.": "无法取得当前文段，请在问题中带上原文。",
   "Current passage": "当前文段",
+  "Citations": "引用",
   "Citations on": "引用开启",
   "Citations off": "引用关闭",
   "The response was cut short. Retrying with more room…": "响应被截断，正在增加生成空间并重试…",

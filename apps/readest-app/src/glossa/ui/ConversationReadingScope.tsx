@@ -1,4 +1,4 @@
-import { BookOpen } from '@/components/GlossaIcons';
+import { Citation } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 
 /** Permission only: choosing evidence belongs to the reading harness. */
@@ -13,18 +13,17 @@ export default function ConversationReadingScope({
 }) {
   const _ = useTranslation();
   return (
-    <div className='glossa-chat-reading'>
-      <button
-        type='button'
-        role='switch'
-        aria-checked={enabled}
-        className='glossa-chat-text-button'
-        disabled={disabled}
-        onClick={() => onChange(!enabled)}
-      >
-        <BookOpen size={15} />
-        <span>{_(enabled ? 'Citations on' : 'Citations off')}</span>
-      </button>
-    </div>
+    <button
+      type='button'
+      role='switch'
+      aria-label={_('Citations')}
+      title={_('Citations')}
+      aria-checked={enabled}
+      className='glossa-chat-citation-toggle'
+      disabled={disabled}
+      onClick={() => onChange(!enabled)}
+    >
+      <Citation size={18} />
+    </button>
   );
 }

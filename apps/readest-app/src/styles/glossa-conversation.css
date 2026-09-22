@@ -714,6 +714,67 @@
   gap: 8px;
   padding-top: 8px;
 }
+.glossa-chat-composer-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding-top: 4px;
+}
+.glossa-chat-composer-options:empty {
+  display: none;
+}
+.glossa-chat-composer-options .glossa-chat-count {
+  margin-inline-start: auto;
+}
+.glossa-chat-composer-wrap .glossa-workmap-return {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 0 8px;
+}
+.glossa-chat-composer-wrap .glossa-workmap-return button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 2px 4px;
+  border-radius: var(--glossa-radius-nested);
+  color: var(--glossa-muted);
+  font-size: var(--glossa-text-compact);
+  white-space: nowrap;
+}
+.glossa-chat-composer-wrap .glossa-workmap-return button:hover:not(:disabled) {
+  color: var(--glossa-ink);
+}
+.glossa-chat-composer-wrap .glossa-workmap-return svg {
+  flex-shrink: 0;
+}
+.glossa-chat-citation-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--glossa-radius-nested);
+  color: var(--glossa-muted);
+  background: transparent;
+}
+.glossa-chat-citation-toggle[aria-checked='true'] {
+  color: var(--glossa-ink);
+  background: var(--glossa-selected);
+}
+.glossa-chat-citation-toggle[aria-checked='true'] rect {
+  fill: currentColor;
+}
+.glossa-chat-citation-toggle:hover:not(:disabled) {
+  color: var(--glossa-ink);
+}
+[data-eink='true'] .glossa-chat-citation-toggle[aria-checked='true'] {
+  border-color: var(--glossa-ink);
+}
 .glossa-chat-composer-actions {
   display: flex;
   align-items: center;
@@ -777,11 +838,14 @@
   background: var(--glossa-wash);
 }
 .glossa-chat-model-picker {
+  display: flex;
+  justify-content: flex-end;
   min-width: 0;
   flex: 1;
 }
 .glossa-chat-prompt-picker {
   min-width: 0;
+  max-width: 100%;
   flex-shrink: 1;
 }
 .glossa-chat-model {
@@ -938,6 +1002,7 @@
   }
   .glossa-chat-text-button,
   .glossa-chat-code-copy,
+  .glossa-chat-citation-toggle,
   .glossa-chat-send {
     min-width: 44px;
   }

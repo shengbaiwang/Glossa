@@ -175,7 +175,7 @@ it('switches references without reading and persists off across reopening', asyn
   const read = vi.fn();
   const doc = { sections: [{ createDocument: read }] } as unknown as BookDoc;
   const panel = mount(b, doc);
-  const toggle = await screen.findByRole('switch', { name: 'Citations on' });
+  const toggle = await screen.findByRole('switch', { name: 'Citations', checked: true });
   expect(read).not.toHaveBeenCalled();
   fireEvent.click(toggle);
   expect(screen.queryByRole('combobox', { name: 'Choose a chapter' })).toBeNull();
@@ -191,7 +191,7 @@ it('switches references without reading and persists off across reopening', asyn
   panel.unmount();
   f.load.mockResolvedValue(saved);
   mount(b, doc);
-  fireEvent.click(await screen.findByRole('switch', { name: 'Citations off' }));
+  fireEvent.click(await screen.findByRole('switch', { name: 'Citations', checked: false }));
   await typeQuestion('Find the original');
   send();
   await waitFor(() => expect(f.bookReading).toHaveBeenCalledOnce());
@@ -259,11 +259,11 @@ it('does not make invented reading citations clickable and preserves the saved s
     ],
   });
   mount(b, { sections: [{ createDocument: vi.fn() }] } as unknown as BookDoc);
-  await screen.findByRole('switch', { name: 'Citations off' });
+  await screen.findByRole('switch', { name: 'Citations', checked: false });
   expect(screen.queryByRole('link', { name: /^Open source passage/ })).toBeNull();
   expect(document.querySelector('a[href="#source-invented"]')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
-  await screen.findByRole('switch', { name: 'Citations on' });
+  await screen.findByRole('switch', { name: 'Citations', checked: true });
 });
 async function typeQuestion(question = 'Explain this') {
   fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {

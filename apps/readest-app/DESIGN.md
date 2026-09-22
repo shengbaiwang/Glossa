@@ -504,6 +504,18 @@ paper/ink tokens, 9/12px controls, 16px message/composer rounding, logical spaci
 visible focus and crisp e-ink borders. Bound menus to the viewport and keep the
 composer usable in short/narrow panes. See `../../docs/design/conversation.md`.
 
+The conversation composer (2026-09-22) keeps an icon-only citation switch at the
+inline start of its bottom row, with the model picker and send/stop action at the
+inline end. Draw the citation mark as paired rounded quotation marks on the shared
+24-unit / 1.8-unit grid: outlined when off, filled with a quiet ink wash when on.
+Use only “Citations” for the tooltip and accessible name, with `aria-checked` for
+the state. Keep 32px desktop / 44px touch targets and visible keyboard focus.
+Optional prompt, reasoning and character-count controls sit in a separate compact
+row above; omit that row when empty. Truncate long model names before squeezing
+the citation or send controls. After source navigation, show the return action as
+one inline icon/text button aligned to the composer's trailing edge just above it;
+hide it after returning and preserve the first reading position across sources.
+
 - Draw core icons on a 24-unit grid with consistent 1.8-unit rounded ink strokes.
   Use open silhouettes and the mark's interlinear rhythm; avoid decorated notebooks,
   starred bookmarks or pictorial empty-state badges. Reuse `GlossaIcons` across

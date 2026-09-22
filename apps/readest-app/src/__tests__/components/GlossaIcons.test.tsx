@@ -3,6 +3,7 @@ import { afterEach, expect, it } from 'vitest';
 import {
   Contents,
   Bookmarks,
+  Citation,
   BookmarkPlus,
   Pencil,
   CloudUpload,
@@ -16,6 +17,7 @@ it('keeps navigation, editing, settings and sync glyphs on the same accessible d
   for (const [name, Glyph] of Object.entries({
     Contents,
     Bookmarks,
+    Citation,
     BookmarkPlus,
     Pencil,
     CloudUpload,

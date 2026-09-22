@@ -142,7 +142,7 @@ async function setup() {
     </div>
   );
   const panel = render(wrapper());
-  await screen.findByRole('switch', { name: 'Citations on' });
+  await screen.findByRole('switch', { name: 'Citations', checked: true });
   return { book, bookDoc, panel, wrapper };
 }
 
@@ -322,7 +322,7 @@ it.each([
     await saveConversations(history);
   }
   render(wrapper());
-  await screen.findByRole('switch', { name: 'Citations on' });
+  await screen.findByRole('switch', { name: 'Citations', checked: true });
   expect((await loadConversations(book.hash))!.sessions[0]!.readingScope).toBeUndefined();
   const navigation = vi.spyOn(view!, 'goTo');
   const citation = await screen.findByRole('link', { name: /^Open source passage/ });
@@ -376,6 +376,31 @@ it.each([
     expect(
       screen.getByRole('textbox', { name: 'Message' }).getBoundingClientRect().bottom,
     ).toBeLessThanOrEqual(900);
+    const toggle = screen.getByRole('switch', { name: 'Citations', checked: true });
+    const model = screen.getByRole('button', { name: 'Choose model' });
+    const send = screen.getByRole('button', { name: 'Send message' });
+    const back = screen.getByRole('button', { name: 'Back to reading position' });
+    const toggleRect = toggle.getBoundingClientRect();
+    const modelRect = model.getBoundingClientRect();
+    const sendRect = send.getBoundingClientRect();
+    const returnRect = back.getBoundingClientRect();
+    const iconRect = back.querySelector('svg')!.getBoundingClientRect();
+    const composerRect = sidebar.querySelector('form')!.getBoundingClientRect();
+    expect(toggle.textContent).toBe('');
+    expect(Math.abs(toggleRect.y - sendRect.y)).toBeLessThan(1);
+    expect(returnRect.bottom).toBeLessThan(composerRect.top);
+    expect(
+      Math.abs(iconRect.y + iconRect.height / 2 - returnRect.y - returnRect.height / 2),
+    ).toBeLessThan(1);
+    if (dir === 'ltr') {
+      expect(toggleRect.right).toBeLessThan(modelRect.left);
+      expect(modelRect.right).toBeLessThan(sendRect.left);
+      expect(Math.abs(returnRect.right - composerRect.right)).toBeLessThan(1);
+    } else {
+      expect(sendRect.right).toBeLessThan(modelRect.left);
+      expect(modelRect.right).toBeLessThan(toggleRect.left);
+      expect(Math.abs(returnRect.left - composerRect.left)).toBeLessThan(1);
+    }
     await page.screenshot({
       path: `../../../../../.glossa-dev/qa/harness/reading-${theme}-${width}-${eink ? 'eink' : dir}.png`,
     });
@@ -392,7 +417,7 @@ it.each([
 it('turns references off without reading book text and restores the choice', async () => {
   const { book, bookDoc, panel, wrapper } = await setup();
   const reads = bookDoc.sections.map((section) => vi.spyOn(section, 'createDocument'));
-  fireEvent.click(screen.getByRole('switch', { name: 'Citations on' }));
+  fireEvent.click(screen.getByRole('switch', { name: 'Citations', checked: true }));
   await ask('这本书的思想可以怎么理解？');
   expect(f.toolComplete).not.toHaveBeenCalled();
   expect(reads.every((read) => read.mock.calls.length === 0)).toBe(true);
@@ -405,7 +430,7 @@ it('turns references off without reading book text and restores the choice', asy
   );
   panel.unmount();
   render(wrapper());
-  await screen.findByRole('switch', { name: 'Citations off' });
+  await screen.findByRole('switch', { name: 'Citations', checked: false });
   await page.viewport(640, 480);
   const sidebar = screen.getByTestId('harness-sidebar');
   sidebar.style.width = '320px';
