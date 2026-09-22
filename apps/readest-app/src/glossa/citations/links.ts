@@ -6,3 +6,17 @@ export function citationSourceId(href: string, allowed: ReadonlySet<string>): st
   if (canonical && allowed.has(canonical)) return canonical;
   return allowed.has(fragment) ? fragment : null;
 }
+
+/** Read Markdown links, including references, without treating examples/code as evidence. */
+export function citedSourceIds(text: string, allowed: ReadonlySet<string>): Set<string> {
+  const cited = new Set<string>();
+  markdown.walkTokens(markdown.lexer(text), (token) => {
+    if (token.type !== 'link') return;
+    const id = citationSourceId(token.href, allowed);
+    if (id) cited.add(id);
+  });
+  return cited;
+}
+import { Marked } from 'marked';
+
+const markdown = new Marked({ gfm: true });

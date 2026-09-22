@@ -137,10 +137,11 @@ async function setup() {
     </div>
   );
   const panel = render(wrapper());
-  await waitFor(() => expect(screen.queryByText('Preparing reading context…')).toBeNull());
+  await screen.findByRole('button', { name: 'Entire book' });
   return { ...data, panel, wrapper };
 }
 function answer(request: CompletionRequest) {
+  if (isPlanRequest(request)) return readingPlan;
   const raw =
     '先找到作者回答的问题，再看理由如何支持结论。\n\n**理解一个观点**，可以从三个问题开始：\n\n- 它在回应什么？\n- 理由是否支持结论？\n- 换一个条件，结论还成立吗？';
   request.onDelta?.(raw.slice(0, 14));
@@ -152,10 +153,13 @@ const isTitleRequest = (request: CompletionRequest) =>
   request.messages.length === 1 &&
   typeof request.messages[0]?.content === 'string' &&
   request.messages[0].content.startsWith('Name this conversation');
+const isPlanRequest = (request: CompletionRequest) =>
+  request.messages[0]?.content.startsWith('Plan a reading request');
+const readingPlan = JSON.stringify({ strategy: 'search', chapterIds: [], queries: ['理解'] });
 const chatCalls = () =>
   f.complete.mock.calls
     .map((call) => call[0] as CompletionRequest)
-    .filter((r) => !isTitleRequest(r));
+    .filter((r) => !isTitleRequest(r) && !isPlanRequest(r));
 async function ask(question = '如何理解一个观点？') {
   fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
     target: { value: question },
@@ -165,22 +169,87 @@ async function ask(question = '如何理解一个观点？') {
   fireEvent.click(button);
   await waitFor(() => expect(screen.queryByRole('button', { name: 'Stop reply' })).toBeNull());
 }
-it('chats beside a real EPUB using only identity, restores history, changes models and creates a fresh conversation', async () => {
+it('shows recorded usage on hover, survives reload, and fits narrow themed viewports', async () => {
+  f.complete.mockImplementation(async (request: CompletionRequest) => {
+    request.onMetrics?.({
+      id: crypto.randomUUID(),
+      outputBudget: request.maxTokens ?? 8192,
+      elapsedMs: 600,
+      finished: true,
+      cost: { amount: 0.0971, currency: 'USD' },
+      usage: {
+        inputTokens: 1200,
+        outputTokens: 180,
+        totalTokens: 1380,
+        cachedTokens: 800,
+        reasoningTokens: 60,
+      },
+    });
+    return answer(request);
+  });
+  const { book, panel, wrapper } = await setup();
+  await ask();
+  await waitFor(async () => {
+    const history = await loadConversations(book.hash);
+    expect(history?.sessions[0]?.turns[0]).toHaveProperty(
+      'usage.requests.0.usage.totalTokens',
+      1380,
+    );
+  });
+  panel.unmount();
+  render(wrapper());
+  await screen.findByRole('button', { name: 'Reply usage' });
+  expect(screen.queryByText('From book text')).toBeNull();
+  for (const [theme, width, eink] of [
+    ['default-light', 420, false],
+    ['default-dark', 320, false],
+    ['default-light', 320, true],
+  ] as const) {
+    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-eink', String(eink));
+    document.documentElement.dir = eink ? 'rtl' : 'ltr';
+    await page.viewport(width, 800);
+    view!.style.display = 'none';
+    Object.assign(screen.getByTestId('chat-sidebar').style, {
+      width: `${width}px`,
+      height: '800px',
+    });
+    await page.getByRole('button', { name: 'Reply usage' }).hover();
+    const popup = await screen.findByRole('tooltip');
+    expect(popup.textContent).toContain('1,200');
+    expect(popup.textContent).toContain('US$0.0971');
+    const bounds = popup.getBoundingClientRect();
+    expect(bounds.left).toBeGreaterThanOrEqual(12);
+    expect(bounds.right).toBeLessThanOrEqual(width - 12);
+    expect(bounds.bottom).toBeLessThanOrEqual(788);
+    await page.screenshot({
+      path: `../../../../../.glossa-dev/qa/conversation-usage-${theme}-${width}-${eink}.png`,
+    });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Reply usage' }));
+    await screen.findByRole('tooltip');
+    fireEvent.scroll(document);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    await page.getByRole('textbox', { name: 'Message' }).hover();
+  }
+  expect(chatCalls()).toHaveLength(1);
+});
+it('chats beside a real EPUB with book evidence, restores history, changes models and creates a fresh conversation', async () => {
   f.complete.mockImplementation(async (request: CompletionRequest) => answer(request));
   const { book, doc, panel, wrapper } = await setup();
   const readers = doc.sections.map((section) => vi.spyOn(section, 'createDocument'));
   expect(f.complete).not.toHaveBeenCalled();
   await ask();
   const request = chatCalls()[0]!;
-  expect(JSON.parse(request.messages[0]!.content)).toEqual({
+  expect(JSON.parse(request.messages[1]!.content).metadata).toEqual({
     bookTitle: book.title,
     author: book.author,
     chapterTitle: '第一章　从问题走向解释',
   });
-  expect(JSON.stringify(request.messages)).not.toMatch(
-    /SENTINEL|epubcfi|sourceId|理解一个观点，需要/,
-  );
-  expect(readers.every((spy) => spy.mock.calls.length === 0)).toBe(true);
+  expect(JSON.stringify(request.messages)).toContain('理解一个观点，需要');
+  expect(JSON.stringify(request.messages)).not.toContain('epubcfi');
+  expect(readers.every((spy) => spy.mock.calls.length > 0)).toBe(true);
   await waitFor(async () =>
     expect((await loadConversations(book.hash))?.sessions[0]?.turns).toHaveLength(1),
   );
@@ -199,8 +268,8 @@ it('chats beside a real EPUB using only identity, restores history, changes mode
   await ask('能举一个例子吗？');
   const followup = chatCalls()[1]!;
   expect(followup.config?.model).toBe('second-model');
-  expect(followup.messages).toHaveLength(4);
-  expect(followup.messages[1]!.content).toBe('如何理解一个观点？');
+  expect(followup.messages).toHaveLength(5);
+  expect(followup.messages[2]!.content).toBe('如何理解一个观点？');
   for (const [theme, width, eink] of [
     ['default-light', 420, false],
     ['default-dark', 420, false],
@@ -226,7 +295,7 @@ it('chats beside a real EPUB using only identity, restores history, changes mode
   expect(chatCalls()).toHaveLength(2);
   fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
   await ask('聊个新问题');
-  expect(chatCalls()[2]!.messages).toHaveLength(2);
+  expect(chatCalls()[2]!.messages).toHaveLength(3);
   const saved = await loadConversations(book.hash);
   expect(saved?.sessions).toHaveLength(2);
   fireEvent.click(screen.getByRole('button', { name: 'Conversation history' }));
@@ -249,6 +318,7 @@ it('chats beside a real EPUB using only identity, restores history, changes mode
 it('keeps partial replies on stop and protects IndexedDB isolation', async () => {
   const { book, panel } = await setup();
   f.complete.mockImplementation((request: CompletionRequest) => {
+    if (isPlanRequest(request)) return Promise.resolve(readingPlan);
     request.onDelta?.('已经收到的内容。');
     return new Promise((_, reject) =>
       request.signal!.addEventListener('abort', () =>
@@ -292,7 +362,9 @@ it('sends the prompt chosen in the composer picker as the system message', async
   const { saveConversationPrompt } = await import('@/glossa/conversation/prompts');
   saveConversationPrompt({ name: '逐句讲解', content: 'PROMPT_SENTINEL_A' });
   saveConversationPrompt({ name: '只给结论', content: 'PROMPT_SENTINEL_B' });
-  f.complete.mockImplementation(async () => '好。');
+  f.complete.mockImplementation(async (request: CompletionRequest) =>
+    isPlanRequest(request) ? readingPlan : '好。',
+  );
   await setup();
   fireEvent.click(screen.getByRole('button', { name: 'Choose prompt' }));
   fireEvent.click(await screen.findByRole('button', { name: '只给结论' }));
@@ -301,12 +373,14 @@ it('sends the prompt chosen in the composer picker as the system message', async
   });
   await ask('这条用哪个提示词？');
   const request = chatCalls()[0]!;
-  expect(request.messages[0]).toEqual({ role: 'system', content: 'PROMPT_SENTINEL_B' });
+  expect(request.messages[0]?.role).toBe('system');
+  expect(request.messages[0]?.content).toMatch(/^PROMPT_SENTINEL_B\n/);
   fireEvent.click(screen.getByRole('button', { name: 'Choose prompt' }));
   fireEvent.click(await screen.findByRole('button', { name: 'No prompt' }));
   await ask('这条不用提示词');
   const plain = chatCalls()[1]!;
-  expect(plain.messages.some((message) => message.role === 'system')).toBe(false);
+  expect(plain.messages[0]?.content).toContain('supplied original evidence');
+  expect(plain.messages[0]?.content).not.toContain('PROMPT_SENTINEL');
 });
 it('keeps the composer and model menu usable in a short narrow window', async () => {
   await setup();
@@ -329,7 +403,11 @@ it('preserves answer versions, restores a renamed history and lays out math, cod
     '由关系得到 $E = mc^2$。\n\n$$a^2 + b^2 = c^2$$\n\n```js\nconst energy = mass * c ** 2;\n```';
   const chatAnswers = [original, '另一种解释。', '修改问题后的回答。', '继续解释。'];
   f.complete.mockImplementation(async (request: CompletionRequest) =>
-    isTitleRequest(request) ? '公式与条件（自动）' : (chatAnswers.shift() ?? '继续解释。'),
+    isTitleRequest(request)
+      ? '公式与条件（自动）'
+      : isPlanRequest(request)
+        ? readingPlan
+        : (chatAnswers.shift() ?? '继续解释。'),
   );
   const { book, panel, wrapper } = await setup();
   await ask('解释这个公式');

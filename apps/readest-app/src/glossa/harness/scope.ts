@@ -4,6 +4,7 @@ import { checkAborted, normalizeSourceText } from '@/glossa/context/text';
 import type { ChapterSource } from '@/glossa/context/types';
 import { passageSourcesSchema } from '@/glossa/passages/schema';
 import { stubTranslation as _ } from '@/utils/misc';
+import { rankSources } from './retrieval';
 
 export class ReadingScopeError extends Error {}
 
@@ -22,6 +23,33 @@ export const readingScopeSchema = z
   })
   .strict();
 export type ReadingScope = z.infer<typeof readingScopeSchema>;
+
+/** Permission to query the current book; never a serialized copy of the book. */
+export const bookReadingScopeSchema = z
+  .object({
+    version: z.literal('book-scope-1'),
+    id: z.string().min(1).max(200),
+    documentHash: z.string().min(1).max(200),
+    kind: z.literal('book'),
+    title: z.literal('Entire book'),
+    chapterTitle: z.literal(''),
+    sources: z.array(z.never()).length(0),
+  })
+  .strict()
+  .refine((scope) => scope.id === `book-${md5(scope.documentHash)}`);
+export type BookReadingScope = z.infer<typeof bookReadingScopeSchema>;
+export const conversationReadingScopeSchema = z.union([readingScopeSchema, bookReadingScopeSchema]);
+export type ConversationReadingScope = z.infer<typeof conversationReadingScopeSchema>;
+export const createBookReadingScope = (documentHash: string): BookReadingScope =>
+  bookReadingScopeSchema.parse({
+    version: 'book-scope-1',
+    id: `book-${md5(documentHash)}`,
+    documentHash,
+    kind: 'book',
+    title: 'Entire book',
+    chapterTitle: '',
+    sources: [],
+  });
 
 export function createReadingScope(input: {
   documentHash: string;
@@ -76,19 +104,7 @@ export function searchBook(
   const phrase = normalizeSourceText(query).toLocaleLowerCase();
   if (!phrase || phrase.length > 500 || !Number.isInteger(limit) || limit < 1 || limit > 5)
     throw new ReadingScopeError(_('The reading search request is invalid.'));
-  const terms = [...new Set(phrase.split(/\s+/u))];
-  return scope.sources
-    .map((source, index) => {
-      const text = normalizeSourceText(source.text).toLocaleLowerCase();
-      const score =
-        (text.includes(phrase) ? terms.length + 1 : 0) +
-        terms.filter((term) => text.includes(term)).length;
-      return { source, index, score };
-    })
-    .filter(({ score }) => score > 0)
-    .sort((a, b) => b.score - a.score || a.index - b.index)
-    .slice(0, limit)
-    .map(({ source }) => source);
+  return rankSources(scope.sources, query).slice(0, limit);
 }
 
 export function getOutline(scope: ReadingScope, signal?: AbortSignal) {

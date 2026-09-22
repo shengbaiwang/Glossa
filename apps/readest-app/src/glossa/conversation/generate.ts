@@ -1,6 +1,7 @@
 import {
   streamCompletion,
   type CompletionMessage,
+  type CompletionRequest,
   type ProviderConfig,
 } from '@/glossa/ai/provider';
 import { checkAborted } from '@/glossa/context/text';
@@ -24,6 +25,7 @@ interface Request {
   prompt?: string;
   signal: AbortSignal;
   onText?: (text: string) => void;
+  onMetrics?: CompletionRequest['onMetrics'];
 }
 
 /** Keep complete recent exchanges, across model changes, without replaying legacy book material. */
@@ -68,6 +70,7 @@ export async function generateConversation(
     config: input.config,
     signal: input.signal,
     maxTokens: input.config.maxTokens ?? 16384,
+    onMetrics: input.onMetrics,
     messages: [
       ...(prompt ? [{ role: 'system' as const, content: prompt }] : []),
       { role: 'user', content: JSON.stringify(metadata) },

@@ -110,6 +110,133 @@ describe('reading model configuration', () => {
 });
 
 describe('OpenAI-compatible transport', () => {
+  it('keeps the latest charge from cost-only trailers independently of token counters', async () => {
+    const onMetrics = vi.fn();
+    mocks.fetch.mockResolvedValue(
+      sse([
+        'data: {"choices":[{"delta":{"content":"Answer"},"finish_reason":"stop"}],"usage":{"cost":0.01}}\n\n',
+        'data: {"choices":[],"usage":{"cost":0.0971}}\n\n',
+        'data: {"choices":[],"usage":{"cost":null}}\n\ndata: [DONE]\n\n',
+      ]),
+    );
+    expect(
+      await streamCompletion({
+        config: { ...config, baseUrl: 'https://openrouter.ai/api/v1' },
+        messages,
+        onMetrics,
+      }),
+    ).toBe('Answer');
+    expect(onMetrics.mock.lastCall?.[0]).toMatchObject({
+      cost: { amount: 0.0971, currency: 'USD' },
+      finished: true,
+    });
+    expect(onMetrics.mock.lastCall?.[0].usage).toBeUndefined();
+  });
+
+  it('captures usage trailers after stop without emitting post-terminal text', async () => {
+    const onMetrics = vi.fn();
+    const onDelta = vi.fn();
+    mocks.fetch.mockResolvedValue(
+      sse([
+        'data: {"choices":[{"delta":{"content":"Answer"},"finish_reason":"stop"}]}\n\n',
+        'data: {"choices":[{"delta":{"content":"ignored"}}]}\n\ndata: {"choices":[],"usage":',
+        '{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,"prompt_tokens_details":{"cached_tokens":60},"completion_tokens_details":{"reasoning_tokens":8},"cost":0.0971,"cost_details":{"upstream_inference_cost":1}}}\n\ndata: [DONE]\n\n',
+      ]),
+    );
+    expect(await streamCompletion({ config, messages, maxTokens: 512, onDelta, onMetrics })).toBe(
+      'Answer',
+    );
+    expect(onDelta.mock.calls).toEqual([['Answer']]);
+    expect(onMetrics).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        outputBudget: 512,
+        finished: true,
+        cost: { amount: 0.0971 },
+        usage: {
+          inputTokens: 100,
+          outputTokens: 20,
+          totalTokens: 120,
+          cachedTokens: 60,
+          reasoningTokens: 8,
+        },
+      }),
+    );
+    expect(JSON.parse(mocks.fetch.mock.calls[0]![1].body).stream_options).toEqual({
+      include_usage: true,
+    });
+  });
+
+  it('keeps usage from a truncated JSON response without accepting invalid numeric fields', async () => {
+    const onMetrics = vi.fn();
+    mocks.fetch.mockResolvedValue(
+      Response.json({
+        choices: [{ message: { content: 'partial' }, finish_reason: 'length' }],
+        usage: {
+          prompt_tokens: -1,
+          cost: 0.005,
+          completion_tokens: 20,
+          total_tokens: '20',
+          prompt_tokens_details: { cached_tokens: 2.5 },
+        },
+      }),
+    );
+    await expect(streamCompletion({ config, messages, onMetrics })).rejects.toMatchObject({
+      code: 'length',
+    });
+    expect(onMetrics).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        usage: { outputTokens: 20 },
+        cost: { amount: 0.005 },
+        finished: true,
+      }),
+    );
+  });
+
+  it('retains a completed answer when a usage trailer never arrives', async () => {
+    const cancel = vi.fn();
+    const onMetrics = vi.fn();
+    mocks.fetch.mockResolvedValue(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(
+                'data: {"choices":[{"delta":{"content":"Answer"},"finish_reason":"stop"}]}\n\n',
+              ),
+            );
+          },
+          cancel,
+        }),
+        { headers: { 'Content-Type': 'text/event-stream' } },
+      ),
+    );
+    expect(await streamCompletion({ config, messages, onMetrics })).toBe('Answer');
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(onMetrics.mock.calls.at(-1)?.[0].usage).toBeUndefined();
+  }, 2000);
+
+  it('omits the optional usage flag only after an explicit parameter rejection', async () => {
+    mocks.fetch.mockResolvedValueOnce(
+      Response.json(
+        { error: { message: 'Unsupported parameter: stream_options' } },
+        { status: 400 },
+      ),
+    );
+    mocks.fetch.mockResolvedValueOnce(
+      Response.json({ choices: [{ message: { content: 'Answer' }, finish_reason: 'stop' }] }),
+    );
+    expect(await streamCompletion({ config, messages, onMetrics: vi.fn() })).toBe('Answer');
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(mocks.fetch.mock.calls[1]![1].body).stream_options).toBeUndefined();
+    mocks.fetch
+      .mockReset()
+      .mockResolvedValue(
+        Response.json({ error: { message: 'Context too large' } }, { status: 400 }),
+      );
+    await expect(streamCompletion({ config, messages, onMetrics: vi.fn() })).rejects.toThrow();
+    expect(mocks.fetch).toHaveBeenCalledOnce();
+  });
+
   it('streams split SSE events, ignores reasoning text, and uses an authenticated redirect-free request', async () => {
     await saveProviderConfig(config, 'synthetic-secret');
     mocks.fetch.mockResolvedValue(
@@ -158,9 +285,11 @@ describe('OpenAI-compatible transport', () => {
         'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n',
       ]),
     );
-    await expect(streamCompletion({ messages })).rejects.toThrow(
+    const onDelta = vi.fn();
+    await expect(streamCompletion({ messages, onDelta })).rejects.toThrow(
       'The model response was cut short. Try a smaller chapter or another model.',
     );
+    expect(onDelta).toHaveBeenCalledWith('partial');
   });
 
   it.each([

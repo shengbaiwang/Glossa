@@ -168,7 +168,7 @@ const chapterRange = (doc: Document, sectionIndex: number, chapter: ChapterDescr
 export const extractChapter = async (
   book: BookDoc,
   chapter: ChapterDescriptor,
-  { signal }: { signal?: AbortSignal } = {},
+  { signal, includeNonlinear = false }: { signal?: AbortSignal; includeNonlinear?: boolean } = {},
 ): Promise<ChapterContent> => {
   checkAborted(signal);
   const sources: ChapterSource[] = [];
@@ -181,7 +181,7 @@ export const extractChapter = async (
   for (let sectionIndex = chapter.start.sectionIndex; sectionIndex <= lastSection; sectionIndex++) {
     checkAborted(signal);
     const section = book.sections[sectionIndex];
-    if (!section || section.linear === 'no') continue;
+    if (!section || (!includeNonlinear && section.linear === 'no')) continue;
     // Yield between spine reads so preparing a reading passage does not monopolize the reader.
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     checkAborted(signal);

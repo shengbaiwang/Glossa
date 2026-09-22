@@ -18,9 +18,14 @@ const f = vi.hoisted(() => ({
   sectionHref: undefined as string | undefined,
   settings: vi.fn(),
   reading: vi.fn(),
+  bookReading: vi.fn(),
   capture: vi.fn(),
   resolveSource: vi.fn(),
   navigateSource: vi.fn(),
+}));
+vi.mock('@/glossa/harness/bookConversation', () => ({
+  generateBookConversation: f.bookReading,
+  generateScopeOverview: f.reading,
 }));
 vi.mock('@/glossa/harness/generate', () => ({ generateReadingConversation: f.reading }));
 vi.mock('@/glossa/harness/epub', async (original) => ({
@@ -105,6 +110,7 @@ beforeEach(() => {
   f.save.mockResolvedValue(undefined);
   f.status.mockResolvedValue({ configured: true });
   f.generate.mockResolvedValue('The **explanation**.');
+  f.bookReading.mockResolvedValue({ text: 'The **explanation**.', sources: [], mode: 'direct' });
   f.title.mockResolvedValue('');
   clipboard.write.mockReset().mockResolvedValue(undefined);
   f.list.mockResolvedValue(['fixture', 'second-model']);
@@ -124,6 +130,41 @@ beforeEach(() => {
 afterEach(cleanup);
 const mount = (b = book(), doc = {} as BookDoc) =>
   render(<ConversationPanel book={b} bookDoc={doc} bookKey={b.hash} />);
+
+it('shows a hoverable usage footer and stores actual usage with the answer', async () => {
+  f.generate.mockImplementation(async (input) => {
+    input.onMetrics?.({
+      id: 'request-1',
+      outputBudget: 8192,
+      elapsedMs: 2000,
+      finished: true,
+      usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120 },
+      cost: { amount: 0.0971, currency: 'USD' },
+    });
+    return 'An explanation.';
+  });
+  mount();
+  await screen.findByRole('textbox', { name: 'Message' });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+    target: { value: 'Explain.' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  const footer = await screen.findByRole('button', { name: 'Reply usage' });
+  expect(footer.textContent).toContain('120 Tokens');
+  expect(screen.queryByText('From book text')).toBeNull();
+  fireEvent.focus(footer);
+  expect((await screen.findByRole('tooltip')).textContent).toContain('Output limit');
+  expect(screen.getByRole('tooltip').textContent).toContain('8,192');
+  expect(screen.getByRole('tooltip').textContent).toContain('Provider charge');
+  expect(screen.getByRole('tooltip').textContent).toContain('US$0.0971');
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(screen.queryByRole('tooltip')).toBeNull();
+  await waitFor(() =>
+    expect(
+      f.save.mock.calls.at(-1)?.[0].sessions[0].turns[0].usage.requests[0].usage.totalTokens,
+    ).toBe(120),
+  );
+});
 
 it('attaches original text only on request, keeps the focus through page changes, and detaches cleanly', async () => {
   const b = book();
@@ -337,26 +378,26 @@ function holdReply(text = '') {
     );
   });
 }
-it('does no book/API work on open and uses only identity when sending; IME and Shift+Enter never send', async () => {
+it('does no book/API work on open and defaults to lazy whole-book access when sending; IME and Shift+Enter never send', async () => {
   const read = vi.fn();
   mount(book(), { sections: [{ createDocument: read }] } as unknown as BookDoc);
   await typeQuestion();
-  expect(f.generate).not.toHaveBeenCalled();
+  expect(f.bookReading).not.toHaveBeenCalled();
   expect(read).not.toHaveBeenCalled();
   expect(f.list).not.toHaveBeenCalled();
   expect(screen.queryByText('Adjust materials')).toBeNull();
   expect(document.querySelector('.glossa-chat-context')).toBeNull();
   fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', isComposing: true });
   fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', shiftKey: true });
-  expect(f.generate).not.toHaveBeenCalled();
+  expect(f.bookReading).not.toHaveBeenCalled();
   fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
   await answer();
-  expect(f.generate.mock.calls[0]![0].metadata).toEqual({
+  expect(f.bookReading.mock.calls[0]![0].metadata).toEqual({
     bookTitle: 'Fixture',
     author: 'Writer',
     chapterTitle: 'Chapter one',
   });
-  expect(f.generate.mock.calls[0]![0]).not.toHaveProperty('sources');
+  expect(f.bookReading.mock.calls[0]![0]).not.toHaveProperty('sources');
   expect(read).not.toHaveBeenCalled();
 });
 it('sends the full outline path as hidden identity without rendering it', async () => {
@@ -383,7 +424,7 @@ it('sends the full outline path as hidden identity without rendering it', async 
   await typeQuestion();
   send();
   await answer();
-  expect(f.generate.mock.calls[0]![0].metadata.chapterTitle).toBe('Part One › Section A');
+  expect(f.bookReading.mock.calls[0]![0].metadata.chapterTitle).toBe('Part One › Section A');
 });
 it('retains the answer after a save failure and retries without generating again', async () => {
   f.save.mockRejectedValueOnce(new Error('disk unavailable'));
@@ -495,7 +536,17 @@ it('starts an empty conversation, restores per-session drafts, and deletes only 
 });
 it('stops immediately, preserves partial text and ignores a late completion after starting a new session', async () => {
   let resolve!: (text: string) => void;
+  let lateUsage!: () => void;
   f.generate.mockImplementationOnce((r) => {
+    const metrics = { id: 'cancelled', outputBudget: 8192, elapsedMs: 0, finished: false };
+    r.onMetrics(metrics);
+    lateUsage = () =>
+      r.onMetrics({
+        ...metrics,
+        finished: true,
+        usage: { totalTokens: 999 },
+        cost: { amount: 1, currency: 'USD' },
+      });
     r.onText('Partial reply');
     return new Promise<string>((done) => {
       resolve = done;
@@ -509,8 +560,11 @@ it('stops immediately, preserves partial text and ignores a late completion afte
   expect(screen.getByText('Partial reply')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
   await act(async () => resolve('LATE_REPLY'));
+  lateUsage();
   expect(screen.queryByText('LATE_REPLY')).toBeNull();
   expect(f.save.mock.calls[0]![0].sessions[0].turns[0].status).toBe('stopped');
+  expect(f.save.mock.calls[0]![0].sessions[0].turns[0].usage.requests[0].usage).toBeUndefined();
+  expect(f.save.mock.calls[0]![0].sessions[0].turns[0].usage.requests[0].cost).toBeUndefined();
 });
 it('cancels on model change and on close, preserving a question with no reply', async () => {
   holdReply();
@@ -625,6 +679,14 @@ it('edits the last question, retains the previous answer as a version, and can s
   await waitFor(() =>
     expect(document.querySelector('.glossa-chat-answer')?.textContent).toBe('First answer'),
   );
+  const editButton = screen.getByRole('button', { name: 'Edit question' });
+  expect(editButton.closest('.glossa-chat-question-group')?.textContent).toBe('First question');
+  expect(editButton.closest('.glossa-chat-answer-actions')).toBeNull();
+  for (const name of ['Copy reply', 'Regenerate reply']) {
+    const button = screen.getByRole('button', { name });
+    expect(button.closest('.glossa-chat-question-actions')).not.toBeNull();
+    expect(button.closest('.glossa-chat-answer-actions')).toBeNull();
+  }
   fireEvent.click(screen.getByRole('button', { name: 'Edit question' }));
   fireEvent.change(screen.getByRole('textbox', { name: 'Edit question' }), {
     target: { value: 'Second question' },

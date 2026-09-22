@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { validateProviderConfig } from '@/glossa/ai/provider';
 import { ConversationError, turnSchema, validBlockSources, type ConversationTurn } from './schema';
 import { stubTranslation as _ } from '@/utils/misc';
-import { readingScopeSchema } from '@/glossa/harness/scope';
+import { conversationReadingScopeSchema } from '@/glossa/harness/scope';
 
 const sessionSchema = z
   .object({
@@ -14,7 +14,7 @@ const sessionSchema = z
           .object({
             id: z.string().min(1),
             title: z.string().trim().min(1).max(120).optional(),
-            readingScope: readingScopeSchema.optional(),
+            readingScope: conversationReadingScopeSchema.optional(),
             turns: z.array(turnSchema).max(40),
           })
           .strict(),

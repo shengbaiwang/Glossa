@@ -247,6 +247,35 @@
   overflow-wrap: anywhere;
   line-height: 1.7;
 }
+/* Keep question actions beside their question, without shifting the reply on hover. */
+.glossa-chat-question-group {
+  display: flex;
+  flex-direction: column;
+  align-self: flex-end;
+  max-width: 92%;
+  margin-bottom: 12px;
+}
+.glossa-chat-question-group .glossa-chat-question {
+  max-width: 100%;
+  margin-bottom: 0;
+}
+.glossa-chat-question-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
+  color: var(--glossa-muted);
+}
+@media (hover: hover) and (pointer: fine) {
+  .glossa-chat-question-actions {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .glossa-chat-question-group:hover .glossa-chat-question-actions,
+  .glossa-chat-question-group:focus-within .glossa-chat-question-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
 [dir='rtl'] .glossa-chat-question {
   border-radius: 16px 16px 16px 4px;
 }
@@ -357,7 +386,8 @@
 .glossa-chat-answer-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
+  flex-wrap: wrap;
   margin-top: 9px;
   color: var(--glossa-muted);
   font-size: 10px;
@@ -370,6 +400,98 @@
 }
 .glossa-chat-answer-actions > span {
   min-width: 0;
+}
+.glossa-chat-usage-trigger {
+  min-height: 24px;
+  max-width: 100%;
+  padding: 2px 0;
+  border-radius: var(--glossa-radius-detail);
+  color: var(--glossa-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+.glossa-chat-usage-trigger:hover {
+  color: var(--glossa-ink);
+}
+.glossa-chat-usage-popup {
+  position: fixed;
+  z-index: 80;
+  width: min(340px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+  border: 1px solid var(--glossa-border);
+  border-radius: var(--glossa-radius);
+  background: var(--glossa-surface);
+  color: var(--glossa-ink);
+  box-shadow: var(--glossa-shadow);
+  font: 12px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.glossa-chat-usage-popup header {
+  display: flex;
+  flex-direction: column;
+  padding-block-end: 12px;
+  overflow-wrap: anywhere;
+}
+.glossa-chat-usage-popup strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.glossa-chat-usage-popup :is(dt, header span, time, p) {
+  color: var(--glossa-muted);
+}
+.glossa-chat-usage-popup time {
+  margin-block-start: 4px;
+}
+.glossa-chat-usage-popup dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.glossa-chat-usage-tokens {
+  padding-block: 12px;
+  border-block: 1px solid var(--glossa-border);
+}
+.glossa-chat-usage-tokens dd {
+  font-size: 17px;
+  font-weight: 600;
+}
+.glossa-chat-usage-details {
+  padding-block-start: 12px;
+}
+.glossa-chat-usage-popup .glossa-chat-usage-cost {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  padding-block: 12px;
+  border-block-end: 1px solid var(--glossa-border);
+}
+.glossa-chat-usage-cost dd {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px 8px;
+  text-align: end;
+}
+.glossa-chat-usage-cost dd span:first-child,
+.glossa-chat-usage-cost dd span:last-child:not([dir]) {
+  color: var(--glossa-muted);
+}
+.glossa-chat-usage-popup dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+[data-eink='true'] .glossa-chat-usage-popup {
+  border-color: var(--glossa-ink);
+  box-shadow: none;
+}
+@media (pointer: coarse) {
+  .glossa-chat-usage-trigger {
+    min-height: 44px;
+  }
 }
 .glossa-chat-versions {
   display: flex;

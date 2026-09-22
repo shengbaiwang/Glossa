@@ -18,6 +18,7 @@ export default function ConversationReadingScope({
   bookKey,
   documentHash,
   value,
+  wholeBook = false,
   disabled,
   onChange,
   onBusyChange,
@@ -26,6 +27,7 @@ export default function ConversationReadingScope({
   bookKey: string;
   documentHash: string;
   value?: ReadingScope;
+  wholeBook?: boolean;
   disabled: boolean;
   onChange: (scope?: ReadingScope) => void;
   onBusyChange: (busy: boolean) => void;
@@ -158,10 +160,10 @@ export default function ConversationReadingScope({
           type='button'
           className='glossa-chat-text-button'
           disabled={disabled || busy}
-          aria-expanded={value ? open : undefined}
+          aria-expanded={value || wholeBook ? open : undefined}
           onPointerDown={(event) => event.preventDefault()}
           onClick={() => {
-            if (value) {
+            if (value || wholeBook) {
               setOpen(!open);
               setError('');
             } else {
@@ -170,7 +172,7 @@ export default function ConversationReadingScope({
           }}
         >
           <BookOpen size={15} />
-          <span>{value ? _(value.title) : _('Use book text')}</span>
+          <span>{value ? _(value.title) : _(wholeBook ? 'Entire book' : 'Use book text')}</span>
         </button>
         <button
           type='button'
@@ -217,6 +219,20 @@ export default function ConversationReadingScope({
             </details>
           )}
           <div className='glossa-chat-reading-actions'>
+            {wholeBook && (
+              <button
+                type='button'
+                className='glossa-chat-text-button'
+                disabled={busy || disabled}
+                onClick={() => {
+                  cancel();
+                  onChange(undefined);
+                  setOpen(false);
+                }}
+              >
+                {_('Use entire book')}
+              </button>
+            )}
             <button
               type='button'
               className='glossa-chat-text-button'

@@ -3,7 +3,8 @@ import { contextReceiptSchema } from './context';
 import type { ChapterSource } from '@/glossa/context/types';
 import { passageSourcesSchema } from '@/glossa/passages/schema';
 import { stubTranslation as _ } from '@/utils/misc';
-import { readingScopeSchema } from '@/glossa/harness/scope';
+import { conversationReadingScopeSchema } from '@/glossa/harness/scope';
+import { replyUsageSchema } from './usage';
 
 export class ConversationError extends Error {}
 export const CONVERSATION_PROMPT_VERSION = 'conversation-3';
@@ -38,12 +39,32 @@ export const bodySchema = z.object({ blocks: z.array(blockSchema).min(1).max(8) 
 
 export const readingAnswerSchema = z
   .object({
-    scope: readingScopeSchema,
-    sources: conversationSourcesSchema,
+    scope: conversationReadingScopeSchema,
+    sources: z
+      .array(passageSourcesSchema.element)
+      .max(1000)
+      .refine(
+        (sources) =>
+          new Set(sources.map((source) => source.sourceId)).size === sources.length &&
+          sources.reduce((sum, source) => sum + source.text.length, 0) <= 120000 &&
+          sources.every((source) => source.text === source.anchor.quote.exact),
+      ),
     mode: z.enum(['tools', 'direct']),
+    coverage: z
+      .object({
+        strategy: z.enum(['overview', 'search']),
+        title: z.string().max(500),
+        readSources: z.number().int().nonnegative(),
+        totalSources: z.number().int().nonnegative(),
+      })
+      .strict()
+      .refine((value) => value.readSources <= value.totalSources)
+      .optional(),
   })
   .strict()
   .refine((reading) => {
+    if (reading.scope.kind === 'book') return true;
+    if (!conversationSourcesSchema.safeParse(reading.sources).success) return false;
     const allowed = new Map(reading.scope.sources.map((source) => [source.sourceId, source]));
     return reading.sources.every(
       (source) => JSON.stringify(allowed.get(source.sourceId)) === JSON.stringify(source),
@@ -61,6 +82,7 @@ export const answerVersionSchema = z
     provider: providerSchema,
     status: z.enum(['complete', 'stopped', 'failed']),
     reading: readingAnswerSchema.optional(),
+    usage: replyUsageSchema.optional(),
   })
   .strict();
 export type AnswerVersion = z.infer<typeof answerVersionSchema>;
@@ -98,6 +120,7 @@ const chatTurnSchema = z
     metadata: chatIdentitySchema,
     status: z.enum(['complete', 'stopped', 'failed']),
     reading: readingAnswerSchema.optional(),
+    usage: replyUsageSchema.optional(),
     versions: z.array(answerVersionSchema).min(1).max(MAX_TURN_VERSIONS).optional(),
     activeVersionId: z.string().min(1).max(100).optional(),
     context: z.undefined().optional(),
@@ -130,6 +153,7 @@ export function currentAnswerVersion(turn: ConversationTurn): AnswerVersion {
     provider: turn.provider,
     status: turn.promptVersion === CONVERSATION_PROMPT_VERSION ? turn.status : 'complete',
     ...('reading' in turn && turn.reading ? { reading: turn.reading } : {}),
+    ...('usage' in turn && turn.usage ? { usage: turn.usage } : {}),
   };
 }
 
@@ -147,6 +171,7 @@ export function selectAnswerVersion(turn: ConversationTurn, versionId: string): 
     provider: version.provider,
     status: version.status,
     reading: version.reading,
+    usage: version.usage,
   };
 }
 

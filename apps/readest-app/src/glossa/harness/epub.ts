@@ -9,6 +9,119 @@ import { buildReadingPassages, getPassageId } from '@/glossa/passages/passages';
 import type { ReadingPassage } from '@/glossa/passages/types';
 import { stubTranslation as _ } from '@/utils/misc';
 import { createReadingScope, ReadingScopeError, type ReadingScope } from './scope';
+import type { BookReadingAccess } from './book';
+import {
+  asksForSelection,
+  buildSourceIndex,
+  sampleBookSources,
+  type SourceSearchIndex,
+} from './retrieval';
+import { resolveSource } from '@/glossa/citations/sources';
+import type { ChapterSource } from '@/glossa/context/types';
+
+const BOOK_CACHE_VERSION = 'epub-blocks-bm25-1';
+const MAX_CACHED_CHARS = 2000000;
+const bookAccesses = new WeakMap<BookDoc, { key: string; access: BookReadingAccess }>();
+
+/** Lazy, memory-only cache per open document/hash. Opening a panel never reads a book. */
+export function createEpubBookAccess(book: BookDoc, documentHash: string): BookReadingAccess {
+  if (!book.sections?.length || book.rendition?.layout === 'pre-paginated')
+    throw new ReadingScopeError(_('Reading ranges are available for reflowable EPUBs.'));
+  const key = `${BOOK_CACHE_VERSION}:${documentHash}`;
+  const previous = bookAccesses.get(book);
+  if (previous?.key === key) return previous.access;
+  const chapters = listChapters(book);
+  let cachedSources: ChapterSource[] | undefined;
+  let cachedIndex: SourceSearchIndex | undefined;
+  const chapterCache = new Map<string, ChapterSource[]>();
+  const clone = (sources: ChapterSource[]) => structuredClone(sources);
+  const readAll = async (signal: AbortSignal) => {
+    checkAborted(signal);
+    if (cachedSources) return clone(cachedSources);
+    const sources: ChapterSource[] = [];
+    for (let index = 0; index < book.sections.length; index++) {
+      checkAborted(signal);
+      const chapter: ChapterDescriptor = {
+        id: `spine-${index}`,
+        title: '',
+        href: '',
+        depth: 0,
+        sectionIndex: index,
+        start: { sectionIndex: index },
+        end: { sectionIndex: index + 1 },
+      };
+      const content = await extractChapter(book, chapter, { signal, includeNonlinear: true });
+      sources.push(...content.sources);
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+    checkAborted(signal);
+    if (
+      sources.length <= 50000 &&
+      sources.reduce((sum, source) => sum + source.text.length, 0) <= MAX_CACHED_CHARS
+    )
+      cachedSources = sources;
+    return clone(sources);
+  };
+  const access: BookReadingAccess = {
+    documentHash,
+    chapters: chapters.map(({ id, title, depth }) => ({ id, title, depth })),
+    readAll,
+    readChapter: async (id, signal) => {
+      checkAborted(signal);
+      const chapter = chapters.find((item) => item.id === id);
+      if (!chapter) throw new ReadingScopeError(_('The selected chapter is unavailable.'));
+      const cached = chapterCache.get(id);
+      if (cached) {
+        chapterCache.delete(id);
+        chapterCache.set(id, cached);
+        return clone(cached);
+      }
+      const sources = (await extractChapter(book, chapter, { signal })).sources;
+      checkAborted(signal);
+      chapterCache.set(id, sources);
+      while (
+        chapterCache.size > 8 ||
+        [...chapterCache.values()].flat().reduce((sum, source) => sum + source.text.length, 0) >
+          300000
+      )
+        chapterCache.delete(chapterCache.keys().next().value!);
+      return clone(sources);
+    },
+    search: async (queries, signal) => {
+      const all = await readAll(signal);
+      checkAborted(signal);
+      const index = cachedIndex ?? (await buildSourceIndex(cachedSources ?? all, signal));
+      checkAborted(signal);
+      if (cachedSources) cachedIndex = index;
+      const ranked = queries.slice(0, 4).map((query) => index.search(query));
+      if (queries.some(asksForSelection)) ranked.unshift(sampleBookSources(all));
+      const selected = new Map<string, ChapterSource>();
+      const positions = new Map(all.map((source, index) => [source.sourceId, index]));
+      // Interleave search angles so one phrasing cannot crowd out another.
+      for (let i = 0; i < 36; i++)
+        for (const hits of ranked) {
+          const hit = hits[i];
+          if (!hit) continue;
+          const index = positions.get(hit.sourceId)!;
+          selected.set(hit.sourceId, hit);
+          for (const neighbor of [all[index - 1], all[index + 1]])
+            if (neighbor && neighbor.anchor.sectionIndex === hit.anchor.sectionIndex)
+              selected.set(neighbor.sourceId, neighbor);
+        }
+      return clone([...selected.values()]);
+    },
+    verifySources: async (sources, signal) => {
+      const verified: ChapterSource[] = [];
+      for (const source of sources) {
+        checkAborted(signal);
+        if (await resolveSource(book, source, { signal })) verified.push(source);
+      }
+      return verified;
+    },
+  };
+  bookAccesses.set(book, { key, access });
+  return access;
+}
 
 export type ReadingCaptureView = Pick<
   FoliateView,

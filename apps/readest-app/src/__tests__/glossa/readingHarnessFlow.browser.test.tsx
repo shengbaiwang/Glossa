@@ -5,7 +5,11 @@ import { zipSync, strToU8 } from 'fflate';
 import { DocumentLoader } from '@/libs/document';
 import { listChapters } from '@/glossa/context/chapters';
 import type { FoliateView } from '@/types/view';
-import type { CompletionRequest, ToolCompletionRequest } from '@/glossa/ai/provider';
+import {
+  ModelServiceError,
+  type CompletionRequest,
+  type ToolCompletionRequest,
+} from '@/glossa/ai/provider';
 import { loadConversations, saveConversations } from '@/glossa/conversation/store';
 import { currentAnswerVersion } from '@/glossa/conversation/schema';
 import ConversationPanel from '@/glossa/ui/ConversationPanel';
@@ -134,7 +138,7 @@ async function setup() {
     </div>
   );
   const panel = render(wrapper());
-  await screen.findByRole('button', { name: 'Use book text' });
+  await screen.findByRole('button', { name: 'Entire book' });
   return { book, bookDoc, panel, wrapper };
 }
 
@@ -158,12 +162,117 @@ const call = (name: string, args: Record<string, unknown>) => ({
   ],
 });
 
+it('uses whole-book access by default and restores a verified citation from a later chapter', async () => {
+  const { book, panel, wrapper } = await setup();
+  expect(f.complete).not.toHaveBeenCalled();
+  const origin = view!.lastLocation!.cfi;
+  let usedId = '';
+  f.complete.mockImplementation(async (request: CompletionRequest) => {
+    if (request.messages[0]!.content.startsWith('Name this conversation')) return '';
+    if (request.messages[0]!.content.startsWith('Plan a reading request'))
+      return JSON.stringify({
+        strategy: 'search',
+        chapterIds: [],
+        queries: ['FUTURE_CHAPTER_SENTINEL'],
+      });
+    const data = JSON.parse(request.messages[1]!.content) as {
+      sources: { sourceId: string; text: string }[];
+    };
+    usedId = data.sources.find((source) =>
+      source.text.includes('FUTURE_CHAPTER_SENTINEL'),
+    )!.sourceId;
+    const text = `后章有比较的材料。[1](#source-${usedId})`;
+    request.onDelta?.(text);
+    return text;
+  });
+  await ask('后章有哪些比较材料？');
+  expect(f.toolComplete).not.toHaveBeenCalled();
+  expect(view!.lastLocation!.cfi).toBe(origin);
+  await waitFor(async () =>
+    expect((await loadConversations(book.hash))?.sessions[0]?.turns).toHaveLength(1),
+  );
+  const saved = currentAnswerVersion((await loadConversations(book.hash))!.sessions[0]!.turns[0]!);
+  expect(saved.reading?.scope.kind).toBe('book');
+  expect(saved.reading?.scope.sources).toEqual([]);
+  expect(
+    saved.reading?.sources.find((source) => source.sourceId === usedId)?.anchor.sectionIndex,
+  ).toBe(1);
+  panel.unmount();
+  render(wrapper());
+  const citation = await screen.findByRole('link', { name: /^Open source passage/ });
+  fireEvent.mouseEnter(citation);
+  const tooltip = await screen.findByRole('tooltip');
+  await waitFor(() => expect(tooltip.textContent).toContain('FUTURE_CHAPTER_SENTINEL'));
+  expect(view!.lastLocation!.cfi).toBe(origin);
+  fireEvent.click(citation);
+  await waitFor(() => expect(view!.resolveCFI(view!.lastLocation!.cfi!).index).toBe(1));
+  const back = await screen.findByRole('button', { name: 'Back to reading position' });
+  await waitFor(() => expect(back.hasAttribute('disabled')).toBe(false));
+  fireEvent.click(back);
+  await waitFor(() => expect(view!.lastLocation!.cfi).toBe(origin));
+  await page.screenshot({
+    path: '../../../../../.glossa-dev/qa/harness/whole-book-conversation.png',
+  });
+});
+
+it('keeps streamed text visible during recovery and restores both halves with verified citations', async () => {
+  const { book, panel, wrapper } = await setup();
+  let requests = 0;
+  let finish: (() => void) | undefined;
+  f.complete.mockImplementation(async (request: CompletionRequest) => {
+    if (request.messages[0]!.content.startsWith('Name this conversation')) return '';
+    const sources = JSON.parse(request.messages[1]!.content).sources as {
+      sourceId: string;
+      text: string;
+    }[];
+    const id = sources.find((source) => source.text === firstParagraph)!.sourceId;
+    if (++requests === 1) {
+      request.onDelta?.(`先找问题。[1](#source-${id})`);
+      throw new ModelServiceError('cut short', 'length');
+    }
+    return new Promise<string>((resolve) => {
+      finish = () => {
+        const rest = `再看理由。[1](#source-${id})`;
+        request.onDelta?.(rest);
+        resolve(rest);
+      };
+    });
+  });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+    target: { value: '理解观点为什么需要理由？' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await waitFor(() => expect(finish).toBeTypeOf('function'));
+  expect(document.body.textContent).toContain('先找问题。');
+  expect(screen.getByRole('button', { name: 'Stop reply' })).toBeTruthy();
+  finish!();
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Stop reply' })).toBeNull());
+  await waitFor(async () =>
+    expect((await loadConversations(book.hash))?.sessions[0]?.turns).toHaveLength(1),
+  );
+  const answer = currentAnswerVersion((await loadConversations(book.hash))!.sessions[0]!.turns[0]!);
+  expect(requests).toBe(2);
+  expect(answer.status).toBe('complete');
+  expect(answer.text).toContain('先找问题。');
+  expect(answer.text).toContain('再看理由。');
+  panel.unmount();
+  render(wrapper());
+  const citations = await screen.findAllByRole('link', { name: /^Open source passage/ });
+  fireEvent.mouseEnter(citations[0]!);
+  const tooltip = await screen.findByRole('tooltip');
+  await waitFor(() => expect(tooltip.textContent).toContain(firstParagraph));
+  await page.screenshot({
+    path: '../../../../../.glossa-dev/qa/harness/recovered-book-conversation.png',
+  });
+});
+
 it.each([
   'canonical',
   'direct',
 ] as const)('restores a real EPUB snapshot and previews %s citations with verified return navigation', async (format) => {
   const { book, panel, wrapper } = await setup();
-  fireEvent.click(screen.getByRole('button', { name: 'Use book text' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Choose reading range' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Use current page' }));
   await screen.findByRole('button', { name: 'Current page' });
   expect(f.complete).not.toHaveBeenCalled();
   expect(f.toolComplete).not.toHaveBeenCalled();
@@ -294,7 +403,8 @@ it('attaches only an explicit clipped selection and keeps subsequent page moves 
   const selection = doc.getSelection()!;
   selection.removeAllRanges();
   selection.addRange(range);
-  await page.getByRole('button', { name: 'Use book text' }).click();
+  await page.getByRole('button', { name: 'Choose reading range' }).click();
+  await page.getByRole('button', { name: 'Use selected text' }).click();
   await screen.findByRole('button', { name: 'Selected text' });
   await waitFor(async () =>
     expect((await loadConversations(book.hash))?.sessions[0]?.readingScope?.sources).toHaveLength(
@@ -324,13 +434,20 @@ it('attaches only an explicit clipped selection and keeps subsequent page moves 
   );
   await screen.findByRole('link', { name: /^Open source passage/ });
   fireEvent.click(screen.getByRole('button', { name: 'Remove reading source' }));
-  await screen.findByRole('button', { name: 'Use book text' });
-  await ask('现在普通聊天');
+  await screen.findByRole('button', { name: 'Entire book' });
+  f.complete.mockImplementation(async (request: CompletionRequest) =>
+    request.messages[0]?.content.startsWith('Plan a reading request')
+      ? JSON.stringify({ strategy: 'search', chapterIds: [], queries: ['比较'] })
+      : '全书范围的新回答。',
+  );
+  await ask('现在从全书查找比较的内容');
   expect(f.toolComplete).toHaveBeenCalledTimes(1);
   expect(
     f.complete.mock.calls
       .map(([request]) => request as CompletionRequest)
-      .some((plain) => plain.messages.some((message) => message.content === '现在普通聊天')),
+      .some((plain) =>
+        plain.messages.some((message) => message.content === '现在从全书查找比较的内容'),
+      ),
   ).toBe(true);
 });
 
@@ -369,7 +486,8 @@ it('previews and explicitly attaches one chapter passage in a narrow window with
 
 it('browses citations in answer order and keeps previews inside narrow, dark and e-ink viewports', async () => {
   const { book } = await setup();
-  fireEvent.click(screen.getByRole('button', { name: 'Use book text' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Choose reading range' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Use current page' }));
   await screen.findByRole('button', { name: 'Current page' });
   let secondPassage = '';
   f.toolComplete.mockImplementation(async (request: ToolCompletionRequest) => {

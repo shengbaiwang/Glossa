@@ -1,5 +1,9 @@
 ## Glossa Design Language
 
+### Conversation usage — 2026-09-22
+
+The answer footer uses a compact usage summary in place of the generic source-origin label. Hover, focus or tap reveals a paper/ink tooltip with the model, provider and recorded numeric usage. Keep source citations in the answer. The tooltip uses a two-column definition list, 12px labels, shared surface/border tokens and viewport bounds; touch triggers remain 44px and e-ink removes the shadow. A quiet full-width cost row separates the token tiles from the detailed metrics and shows the provider-reported charge. Missing metrics stay visibly unknown, with no fabricated token counts or pricing; partial charges show the reporting count and unknown currency stays explicit. Keep model identity, interruption status and version navigation in the footer; question actions remain below the question.
+
 ### Shared interface foundations — 2026-09-14
 
 Unify controls with the same role; preserve the difference between a full page,
@@ -150,6 +154,17 @@ retain their own typography. Avoid shrinking essential instructions into caption
   </DialogFooter>
 </DialogContent>
 ```
+
+### Book conversation scope — 2026-09-22
+
+Reflowable EPUB conversations start with the compact “Entire book” range control.
+The same menu can restrict the conversation to the visible page, selected text or a
+chapter passage. Removing an attachment restores Entire book; new conversations
+start there. Scope changes do not run a model or scan the book. Keep title/author/
+current outline metadata hidden. During a request show only the current activity
+(finding passages, reading, organizing arguments, writing, checking coverage).
+Use the existing paper/ink range menu, focus, RTL and e-ink styles. Do not add a
+second toolbar, explanatory caption, model-cost panel or automatic book overview.
 
 ### Conversation citations — 2026-09-22
 

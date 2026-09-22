@@ -58,6 +58,29 @@ const call = (name: string, args: unknown, id = 'call-1'): ToolCall => ({
 afterEach(() => vi.useRealTimers());
 
 describe('bounded reading harness', () => {
+  it('supplies every block when asked to summarize all viewpoints, including late arguments', async () => {
+    const all = Array.from({ length: 9 }, (_, i) =>
+      source(
+        `point-${i}`,
+        `${i === 8 ? '第四个明确论点及结语' : `论述${i}`} ${'原文。'.repeat(240)}`,
+      ),
+    );
+    const complete = vi.fn(async (_input: ToolCompletionRequest) => ({
+      text: '四个论点 [1](#source-point-8)',
+      toolCalls: [],
+    }));
+    await generateReadingConversation(
+      {
+        ...request(),
+        question: '总论都表达了哪些观点？这些观点有矛盾吗？',
+        scope: createReadingScope({ ...scope, sources: all }),
+      },
+      { complete },
+    );
+    const wire = JSON.stringify(complete.mock.calls[0]![0].messages);
+    for (const block of all) expect(wire).toContain(block.text);
+    expect(wire).toContain('coverage');
+  });
   it('supplies scoped evidence, executes tools, and streams only citations actually delivered', async () => {
     const complete = vi
       .fn<(input: ToolCompletionRequest) => Promise<{ text: string; toolCalls: ToolCall[] }>>()

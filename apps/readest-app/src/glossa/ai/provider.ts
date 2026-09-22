@@ -3,6 +3,7 @@ import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { isTauriAppPlatform } from '@/services/environment';
 import { clearSecureItem, getSecureItem, setSecureItem } from '@/utils/bridge';
 import { stubTranslation as _ } from '@/utils/misc';
+import { readProviderCost, readTokenUsage, type CompletionMetrics } from './usage';
 
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export const REASONING_EFFORTS: readonly ReasoningEffort[] = [
@@ -89,6 +90,7 @@ export interface CompletionRequest {
   signal?: AbortSignal;
   onDelta?: (delta: string) => void;
   maxTokens?: number;
+  onMetrics?: (metrics: CompletionMetrics) => void;
 }
 
 export interface ToolDefinition {
@@ -375,8 +377,16 @@ async function request(
     throw safeRequestError(error, signal);
   }
   if (!response.ok) {
-    if (toolRequest && [400, 422].includes(response.status)) {
-      if (await explicitlyRejectsTools(response, signal))
+    if (
+      (toolRequest || (isRecord(body) && body['stream_options'])) &&
+      [400, 422].includes(response.status)
+    ) {
+      const rejected = await rejectedOptionalParameter(response, signal);
+      if (rejected === 'usage' && isRecord(body) && body['stream_options']) {
+        const { stream_options: _usage, ...withoutUsage } = body;
+        return request(config, path, signal, withoutUsage, toolRequest);
+      }
+      if (rejected === 'tools' && toolRequest)
         throw new ModelServiceError(
           _('This model service does not support reading tools.'),
           'unsupported_tools',
@@ -408,6 +418,7 @@ async function consumeText(
   signal: AbortSignal | undefined,
   onText: (text: string) => boolean | void,
   maxBytes = MAX_RESPONSE_BYTES,
+  stop?: AbortSignal,
 ): Promise<void> {
   if (!response.body)
     throw new ModelServiceError(_('The model service returned an empty response.'));
@@ -418,6 +429,7 @@ async function consumeText(
     void reader.cancel().catch(() => {});
   };
   signal?.addEventListener('abort', cancel, { once: true });
+  stop?.addEventListener('abort', cancel, { once: true });
   try {
     while (true) {
       checkAbort(signal);
@@ -432,13 +444,17 @@ async function consumeText(
     onText(decoder.decode());
   } finally {
     signal?.removeEventListener('abort', cancel);
+    stop?.removeEventListener('abort', cancel);
     await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }
 
 /** Inspect only bounded JSON error metadata; never expose the server's message. */
-async function explicitlyRejectsTools(response: Response, signal?: AbortSignal): Promise<boolean> {
+async function rejectedOptionalParameter(
+  response: Response,
+  signal?: AbortSignal,
+): Promise<'tools' | 'usage' | undefined> {
   try {
     let body = '';
     await consumeText(
@@ -451,11 +467,11 @@ async function explicitlyRejectsTools(response: Response, signal?: AbortSignal):
     );
     const value = parseJson(body);
     const error = isRecord(value) && isRecord(value['error']) ? value['error'] : value;
-    if (!isRecord(error) || typeof error['message'] !== 'string') return false;
+    if (!isRecord(error) || typeof error['message'] !== 'string') return;
     const message = error['message'];
     // Invalid schemas, context overflow and unrelated unsupported parameters must
     // remain errors rather than silently triggering a second model request.
-    return (
+    if (
       /\b(?:tools?|tool_choice|function[ _-]calling)\b["'`\s:]*(?:(?:is|are)\s+)?(?:not supported|unsupported)\b/i.test(
         message,
       ) ||
@@ -465,11 +481,22 @@ async function explicitlyRejectsTools(response: Response, signal?: AbortSignal):
       /\b(?:unknown|unrecognized|unsupported)\s+(?:parameter|argument)\s*:?\s*["'`]?(?:tools?|tool_choice)\b/i.test(
         message,
       )
-    );
+    )
+      return 'tools';
+    if (
+      /\b(?:stream_options|include_usage)\b["'`\s:]*(?:(?:is|are)\s+)?(?:not supported|unsupported|not permitted)\b/i.test(
+        message,
+      ) ||
+      /\b(?:unknown|unrecognized|unsupported)\s+(?:parameter|argument)\s*:?\s*["'`]?(?:stream_options|include_usage)\b/i.test(
+        message,
+      )
+    )
+      return 'usage';
+    return;
   } catch (error) {
     checkAbort(signal);
     if (error instanceof Error && error.name === 'AbortError') throw error;
-    return false;
+    return;
   }
 }
 
@@ -641,6 +668,7 @@ async function streamModelCompletion(
     signal,
     onDelta,
     maxTokens,
+    onMetrics,
   }: Omit<CompletionRequest, 'messages'> & { messages: ToolCompletionMessage[] },
   toolSettings?: {
     tools: ToolDefinition[];
@@ -672,7 +700,19 @@ async function streamModelCompletion(
     config.reasoningEffort && capabilities.reasoningEfforts.includes(config.reasoningEffort)
       ? config.reasoningEffort
       : capabilities.defaultReasoningEffort;
+  const started = performance.now();
+  const metrics: CompletionMetrics = {
+    id: crypto.randomUUID(),
+    outputBudget: budget,
+    elapsedMs: 0,
+    finished: false,
+  };
+  const report = () => onMetrics?.({ ...metrics, elapsedMs: performance.now() - started });
+  const trailer = new AbortController();
+  let trailerTimer: ReturnType<typeof setTimeout> | undefined;
   try {
+    checkAbort(signal);
+    report();
     const response = await request(
       config,
       'chat/completions',
@@ -681,6 +721,7 @@ async function streamModelCompletion(
         model: config.model,
         messages,
         stream: true,
+        ...(onMetrics ? { stream_options: { include_usage: true } } : {}),
         [capabilities.maxTokensParam]: budget,
         ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
         ...(toolSettings
@@ -692,6 +733,16 @@ async function streamModelCompletion(
     let output = '';
     let buffer = '';
     let finished = false;
+    let done = false;
+    let truncated = false;
+    const collectUsage = (value: unknown) => {
+      if (!isRecord(value)) return;
+      const usage = readTokenUsage(value['usage']);
+      const cost = readProviderCost(value['usage'], config.baseUrl);
+      if (usage) metrics.usage = { ...metrics.usage, ...usage };
+      if (cost) metrics.cost = cost;
+      if (usage || cost) report();
+    };
     const pendingCalls = new Map<
       number,
       { id?: string; type?: string; function: { name?: string; arguments: string } }
@@ -757,16 +808,12 @@ async function streamModelCompletion(
       if (value) onDelta?.(value);
     };
     const consumeChoice = (value: unknown, streaming: boolean) => {
+      collectUsage(value);
       const choice = responseChoices(value)[0];
       // Usage-only events have no choices.
       if (choice === undefined) return;
       if (!isRecord(choice))
         throw new ModelServiceError(_('The model service returned an invalid response.'));
-      if (choice['finish_reason'] === 'length')
-        throw new ModelServiceError(
-          _('The model response was cut short. Try a smaller chapter or another model.'),
-          'length',
-        );
       if (choice['finish_reason'] === 'content_filter')
         throw new ModelServiceError(_('The model service declined to generate these notes.'));
       const message = streaming ? choice['delta'] : choice['message'];
@@ -781,6 +828,9 @@ async function streamModelCompletion(
         append(message['content']);
         appendCalls(message['tool_calls'], streaming);
       }
+      // A terminal event (and a non-streaming response) can contain useful text.
+      // Publish it before reporting exhaustion so callers can retain/continue it.
+      if (choice['finish_reason'] === 'length') truncated = true;
       if (typeof choice['finish_reason'] === 'string') finished = true;
     };
     const event = (value: string) => {
@@ -791,26 +841,51 @@ async function streamModelCompletion(
       if (!data) return;
       if (data['trim']() === '[DONE]') {
         finished = true;
+        done = true;
+        return;
+      }
+      if (finished) {
+        // Only usage may follow the terminal choice. Ignore malformed trailers,
+        // later text and errors; they cannot alter the completed answer.
+        try {
+          collectUsage(JSON.parse(data));
+        } catch {
+          /* Optional metadata. */
+        }
         return;
       }
       consumeChoice(parseJson(data), true);
+      if (finished) {
+        if (!onMetrics) done = true;
+        else trailerTimer = setTimeout(() => trailer.abort(), 500);
+      }
     };
     if (response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
-      await consumeText(response, signal, (part) => {
-        if (finished) return false;
-        buffer += part;
-        let boundary = /\r?\n\r?\n/.exec(buffer);
-        while (boundary) {
-          event(buffer.slice(0, boundary.index));
-          buffer = buffer.slice(boundary.index + boundary[0].length);
-          // A terminal event may share a network chunk with a partial trailer.
-          // The completed response ends here; do not parse or emit that trailer.
-          if (finished) return false;
-          boundary = /\r?\n\r?\n/.exec(buffer);
-        }
-        return true;
-      });
-      if (!finished && buffer.trim()) event(buffer);
+      try {
+        await consumeText(
+          response,
+          signal,
+          (part) => {
+            if (done) return false;
+            buffer += part;
+            let boundary = /\r?\n\r?\n/.exec(buffer);
+            while (boundary) {
+              event(buffer.slice(0, boundary.index));
+              buffer = buffer.slice(boundary.index + boundary[0].length);
+              if (done) return false;
+              boundary = /\r?\n\r?\n/.exec(buffer);
+            }
+            return true;
+          },
+          MAX_RESPONSE_BYTES,
+          trailer.signal,
+        );
+      } catch (error) {
+        // Losing optional usage after a terminal choice does not lose the answer.
+        if (!finished) throw error;
+        checkAbort(signal);
+      }
+      if (!done && buffer.trim()) event(buffer);
       if (!finished)
         throw new ModelServiceError(
           _('The model connection ended before the response was complete. Try again.'),
@@ -822,6 +897,11 @@ async function streamModelCompletion(
       consumeChoice(parseJson(buffer), false);
     }
     checkAbort(signal);
+    if (truncated)
+      throw new ModelServiceError(
+        _('The model response was cut short. Try a smaller chapter or another model.'),
+        'length',
+      );
     const toolCalls = [...pendingCalls]
       .sort(([left], [right]) => left - right)
       .map(([index, call], position) => {
@@ -835,6 +915,10 @@ async function streamModelCompletion(
     return { text: output, toolCalls };
   } catch (error) {
     throw safeRequestError(error, signal);
+  } finally {
+    clearTimeout(trailerTimer);
+    metrics.finished = true;
+    report();
   }
 }
 
