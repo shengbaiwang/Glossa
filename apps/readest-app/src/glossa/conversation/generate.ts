@@ -5,6 +5,7 @@ import {
   type ProviderConfig,
 } from '@/glossa/ai/provider';
 import { checkAborted } from '@/glossa/context/text';
+import { scheduleRequest } from '@/glossa/harness/scheduler';
 import { stubTranslation as _ } from '@/utils/misc';
 import {
   ConversationError,
@@ -66,25 +67,31 @@ export async function generateConversation(
   const prompt = input.prompt?.trim() ?? '';
   if (prompt.length > 8000) throw new ConversationError(_('Use a shorter prompt.'));
   let received = '';
-  const raw = await complete({
-    config: input.config,
-    signal: input.signal,
-    maxTokens: input.config.maxTokens ?? 16384,
-    onMetrics: input.onMetrics,
-    messages: [
-      ...(prompt ? [{ role: 'system' as const, content: prompt }] : []),
-      { role: 'user', content: JSON.stringify(metadata) },
-      ...conversationMessages(input.turns),
-      { role: 'user', content: question },
-    ],
-    onDelta: (delta) => {
-      checkAborted(input.signal);
-      received += delta;
-      if (received.length > 32000)
-        throw new ConversationError(_('The reply is too long. Ask a more focused question.'));
-      input.onText?.(received);
-    },
-  });
+  const raw = await scheduleRequest(
+    input.config,
+    input.signal,
+    () =>
+      complete({
+        config: input.config,
+        signal: input.signal,
+        maxTokens: input.config.maxTokens ?? 16384,
+        onMetrics: input.onMetrics,
+        messages: [
+          ...(prompt ? [{ role: 'system' as const, content: prompt }] : []),
+          { role: 'user', content: JSON.stringify(metadata) },
+          ...conversationMessages(input.turns),
+          { role: 'user', content: question },
+        ],
+        onDelta: (delta) => {
+          checkAborted(input.signal);
+          received += delta;
+          if (received.length > 32000)
+            throw new ConversationError(_('The reply is too long. Ask a more focused question.'));
+          input.onText?.(received);
+        },
+      }),
+    'interactive',
+  );
   checkAborted(input.signal);
   if (!raw.trim() || raw.length > 32000)
     throw new ConversationError(_('The reply could not be completed. Try again.'));
@@ -106,22 +113,25 @@ export async function generateConversationTitle(
   input: TitleRequest,
   { complete = streamCompletion } = {},
 ): Promise<string> {
-  const raw = await complete({
-    // A title never needs deliberate reasoning; let the service default apply.
-    config: { ...input.config, reasoningEffort: undefined },
-    signal: input.signal,
-    maxTokens: 256,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          'Name this conversation in at most 12 words, in the same language as the question. Reply with the name only, without quotes or trailing punctuation.',
-          `Question: ${input.question.slice(0, 1000)}`,
-          `Answer: ${input.answer.slice(0, 2000)}`,
-        ].join('\n\n'),
-      },
-    ],
-  });
+  const signal = input.signal ?? new AbortController().signal;
+  const raw = await scheduleRequest(input.config, signal, () =>
+    complete({
+      // A title never needs deliberate reasoning; let the service default apply.
+      config: { ...input.config, reasoningEffort: undefined },
+      signal,
+      maxTokens: 256,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            'Name this conversation in at most 12 words, in the same language as the question. Reply with the name only, without quotes or trailing punctuation.',
+            `Question: ${input.question.slice(0, 1000)}`,
+            `Answer: ${input.answer.slice(0, 2000)}`,
+          ].join('\n\n'),
+        },
+      ],
+    }),
+  );
   return (raw.split('\n')[0] ?? '')
     .replace(/^[\s"'“”‘’「『#*<>-]+|[\s"'“”‘’」』#*<>.,，。!！?？:：;；、-]+$/g, '')
     .replace(/\s+/g, ' ')

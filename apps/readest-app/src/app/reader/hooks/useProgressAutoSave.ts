@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useBookDataStore, flushPendingLibrarySave } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
@@ -23,29 +23,35 @@ export const useProgressAutoSave = (bookKey: string) => {
   const lastSavedLocationRef = useRef<string | null>(null);
   const initializedRef = useRef(false);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const saveBookConfig = useCallback(
-    debounce(() => {
-      setTimeout(async () => {
-        // Skip while previewing a deep-link target — the user's actual
-        // last-read position should not be overwritten by a transient view.
-        if (useReaderStore.getState().getViewState(bookKey)?.previewMode) return;
-        const config = getConfig(bookKey);
-        if (!config) return;
-        const currentLocation = config.location ?? null;
-        if (!initializedRef.current) {
-          initializedRef.current = true;
-          lastSavedLocationRef.current = currentLocation;
-          return;
-        }
-        if (currentLocation === lastSavedLocationRef.current) return;
-        const settings = useSettingsStore.getState().settings;
-        await saveConfig(envConfig, bookKey, config, settings);
-        lastSavedLocationRef.current = currentLocation;
-      }, 500);
-    }, 1000),
-    [],
-  );
+  const runtimeRef = useRef({ envConfig, getConfig, saveConfig });
+  runtimeRef.current = { envConfig, getConfig, saveConfig };
+  const saveBookConfigNow = useCallback(async () => {
+    const { envConfig, getConfig, saveConfig } = runtimeRef.current;
+    // Skip while previewing a deep-link target — the user's actual
+    // last-read position should not be overwritten by a transient view.
+    if (useReaderStore.getState().getViewState(bookKey)?.previewMode) return;
+    const config = getConfig(bookKey);
+    if (!config) return;
+    const currentLocation = config.location ?? null;
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      lastSavedLocationRef.current = currentLocation;
+      return;
+    }
+    if (currentLocation === lastSavedLocationRef.current) return;
+    const settings = useSettingsStore.getState().settings;
+    const previousLocation = lastSavedLocationRef.current;
+    // Mark before awaiting so close + a pending timer cannot save twice.
+    lastSavedLocationRef.current = currentLocation;
+    try {
+      await saveConfig(envConfig, bookKey, config, settings);
+    } catch {
+      if (lastSavedLocationRef.current === currentLocation) {
+        lastSavedLocationRef.current = previousLocation;
+      }
+    }
+  }, [bookKey]);
+  const saveBookConfig = useMemo(() => debounce(saveBookConfigNow, 1500), [saveBookConfigNow]);
 
   useEffect(() => {
     // Snapshot the loaded-from-disk location before any progress events fire,
@@ -65,17 +71,17 @@ export const useProgressAutoSave = (bookKey: string) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progress, bookKey]);
 
-  // On unmount (book closed / navigated away), flush any pending throttled
-  // library.json write so the shelf reflects this session's last read
-  // position next time it loads. The per-book config.json is already on
-  // disk from the eager save in `saveConfig`, so this only catches the
-  // library-level rollup.
+  // A quick close can beat the debounce. Persist the actual last location
+  // first, then flush its library rollup; never leave a timer writing later.
   useEffect(() => {
     return () => {
-      flushPendingLibrarySave().catch(() => {
-        // Best-effort on teardown — failures fall through to next launch's
-        // reconstruction from per-book config.json files.
-      });
+      saveBookConfig.cancel();
+      saveBookConfigNow()
+        .then(flushPendingLibrarySave)
+        .catch(() => {
+          // Best-effort on teardown — failures fall through to next launch's
+          // reconstruction from per-book config.json files.
+        });
     };
-  }, []);
+  }, [saveBookConfig, saveBookConfigNow]);
 };

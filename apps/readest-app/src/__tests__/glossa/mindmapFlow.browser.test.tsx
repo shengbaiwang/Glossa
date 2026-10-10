@@ -392,11 +392,10 @@ it('generates into the editable workspace, keeps verified excerpts through edits
   f.progress.location = returnSource.anchor.cfi;
   f.goTo.mockImplementation((cfi: string) => view!.goTo(cfi));
 
-  await page.getByRole('button', { name: '首先辨认 它回答了什么问题', exact: true }).click();
-  const excerpt = await screen.findByRole('complementary', { name: 'Source excerpt' });
+  await page.getByRole('button', { name: '它回答了什么问题', exact: true }).click();
   await waitFor(() => expect(f.goTo).toHaveBeenLastCalledWith(expectedSource.anchor.cfi));
   await waitFor(() => expect(screen.queryByText('Locating source…')).toBeNull());
-  expect(excerpt.querySelector('blockquote')?.textContent).toBe(expectedSource.text);
+  expect(screen.queryByRole('complementary', { name: 'Source excerpt' })).toBeNull();
   const resolved = view.resolveCFI(expectedSource.anchor.cfi);
   expect(resolved.anchor?.(view.renderer.getContents()[0]!.doc)?.toString()).toBe(
     expectedSource.text,
@@ -404,11 +403,11 @@ it('generates into the editable workspace, keeps verified excerpts through edits
 
   await page.getByRole('button', { name: 'Edit idea', exact: true }).click();
   await page.getByRole('textbox', { name: 'Idea text', exact: true }).fill('先找到作者的问题');
-  expect(excerpt.querySelector('blockquote')?.textContent).toBe(expectedSource.text);
-  expect(screen.getByText('Edited idea')).toBeTruthy();
+  expect(screen.queryByRole('complementary', { name: 'Source excerpt' })).toBeNull();
+  expect(screen.getByText('Original idea: 它回答了什么问题')).toBeTruthy();
   await page.getByRole('button', { name: 'Done', exact: true }).click();
   await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Idea text' })).toBeNull());
-  expect(screen.getByRole('button', { name: '首先辨认 先找到作者的问题' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '先找到作者的问题' })).toBeTruthy();
 
   await page.getByRole('button', { name: 'Child idea', exact: true }).click();
   await page.getByRole('textbox', { name: 'Idea text', exact: true }).fill('我的补充思考');
@@ -427,16 +426,16 @@ it('generates into the editable workspace, keeps verified excerpts through edits
 
   panel.unmount();
   const reopened = render(workspace());
-  await screen.findByRole('button', { name: '首先辨认 先找到作者的问题' });
+  await screen.findByRole('button', { name: '先找到作者的问题' });
   expect(screen.getByRole('button', { name: '我的补充思考' })).toBeTruthy();
-  await page.getByRole('button', { name: '首先辨认 先找到作者的问题', exact: true }).click();
-  await screen.findByRole('complementary', { name: 'Source excerpt' });
+  await page.getByRole('button', { name: '先找到作者的问题', exact: true }).click();
   await waitFor(() => expect(screen.queryByText('Locating source…')).toBeNull());
-  expect(screen.getByText('Edited idea')).toBeTruthy();
+  expect(screen.queryByRole('complementary', { name: 'Source excerpt' })).toBeNull();
+  expect(screen.getByText('Original idea: 它回答了什么问题')).toBeTruthy();
   expect(f.complete).toHaveBeenCalledTimes(1);
   const callCount = f.goTo.mock.calls.length;
   await page.getByRole('button', { name: 'Mind map', exact: true }).click();
-  await page.getByRole('button', { name: '首先辨认 先找到作者的问题', exact: true }).click();
+  await page.getByRole('button', { name: '先找到作者的问题', exact: true }).click();
   await waitFor(() => expect(f.goTo.mock.calls.length).toBe(callCount + 1));
   await waitFor(() => expect(screen.queryByText('Locating source…')).toBeNull());
   await page.getByRole('button', { name: 'Outline view', exact: true }).click();
@@ -455,6 +454,9 @@ it('generates into the editable workspace, keeps verified excerpts through edits
   await page.viewport(280, 900);
   expect(screen.getByTestId('map-workspace-sidebar').scrollWidth).toBeLessThanOrEqual(280);
   await page.screenshot({ path: '../../../../../.glossa-dev/qa/mindmap-integrated-narrow.png' });
+  view.style.display = '';
+  screen.getByTestId('map-workspace-sidebar').style.width = '390px';
+  await page.viewport(1160, 900);
 
   f.chinese = false;
   reopened.rerender(workspace());
@@ -480,13 +482,10 @@ it('generates into the editable workspace, keeps verified excerpts through edits
   expect(screen.getByText('Saved on this device')).toBeTruthy();
   reopened.unmount();
   render(workspace());
-  await screen.findByRole('button', { name: '首先辨认 先找到作者的问题' });
-  fireEvent.click(screen.getByRole('button', { name: '首先辨认 先找到作者的问题' }));
-  expect(
-    (await screen.findByRole('complementary', { name: 'Source excerpt' })).querySelector(
-      'blockquote',
-    )?.textContent,
-  ).toBe(expectedSource.text);
+  await screen.findByRole('button', { name: '先找到作者的问题' });
+  fireEvent.click(screen.getByRole('button', { name: '先找到作者的问题' }));
+  await waitFor(() => expect(screen.queryByText('Locating source…')).toBeNull());
+  expect(screen.queryByRole('complementary', { name: 'Source excerpt' })).toBeNull();
   expect(screen.queryByRole('alert')).toBeNull();
 }, 30_000);
 
@@ -668,7 +667,7 @@ it('covers the whole EPUB, expands a verified node, preserves edits and hands it
   await view.goTo(firstSource.anchor.cfi);
   f.progress.location = firstSource.anchor.cfi;
   f.goTo.mockImplementation((cfi: string) => view!.goTo(cfi));
-  fireEvent.click(screen.getByRole('button', { name: '需要 理由与条件' }));
+  fireEvent.click(screen.getByRole('button', { name: '理由与条件' }));
   await waitFor(() => expect(screen.queryByText('Locating source…')).toBeNull());
   fireEvent.click(screen.getByRole('button', { name: 'Edit idea' }));
   fireEvent.change(screen.getByRole('textbox', { name: 'Idea text' }), {
@@ -682,7 +681,7 @@ it('covers the whole EPUB, expands a verified node, preserves edits and hands it
   const details = screen.getByRole('button', { name: 'Generate details' });
   await waitFor(() => expect(details.hasAttribute('disabled')).toBe(false));
   fireEvent.click(details);
-  await screen.findByRole('button', { name: '需要 核对例证边界' });
+  await screen.findByRole('button', { name: '核对例证边界' });
   await waitFor(async () =>
     expect((await loadMapWorkspace(book.hash)).maps[0]!.extensions).toHaveLength(1),
   );
@@ -693,18 +692,17 @@ it('covers the whole EPUB, expands a verified node, preserves edits and hands it
   const extensionSources = getMapNodeSources(expanded, extensionNode.id);
   expect(extensionSources).toHaveLength(1);
   fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-  expect(screen.queryByRole('button', { name: '需要 核对例证边界' })).toBeNull();
-  expect(screen.getByRole('button', { name: '需要 我的条件概括' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '核对例证边界' })).toBeNull();
+  expect(screen.getByRole('button', { name: '我的条件概括' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
-  await screen.findByRole('button', { name: '需要 核对例证边界' });
+  await screen.findByRole('button', { name: '核对例证边界' });
   fireEvent.click(screen.getByRole('button', { name: 'Idea menu' }));
   fireEvent.click(screen.getByRole('button', { name: 'Ask about idea' }));
   expect(ask.mock.calls[0]![0].question).toContain('我的条件概括');
-  fireEvent.click(screen.getByRole('button', { name: '需要 核对例证边界' }));
+  fireEvent.click(screen.getByRole('button', { name: '核对例证边界' }));
   await waitFor(() => expect(f.goTo).toHaveBeenLastCalledWith(extensionSources[0]!.anchor.cfi));
   await waitFor(() => expect(screen.queryByText('Locating source…')).toBeNull());
-  const excerpt = await screen.findByRole('complementary', { name: 'Source excerpt' });
-  expect(excerpt.querySelector('blockquote')?.textContent).toBe(extensionSources[0]!.text);
+  expect(screen.queryByRole('complementary', { name: 'Source excerpt' })).toBeNull();
   const resolved = view.resolveCFI(extensionSources[0]!.anchor.cfi);
   await waitFor(() =>
     expect(view!.resolveCFI(view!.lastLocation!.cfi!).index).toBe(resolved.index),
@@ -724,7 +722,7 @@ it('covers the whole EPUB, expands a verified node, preserves edits and hands it
   fireEvent.click(screen.getByRole('button', { name: 'Mind map menu' }));
   panel.unmount();
   const reopened = render(workspace());
-  await screen.findByRole('button', { name: '需要 核对例证边界' });
+  await screen.findByRole('button', { name: '核对例证边界' });
   expect(f.complete).toHaveBeenCalledTimes(callCount);
   f.chinese = true;
   reopened.rerender(workspace());
@@ -785,6 +783,80 @@ it('exports complete long labels as a readable SVG with no text outside its node
     svg.remove();
   }
 });
+
+it('restores the failure reason at zero progress and repairs only after the user retries', async () => {
+  const { book, doc, chapters } = await fixture();
+  const useMap = vi.fn();
+  f.complete.mockResolvedValue('INVALID_RESPONSE');
+  const panel = () => (
+    <div className='glossa-workmap' style={{ width: '100%', minHeight: '100vh', padding: 20 }}>
+      <MindmapGeneration book={book} bookDoc={doc} bookKey={book.hash} onUseMap={useMap} />
+    </div>
+  );
+  const first = render(panel());
+  const select = () =>
+    fireEvent.change(screen.getByRole('combobox', { name: 'Chapter' }), {
+      target: { value: chapters[0]!.id },
+    });
+  select();
+  const generate = screen.getByRole('button', { name: 'Generate mind map' });
+  await waitFor(() => expect(generate.hasAttribute('disabled')).toBe(false));
+  fireEvent.click(generate);
+  await screen.findByRole('alert');
+  await screen.findByRole('button', { name: 'Retry generation' });
+  expect(f.complete).toHaveBeenCalledTimes(3);
+  expect(useMap).not.toHaveBeenCalled();
+  first.unmount();
+  const reopened = render(panel());
+  select();
+  await screen.findByRole('button', { name: 'Retry generation' });
+  expect(screen.getByRole('alert').textContent).toContain('unreadable JSON');
+  expect(screen.getByRole('status').textContent).toContain('0 / 1');
+  expect(f.complete).toHaveBeenCalledTimes(3);
+  f.chinese = true;
+  reopened.rerender(panel());
+  document.documentElement.setAttribute('data-theme', 'default-dark');
+  await page.viewport(320, 780);
+  expect(screen.getByRole('alert').textContent).toBe('模型返回格式无法读取，可重试修正。');
+  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(320);
+  await page.screenshot({ path: '../../../../../.glossa-dev/qa/mindmap-invalid-retry-dark.png' });
+  f.chinese = false;
+  reopened.rerender(panel());
+  f.complete.mockImplementation(async (request: CompletionRequest) => {
+    const payload = JSON.parse(request.messages.at(-1)!.content) as {
+      sources?: { sourceId: string }[];
+      points?: { sourceIds: string[] }[];
+    };
+    if (payload.sources)
+      return JSON.stringify({
+        coveredSourceIds: payload.sources.map((source) => source.sourceId),
+        points: [
+          { text: 'Conclusions depend on conditions.', sourceIds: [payload.sources[0]!.sourceId] },
+        ],
+      });
+    return JSON.stringify({
+      nodes: [
+        {
+          id: 'root',
+          parentId: null,
+          label: 'Conditions',
+          relation: '',
+          explanation: 'Conclusions depend on conditions.',
+          sourceIds: payload.points![0]!.sourceIds,
+          kind: 'source',
+        },
+      ],
+      insufficientEvidence: false,
+    });
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Retry generation' }));
+  await waitFor(() => expect(useMap).toHaveBeenCalledTimes(1));
+  expect(f.complete).toHaveBeenCalledTimes(5);
+  expect(f.complete.mock.calls[3]![0].messages[0].content).toContain(
+    'Previous response failed validation',
+  );
+  expect(screen.queryByRole('alert')).toBeNull();
+}, 30000);
 
 it('reopens saved whole-book reading results and retries only the failed synthesis', async () => {
   motionStyle = document.createElement('style');

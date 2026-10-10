@@ -152,6 +152,16 @@ describe('isCfiAtLocation', () => {
 });
 
 describe('findBookmarksAtLocation', () => {
+  it('matches legacy page bookmarks and precise anchors on the same fixed-layout page', () => {
+    const bookmarks = [
+      bookmark('legacy-page', 'epubcfi(/6/4)'),
+      bookmark('page-top', 'epubcfi(/6/4!/4/1:0)'),
+      bookmark('other-page', 'epubcfi(/6/6)'),
+    ];
+    expect(
+      findBookmarksAtLocation(bookmarks, 'epubcfi(/6/4!/4/1:500)', true).map((item) => item.id),
+    ).toEqual(['legacy-page', 'page-top']);
+  });
   const location = 'epubcfi(/6/4!/4,/1:0,/1:400)';
   const bookmark = (id: string, cfi: string): BookNote => ({
     id,

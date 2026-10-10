@@ -2,7 +2,7 @@ import { validateProviderConfig, type ProviderConfig } from '@/glossa/ai/provide
 import type { ChapterSource } from '@/glossa/context/types';
 import type { MapCoverage } from './schema';
 
-export const MINDMAP_PROMPT_VERSION = 'mindmap-2';
+export const MINDMAP_PROMPT_VERSION = 'mindmap-3';
 export const MINDMAP_SCHEMA_VERSION = 1;
 
 export async function hashMindmapData(value: unknown): Promise<string> {

@@ -22,6 +22,8 @@ import {
 } from '@/glossa/conversation/schema';
 import { stubTranslation as _ } from '@/utils/misc';
 import { asksForOverview } from './retrieval';
+import type { RunTrace } from './trace';
+import { scheduleRequest } from './scheduler';
 import {
   getOutline,
   MAX_READING_SOURCE_CHARS as MAX_SOURCE_CHARS,
@@ -54,6 +56,7 @@ export interface ReadingConversationRequest {
   onText?: (text: string, sources: ChapterSource[]) => void;
   onStage?: (label: string) => void;
   onMetrics?: CompletionRequest['onMetrics'];
+  onTrace?: (trace: RunTrace) => void;
 }
 
 export interface ReadingConversationResult {
@@ -62,6 +65,7 @@ export interface ReadingConversationResult {
   sources: ChapterSource[];
   mode: 'tools' | 'direct';
   coverage?: ReadingAnswer['coverage'];
+  trace?: RunTrace;
 }
 
 const readArguments = z
@@ -369,20 +373,26 @@ export async function generateReadingConversation(
       let response;
       try {
         response = await withinRequest(() =>
-          complete({
-            config: input.config,
-            messages: [...messages],
-            tools,
-            toolChoice,
+          scheduleRequest(
+            input.config,
             signal,
-            maxTokens: input.config.maxTokens ?? 16384,
-            onMetrics: input.onMetrics,
-            onDelta: (delta) => {
-              if (!active || signal.aborted) return;
-              received += delta;
-              publish(received);
-            },
-          }),
+            () =>
+              complete({
+                config: input.config,
+                messages: [...messages],
+                tools,
+                toolChoice,
+                signal,
+                maxTokens: input.config.maxTokens ?? 16384,
+                onMetrics: input.onMetrics,
+                onDelta: (delta) => {
+                  if (!active || signal.aborted) return;
+                  received += delta;
+                  publish(received);
+                },
+              }),
+            'interactive',
+          ),
         );
       } catch (error) {
         if (
@@ -394,25 +404,31 @@ export async function generateReadingConversation(
         received = '';
         publish('');
         const text = await withinRequest(() =>
-          directComplete({
-            config: input.config,
-            messages: [
-              ...initialMessages,
-              {
-                role: 'system',
-                content:
-                  'Tools are unavailable for this request. Answer only from the supplied evidence; do not claim to have performed any searches.',
-              },
-            ],
+          scheduleRequest(
+            input.config,
             signal,
-            maxTokens: input.config.maxTokens ?? 16384,
-            onMetrics: input.onMetrics,
-            onDelta: (delta) => {
-              if (!active || signal.aborted) return;
-              received += delta;
-              publish(received);
-            },
-          }),
+            () =>
+              directComplete({
+                config: input.config,
+                messages: [
+                  ...initialMessages,
+                  {
+                    role: 'system',
+                    content:
+                      'Tools are unavailable for this request. Answer only from the supplied evidence; do not claim to have performed any searches.',
+                  },
+                ],
+                signal,
+                maxTokens: input.config.maxTokens ?? 16384,
+                onMetrics: input.onMetrics,
+                onDelta: (delta) => {
+                  if (!active || signal.aborted) return;
+                  received += delta;
+                  publish(received);
+                },
+              }),
+            'interactive',
+          ),
         );
         return finish(text, 'direct');
       }

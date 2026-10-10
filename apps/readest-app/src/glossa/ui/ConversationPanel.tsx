@@ -515,6 +515,9 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
         onStage: (label: string) => {
           if (!controller.signal.aborted && !settled && mounted.current) setReadingStage(label);
         },
+        onTrace: (trace: NonNullable<ReadingAnswer['trace']>) => {
+          if (!settled && reading) reading = { ...reading, trace };
+        },
         onText: (value: string, sources?: ChapterSource[]) => {
           if (!controller.signal.aborted && mounted.current && !settled) {
             text = value;
@@ -547,6 +550,7 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
           sources: answer.sources,
           mode: answer.mode,
           ...(answer.coverage ? { coverage: answer.coverage } : {}),
+          ...(answer.trace ? { trace: answer.trace } : {}),
         };
       }
       usage.onText(text);

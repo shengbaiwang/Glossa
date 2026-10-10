@@ -67,6 +67,7 @@ export const isCfiAtLocation = (
 export const findBookmarksAtLocation = (
   bookmarks: BookNote[],
   location: string | null | undefined,
+  fixedLayout = false,
 ): BookNote[] => {
   if (!location || !isCanonicalCfi(location) || bookmarks.length === 0) return [];
   let start: string;
@@ -81,6 +82,9 @@ export const findBookmarksAtLocation = (
     if (!bookmark?.cfi || !isCanonicalCfi(bookmark.cfi)) return false;
     try {
       const point = CFI.collapse(bookmark.cfi);
+      if (fixedLayout) {
+        return CFI.fake.toIndex(CFI.parse(point)[0]) === CFI.fake.toIndex(CFI.parse(start)[0]);
+      }
       return CFI.compare(point, start) >= 0 && CFI.compare(point, end) <= 0;
     } catch {
       return false;

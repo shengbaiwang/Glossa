@@ -55,6 +55,13 @@ describe('mindmap source and tree protocol', () => {
     expect(parseMindmap(JSON.stringify(body()), sources)).toEqual(body());
     expect(parseMindmap('{"nodes":[],"insufficientEvidence":true}', sources).nodes).toEqual([]);
   });
+  it('accepts an unlabeled grouping edge while preserving source and tree checks', () => {
+    const map = body();
+    map.nodes[1]!.relation = '';
+    expect(parseMindmap(JSON.stringify(map), sources)).toEqual(map);
+    map.nodes[1]!.sourceIds = ['invented'];
+    expect(() => parseMindmap(JSON.stringify(map), sources)).toThrow();
+  });
   it.each([
     [
       'unknown source',
@@ -65,8 +72,8 @@ describe('mindmap source and tree protocol', () => {
     ['cycle', () => ({ ...body(), nodes: [node('root'), node('a', 'b'), node('b', 'a')] })],
     ['multiple roots', () => ({ ...body(), nodes: [node('root'), node('other')] })],
     [
-      'missing relationship',
-      () => ({ ...body(), nodes: [node('root'), { ...node('a', 'root'), relation: '' }] }),
+      'relationship on root',
+      () => ({ ...body(), nodes: [{ ...node('root'), relation: 'requires' }] }),
     ],
     ['invented location', () => ({ ...body(), nodes: [{ ...node('root'), cfi: 'fake' }] })],
     [

@@ -85,6 +85,27 @@ afterEach(() => {
 });
 
 describe('useProgressAutoSave', () => {
+  test('persists the last reading position when the book closes before the debounce', async () => {
+    const { rerender, unmount } = renderHook(() => useProgressAutoSave('h1-view1'));
+    h.state.config = { location: 'pdf-page-3-position', updatedAt: 1000 };
+    h.state.progress = { location: 'pdf-page-3-position' };
+    rerender();
+    unmount();
+    expect(h.saveConfigMock).toHaveBeenCalledTimes(1);
+    await flushDebouncedSave();
+    expect(h.saveConfigMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not persist a preview position on close', async () => {
+    const { rerender, unmount } = renderHook(() => useProgressAutoSave('h1-view1'));
+    h.state.previewMode = true;
+    h.state.config = { location: 'pdf-preview', updatedAt: 1000 };
+    h.state.progress = { location: 'pdf-preview' };
+    rerender();
+    unmount();
+    await flushDebouncedSave();
+    expect(h.saveConfigMock).not.toHaveBeenCalled();
+  });
   test('skips save on book open when location matches the loaded config', async () => {
     // Bug from issue #4222: opening a book where the in-memory location still
     // matches what was loaded from disk should not call saveConfig — doing so

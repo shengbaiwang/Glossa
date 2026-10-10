@@ -5,6 +5,7 @@ import { passageSourcesSchema } from '@/glossa/passages/schema';
 import { stubTranslation as _ } from '@/utils/misc';
 import { conversationReadingScopeSchema } from '@/glossa/harness/scope';
 import { replyUsageSchema } from './usage';
+import { runTraceSchema } from '@/glossa/harness/trace';
 
 export class ConversationError extends Error {}
 export const CONVERSATION_PROMPT_VERSION = 'conversation-3';
@@ -50,6 +51,7 @@ export const readingAnswerSchema = z
           sources.every((source) => source.text === source.anchor.quote.exact),
       ),
     mode: z.enum(['tools', 'direct']),
+    trace: runTraceSchema.optional(),
     coverage: z
       .object({
         strategy: z.enum(['overview', 'search']),

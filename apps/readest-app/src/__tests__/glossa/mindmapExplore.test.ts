@@ -148,6 +148,17 @@ it('runs independent inventories concurrently and waits for both before synthesi
   expect(call).toHaveBeenCalledTimes(3);
 });
 
+it('grounds synthesis in complete original evidence as well as intermediate interpretations', async () => {
+  const call = complete();
+  await generateOverviewMap(options(), { complete: call });
+  const request = call.mock.calls.at(-1)![0];
+  const material = JSON.parse(request.messages.at(-1)!.content);
+  expect(material.originalSources.map((s: ChapterSource) => s.text)).toEqual(
+    sources.map((s) => s.text),
+  );
+  expect(material.originalSources.map((s: ChapterSource) => s.sourceId)).toEqual(['m1', 'm2']);
+});
+
 it('packs small sections without adding model requests just to align chapter boundaries', async () => {
   const input = options();
   const material = Array.from({ length: 12 }, (_, index) => {

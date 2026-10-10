@@ -24,6 +24,18 @@ import { stubTranslation as _ } from '@/utils/misc';
 import { sourceWire as wire, type BookReadingAccess } from './book';
 import { answerBookSearch } from './searchAnswer';
 import {
+  argumentInventorySchema,
+  argumentPointsSchema,
+  readInventory,
+  inventoryPrompt,
+  EvidenceError,
+} from './evidence';
+import { chooseReadingTurns } from './history';
+import { createRunTrace, type TraceStage, type RunTrace } from './trace';
+import { scheduleRequest } from './scheduler';
+import { hashData, type DerivedStore } from './derivedStore';
+import { readingInventoryStore } from './inventoryCache';
+import {
   conversationReadingScopeSchema,
   readingScopeSchema,
   type ConversationReadingScope,
@@ -65,25 +77,11 @@ const planSchema = z
     queries: z.array(z.string().trim().min(1).max(200)).max(4),
   })
   .strict();
-const inventorySchema = z
-  .object({
-    coveredSourceIds: z.array(z.string().max(200)).max(200),
-    points: z
-      .array(
-        z
-          .object({
-            text: z.string().trim().min(1).max(1000),
-            sourceIds: z.array(z.string().max(200)).min(1).max(4),
-          })
-          .strict(),
-      )
-      .max(80),
-  })
-  .strict();
+const inventorySchema = argumentInventorySchema;
 // Only validated intermediate interpretations are retained, in memory, per open
 // book access. Originals remain the authority. No book text is stored in settings.
 const inventories = new WeakMap<BookReadingAccess, Map<string, z.infer<typeof inventorySchema>>>();
-const INVENTORY_VERSION = 'inventory-context-3';
+const INVENTORY_VERSION = 'inventory-context-4';
 function inventoryCache(access: BookReadingAccess) {
   let cache = inventories.get(access);
   if (!cache) {
@@ -126,12 +124,21 @@ export interface BookConversationRequest {
   onText?: (text: string, sources: ChapterSource[]) => void;
   onStage?: (label: string) => void;
   onMetrics?: CompletionRequest['onMetrics'];
+  onTrace?: (trace: RunTrace) => void;
 }
 
 /** A finite plan → local reads → (optional inventories) → sourced answer, not an autonomous agent. */
 export async function generateBookConversation(
   input: BookConversationRequest,
-  { complete = streamCompletion, completeTools = streamToolCompletion } = {},
+  {
+    complete = streamCompletion,
+    completeTools = streamToolCompletion,
+    inventoryStore = readingInventoryStore,
+  }: {
+    complete?: typeof streamCompletion;
+    completeTools?: typeof streamToolCompletion;
+    inventoryStore?: DerivedStore<z.infer<typeof argumentPointsSchema>>;
+  } = {},
 ): Promise<ReadingConversationResult> {
   checkAborted(input.signal);
   const scope = conversationReadingScopeSchema.parse(input.scope);
@@ -143,6 +150,7 @@ export async function generateBookConversation(
   if (input.access.documentHash !== scope.documentHash)
     throw new ConversationError(_('The reading source belongs to another book.'));
   const metadata = chatIdentitySchema.parse(input.metadata);
+  const trace = createRunTrace(input.onTrace);
   const controller = new AbortController();
   const abort = () => controller.abort();
   input.signal.addEventListener('abort', abort, { once: true });
@@ -156,31 +164,79 @@ export async function generateBookConversation(
     scope.kind !== 'book' || overview ? BOOK_REQUEST_TIMEOUT_MS : 120000,
   );
   const signal = controller.signal;
-  let calls = 0;
+  let calls = 0,
+    corrections = 0;
+  let activeStage: TraceStage = 'read';
   const stage = (label: string) => {
     checkAborted(signal);
     input.onStage?.(label);
   };
+  const dispatch = async <T>(stage: TraceStage, run: () => Promise<T>): Promise<T> =>
+    scheduleRequest(
+      input.config,
+      signal,
+      async () => {
+        checkAborted(signal);
+        if (calls >= (overview || scope.kind !== 'book' ? MAX_BATCHES + 12 : 5))
+          throw new ConversationError(
+            _('The reading request exceeded its limit. Choose a chapter.'),
+          );
+        calls++;
+        activeStage = stage;
+        trace.add(stage, 'started', { calls });
+        const value = await run();
+        checkAborted(signal);
+        trace.add(stage, 'complete', { calls });
+        return value;
+      },
+      stage === 'inventory' ? 'background' : 'interactive',
+    );
   const ask = async (
     messages: CompletionMessage[],
     onDelta?: (delta: string) => void,
     maxTokens = 16384,
+    requestStage: TraceStage = 'answer',
   ) => {
-    if (++calls > MAX_BATCHES + 12)
-      throw new ConversationError(_('The reading request exceeded its limit. Choose a chapter.'));
-    checkAborted(signal);
-    const value = await complete({
-      config: input.config,
-      messages,
-      signal,
-      maxTokens,
-      onMetrics: input.onMetrics,
-      onDelta,
-    });
-    checkAborted(signal);
+    const value = await dispatch(requestStage, () =>
+      complete({
+        config: input.config,
+        messages,
+        signal,
+        maxTokens,
+        onMetrics: input.onMetrics,
+        onDelta,
+      }),
+    );
     if (value.length > 120000)
-      throw new ConversationError(_('The model response was too large. Choose a smaller range.'));
+      throw new ConversationError(_('The reply is too long. Ask a more focused question.'));
     return value;
+  };
+  // A timeout cancels a pending write; cache failure is disposable, never a task failure.
+  const cached = async <T>(
+    operation: (cacheSignal: AbortSignal) => Promise<T>,
+  ): Promise<T | null> => {
+    const local = new AbortController();
+    const cancel = () => local.abort();
+    signal.addEventListener('abort', cancel, { once: true });
+    if (signal.aborted) cancel();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        operation(local.signal),
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => {
+            local.abort();
+            resolve(null);
+          }, 1000);
+        }),
+      ]);
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', cancel);
+      local.abort();
+    }
   };
   const sourceWire = (source: ChapterSource) => wire(source, input.access);
   const work = async () => {
@@ -189,7 +245,8 @@ export async function generateBookConversation(
     const oldSources: ChapterSource[] = [];
     let historyChars = 0;
     const previousQuestions: string[] = [];
-    for (const turn of input.turns.slice().reverse()) {
+    const retained: typeof input.turns = [];
+    for (const turn of chooseReadingTurns(input.turns, question)) {
       if (
         turn.status !== 'complete' ||
         turn.reading?.scope.kind !== scope.kind ||
@@ -206,11 +263,11 @@ export async function generateBookConversation(
       const cited = parsed.data.sources.filter((source) => citedIds.has(source.sourceId));
       if (
         historyChars + turn.question.length + turn.text.length > 12000 ||
-        history.length >= 8 ||
+        retained.length >= 4 ||
         size(unique([...oldSources, ...cited])) > 12000 ||
         unique([...oldSources, ...cited]).length > 80
       )
-        break;
+        continue;
       const verified = await input.access.verifySources(cited, signal);
       if (
         verified.length !== cited.length ||
@@ -219,12 +276,19 @@ export async function generateBookConversation(
         continue;
       oldSources.push(...verified);
       historyChars += turn.question.length + turn.text.length;
-      previousQuestions.unshift(turn.question);
-      history.unshift(
+      retained.push(turn);
+    }
+    for (const turn of input.turns.filter((turn) => retained.includes(turn))) {
+      previousQuestions.push(turn.question);
+      history.push(
         { role: 'user', content: turn.question },
-        { role: 'assistant', content: sanitizeReadingCitations(turn.text, verified) },
+        { role: 'assistant', content: sanitizeReadingCitations(turn.text, oldSources) },
       );
     }
+    trace.add('history', 'complete', {
+      sources: unique(oldSources).length,
+      characters: historyChars,
+    });
     const chapters = input.access.chapters;
     if (chapters.length > 1000 || JSON.stringify(chapters).length > 80000)
       throw new ConversationError(_('The book outline is too large. Choose a reading passage.'));
@@ -249,10 +313,10 @@ export async function generateBookConversation(
       ];
       let raw: string;
       try {
-        raw = await ask(messages, undefined, 4096);
+        raw = await ask(messages, undefined, 4096, 'plan');
       } catch (error) {
         if (!isTruncated(error)) throw error;
-        raw = await ask(messages, undefined, 8192);
+        raw = await ask(messages, undefined, 8192, 'plan');
       }
       let result: z.infer<typeof planSchema>;
       try {
@@ -324,6 +388,10 @@ export async function generateBookConversation(
     }
     checkAborted(signal);
     target = unique(target);
+    trace.add(plan.strategy === 'search' ? 'search' : 'read', 'complete', {
+      sources: target.length,
+      characters: size(target),
+    });
     const title = (
       focus
         ? _('Current passage')
@@ -376,35 +444,71 @@ export async function generateBookConversation(
               question,
               prompt,
               title,
-              sources: part,
+              sources: part.map((source) => ({ ...sourceWire(source), anchor: source.anchor })),
             }),
           );
-          const cached = cache.get(key);
-          if (cached) {
+          const storageKey = await hashData({ version: INVENTORY_VERSION, key }).catch(() => null);
+          let hit = cache.get(key);
+          if (!hit && storageKey) {
+            const stored = await cached(() => inventoryStore.load(storageKey));
+            if (stored) {
+              try {
+                hit = readInventory(
+                  JSON.stringify({
+                    coveredSourceIds: part.map((source) => source.sourceId),
+                    points: stored,
+                  }),
+                  part,
+                );
+                rememberInventory(cache, key, hit);
+              } catch {
+                /* A corrupt derived entry is a cache miss. */
+              }
+            }
+          }
+          checkAborted(signal);
+          if (hit) {
             checkAborted(signal);
             cache.delete(key);
-            cache.set(key, cached);
-            points.push(...cached.points);
+            cache.set(key, hit);
+            points.push(...hit.points);
+            trace.add('inventory', 'cache_hit', { sources: part.length });
             coverage.readSources += part.length;
             return;
           }
           stage(_('Organizing the arguments…'));
           let raw: string;
           try {
-            raw = await ask(
-              [
-                {
+            const inventoryMessages: CompletionMessage[] = [
+              {
+                role: 'system',
+                content: `${READING_ANSWER_RULES}\nBuild a complete argument inventory for this part of the requested range, in the reader's language. Read every supplied block, including the last one. Preserve all explicitly numbered arguments and valuable introductory/concluding observations, rather than forcing a fixed number of points. Keep examples under the argument they support. If the part is only front matter, points may be empty. ${inventoryPrompt()}`,
+              },
+              {
+                role: 'user',
+                content: JSON.stringify({ question, title, sources: part.map(sourceWire) }),
+              },
+            ];
+            while (true) {
+              raw = await ask(inventoryMessages, undefined, depth ? 32768 : 16384, 'inventory');
+              try {
+                readInventory(raw, part);
+                break;
+              } catch (error) {
+                if (!(error instanceof EvidenceError)) throw error;
+                trace.add('inventory', error.code);
+                if (corrections >= 2)
+                  throw new ConversationError(
+                    _('The argument inventory was incomplete. Try a smaller range.'),
+                  );
+                corrections++;
+                trace.add('inventory', 'repair', { calls });
+                inventoryMessages[0] = {
                   role: 'system',
-                  content: `${READING_ANSWER_RULES}\nBuild a complete argument inventory for this part of the requested range, in the reader's language. Return JSON only: {"coveredSourceIds":[every supplied source ID],"points":[{"text":"one distinct argument, qualification or valuable observation","sourceIds":["supporting supplied ID"]}]}. Read every supplied block, including the last one. Preserve all explicitly numbered arguments and valuable introductory/concluding observations, rather than forcing a fixed number of points. Keep examples under the argument they support. If the part is only front matter, points may be empty. Each point must cite original evidence. Do not invent source IDs. No Markdown fences.`,
-                },
-                {
-                  role: 'user',
-                  content: JSON.stringify({ question, title, sources: part.map(sourceWire) }),
-                },
-              ],
-              undefined,
-              depth ? 32768 : 16384,
-            );
+                  content: `${READING_ANSWER_RULES}\nBuild a complete argument inventory. Previous response failed ${error.code} validation. Return a corrected COMPLETE response using the same complete material. Preserve all distinct points and qualifications. ${inventoryPrompt()}`,
+                };
+              }
+            }
           } catch (error) {
             if (!isTruncated(error) || depth >= 2) throw error;
             stage(_('Recovering the response…'));
@@ -419,16 +523,13 @@ export async function generateBookConversation(
             return;
           }
           try {
-            const inventory = inventorySchema.parse(parseJson(raw));
-            const allowed = new Set(part.map((source) => source.sourceId));
-            if (
-              inventory.coveredSourceIds.length !== allowed.size ||
-              new Set(inventory.coveredSourceIds).size !== allowed.size ||
-              inventory.coveredSourceIds.some((id) => !allowed.has(id)) ||
-              inventory.points.some((point) => point.sourceIds.some((id) => !allowed.has(id)))
-            )
-              throw new Error();
+            const inventory = readInventory(raw, part);
             rememberInventory(cache, key, inventory);
+            if (storageKey)
+              await cached((cacheSignal) =>
+                inventoryStore.save(storageKey, inventory.points, cacheSignal),
+              );
+            checkAborted(signal);
             points.push(...inventory.points);
           } catch {
             throw new ConversationError(
@@ -497,12 +598,13 @@ export async function generateBookConversation(
         messages,
         sources: evidence,
         chapterIds: plan.chapterIds,
-        complete,
-        completeTools,
+        complete: (request) => dispatch('answer', () => complete(request)),
+        completeTools: (request) => dispatch('answer', () => completeTools(request)),
+        trace,
       });
       coverage.readSources = answer.sources.length;
       coverage.totalSources = Math.max(coverage.totalSources, answer.sources.length);
-      return { ...answer, mode: 'tools' as const, coverage };
+      return { ...answer, mode: 'tools' as const, coverage, trace: trace.snapshot() };
     }
     const publish = (raw: string) => {
       checkAborted(signal);
@@ -573,7 +675,8 @@ export async function generateBookConversation(
           _('The summary still omitted source arguments. Try again or choose a chapter.'),
         );
     }
-    return { text, sources: evidence, mode: 'direct' as const, coverage };
+    trace.add('validation', 'complete', { sources: evidence.length });
+    return { text, sources: evidence, mode: 'direct' as const, coverage, trace: trace.snapshot() };
   };
   let onAbort: () => void = () => {};
   try {
@@ -587,6 +690,9 @@ export async function generateBookConversation(
       }),
     ]);
   } catch (cause) {
+    trace.add(activeStage, timedOut ? 'timeout' : input.signal.aborted ? 'cancelled' : 'failed', {
+      calls,
+    });
     if (timedOut && !input.signal.aborted)
       throw new ConversationError(
         _('The reading request timed out. Choose a chapter or try again.'),

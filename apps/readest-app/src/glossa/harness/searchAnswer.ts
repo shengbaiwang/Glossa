@@ -15,6 +15,7 @@ import type { BookConversationRequest } from './bookConversation';
 import { sanitizeReadingCitations } from './generate';
 import { rankSources } from './retrieval';
 import { sourceWire } from './book';
+import type { createRunTrace } from './trace';
 
 const MAX_ROUNDS = 2;
 const MAX_TOOLS = 4;
@@ -71,6 +72,7 @@ export async function answerBookSearch({
   chapterIds,
   complete,
   completeTools,
+  trace,
 }: {
   input: BookConversationRequest;
   messages: CompletionMessage[];
@@ -78,6 +80,7 @@ export async function answerBookSearch({
   chapterIds: string[];
   complete: typeof streamCompletion;
   completeTools: typeof streamToolCompletion;
+  trace?: ReturnType<typeof createRunTrace>;
 }) {
   const { signal, access } = input;
   let evidence = sources.slice();
@@ -148,6 +151,10 @@ export async function answerBookSearch({
     }
     checkAborted(signal);
     candidates = unique(candidates);
+    trace?.add(name === 'search_book' ? 'search' : 'read', 'complete', {
+      sources: candidates.length,
+      characters: chars(candidates),
+    });
     const selected: ChapterSource[] = [];
     const known = new Set(evidence.map((s) => s.sourceId));
     let sentChars = 0;

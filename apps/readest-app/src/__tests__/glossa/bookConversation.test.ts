@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { webcrypto } from 'node:crypto';
 import { ModelServiceError, type CompletionRequest } from '@/glossa/ai/provider';
 import type { ChapterSource } from '@/glossa/context/types';
 import { readingAnswerSchema } from '@/glossa/conversation/schema';
@@ -83,6 +84,71 @@ const respond = (request: CompletionRequest) =>
 afterEach(() => vi.useRealTimers());
 
 describe('book-wide reading conversation', () => {
+  it('reuses durable inventories across reopened access objects but rechecks exact input and sources', async () => {
+    vi.stubGlobal('crypto', webcrypto);
+    const entries = new Map<string, { text: string; sourceIds: string[] }[]>();
+    const inventoryStore = {
+      load: vi.fn(async (key: string) => structuredClone(entries.get(key) ?? null)),
+      save: vi.fn(async (key: string, points: { text: string; sourceIds: string[] }[]) => {
+        entries.set(key, structuredClone(points));
+      }),
+    };
+    const complete = vi.fn(async (request: CompletionRequest) => respond(request));
+    try {
+      await generateBookConversationImpl(fixture(), { complete, inventoryStore });
+      const reopened = fixture();
+      const result = await generateBookConversationImpl(reopened, { complete, inventoryStore });
+      expect(complete).toHaveBeenCalledTimes(3);
+      expect(reopened.access.readChapter).toHaveBeenCalledOnce();
+      expect(result.trace?.events).toContainEqual(
+        expect.objectContaining({ outcome: 'cache_hit' }),
+      );
+      await generateBookConversationImpl(
+        { ...fixture(), prompt: 'Retain qualifications.' },
+        { complete, inventoryStore },
+      );
+      expect(complete).toHaveBeenCalledTimes(5);
+      const changed = fixture([source('s1', '材料已变更。')]);
+      await generateBookConversationImpl(changed, { complete, inventoryStore });
+      expect(complete).toHaveBeenCalledTimes(7);
+      expect(entries.size).toBe(3);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('treats unavailable or corrupt disposable storage as a cache miss', async () => {
+    vi.stubGlobal('crypto', webcrypto);
+    const complete = vi.fn(async (request: CompletionRequest) => respond(request));
+    try {
+      await generateBookConversationImpl(fixture(), {
+        complete,
+        inventoryStore: {
+          load: async () => [{ text: 'Invented', sourceIds: ['outside'] }],
+          save: async () => {
+            throw new Error('Storage unavailable');
+          },
+        },
+      });
+      expect(complete).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it('repairs an incomplete inventory with safe feedback and records the correction without raw text', async () => {
+    const complete = vi.fn(async (request: CompletionRequest) =>
+      complete.mock.calls.length === 1
+        ? JSON.stringify({ coveredSourceIds: ['s1'], points: [] })
+        : respond(request),
+    );
+    const answer = await generateBookConversation(fixture(), { complete });
+    expect(complete).toHaveBeenCalledTimes(3);
+    expect(complete.mock.calls[1]![0].messages[0]!.content).toContain('coverage');
+    expect(answer.trace?.events).toContainEqual(
+      expect.objectContaining({ stage: 'inventory', outcome: 'repair' }),
+    );
+    expect(JSON.stringify(answer.trace)).not.toContain('中央集权');
+  });
   it('reuses only validated inventories and invalidates on model and original changes', async () => {
     const input = fixture();
     const complete = vi.fn(async (request: CompletionRequest) => respond(request));
@@ -350,7 +416,7 @@ describe('book-wide reading conversation', () => {
     await expect(generateBookConversation(fixture(all), { complete })).rejects.toThrow(
       'inventory was incomplete',
     );
-    expect(complete).toHaveBeenCalledOnce();
+    expect(complete).toHaveBeenCalledTimes(3);
   });
 
   it('fails oversized complete summaries before sending any original text', async () => {

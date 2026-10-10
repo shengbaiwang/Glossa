@@ -36,7 +36,7 @@ export const mindmapBodySchema = z
     const byId = new Map(nodes.map((n) => [n.id, n]));
     if (byId.size !== nodes.length) return false;
     return nodes.every((node) => {
-      if (node.parentId === null ? node.relation !== '' : !node.relation) return false;
+      if (node.parentId === null && node.relation !== '') return false;
       const visited = new Set([node.id]);
       let parentId = node.parentId;
       while (parentId !== null) {
@@ -97,12 +97,16 @@ export const readingMindmapSchema = mindmapBodySchema
     promptVersion: z.enum([
       'mindmap-1',
       'mindmap-2',
+      'mindmap-3',
       'mindmap-overview-1',
       'mindmap-overview-2',
       'mindmap-overview-3',
       'mindmap-overview-4',
+      'mindmap-overview-5',
+      'mindmap-overview-6',
       'mindmap-branch-1',
       'mindmap-branch-2',
+      'mindmap-branch-3',
     ]),
     schemaVersion: z.literal(1),
     provider: z

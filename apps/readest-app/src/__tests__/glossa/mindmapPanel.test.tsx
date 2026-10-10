@@ -327,6 +327,23 @@ describe('right-side mindmap', () => {
       ),
     );
   });
+  it('shows supplementary AI explanations only after selecting their idea', async () => {
+    mount();
+    fireEvent.click(await choosePassage());
+    await screen.findByText('Mind map saved on this device.');
+    const reason = screen.getByRole('button', { name: '理由' });
+    expect(reason.getAttribute('title')).toBeNull();
+    expect(screen.queryByText('需要')).toBeNull();
+    expect(screen.queryByText('理由支持解释。')).toBeNull();
+    fireEvent.click(reason);
+    expect(
+      await screen.findByRole('complementary', { name: 'Generated explanation' }),
+    ).toBeTruthy();
+    expect(screen.getByText('理由支持解释。')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '问题与解释' }));
+    expect(screen.queryByText('理由支持解释。')).toBeNull();
+    expect(screen.getByText('先辨认问题，再核对解释。')).toBeTruthy();
+  });
   it('preserves the generated map after save failure and retries locally', async () => {
     f.save.mockRejectedValueOnce(new Error('private payload'));
     mount();

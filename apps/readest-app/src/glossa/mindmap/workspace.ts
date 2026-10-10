@@ -47,6 +47,11 @@ export const treeSchema = z
     }
   });
 
+export const MAP_ZOOM_MIN = 0.2;
+export const MAP_ZOOM_MAX = 3;
+export const clampMapZoom = (zoom: number): number =>
+  Math.min(MAP_ZOOM_MAX, Math.max(MAP_ZOOM_MIN, Math.round(zoom * 1000) / 1000));
+
 const mapSchema = z
   .object({
     id,
@@ -55,7 +60,7 @@ const mapSchema = z
     collapsed: z.array(id).max(200),
     focusId: id.nullable(),
     selectedId: id,
-    zoom: z.number().min(0.4).max(1.6),
+    zoom: z.number().min(MAP_ZOOM_MIN).max(MAP_ZOOM_MAX),
     origin: readingMindmapSchema.optional(),
     extensions: z.array(readingMindmapSchema).max(24).optional(),
   })

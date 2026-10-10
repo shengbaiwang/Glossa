@@ -2,6 +2,7 @@ import { useId, useState } from 'react';
 import { useTranslation } from '@/hooks/useTranslation';
 import type { MindmapBody, MindmapNode } from '@/glossa/mindmap/schema';
 import type { ChapterSource } from '@/glossa/context/types';
+import MindmapExplanation from './MindmapExplanation';
 
 interface Props {
   guide: MindmapBody;
@@ -20,28 +21,19 @@ export default function MindmapDocument({ guide, sources, onSource }: Props) {
     guide.nodes.some((child) => child.parentId === node.id),
   );
   const allExpanded = branches.every((node) => expanded.has(node.id));
+  const selected = guide.nodes.find((node) => node.id === selectedId);
 
   const renderNode = (node: MindmapNode): React.ReactNode => {
     const children = guide.nodes.filter((child) => child.parentId === node.id);
     const open = expanded.has(node.id);
     return (
       <li key={node.id} className='glossa-map-branch'>
-        {node.parentId !== null && (
-          <p className='glossa-map-relation' dir='auto'>
-            {node.relation}
-          </p>
-        )}
         <div className='glossa-map-node eink-bordered' data-selected={selectedId === node.id}>
           <button
             type='button'
             className='glossa-map-label'
             dir='auto'
             aria-pressed={selectedId === node.id}
-            title={
-              node.kind === 'inference'
-                ? _('Interpretation: {{text}}', { text: node.explanation })
-                : node.explanation
-            }
             onClick={() => {
               const source = sources.find((item) => item.sourceId === node.sourceIds[0]);
               if (source) {
@@ -127,6 +119,7 @@ export default function MindmapDocument({ guide, sources, onSource }: Props) {
           >
             {root && renderNode(root)}
           </ul>
+          {selected && <MindmapExplanation node={selected} />}
         </>
       )}
     </article>

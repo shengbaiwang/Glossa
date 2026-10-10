@@ -1,6 +1,7 @@
 /* A sheet of ideas: ink hierarchy, interlinear relations, and quiet branch rules. */
 .glossa-workmap {
-  --glossa-map-line: color-mix(in srgb, var(--glossa-ink) 30%, var(--glossa-surface));
+  --glossa-map-line: color-mix(in srgb, var(--glossa-ink) 46%, var(--glossa-surface));
+  --glossa-map-card-border: color-mix(in srgb, var(--glossa-ink) 24%, var(--glossa-surface));
   position: relative;
   inset: auto;
   display: flex;
@@ -181,19 +182,19 @@
   letter-spacing: -0.025em;
 }
 .glossa-workmap-fold {
-  width: 32px;
+  width: 28px;
   flex-shrink: 0;
 }
 .glossa-workmap-dot {
-  width: 32px;
+  width: 28px;
   flex-shrink: 0;
   display: grid;
   place-items: center;
 }
 .glossa-workmap-dot::after {
   content: '';
-  width: 3px;
-  height: 3px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
   background: var(--glossa-muted);
 }
@@ -216,18 +217,21 @@
   display: flex;
   align-items: center;
   position: relative;
-  padding-block: 12px;
+  padding-block: 7px;
+}
+.glossa-workmap-viewport[data-view='map'] .glossa-workmap-canvas > ul > li > ul > li {
+  padding-block: 13px;
 }
 .glossa-workmap-viewport[data-view='map'] ul ul {
   position: relative;
-  margin-inline-start: 42px;
+  margin-inline-start: 96px;
 }
 .glossa-workmap-viewport[data-view='map'] ul ul > li::before {
   content: '';
   position: absolute;
-  inset-inline-start: -22px;
+  inset-inline-start: -76px;
   inset-block: 0;
-  width: 22px;
+  width: 76px;
   border-inline-start: 1px solid var(--glossa-map-line);
 }
 .glossa-workmap-viewport[data-view='map'] ul ul > li:first-child::before {
@@ -236,11 +240,22 @@
 .glossa-workmap-viewport[data-view='map'] ul ul > li:last-child::before {
   inset-block-end: 50%;
 }
+.glossa-workmap-viewport[data-view='map'] ul ul > li::after {
+  content: '';
+  position: absolute;
+  inset-inline-start: -78px;
+  inset-block-start: 50%;
+  width: 5px;
+  height: 5px;
+  margin-block-start: -2px;
+  border-radius: 50%;
+  background: var(--glossa-map-line);
+}
 .glossa-workmap-viewport[data-view='map'] ul ul > li > .glossa-workmap-node::before {
   content: '';
   position: absolute;
-  inset-inline-start: -22px;
-  width: 21px;
+  inset-inline-start: -76px;
+  width: 75px;
   top: 50%;
   border-block-start: 1px solid var(--glossa-map-line);
 }
@@ -252,15 +267,17 @@
   width: 20px;
   border-block-start: 1px solid var(--glossa-map-line);
 }
+.glossa-workmap-viewport[data-view='map'] .glossa-workmap-label {
+  line-height: 1.55;
+}
 .glossa-workmap-viewport[data-view='map'] .glossa-workmap-node {
-  width: 194px;
+  width: 190px;
   flex-shrink: 0;
   border-color: transparent;
-  border-block-end-color: var(--glossa-map-line);
-  border-radius: 0;
-  background: var(--glossa-surface);
+  border-radius: 10px;
+  background: transparent;
 }
-.glossa-workmap-viewport[data-view='map'] .glossa-workmap-node[data-root='true'] {
+.glossa-workmap-viewport[data-view='map'] .glossa-workmap-node[data-depth='1'] {
   width: 216px;
   border-color: var(--glossa-ink);
   border-radius: var(--glossa-radius);
@@ -268,10 +285,60 @@
   color: var(--glossa-surface);
   padding: 8px 4px;
 }
+.glossa-workmap-viewport[data-view='map']
+  .glossa-workmap-node[data-depth='1']
+  .glossa-workmap-label {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+.glossa-workmap-viewport[data-view='map'] .glossa-workmap-node[data-depth='2'] {
+  width: 196px;
+  border-color: var(--glossa-map-card-border);
+  background: var(--glossa-wash);
+}
+.glossa-workmap-viewport[data-view='map']
+  .glossa-workmap-node[data-depth='2']
+  .glossa-workmap-label {
+  font-weight: 600;
+}
+.glossa-workmap-viewport[data-view='map'] .glossa-workmap-node[data-depth='3'] {
+  width: 186px;
+  background: color-mix(in srgb, var(--glossa-wash) 55%, var(--glossa-surface));
+}
+.glossa-workmap-viewport[data-view='map']
+  .glossa-workmap-node[data-depth='3']
+  .glossa-workmap-label {
+  font-weight: 500;
+}
+.glossa-workmap-viewport[data-view='map'] .glossa-workmap-node[data-depth='4'] {
+  width: 176px;
+}
+.glossa-workmap-viewport[data-view='map']
+  .glossa-workmap-node[data-depth='4']
+  .glossa-workmap-label {
+  font-size: var(--glossa-text-caption);
+  color: color-mix(in srgb, var(--glossa-ink) 84%, var(--glossa-surface));
+}
 .glossa-workmap-viewport[data-view='map'] .glossa-workmap-node[data-selected='true'] {
   border-color: var(--glossa-ink);
-  border-radius: var(--glossa-radius-nested);
+  outline: 1px solid var(--glossa-ink);
   background: var(--glossa-wash);
+}
+.glossa-workmap-edge {
+  flex: 0 0 64px;
+  margin-inline-start: -74px;
+  margin-inline-end: 10px;
+  padding: 3px;
+  z-index: 1;
+  background: var(--glossa-surface);
+  color: var(--glossa-ink);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+  text-align: center;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 .glossa-workmap-edit {
   flex: 1;
@@ -409,7 +476,17 @@
 [data-eink='true'] .glossa-workmap {
   --glossa-border: var(--glossa-ink);
   --glossa-map-line: var(--glossa-ink);
+  --glossa-map-card-border: var(--glossa-ink);
   --glossa-muted: var(--glossa-ink);
+}
+[data-eink='true'] .glossa-workmap-viewport[data-view='map'] .glossa-workmap-node[data-depth='3'] {
+  border-color: var(--glossa-ink);
+}
+[data-eink='true']
+  .glossa-workmap-viewport[data-view='map']
+  .glossa-workmap-node[data-depth='4']
+  .glossa-workmap-label {
+  color: var(--glossa-ink);
 }
 @media (max-height: 600px) {
   .glossa-workmap.is-expanded {
@@ -573,17 +650,17 @@
   font-size: var(--glossa-text-caption);
 }
 .glossa-workmap-viewport[data-view='map']
-  .glossa-workmap-node[data-root='true'][data-selected='true'] {
+  .glossa-workmap-node[data-depth='1'][data-selected='true'] {
   background: var(--glossa-ink);
   color: var(--glossa-surface);
   outline: 2px solid var(--glossa-border);
   outline-offset: 3px;
 }
-.glossa-workmap-viewport[data-view='map'] .glossa-workmap-node[data-root='true'] button:hover {
+.glossa-workmap-viewport[data-view='map'] .glossa-workmap-node[data-depth='1'] button:hover {
   background: transparent;
 }
 .glossa-workmap-viewport[data-view='map']
-  .glossa-workmap-node[data-root='true']
+  .glossa-workmap-node[data-depth='1']
   :is(input, textarea) {
   color: var(--glossa-surface);
 }

@@ -6,7 +6,7 @@ import { stubTranslation as _ } from '@/utils/misc';
 import { mindmapBodySchema } from './schema';
 import { mapDiagnosticSchema } from './diagnostics';
 
-export const OVERVIEW_VERSION = 'mindmap-overview-4';
+export const OVERVIEW_VERSION = 'mindmap-overview-6';
 export type MapTarget = { kind: 'book' } | { kind: 'chapter'; chapterId: string };
 export const inventoryPointsSchema = z
   .array(

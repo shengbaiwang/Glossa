@@ -34,6 +34,7 @@ const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey }) => {
   const setBookmarkRibbonVisibility = useReaderStore((s) => s.setBookmarkRibbonVisibility);
   const isPrimary = useReaderStore((s) => !!s.viewStates[bookKey]?.isPrimary);
   const config = useBookDataStore((s) => s.booksData[bookKey.split('-')[0]!]?.config);
+  const fixedLayout = useBookDataStore((s) => !!s.booksData[bookKey.split('-')[0]!]?.isFixedLayout);
   const progress = useBookProgress(bookKey);
   const [isBookmarked, setIsBookmarked] = useState(false);
   const iconSize18 = useResponsiveSize(18);
@@ -52,7 +53,7 @@ const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey }) => {
 
     const booknotes = config?.booknotes ?? [];
     const liveBookmarks = booknotes.filter((n) => n.type === 'bookmark' && !n.deletedAt);
-    const matches = findBookmarksAtLocation(liveBookmarks, cfi);
+    const matches = findBookmarksAtLocation(liveBookmarks, cfi, fixedLayout);
 
     if (matches.length > 0) {
       // This page is bookmarked (possibly with duplicates left by an older
@@ -71,7 +72,7 @@ const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey }) => {
     // extractable text (e.g. an image page), fall back to the page number.
     const text = extractBookmarkExcerpt(range) || `${page ?? 0}`;
     persistRef.current([...booknotes, createBookmark({ cfi, text, page, now: Date.now() })]);
-  }, [progress, config]);
+  }, [progress, config, fixedLayout]);
 
   // The dispatcher path (shortcut, pull-down gesture, empty state) fires from
   // outside React, so it must reach the latest toggle — a mount-time closure
@@ -104,7 +105,7 @@ const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey }) => {
 
     const booknotes = config?.booknotes ?? [];
     const liveBookmarks = booknotes.filter((n) => n.type === 'bookmark' && !n.deletedAt);
-    const matches = findBookmarksAtLocation(liveBookmarks, cfi);
+    const matches = findBookmarksAtLocation(liveBookmarks, cfi, fixedLayout);
     const bookmarked = matches.length > 0;
     setIsBookmarked(bookmarked);
     setBookmarkRibbonVisibility(bookKey, bookmarked);
@@ -125,7 +126,15 @@ const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey }) => {
         ),
       );
     }
-  }, [bookKey, config, progress?.location, progress?.page, isPrimary, setBookmarkRibbonVisibility]);
+  }, [
+    bookKey,
+    config,
+    progress?.location,
+    progress?.page,
+    isPrimary,
+    fixedLayout,
+    setBookmarkRibbonVisibility,
+  ]);
 
   return (
     <Button

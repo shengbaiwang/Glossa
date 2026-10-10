@@ -1,4 +1,6 @@
 {
+  "Generated explanation": "生成解释",
+  "Original idea: {{text}}": "原始观点：{{text}}",
   "The current passage is unavailable. Include the passage in your question.": "无法取得当前文段，请在问题中带上原文。",
   "Current passage": "当前文段",
   "Citations": "引用",

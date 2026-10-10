@@ -15,6 +15,7 @@ export default defineConfig({
   },
   resolve: {
     conditions: ['development'],
+    alias: { '@pdfjs': resolve(__dirname, 'public/vendor/pdfjs') },
   },
   optimizeDeps: {
     include: [

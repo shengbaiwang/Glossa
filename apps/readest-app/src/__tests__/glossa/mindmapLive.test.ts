@@ -74,9 +74,16 @@ it.skipIf(!process.env['GLOSSA_MAP_LIVE_CONFIG'])(
     if (!apiKey) throw new Error('An in-memory API key is required for the explicit live run.');
     await saveProviderConfig(config, apiKey);
     const report: object[] = [];
+    const selected = process.env['GLOSSA_MAP_LIVE_CASES']?.split(',').map(Number) ?? [0, 1, 2];
+    if (!selected.length || selected.some((index) => !Number.isInteger(index) || !cases[index]))
+      throw new Error('Select only the original fixture indices 0, 1 and 2.');
+    const samples = [...new Set(selected)].map((index) => cases[index]!);
+    const maxCalls = Number(process.env['GLOSSA_MAP_LIVE_MAX_CALLS'] ?? 8);
+    if (!Number.isInteger(maxCalls) || maxCalls < 1 || maxCalls > 8)
+      throw new Error('Live acceptance request limit must be 1–8.');
     let calls = 0;
     try {
-      for (const sample of cases) {
+      for (const sample of samples) {
         const sources: ChapterSource[] = sample.paragraphs.map((text, index) => ({
           sourceId: `original-${index + 1}`,
           text,
@@ -129,7 +136,8 @@ it.skipIf(!process.env['GLOSSA_MAP_LIVE_CONFIG'])(
             checkpoints,
             inventories: { load: async () => null, save: async () => {} },
             complete: async (request) => {
-              if (++calls > 8) throw new Error('Live acceptance request cap reached.');
+              if (calls >= maxCalls) throw new Error('Live acceptance request cap reached.');
+              calls++;
               return streamCompletion(request);
             },
           },
@@ -153,7 +161,7 @@ it.skipIf(!process.env['GLOSSA_MAP_LIVE_CONFIG'])(
       if (path)
         writeFileSync(
           path,
-          JSON.stringify({ complete: report.length === cases.length, calls, report }, null, 2),
+          JSON.stringify({ complete: report.length === samples.length, calls, report }, null, 2),
         );
       localStorage.clear();
       vi.unstubAllGlobals();

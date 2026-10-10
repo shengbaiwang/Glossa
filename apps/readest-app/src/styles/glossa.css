@@ -794,16 +794,31 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
   content: '';
   position: absolute;
   inset-inline-start: -14px;
-  inset-block-start: 44px;
+  inset-block-start: 28px;
   inline-size: 14px;
   border-block-start: 1px solid var(--glossa-border);
 }
-.glossa-map-relation {
-  font-size: 11px;
-  color: var(--glossa-muted);
-  margin-block: 3px 5px;
-  padding-inline-start: 8px;
+.glossa-map-explanation {
+  flex-shrink: 0;
+  max-height: 150px;
+  overflow: auto;
+  padding: 10px 16px;
+  border-block-start: 1px solid var(--glossa-border);
+  color: var(--glossa-ink);
+  font-size: 12px;
+  line-height: 1.65;
   overflow-wrap: anywhere;
+}
+.glossa-map-explanation strong {
+  font-weight: 500;
+}
+.glossa-map-explanation span {
+  margin-inline-start: 8px;
+  color: var(--glossa-muted);
+}
+.glossa-map-explanation p {
+  margin-block: 5px 0;
+  white-space: pre-wrap;
 }
 .glossa-map-node {
   display: flex;
@@ -848,7 +863,7 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
 [data-eink='true'] .glossa-map-children > .glossa-map-branch::before {
   border-color: var(--glossa-ink);
 }
-[data-eink='true'] .glossa-map-relation {
+[data-eink='true'] .glossa-map-explanation span {
   color: var(--glossa-ink);
 }
 [data-eink='true'] .glossa-map-node[data-selected='true'] {

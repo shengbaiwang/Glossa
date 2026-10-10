@@ -3,6 +3,7 @@ import {
   Suspense,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -27,6 +28,7 @@ import {
 import { useTranslation } from '@/hooks/useTranslation';
 import {
   cleanMap,
+  clampMapZoom,
   createMap,
   createMapFromMindmap,
   getMapNodeSources,
@@ -34,6 +36,8 @@ import {
   editTree,
   appendMapBranch,
   mapWorkspaceSchema,
+  MAP_ZOOM_MAX,
+  MAP_ZOOM_MIN,
   type LocalMap,
   type MapNode,
   type TreeEdit,
@@ -42,6 +46,7 @@ import { useMapWorkspace } from '@/glossa/mindmap/workspaceSession';
 import type { ReadingPanelProps } from './ReadingPassagePanel';
 import type { ReadingMindmap } from '@/glossa/mindmap/types';
 import type { MindmapSourceSelection } from './MindmapSourcePanel';
+import MindmapExplanation from './MindmapExplanation';
 import {
   exportMapMarkdown,
   exportMapSvg,
@@ -80,6 +85,13 @@ function MapBook(props: Props) {
   const canvas = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const pan = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  const zoomAnchor = useRef<{
+    x: number;
+    y: number;
+    scrollLeft: number;
+    scrollTop: number;
+    from: number;
+  } | null>(null);
   const map = session.data?.maps.find((m) => m.id === session.data?.activeId);
   const root = map?.nodes.find((n) => n.parentId === null);
   const selected = map?.nodes.find((n) => n.id === map.selectedId) ?? root;
@@ -128,6 +140,67 @@ function MapBook(props: Props) {
         ?.querySelector<HTMLButtonElement>('[data-selected="true"] .glossa-workmap-label')
         ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }, [map?.selectedId, map?.focusId, map?.view, editingId]);
+  const mapView = map?.view === 'map';
+  // Trackpad pinch arrives as ctrl+wheel (Chromium/WebView2) or gesture events (WKWebView).
+  useEffect(() => {
+    const el = viewport.current;
+    if (!el || !mapView) return;
+    let pending = 1;
+    let lastGesture = 1;
+    let x = 0;
+    let y = 0;
+    let frame = 0;
+    const flush = () => {
+      frame = 0;
+      const scale = pending;
+      pending = 1;
+      if (scale !== 1) setMapZoom((zoom) => zoom * scale, { x, y });
+    };
+    const schedule = (clientX: number, clientY: number) => {
+      x = clientX;
+      y = clientY;
+      if (!frame) frame = requestAnimationFrame(flush);
+    };
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      pending *= Math.exp(-event.deltaY * (event.deltaMode === 1 ? 16 : 1) * 0.0025);
+      schedule(event.clientX, event.clientY);
+    };
+    const onGestureStart = (event: Event) => {
+      event.preventDefault();
+      lastGesture = 1;
+    };
+    const onGestureChange = (event: Event) => {
+      event.preventDefault();
+      const gesture = event as Event & { scale?: number; clientX?: number; clientY?: number };
+      const scale = gesture.scale ?? 1;
+      if (scale <= 0) return;
+      pending *= scale / lastGesture;
+      lastGesture = scale;
+      schedule(gesture.clientX ?? 0, gesture.clientY ?? 0);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('gesturestart', onGestureStart);
+    el.addEventListener('gesturechange', onGestureChange);
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('gesturestart', onGestureStart);
+      el.removeEventListener('gesturechange', onGestureChange);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [mapView]);
+  // Keep the pointer's anchor point stationary while a pinch zoom repaints.
+  useLayoutEffect(() => {
+    const anchor = zoomAnchor.current;
+    zoomAnchor.current = null;
+    const el = viewport.current;
+    if (!anchor || !el || map?.view !== 'map' || anchor.from === 0) return;
+    const ratio = map.zoom / anchor.from;
+    if (ratio === 1) return;
+    el.scrollLeft = (anchor.scrollLeft + anchor.x) * ratio - anchor.x;
+    el.scrollTop = (anchor.scrollTop + anchor.y) * ratio - anchor.y;
+  }, [map?.zoom, map?.view]);
   const resizeInput = () => {
     if (!input.current) return;
     input.current.style.height = 'auto';
@@ -141,6 +214,24 @@ function MapBook(props: Props) {
       }),
       history,
     );
+  };
+  const setMapZoom = (change: (zoom: number) => number, point?: { x: number; y: number }) => {
+    const el = viewport.current;
+    const at =
+      point && el
+        ? {
+            x: point.x - el.getBoundingClientRect().left,
+            y: point.y - el.getBoundingClientRect().top,
+            scrollLeft: el.scrollLeft,
+            scrollTop: el.scrollTop,
+          }
+        : null;
+    updateMap((m) => {
+      const zoom = clampMapZoom(change(m.zoom));
+      if (zoom === m.zoom) return m;
+      if (at) zoomAnchor.current = { ...at, from: m.zoom };
+      return { ...m, zoom };
+    });
   };
   const edit = (action: TreeEdit) => {
     if (!map) return;
@@ -221,7 +312,10 @@ function MapBook(props: Props) {
     const command = event.metaKey || event.ctrlKey;
     const target = event.target as HTMLElement;
     const textInput = target instanceof HTMLTextAreaElement;
-    if (target.closest('.glossa-workmap-generation, .glossa-workmap-source')) return;
+    if (
+      target.closest('.glossa-workmap-generation, .glossa-workmap-source, .glossa-map-explanation')
+    )
+      return;
     if (command && event.key.toLowerCase() === 'z') {
       if (target instanceof HTMLInputElement && target.closest('.glossa-workmap-search')) return;
       event.preventDefault();
@@ -239,6 +333,12 @@ function MapBook(props: Props) {
     if (command && event.key.toLowerCase() === 'f') {
       event.preventDefault();
       setSearch('');
+      return;
+    }
+    if (command && map?.view === 'map' && ['+', '=', '-', '_', '0'].includes(event.key)) {
+      event.preventDefault();
+      if (event.key === '0') setMapZoom(() => 1);
+      else setMapZoom((zoom) => zoom * (event.key === '-' || event.key === '_' ? 0.8 : 1.25));
       return;
     }
     if (!selected || target instanceof HTMLSelectElement || target instanceof HTMLInputElement)
@@ -433,7 +533,7 @@ function MapBook(props: Props) {
       {icon}
     </button>
   );
-  const renderNode = (node: MapNode): ReactNode => {
+  const renderNode = (node: MapNode, depth = 1): ReactNode => {
     const children = map!.nodes.filter((n) => n.parentId === node.id);
     const collapsed = map!.collapsed.includes(node.id);
     return (
@@ -442,7 +542,16 @@ function MapBook(props: Props) {
           className='glossa-workmap-node'
           data-selected={map!.selectedId === node.id}
           data-root={!node.parentId}
+          data-depth={Math.min(depth, 4)}
         >
+          {map!.view === 'map' &&
+            node.id !== focus?.id &&
+            map!.selectedId === node.id &&
+            node.relation && (
+              <span className='glossa-workmap-edge'>
+                <span dir='auto'>{node.relation}</span>
+              </span>
+            )}
           {children.length > 0 ? (
             <button
               className='glossa-workmap-fold'
@@ -505,7 +614,6 @@ function MapBook(props: Props) {
               onDoubleClick={() => beginEdit(node)}
               dir='auto'
             >
-              {node.relation && <small>{node.relation}</small>}
               <span>{node.label || _('Untitled idea')}</span>
               {collapsed && children.length > 0 && (
                 <small className='glossa-workmap-count'>
@@ -515,7 +623,9 @@ function MapBook(props: Props) {
             </button>
           )}
         </div>
-        {children.length > 0 && !collapsed && <ul>{children.map(renderNode)}</ul>}
+        {children.length > 0 && !collapsed && (
+          <ul>{children.map((child) => renderNode(child, depth + 1))}</ul>
+        )}
       </li>
     );
   };
@@ -547,7 +657,9 @@ function MapBook(props: Props) {
     ? (map?.nodes.filter((n) => `${n.label} ${n.relation}`.toLocaleLowerCase().includes(query)) ??
       [])
     : [];
-  const sourceNode = map?.nodes.find((node) => node.id === sourceSelection?.nodeId);
+  const sourceNode = map?.nodes.find(
+    (node) => node.id === sourceSelection?.nodeId && node.id === map.selectedId,
+  );
   const nodeOrigin = sourceNode?.originMapId
     ? map?.extensions?.find((o) => o.id === sourceNode.originMapId)
     : map?.origin;
@@ -979,6 +1091,9 @@ function MapBook(props: Props) {
               </button>
             </WorkspaceMenu>
           </div>
+          {originalNode && (
+            <MindmapExplanation node={originalNode} edited={sourceKind === 'Edited idea'} />
+          )}
           {map.origin && (
             <Suspense fallback={null}>
               <MindmapSourcePanel
@@ -990,6 +1105,7 @@ function MapBook(props: Props) {
                     : null
                 }
                 contextLabel={sourceKind}
+                showExcerpt={false}
                 onNavigate={() => setExpanded(false)}
               />
             </Suspense>
@@ -1000,31 +1116,25 @@ function MapBook(props: Props) {
                 {iconButton(
                   _('Zoom out'),
                   '−',
-                  () => updateMap((m) => ({ ...m, zoom: Math.max(0.4, m.zoom - 0.1) })),
-                  map.zoom <= 0.4,
+                  () => setMapZoom((zoom) => zoom / 1.25),
+                  map.zoom <= MAP_ZOOM_MIN,
                 )}
-                <button
-                  type='button'
-                  title={_('Reset zoom')}
-                  onClick={() => updateMap((m) => ({ ...m, zoom: 1 }))}
-                >
+                <button type='button' title={_('Reset zoom')} onClick={() => setMapZoom(() => 1)}>
                   {Math.round(map.zoom * 100)}%
                 </button>
                 {iconButton(
                   _('Zoom in'),
                   '+',
-                  () => updateMap((m) => ({ ...m, zoom: Math.min(1.6, m.zoom + 0.1) })),
-                  map.zoom >= 1.6,
+                  () => setMapZoom((zoom) => zoom * 1.25),
+                  map.zoom >= MAP_ZOOM_MAX,
                 )}
                 <button
                   type='button'
                   onClick={() => {
                     if (!canvas.current || !viewport.current) return;
                     const rect = canvas.current.getBoundingClientRect();
-                    const zoom = Math.max(
-                      0.4,
+                    const zoom = clampMapZoom(
                       Math.min(
-                        1.6,
                         (viewport.current.clientWidth - 24) / (rect.width / map.zoom),
                         (viewport.current.clientHeight - 24) / (rect.height / map.zoom),
                       ),

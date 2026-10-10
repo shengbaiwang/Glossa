@@ -50,19 +50,14 @@ export function exportMapSvg(map: LocalMap): string {
     return lines;
   };
   const children = (id: string) => map.nodes.filter((n) => n.parentId === id);
-  const rows = new Map(
-    map.nodes.map((n) => [
-      n.id,
-      [
-        ...(n.relation ? wrap(n.relation).map((line) => ({ line, relation: true })) : []),
-        ...wrap(n.label).map((line) => ({ line, relation: false })),
-      ],
-    ]),
-  );
+  const rows = new Map(map.nodes.map((n) => [n.id, wrap(n.label)]));
+  const edgeRows = (node: MapNode) =>
+    node.parentId && node.id === map.selectedId && node.relation ? wrap(node.relation, 6) : [];
   const heights = new Map<string, number>();
   const measure = (node: MapNode): number => {
     const height = Math.max(
       rows.get(node.id)!.length * 20 + 24,
+      edgeRows(node).length * 16 + 12,
       children(node.id).reduce((n, child) => n + measure(child) + 16, -16),
     );
     heights.set(node.id, height);
@@ -76,7 +71,7 @@ export function exportMapSvg(map: LocalMap): string {
     maxDepth = Math.max(maxDepth, depth);
     const height = rows.get(node.id)!.length * 20 + 24;
     positions.set(node.id, {
-      x: 24 + depth * 280,
+      x: 24 + depth * 352,
       y: top + (heights.get(node.id)! - height) / 2,
       height,
     });
@@ -94,7 +89,9 @@ export function exportMapSvg(map: LocalMap): string {
     .map((n) => {
       const a = positions.get(n.parentId!)!,
         b = positions.get(n.id)!;
-      return `<path d="M ${a.x + 240} ${a.y + a.height / 2} C ${a.x + 260} ${a.y + a.height / 2}, ${b.x - 20} ${b.y + b.height / 2}, ${b.x} ${b.y + b.height / 2}" fill="none" stroke="#aaa69e"/>`;
+      const relation = edgeRows(n);
+      const y = b.y + b.height / 2;
+      return `<path d="M ${a.x + 240} ${a.y + a.height / 2} C ${a.x + 270} ${a.y + a.height / 2}, ${b.x - 92} ${y}, ${b.x} ${y}" fill="none" stroke="#aaa69e"/>${relation.length ? `<g><rect x="${b.x - 86}" y="${y - relation.length * 8 - 4}" width="76" height="${relation.length * 16 + 8}" fill="#f5f2ea"/>${relation.map((line, i) => `<text x="${b.x - 48}" y="${y - relation.length * 8 + 12 + i * 16}" text-anchor="middle" font-size="11" fill="#26231e">${xml(line)}</text>`).join('')}</g>` : ''}`;
     })
     .join('');
   const nodes = map.nodes
@@ -104,12 +101,12 @@ export function exportMapSvg(map: LocalMap): string {
         .get(n.id)!
         .map(
           (row, i) =>
-            `<text x="${p.x + 12}" y="${p.y + 26 + i * 20}" font-size="${row.relation ? 11 : 14}" fill="${row.relation ? '#6b675f' : '#26231e'}">${xml(row.line)}</text>`,
+            `<text x="${p.x + 12}" y="${p.y + 26 + i * 20}" font-size="14" fill="#26231e">${xml(row)}</text>`,
         )
         .join('')}</g>`;
     })
     .join('');
-  const width = 288 + maxDepth * 280;
+  const width = 288 + maxDepth * 352;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${totalHeight}" viewBox="0 0 ${width} ${totalHeight}" role="img" font-family="system-ui, sans-serif"><title>${xml(root.label)}</title><rect width="100%" height="100%" fill="#f5f2ea"/>${links}${nodes}</svg>`;
 }
 

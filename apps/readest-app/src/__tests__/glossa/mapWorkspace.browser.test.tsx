@@ -64,14 +64,22 @@ it('edits without AI, preserves hierarchy across views, undoes branch deletion a
     target: { value: '通过' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Mind map' }));
-  expect(screen.getByRole('button', { name: '通过 解释概念之间的关系' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '解释概念之间的关系' })).toBeTruthy();
+  const nodeDepth = (label: string) =>
+    screen
+      .getByRole('button', { name: label })
+      .closest('.glossa-workmap-node')
+      ?.getAttribute('data-depth');
+  expect(nodeDepth('阅读如何成为理解')).toBe('1');
+  expect(nodeDepth('联系已有知识')).toBe('2');
+  expect(nodeDepth('解释概念之间的关系')).toBe('3');
   fireEvent.click(screen.getByRole('button', { name: '联系已有知识' }));
   fireEvent.keyDown(screen.getByRole('button', { name: '联系已有知识' }), {
     key: 'Delete',
   });
-  expect(screen.queryByRole('button', { name: '通过 解释概念之间的关系' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '解释概念之间的关系' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-  expect(screen.getByRole('button', { name: '通过 解释概念之间的关系' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '解释概念之间的关系' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Collapse 联系已有知识' }));
   fireEvent.click(screen.getByRole('button', { name: 'Mind map menu' }));
   fireEvent.click(screen.getByRole('button', { name: 'Find an idea' }));
@@ -79,14 +87,14 @@ it('edits without AI, preserves hierarchy across views, undoes branch deletion a
     target: { value: '概念' },
   });
   fireEvent.click(screen.getByRole('button', { name: '解释概念之间的关系' }));
-  expect(screen.getByRole('button', { name: '通过 解释概念之间的关系' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '解释概念之间的关系' })).toBeTruthy();
   await waitFor(() => expect(screen.getByText('Saved on this device')).toBeTruthy());
   const stored = await loadMapWorkspace(b.hash);
   expect(stored.maps[0]?.nodes).toHaveLength(3);
   expect(stored.maps[0]?.view).toBe('map');
   view.unmount();
   mount(b);
-  expect(await screen.findByRole('button', { name: '通过 解释概念之间的关系' })).toBeTruthy();
+  expect(await screen.findByRole('button', { name: '解释概念之间的关系' })).toBeTruthy();
 });
 
 it('commits atomically, rejects stale writers and keeps books isolated', async () => {
@@ -204,4 +212,66 @@ it('keeps the previous transaction intact when storage rejects a replacement', a
     put.mockRestore();
   }
   expect(await loadMapWorkspace(id)).toEqual(current);
+});
+
+it('zooms freely with trackpad pinch, keyboard and buttons, clamped at both ends', async () => {
+  const b = book();
+  let map = createMap('缩放');
+  const root = map.nodes[0]!.id;
+  map.nodes = editTree(map.nodes, { type: 'add', id: 'a', parentId: root, label: '分支节点' });
+  map = { ...map, view: 'map', zoom: 1 };
+  await saveMapWorkspace({
+    version: 1,
+    bookId: b.hash,
+    revision: 0,
+    activeId: map.id,
+    maps: [map],
+  } satisfies MapWorkspace);
+  mount(b);
+  await screen.findByRole('button', { name: '分支节点' });
+  const viewport = document.querySelector('.glossa-workmap-viewport') as HTMLElement;
+  const percent = () => screen.getByTitle('Reset zoom').textContent;
+  expect(percent()).toBe('100%');
+  // Two-finger scroll only pans and must never zoom.
+  fireEvent.wheel(viewport, { deltaY: -240 });
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  expect(percent()).toBe('100%');
+  // Trackpad pinch arrives as ctrl+wheel and zooms around the pointer.
+  fireEvent.wheel(viewport, { deltaY: -120, ctrlKey: true, clientX: 80, clientY: 80 });
+  await waitFor(() => expect(percent()).toBe('135%'));
+  fireEvent.wheel(viewport, { deltaY: 120, ctrlKey: true, clientX: 80, clientY: 80 });
+  await waitFor(() => expect(percent()).toBe('100%'));
+  // WKWebView pinch arrives as gesture events.
+  fireEvent(viewport, Object.assign(new Event('gesturestart'), { scale: 1 }));
+  fireEvent(
+    viewport,
+    Object.assign(new Event('gesturechange'), { scale: 1.5, clientX: 60, clientY: 60 }),
+  );
+  await waitFor(() => expect(percent()).toBe('150%'));
+  // Keyboard zoom and reset.
+  fireEvent.keyDown(viewport, { key: '=', metaKey: true });
+  await waitFor(() => expect(percent()).toBe('188%'));
+  fireEvent.keyDown(viewport, { key: '0', metaKey: true });
+  await waitFor(() => expect(percent()).toBe('100%'));
+  // Buttons step multiplicatively.
+  fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+  await waitFor(() => expect(percent()).toBe('125%'));
+  fireEvent.click(screen.getByRole('button', { name: 'Zoom out' }));
+  await waitFor(() => expect(percent()).toBe('100%'));
+  // Both ends clamp instead of running away.
+  fireEvent(viewport, Object.assign(new Event('gesturestart'), { scale: 1 }));
+  fireEvent(
+    viewport,
+    Object.assign(new Event('gesturechange'), { scale: 9, clientX: 60, clientY: 60 }),
+  );
+  await waitFor(() => expect(percent()).toBe('300%'));
+  expect(screen.getByRole('button', { name: 'Zoom in' })).toHaveProperty('disabled', true);
+  fireEvent(viewport, Object.assign(new Event('gesturestart'), { scale: 1 }));
+  fireEvent(
+    viewport,
+    Object.assign(new Event('gesturechange'), { scale: 0.01, clientX: 60, clientY: 60 }),
+  );
+  await waitFor(() => expect(percent()).toBe('20%'));
+  expect(screen.getByRole('button', { name: 'Zoom out' })).toHaveProperty('disabled', true);
+  expect((document.querySelector('.glossa-workmap-canvas') as HTMLElement).style.zoom).toBe('0.2');
 });
