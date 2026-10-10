@@ -426,7 +426,11 @@
   background: var(--glossa-surface);
   color: var(--glossa-ink);
   box-shadow: var(--glossa-shadow);
-  font: 12px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font:
+    12px / 1.45 -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
   font-variant-numeric: tabular-nums;
   -webkit-user-select: text;
   user-select: text;
@@ -1094,7 +1098,11 @@
   border-radius: 7px;
   background: var(--glossa-hover);
   color: var(--glossa-ink);
-  font: 500 11px/1 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font:
+    500 11px / 1 -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
   font-variant-numeric: tabular-nums;
   text-decoration: none;
   vertical-align: 1px;
@@ -1129,7 +1137,11 @@
   background: var(--glossa-surface);
   color: var(--glossa-ink);
   box-shadow: var(--glossa-shadow);
-  font: 13px/1.65 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font:
+    13px / 1.65 -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
   -webkit-user-select: text;
   user-select: text;
   overflow: auto;

@@ -3,13 +3,10 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 // The real themeStore module body reads localStorage at creation time, which
 // is absent in this jsdom environment; turn-style logic never touches themes.
 vi.mock('@/store/themeStore', () => ({
-  useThemeStore: Object.assign(
-    () => ({ themeCode: { bg: '#ffffff' }, isDarkMode: false }),
-    {
-      getState: () => ({ themeCode: { bg: '#ffffff' }, isDarkMode: false }),
-      subscribe: () => () => {},
-    },
-  ),
+  useThemeStore: Object.assign(() => ({ themeCode: { bg: '#ffffff' }, isDarkMode: false }), {
+    getState: () => ({ themeCode: { bg: '#ffffff' }, isDarkMode: false }),
+    subscribe: () => () => {},
+  }),
 }));
 
 import { applyPageTurnAttributes, getCapturedTurnStyle } from '@/app/reader/hooks/useCapturedTurn';
