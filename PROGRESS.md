@@ -7,6 +7,7 @@
 - 按用户要求收录现有导图可靠性与呈现、阅读 harness、PDF 基础阅读及相应测试/设计文档。提交前核对现有日志：全量单测 644 文件 / 7,753 项通过，9 项跳过；PDF Chromium 3 文件 / 14 项通过；TypeScript、全应用 Biome lint 与主仓库/子模块 diff 检查通过。
 - 阅读引擎四个文件另存为 `foliate-js` 提交 `e477486`，已推送到用户 fork `shengbaiwang/foliate-js` 的 `codex/glossa-reading-improvements` 分支；主仓库更新子模块 URL 与固定提交，确保重新克隆可取得相同源码。保留 Readest/foliate 上游许可证，不发布应用或修改用户本机书籍/数据库。
 - 主仓库变更提交为 `082ff2e4a`。自动审批要求对默认 `main` 的推送另获明确授权，改为新分支 `codex/reading-improvements`。推送前全仓格式检查发现四个既有文件未符合 Biome 格式，仅按格式器修正这些文件，不改行为；PDF 夹具通过 `.gitattributes` 标为二进制，避免 PDF 交叉引用表空格被误报。
+- 新分支推送前的全部检查通过：全仓 Biome 格式、TypeScript/应用 lint、644 文件 / 7,753 项单测（9 项跳过）。用户随后明确批准合并分支并推送 `main`；已快进合入该分支，保留两项原提交及阅读引擎固定版本，按批准执行普通推送。
 - 下一步仍为开发版 PDF 原生 WebView 验收和导图语义质量复验；既有验证边界见下文。
 
 ### 2026-10-10 PDF 基础阅读闭环
