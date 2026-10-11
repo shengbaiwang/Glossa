@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useThemeStore } from '@/store/themeStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -7,6 +7,7 @@ import { themes, applyCustomTheme, Palette } from '@/styles/themes';
 import { getStatusBarHeight, setSystemUIVisibility } from '@/utils/bridge';
 import { getOSPlatform } from '@/utils/misc';
 import { parseWebViewVersion } from '@/utils/ua';
+import { getThemeCode } from '@/utils/style';
 
 type UseThemeProps = {
   systemUIVisible?: boolean;
@@ -18,13 +19,8 @@ export const useTheme = ({
   appThemeColor = 'base-100',
 }: UseThemeProps = {}) => {
   const { appService } = useEnv();
-  const { settings } = useSettingsStore();
-  const isEink = settings?.globalViewSettings?.isEink;
-  const isColorEink = settings?.globalViewSettings?.isColorEink;
-  const isBwEink = isEink && !isColorEink;
-  const highlightTransparency = settings?.globalViewSettings?.highlightTransparency ?? 0.6;
   const {
-    themeColor,
+    themeCode,
     isDarkMode,
     showSystemUI,
     dismissSystemUI,
@@ -35,10 +31,11 @@ export const useTheme = ({
   } = useThemeStore();
   const { onUpdateInsets } = useSafeAreaInsets();
 
-  const useFallbackColors = useRef(false);
+  useLayoutEffect(() => {
+    updateAppTheme(appThemeColor);
+  }, [appThemeColor, themeCode, updateAppTheme]);
 
   useEffect(() => {
-    updateAppTheme(appThemeColor);
     if (appService?.isAndroidApp) {
       getStatusBarHeight().then((res) => {
         if (res.height && res.height > 0) {
@@ -104,33 +101,50 @@ export const useTheme = ({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleSystemUIVisibility]);
+};
 
-  useEffect(() => {
-    if (!appService?.isAndroidApp) return;
-    const webViewVersion = parseWebViewVersion(appService);
-    // OKLCH color model is supported in Chromium 111+
-    useFallbackColors.current = webViewVersion < 111;
-  }, [appService]);
+// Global styles belong to the persistent provider, including pages without system UI controls.
+export const useThemeStyles = () => {
+  const { appService } = useEnv();
+  const themeColor = useThemeStore((state) => state.themeColor);
+  const isDarkMode = useThemeStore((state) => state.isDarkMode);
+  const customThemes = useSettingsStore((state) => state.settings.globalReadSettings?.customThemes);
+  const isBwEink = useSettingsStore((state) => {
+    const view = state.settings.globalViewSettings;
+    return view?.isEink && !view?.isColorEink;
+  });
+  const highlightTransparency = useSettingsStore(
+    (state) => state.settings.globalViewSettings?.highlightTransparency ?? 0.6,
+  );
+  const useFallbackColors = !!appService?.isAndroidApp && parseWebViewVersion(appService) < 111;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!themeColor || !themes.find((t) => t.name === themeColor)) return;
-    if (useFallbackColors.current) {
+    if (useFallbackColors) {
       applyCustomTheme(undefined, themeColor, true);
     }
-  }, [themeColor]);
+  }, [themeColor, useFallbackColors]);
 
-  useEffect(() => {
-    const customThemes = settings.globalReadSettings?.customThemes ?? [];
+  useLayoutEffect(() => {
+    if (!customThemes) return;
     customThemes.forEach((customTheme) => {
-      applyCustomTheme(customTheme, undefined, useFallbackColors.current);
+      applyCustomTheme(customTheme, undefined, useFallbackColors);
     });
     localStorage.setItem('customThemes', JSON.stringify(customThemes));
-  }, [settings.globalReadSettings?.customThemes]);
+    const { themeColor, isDarkMode, themeCode: previous } = useThemeStore.getState();
+    if (customThemes.some((theme) => theme.name === themeColor)) {
+      const themeCode = getThemeCode(themeColor, isDarkMode);
+      if (
+        themeCode.bg !== previous.bg ||
+        themeCode.fg !== previous.fg ||
+        themeCode.primary !== previous.primary
+      ) {
+        useThemeStore.setState({ themeCode });
+      }
+    }
+  }, [customThemes, useFallbackColors]);
 
-  useEffect(() => {
-    const colorScheme = isDarkMode ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', `${themeColor}-${colorScheme}`);
-    document.documentElement.style.setProperty('color-scheme', colorScheme);
+  useLayoutEffect(() => {
     document.documentElement.style.setProperty('--scroll-bg-opacity', isBwEink ? '1.0' : '0.5');
     document.documentElement.style.setProperty(
       '--overlayer-highlight-opacity',
@@ -140,9 +154,5 @@ export const useTheme = ({
       '--overlayer-highlight-blend-mode',
       isBwEink ? 'difference' : isDarkMode ? 'screen' : 'multiply',
     );
-    document.documentElement.style.setProperty(
-      '--bg-texture-blend-mode',
-      isDarkMode ? 'lighten' : 'multiply',
-    );
-  }, [themeColor, isDarkMode, isBwEink, highlightTransparency]);
+  }, [isDarkMode, isBwEink, highlightTransparency]);
 };

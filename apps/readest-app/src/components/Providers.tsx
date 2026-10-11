@@ -17,6 +17,7 @@ import { useSettingsSync } from '@/hooks/useSettingsSync';
 import { useDefaultIconSize } from '@/hooks/useResponsiveSize';
 import { useBackgroundTexture } from '@/hooks/useBackgroundTexture';
 import { useEinkMode } from '@/hooks/useEinkMode';
+import { useThemeStyles } from '@/hooks/useTheme';
 import { getLocale } from '@/utils/misc';
 import { getDirFromUILanguage } from '@/utils/rtl';
 import { getAndroidPatchedViewportContent } from '@/utils/viewport';
@@ -48,6 +49,7 @@ const Providers = ({ children }: { children: React.ReactNode }) => {
 
   useSafeAreaInsets(); // Initialize safe area insets
   useSettingsSync(); // Adopt global settings broadcast by other windows (#4580)
+  useThemeStyles();
 
   useEffect(() => {
     const handlerLanguageChanged = (lng: string) => {
@@ -71,9 +73,8 @@ const Providers = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     loadDataTheme();
+    const stopThemeListener = appService ? initSystemThemeListener(appService) : undefined;
     if (appService) {
-      initSystemThemeListener(appService);
-
       appService.loadSettings().then(async (settings) => {
         const globalViewSettings = settings.globalViewSettings;
 
@@ -116,6 +117,7 @@ const Providers = ({ children }: { children: React.ReactNode }) => {
         initSettingsSync(settings);
       });
     }
+    return stopThemeListener;
   }, [
     envConfig,
     appService,

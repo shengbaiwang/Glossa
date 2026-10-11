@@ -7,7 +7,7 @@ import { ViewSettings } from '@/types/book';
 import {
   themes,
   Palette,
-  CustomTheme,
+  getStoredCustomThemes,
   generateLightPalette,
   generateDarkPalette,
 } from '@/styles/themes';
@@ -778,12 +778,11 @@ export interface ThemeCode {
   isDarkMode: boolean;
 }
 
-export const getThemeCode = () => {
+export const getThemeCode = (color?: string, darkMode?: boolean) => {
   let themeMode = 'auto';
   let themeColor = 'default';
   let systemIsDarkMode = false;
   let ambientIsDarkMode = false;
-  let customThemes: CustomTheme[] = [];
   if (typeof window !== 'undefined') {
     themeColor = localStorage.getItem('themeColor') || 'default';
     themeMode = localStorage.getItem('themeMode') || 'auto';
@@ -792,15 +791,16 @@ export const getThemeCode = () => {
       localStorage.getItem('ambientIsDarkMode'),
       systemIsDarkMode,
     );
-    customThemes = JSON.parse(localStorage.getItem('customThemes') || '[]');
   }
+  themeColor = color ?? themeColor;
   const isDarkMode =
-    themeMode === 'dark' ||
-    (themeMode === 'auto' && systemIsDarkMode) ||
-    (themeMode === 'ambient' && ambientIsDarkMode);
+    darkMode ??
+    (themeMode === 'dark' ||
+      (themeMode === 'auto' && systemIsDarkMode) ||
+      (themeMode === 'ambient' && ambientIsDarkMode));
   let currentTheme = themes.find((theme) => theme.name === themeColor);
   if (!currentTheme) {
-    const customTheme = customThemes.find((theme) => theme.name === themeColor);
+    const customTheme = getStoredCustomThemes().find((theme) => theme.name === themeColor);
     if (customTheme) {
       currentTheme = {
         name: customTheme.name,

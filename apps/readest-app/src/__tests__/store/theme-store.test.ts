@@ -30,6 +30,7 @@ vi.mock('@tauri-apps/api/window', () => ({
 
 vi.mock('@/services/environment', () => ({
   isWebAppPlatform: vi.fn(() => false),
+  isTauriAppPlatform: vi.fn(() => false),
 }));
 
 import { addPluginListener } from '@tauri-apps/api/core';
@@ -437,18 +438,18 @@ describe('themeStore', () => {
       expect(document.documentElement.getAttribute('data-theme')).toBe('default-light');
     });
 
-    test('does nothing when themeMode is not in localStorage', () => {
+    test('uses auto mode when themeMode is not in localStorage', () => {
       localStorage.setItem('themeColor', 'default');
       document.documentElement.removeAttribute('data-theme');
       loadDataTheme();
-      expect(document.documentElement.getAttribute('data-theme')).toBeNull();
+      expect(document.documentElement.getAttribute('data-theme')).toBe('default-light');
     });
 
-    test('does nothing when themeColor is not in localStorage', () => {
+    test('uses the default palette when themeColor is not in localStorage', () => {
       localStorage.setItem('themeMode', 'dark');
       document.documentElement.removeAttribute('data-theme');
       loadDataTheme();
-      expect(document.documentElement.getAttribute('data-theme')).toBeNull();
+      expect(document.documentElement.getAttribute('data-theme')).toBe('default-dark');
     });
   });
 

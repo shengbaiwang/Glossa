@@ -15,7 +15,14 @@ import {
   resolveThemeIsDarkMode,
 } from '@/utils/ambientLight';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { CustomTheme, Palette, ThemeMode } from '@/styles/themes';
+import {
+  applyCustomTheme,
+  getStoredCustomThemes,
+  CustomTheme,
+  Palette,
+  ThemeMode,
+} from '@/styles/themes';
+import { broadcastGlobalSettings } from '@/utils/settingsSync';
 import { EnvConfigType, isWebAppPlatform } from '@/services/environment';
 import { SystemSettings } from '@/types/settings';
 import { Insets } from '@/types/misc';
@@ -87,11 +94,23 @@ const persistAmbientIsDarkMode = (isDark: boolean) => {
   }
 };
 
+let themeTransitionFrame = 0;
 const applyDataTheme = (themeColor: string, isDarkMode: boolean) => {
-  document.documentElement.setAttribute(
-    'data-theme',
-    `${themeColor}-${isDarkMode ? 'dark' : 'light'}`,
-  );
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  const colorScheme = isDarkMode ? 'dark' : 'light';
+  const theme = `${themeColor}-${colorScheme}`;
+  if (root.getAttribute('data-theme') !== theme) {
+    // Color transitions on individual controls otherwise lag behind the page surface.
+    root.classList.add('theme-changing');
+    cancelAnimationFrame(themeTransitionFrame);
+    themeTransitionFrame = requestAnimationFrame(() => {
+      themeTransitionFrame = requestAnimationFrame(() => root.classList.remove('theme-changing'));
+    });
+  }
+  root.setAttribute('data-theme', theme);
+  root.style.setProperty('color-scheme', colorScheme);
+  root.style.setProperty('--bg-texture-blend-mode', isDarkMode ? 'lighten' : 'multiply');
 };
 
 let ambientLightListener: PluginListener | null = null;
@@ -160,7 +179,32 @@ export const useThemeStore = create<ThemeState>((set, get) => {
     typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
   const ambientIsDarkMode = getInitialAmbientIsDarkMode(systemIsDarkMode);
   const isDarkMode = resolveThemeIsDarkMode(initialThemeMode, systemIsDarkMode, ambientIsDarkMode);
-  const themeCode = getThemeCode();
+  const themeCode = getThemeCode(initialThemeColor, isDarkMode);
+
+  const updateTheme = (
+    changes: Partial<
+      Pick<
+        ThemeState,
+        'themeMode' | 'themeColor' | 'isDarkMode' | 'systemIsDarkMode' | 'ambientIsDarkMode'
+      >
+    >,
+    refreshColors = false,
+  ) => {
+    const previous = get();
+    const { themeColor, isDarkMode } = { ...previous, ...changes };
+    applyDataTheme(themeColor, isDarkMode);
+    const colorsChanged =
+      refreshColors || themeColor !== previous.themeColor || isDarkMode !== previous.isDarkMode;
+    if (
+      !colorsChanged &&
+      Object.entries(changes).every(([key, value]) => previous[key as keyof ThemeState] === value)
+    )
+      return;
+    set({
+      ...changes,
+      themeCode: colorsChanged ? getThemeCode(themeColor, isDarkMode) : previous.themeCode,
+    });
+  };
 
   return {
     themeMode: initialThemeMode,
@@ -188,18 +232,14 @@ export const useThemeStore = create<ThemeState>((set, get) => {
         get().systemIsDarkMode,
         get().ambientIsDarkMode,
       );
-      applyDataTheme(get().themeColor, isDarkMode);
-      set({ themeMode: mode, isDarkMode });
-      set({ themeCode: getThemeCode() });
+      updateTheme({ themeMode: mode, isDarkMode });
       syncAmbientLightSubscription(mode);
     },
     setThemeColor: (color) => {
       if (typeof window !== 'undefined' && localStorage) {
         localStorage.setItem('themeColor', color);
       }
-      applyDataTheme(color, get().isDarkMode);
-      set({ themeColor: color });
-      set({ themeCode: getThemeCode() });
+      updateTheme({ themeColor: color }, true);
     },
     updateAppTheme: (color) => {
       if (isWebAppPlatform()) {
@@ -229,13 +269,13 @@ export const useThemeStore = create<ThemeState>((set, get) => {
       // A failed write leaves both the live settings and the startup cache intact.
       settings.globalReadSettings = { ...settings.globalReadSettings, customThemes };
       localStorage.setItem('customThemes', JSON.stringify(customThemes));
+      void broadcastGlobalSettings(settings);
     },
     handleSystemThemeChange: (systemIsDarkMode) => {
+      localStorage.setItem('systemIsDarkMode', String(systemIsDarkMode));
       const mode = get().themeMode;
       const isDarkMode = resolveThemeIsDarkMode(mode, systemIsDarkMode, get().ambientIsDarkMode);
-      applyDataTheme(get().themeColor, isDarkMode);
-      set({ systemIsDarkMode, isDarkMode });
-      set({ themeCode: getThemeCode() });
+      updateTheme({ systemIsDarkMode, isDarkMode });
     },
     handleAmbientLightChange: (lux) => {
       if (get().themeMode !== 'ambient') return;
@@ -246,9 +286,7 @@ export const useThemeStore = create<ThemeState>((set, get) => {
         return;
       }
       persistAmbientIsDarkMode(nextAmbientIsDark);
-      applyDataTheme(get().themeColor, nextAmbientIsDark);
-      set({ ambientIsDarkMode: nextAmbientIsDark, isDarkMode: nextAmbientIsDark });
-      set({ themeCode: getThemeCode() });
+      updateTheme({ ambientIsDarkMode: nextAmbientIsDark, isDarkMode: nextAmbientIsDark });
     },
     updateSafeAreaInsets: (insets) => {
       set({ safeAreaInsets: insets });
@@ -259,15 +297,21 @@ export const useThemeStore = create<ThemeState>((set, get) => {
 export const loadDataTheme = () => {
   if (typeof localStorage === 'undefined' || typeof document === 'undefined') return;
 
-  const themeMode = localStorage.getItem('themeMode');
-  const themeColor = localStorage.getItem('themeColor');
-  if (themeMode && themeColor) {
-    const systemIsDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const ambientIsDarkMode = getInitialAmbientIsDarkMode(systemIsDarkMode);
-    const mode = isValidThemeMode(themeMode) ? themeMode : 'auto';
-    const isDarkMode = resolveThemeIsDarkMode(mode, systemIsDarkMode, ambientIsDarkMode);
-    applyDataTheme(themeColor, isDarkMode);
-  }
+  const themeMode = getInitialThemeMode();
+  const themeColor = getInitialThemeColor();
+  const { systemIsDarkMode } = useThemeStore.getState();
+  const ambientIsDarkMode = getInitialAmbientIsDarkMode(systemIsDarkMode);
+  const isDarkMode = resolveThemeIsDarkMode(themeMode, systemIsDarkMode, ambientIsDarkMode);
+  const customTheme = getStoredCustomThemes().find((theme) => theme.name === themeColor);
+  if (customTheme) applyCustomTheme(customTheme, undefined, true);
+  applyDataTheme(themeColor, isDarkMode);
+  useThemeStore.setState({
+    themeMode,
+    themeColor,
+    ambientIsDarkMode,
+    isDarkMode,
+    themeCode: getThemeCode(themeColor, isDarkMode),
+  });
 };
 
 export const initSystemThemeListener = (appService: AppService) => {
@@ -275,9 +319,6 @@ export const initSystemThemeListener = (appService: AppService) => {
 
   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
   const applySystemTheme = (systemIsDarkMode: boolean) => {
-    if (typeof window !== 'undefined' && localStorage) {
-      localStorage.setItem('systemIsDarkMode', systemIsDarkMode ? 'true' : 'false');
-    }
     useThemeStore.getState().handleSystemThemeChange(systemIsDarkMode);
   };
   const updateColorTheme = async () => {
@@ -308,11 +349,23 @@ export const initSystemThemeListener = (appService: AppService) => {
     }
   };
 
-  mediaQuery?.addEventListener('change', updateColorTheme);
-  document.addEventListener('visibilitychange', () => {
+  const handleVisibilityChange = () => {
     void updateColorTheme();
     syncAmbientForVisibility();
-  });
+  };
+  const handleStorageChange = (event: StorageEvent) => {
+    if (event.storageArea !== localStorage) return;
+    if (
+      event.key === null ||
+      ['themeMode', 'themeColor', 'ambientIsDarkMode', 'customThemes'].includes(event.key)
+    ) {
+      loadDataTheme();
+      syncAmbientLightSubscription(useThemeStore.getState().themeMode);
+    }
+  };
+  mediaQuery?.addEventListener('change', updateColorTheme);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  window.addEventListener('storage', handleStorageChange);
   window.addEventListener('resize', updateWindowTheme);
 
   // iOS WKWebView never fires the `prefers-color-scheme` media query
@@ -335,4 +388,13 @@ export const initSystemThemeListener = (appService: AppService) => {
   } else {
     syncAmbientLightSubscription(themeMode);
   }
+
+  return () => {
+    mediaQuery.removeEventListener('change', updateColorTheme);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('resize', updateWindowTheme);
+    window.removeEventListener('storage', handleStorageChange);
+    if (appService.isIOSApp) delete window.onNativeColorSchemeChange;
+    syncAmbientLightSubscription('auto');
+  };
 };

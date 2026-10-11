@@ -40,6 +40,41 @@ export type CustomTheme = {
   };
 };
 
+export const getStoredCustomThemes = (): CustomTheme[] => {
+  if (typeof localStorage === 'undefined') return [];
+  const isBaseColor = (value: unknown): value is BaseColor =>
+    typeof value === 'object' &&
+    value !== null &&
+    'bg' in value &&
+    typeof value.bg === 'string' &&
+    'fg' in value &&
+    typeof value.fg === 'string' &&
+    'primary' in value &&
+    typeof value.primary === 'string';
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem('customThemes') || '[]');
+    const candidates: unknown[] = Array.isArray(stored) ? stored : [];
+    return candidates.filter(
+      (value): value is CustomTheme =>
+        typeof value === 'object' &&
+        value !== null &&
+        'name' in value &&
+        typeof value.name === 'string' &&
+        'label' in value &&
+        typeof value.label === 'string' &&
+        'colors' in value &&
+        typeof value.colors === 'object' &&
+        value.colors !== null &&
+        'light' in value.colors &&
+        isBaseColor(value.colors.light) &&
+        'dark' in value.colors &&
+        isBaseColor(value.colors.dark),
+    );
+  } catch {
+    return [];
+  }
+};
+
 function srgbToLinear(v: number): number {
   // Standard formula for gamma decoding of sRGB
   return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);

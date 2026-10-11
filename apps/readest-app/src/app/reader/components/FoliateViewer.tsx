@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { convertBlobUrlToDataUrl, BookDoc, getDirection } from '@/libs/document';
 import { BOOK_IDS_SEPARATOR } from '@/services/constants';
@@ -17,6 +17,7 @@ import { useMouseEvent, useTouchEvent, useOpenMediaEvent } from '../hooks/useIfr
 import { useCapturedTurn, applyPageTurnAttributes } from '../hooks/useCapturedTurn';
 import { useBrightnessGesture } from '../hooks/useBrightnessGesture';
 import { registerBookmarkPullDoc } from '../utils/bookmarkPullGesture';
+import { applyReaderTheme } from '../utils/readerTheme';
 import BrightnessOverlay from './BrightnessOverlay';
 import { usePagination, viewPagination } from '../hooks/usePagination';
 import { useFoliateEvents } from '../hooks/useFoliateEvents';
@@ -34,8 +35,6 @@ import {
   applyScrollbarStyle,
   applyScrollModeClass,
   applyThemeModeClass,
-  getStyles,
-  getThemeCode,
   keepTextAlignment,
   transformStylesheet,
 } from '@/utils/style';
@@ -108,7 +107,7 @@ const FoliateViewer: React.FC<{
   const _ = useTranslation();
   const searchParams = useSearchParams();
   const { appService, envConfig } = useEnv();
-  const { themeCode, isDarkMode } = useThemeStore();
+  const themeCode = useThemeStore((state) => state.themeCode);
   const { settings } = useSettingsStore();
   const { loadFont, loadCustomFonts, getLoadedFonts, getAvailableFonts } = useCustomFontStore();
   // Per-field selectors — see store/readerProgressStore.ts header for the
@@ -328,6 +327,7 @@ const FoliateViewer: React.FC<{
     const detail = (event as CustomEvent).detail;
     console.log('doc index loaded:', detail.index);
     if (detail.doc) {
+      const { themeCode, isDarkMode } = useThemeStore.getState();
       const renderer = viewRef.current?.renderer;
       const writingDir = renderer?.setStyles && getDirection(detail.doc);
       const viewSettings = getViewSettings(bookKey)!;
@@ -355,16 +355,7 @@ const FoliateViewer: React.FC<{
       });
 
       if (bookDoc.rendition?.layout === 'pre-paginated') {
-        applyFixedlayoutStyles(detail.doc, viewSettings);
-        const themeCode = getThemeCode();
-        if (bookData.book?.format === 'PDF' && themeCode && renderer) {
-          renderer.pageColors = viewSettings.applyThemeToPDF
-            ? {
-                background: themeCode.bg,
-                foreground: themeCode.fg,
-              }
-            : undefined;
-        }
+        applyFixedlayoutStyles(detail.doc, viewSettings, themeCode);
       }
 
       applyImageStyle(detail.doc);
@@ -693,7 +684,15 @@ const FoliateViewer: React.FC<{
       const width = viewWidth - insets.left - insets.right;
       const height = viewHeight - insets.top - insets.bottom;
       book.transformTarget?.addEventListener('data', getDocTransformHandler({ width, height }));
-      view.renderer.setStyles?.(getStyles(viewSettings, undefined, getLoadedFonts()));
+      const { themeCode } = useThemeStore.getState();
+      applyReaderTheme(
+        view.renderer,
+        viewSettings,
+        themeCode,
+        bookDoc.rendition?.layout === 'pre-paginated',
+        bookData?.book?.format === 'PDF',
+        getLoadedFonts(),
+      );
 
       doubleClickDisabled.current = viewSettings.disableDoubleClick!;
       const animated = viewSettings.animated!;
@@ -887,34 +886,21 @@ const FoliateViewer: React.FC<{
     };
   }, [appService?.isAndroidApp]);
 
-  useEffect(() => {
-    if (viewRef.current && viewRef.current.renderer) {
-      const renderer = viewRef.current.renderer;
-      const viewSettings = getViewSettings(bookKey)!;
-      viewRef.current.renderer.setStyles?.(getStyles(viewSettings, undefined, getLoadedFonts()));
-      const docs = viewRef.current.renderer.getContents();
-      docs.forEach(({ doc }) => {
-        if (bookDoc.rendition?.layout === 'pre-paginated') {
-          applyFixedlayoutStyles(doc, viewSettings);
-        }
-        applyThemeModeClass(doc, isDarkMode);
-        applyScrollModeClass(doc, viewSettings.scrolled || false);
-        applyScrollbarStyle(document, viewSettings.hideScrollbar || false);
-      });
-
-      if (bookData?.book?.format === 'PDF' && themeCode && renderer) {
-        renderer.pageColors = viewSettings.applyThemeToPDF
-          ? {
-              background: themeCode.bg,
-              foreground: themeCode.fg,
-            }
-          : undefined;
-      }
+  useLayoutEffect(() => {
+    const renderer = viewRef.current?.renderer;
+    if (renderer) {
+      applyReaderTheme(
+        renderer,
+        getViewSettings(bookKey)!,
+        themeCode,
+        bookDoc.rendition?.layout === 'pre-paginated',
+        bookData?.book?.format === 'PDF',
+        getLoadedFonts(),
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     themeCode,
-    isDarkMode,
     viewSettings?.scrolled,
     viewSettings?.overrideColor,
     viewSettings?.invertImgColorInDark,
@@ -996,7 +982,7 @@ const FoliateViewer: React.FC<{
         <TableViewer
           gridInsets={gridInsets}
           html={selectedTableHtml}
-          isDarkMode={isDarkMode}
+          isDarkMode={themeCode.isDarkMode}
           onClose={() => setSelectedTableHtml(null)}
         />
       )}

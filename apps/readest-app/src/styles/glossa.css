@@ -59,6 +59,12 @@
   flex-shrink: 0;
 }
 
+:root.theme-changing *,
+:root.theme-changing *::before,
+:root.theme-changing *::after {
+  transition: none !important;
+}
+
 .glossa-icon-button,
 .glossa-button {
   gap: 8px;

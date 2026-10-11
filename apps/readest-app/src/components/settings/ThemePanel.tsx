@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {
-  applyCustomTheme,
   CustomTheme,
   generateDarkPalette,
   generateLightPalette,
@@ -351,7 +350,6 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
 
   const handleSaveCustomTheme = async (customTheme: CustomTheme) => {
     await saveCustomTheme(envConfig, settings, customTheme);
-    applyCustomTheme(customTheme);
     setSettings({ ...settings });
     setThemeColor(customTheme.name);
     setShowCustomThemeEditor(false);

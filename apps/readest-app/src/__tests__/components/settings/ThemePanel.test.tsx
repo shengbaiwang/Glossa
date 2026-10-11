@@ -175,7 +175,8 @@ describe('theme panel selection and persistence', () => {
       pending.resolve();
       await result;
     });
-    expect(applyCustomTheme).toHaveBeenCalledExactlyOnceWith(draft);
+    // The persistent theme hook mounts custom CSS after the settings update.
+    expect(applyCustomTheme).not.toHaveBeenCalled();
     expect(setThemeColor).toHaveBeenCalledExactlyOnceWith(draft.name);
     expect(setSettings).toHaveBeenCalledOnce();
     expect(screen.queryByRole('region', { name: 'Theme editor' })).toBeNull();
