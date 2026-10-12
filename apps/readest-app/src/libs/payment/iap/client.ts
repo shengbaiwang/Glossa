@@ -3,6 +3,11 @@ import { getNodeAPIBaseUrl } from '@/services/environment';
 import { getAccessToken } from '@/utils/access';
 import { IAPService, IAPPurchase, IAPProduct } from '@/utils/iap';
 import { isPurchaseProduct, mapProductIdToInterval, mapProductIdToUserPlan } from './utils';
+import { isNativeCloudSyncAvailable } from '@/glossa/account/config';
+
+const requireBilling = () => {
+  if (!isNativeCloudSyncAvailable()) throw new Error('Glossa does not provide storage plans');
+};
 
 const SUBSCRIPTION_SUCCESS_PATH = '/user/subscription/success';
 
@@ -20,17 +25,20 @@ export const getPurchaseVerifyParams = (purchase: IAPPurchase) => {
 };
 
 export const isIAPAvailable = async () => {
+  if (!isNativeCloudSyncAvailable()) return false;
   const available = await IAPService.isAvailable();
   return available;
 };
 
 export const purchaseIAPProduct = async (productId: string) => {
+  requireBilling();
   const iapService = new IAPService();
   const purchase = await iapService.purchaseProduct(productId);
   return purchase;
 };
 
 export const restoreIAPPurchases = async () => {
+  requireBilling();
   const iapService = new IAPService();
   const purchases = await iapService.restorePurchases();
   return purchases;
@@ -41,6 +49,7 @@ export const restoreIAPPurchases = async () => {
 // blocks repurchasing the same SKU. Re-verifying them lets the server record
 // and consume each one; replays are deduped by purchase token server-side.
 export const verifyGooglePurchaseProducts = async (purchases: IAPPurchase[]) => {
+  if (!isNativeCloudSyncAvailable()) return;
   const products = purchases.filter(
     (p) => p.platform === 'android' && isPurchaseProduct(p.productId) && p.purchaseToken,
   );
@@ -73,12 +82,14 @@ export const verifyGooglePurchaseProducts = async (purchases: IAPPurchase[]) => 
 };
 
 export const initializeIAP = async () => {
+  requireBilling();
   const iapService = new IAPService();
   await iapService.initialize();
   return iapService;
 };
 
 export const fetchIAPProducts = async (productIds: string[]) => {
+  requireBilling();
   const iapService = new IAPService();
   await iapService.initialize();
   const products = await iapService.fetchProducts(productIds);

@@ -1,75 +1,79 @@
 'use client';
-import { ChevronLeft } from '@/components/GlossaIcons';
 
-import { useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { useThemeStore } from '@/store/themeStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { ThemeSupa } from '@supabase/auth-ui-shared';
-import { Auth } from '@supabase/auth-ui-react';
 import { supabase } from '@/utils/supabase';
 
 export default function ResetPasswordPage() {
   const _ = useTranslation();
   const router = useRouter();
-  const { login } = useAuth();
-  const { isDarkMode } = useThemeStore();
-
-  const getAuthLocalization = () => {
-    return {
-      variables: {
-        update_password: {
-          password_label: _('New Password'),
-          password_input_placeholder: _('Your new password'),
-          button_label: _('Update password'),
-          loading_button_label: _('Updating password ...'),
-          confirmation_text: _('Your password has been updated'),
-        },
-      },
-    };
-  };
-
-  useEffect(() => {
-    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.access_token && session.user && event === 'USER_UPDATED') {
-        login(session.access_token, session.user);
-        const redirectTo = new URLSearchParams(window.location.search).get('redirect');
-        router.push(redirectTo ?? '/library');
-      }
-    });
-
-    return () => {
-      subscription?.subscription.unsubscribe();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]);
-
+  const { user } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   return (
-    <div className='flex min-h-screen items-center justify-center'>
-      <div className='w-full max-w-md p-8'>
-        <Auth
-          supabaseClient={supabase}
-          view='update_password'
-          appearance={{ theme: ThemeSupa }}
-          theme={isDarkMode ? 'dark' : 'light'}
-          magicLink={false}
-          providers={[]}
-          localization={getAuthLocalization()}
-        />
-
+    <main className='bg-base-100 text-base-content flex min-h-screen items-center justify-center'>
+      <form
+        className='w-full max-w-sm space-y-5 p-6'
+        onSubmit={async (event) => {
+          event.preventDefault();
+          if (busy || !user) return;
+          const password = String(new FormData(event.currentTarget).get('password') ?? '');
+          setBusy(true);
+          setError('');
+          try {
+            const { error } = await supabase.auth.updateUser({ password });
+            if (error) throw error;
+            router.push('/user');
+          } catch {
+            setError(_('Unable to update password. Please try again.'));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <h1 className='text-xl font-semibold'>{_('New Password')}</h1>
+        {user ? (
+          <>
+            <label className='block space-y-2'>
+              <span className='text-sm'>{_('Your new password')}</span>
+              <input
+                name='password'
+                type='password'
+                autoComplete='new-password'
+                required
+                minLength={8}
+                disabled={busy}
+                className='input input-bordered w-full rounded-lg'
+              />
+            </label>
+            <button type='submit' disabled={busy} className='btn btn-contrast w-full rounded-lg'>
+              {_('Update password')}
+            </button>
+          </>
+        ) : (
+          <button
+            type='button'
+            className='btn btn-contrast w-full rounded-lg'
+            onClick={() => router.push('/auth')}
+          >
+            {_('Sign in to Glossa')}
+          </button>
+        )}
+        {error && (
+          <p role='alert' className='text-error text-sm'>
+            {error}
+          </p>
+        )}
         <button
-          onClick={() => router.back()}
-          className={`mt-6 flex w-full items-center justify-center gap-2 rounded-md border px-4 py-2.5 text-sm transition-colors ${
-            isDarkMode
-              ? 'border-gray-600 text-gray-300 hover:bg-gray-800'
-              : 'border-gray-300 text-gray-700 hover:bg-gray-100'
-          }`}
+          type='button'
+          className='btn btn-ghost w-full rounded-lg'
+          onClick={() => router.push('/library')}
         >
-          <ChevronLeft className='h-4 w-4' />
           {_('Back')}
         </button>
-      </div>
-    </div>
+      </form>
+    </main>
   );
 }

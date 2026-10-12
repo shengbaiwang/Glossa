@@ -52,18 +52,18 @@ describe('parseImplicitRedirect', () => {
 
 describe('consumeOAuthState / consumeReturnPath', () => {
   test('state is read once then cleared', () => {
-    window.sessionStorage.setItem('gdrive_web_oauth_state', 'XYZ');
+    window.sessionStorage.setItem('glossa_gdrive_web_oauth_state', 'XYZ');
     expect(consumeOAuthState()).toBe('XYZ');
     expect(consumeOAuthState()).toBeNull();
   });
 
   test('return path falls back to "/" and rejects non-same-origin paths', () => {
     expect(consumeReturnPath()).toBe('/');
-    window.sessionStorage.setItem('gdrive_web_oauth_return', '/library?q=1');
+    window.sessionStorage.setItem('glossa_gdrive_web_oauth_return', '/library?q=1');
     expect(consumeReturnPath()).toBe('/library?q=1');
-    window.sessionStorage.setItem('gdrive_web_oauth_return', '//evil.com');
+    window.sessionStorage.setItem('glossa_gdrive_web_oauth_return', '//evil.com');
     expect(consumeReturnPath()).toBe('/');
-    window.sessionStorage.setItem('gdrive_web_oauth_return', 'https://evil.com');
+    window.sessionStorage.setItem('glossa_gdrive_web_oauth_return', 'https://evil.com');
     expect(consumeReturnPath()).toBe('/');
   });
 });

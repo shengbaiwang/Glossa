@@ -1,7 +1,9 @@
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import AuthPage from '@/app/auth/page';
+
+const router = vi.hoisted(() => ({ push: vi.fn(), back: vi.fn() }));
 
 vi.mock('@/services/environment', () => ({
   isTauriAppPlatform: () => true,
@@ -57,7 +59,7 @@ vi.mock('@/hooks/useTranslation', () => ({
 }));
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
+  useRouter: () => router,
 }));
 
 vi.mock('next/image', () => ({
@@ -91,6 +93,7 @@ describe('AuthPage safe area (notch clearance)', () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    window.history.replaceState(null, '', '/');
   });
 
   it('offsets the fixed header with the top safe-area inset so the back button clears the notch', () => {
@@ -98,5 +101,14 @@ describe('AuthPage safe area (notch clearance)', () => {
     const header = container.querySelector('div.fixed') as HTMLElement;
     expect(header).toBeTruthy();
     expect(header.style.top).toBe('44px');
+  });
+
+  it('returns to the library after an authentication error instead of reopening that error', () => {
+    window.history.replaceState(null, '', '/auth/error');
+    window.history.pushState(null, '', '/auth');
+    render(<AuthPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Go Back' }));
+    expect(router.push).toHaveBeenCalledWith('/library');
+    expect(router.back).not.toHaveBeenCalled();
   });
 });

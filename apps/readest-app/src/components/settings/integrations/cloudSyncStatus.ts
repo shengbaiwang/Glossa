@@ -22,6 +22,7 @@ export const getReadestCloudRowStatus = (_: TranslationFunc, s: ReadestRowInputs
 };
 
 export interface ThirdPartyRowInputs {
+  registrationMissing?: boolean;
   enabled: boolean;
   configured: boolean;
   syncing: boolean;
@@ -63,6 +64,7 @@ export const canToggleCloudProvider = (s: CanToggleCloudProviderInputs): boolean
   (s.isPremium && s.isConfigured) || s.isEnabled;
 
 export const getThirdPartyRowStatus = (_: TranslationFunc, s: ThirdPartyRowInputs): string => {
+  if (s.registrationMissing) return _('Not configured');
   if (!s.enabled) return s.configured ? _('Configured') : _('Not connected');
   if (s.paused) return _('Paused — plan required');
   // Enabled but the web token is gone — it silently syncs nothing until the user

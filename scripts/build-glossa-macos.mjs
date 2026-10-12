@@ -5,6 +5,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
+import { prepareGlossaCloudConfig } from './glossa-cloud-config.mjs';
+
 const REQUIRED_NODE_MAJOR = 24;
 const GLOSSA_IDENTIFIER = 'app.glossa.reader';
 const scriptPath = fileURLToPath(import.meta.url);
@@ -59,8 +61,10 @@ if (process.platform !== 'darwin') {
     homeDirectory ? `${homeDirectory}/.cargo/bin` : '',
   ].filter(Boolean);
   const path = [...toolDirectories, process.env.PATH ?? ''].join(':');
+  const cloudConfig = prepareGlossaCloudConfig(repositoryRoot, { dev: false });
   const commandEnvironment = {
     ...process.env,
+    ...cloudConfig.environment,
     PATH: path,
     NODE_OPTIONS: [process.env.NODE_OPTIONS, '--max-old-space-size=8192'].filter(Boolean).join(' '),
     CARGO_TARGET_DIR: targetDirectory,
@@ -98,6 +102,8 @@ if (process.platform !== 'darwin') {
         'build',
         '--config',
         configPath,
+        '--config',
+        cloudConfig.configPath,
         '--bundles',
         'app',
       ],

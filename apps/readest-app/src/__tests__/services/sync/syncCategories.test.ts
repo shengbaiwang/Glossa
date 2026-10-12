@@ -1,3 +1,4 @@
+import '@/__tests__/fixtures/legacyCloudPolicy';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 import {

@@ -5,10 +5,16 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { getAccessToken } from '@/utils/access';
 import { StripeProductMetadata } from '@/types/payment';
 import { AvailablePlan, PlanType } from '@/types/quota';
+import { isNativeCloudSyncAvailable } from '@/glossa/account/config';
+
+const requireBilling = () => {
+  if (!isNativeCloudSyncAvailable()) throw new Error('Glossa does not provide storage plans');
+};
 
 let stripePromise: Promise<StripeClient | null>;
 
 export const getStripe = () => {
+  requireBilling();
   if (!stripePromise) {
     const publishableKey =
       process.env.NODE_ENV === 'production'
@@ -36,6 +42,7 @@ export type StripeAvailablePlan = AvailablePlan & {
 };
 
 export const fetchStripePlans = async () => {
+  if (!isNativeCloudSyncAvailable()) return [];
   const response = await fetch(WEB_STRIPE_PLANS_URL);
   const data = await response.json();
   return data && Array.isArray(data) ? data : [];
@@ -45,6 +52,7 @@ export const createStripeCheckoutSession = async (
   productId: string,
   planType: PlanType = 'subscription',
 ): Promise<StripeCheckoutResponse> => {
+  requireBilling();
   const token = await getAccessToken();
   const isEmbeddedCheckout = isTauriAppPlatform();
 
@@ -65,6 +73,7 @@ export const createStripeCheckoutSession = async (
 };
 
 export const redirectToStripeCheckout = async (url?: string): Promise<void> => {
+  requireBilling();
   if (url) {
     if (isWebAppPlatform()) {
       window.location.href = url;
@@ -77,6 +86,7 @@ export const redirectToStripeCheckout = async (url?: string): Promise<void> => {
 };
 
 export const createStripePortalSession = async () => {
+  requireBilling();
   const token = await getAccessToken();
 
   const response = await fetch(WEB_STRIPE_PORTAL_URL, {
@@ -97,6 +107,7 @@ export const createStripePortalSession = async () => {
 };
 
 export const redirectToStripePortal = async (url: string): Promise<void> => {
+  requireBilling();
   if (isWebAppPlatform()) {
     window.location.href = url;
   } else if (isTauriAppPlatform()) {

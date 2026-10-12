@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { IAPPurchase } from '@/utils/iap';
+import '@/__tests__/fixtures/legacyCloudPolicy';
 
 // Storage purchases bought before the server learned to consume them stay
 // "owned" on Google Play forever, blocking repurchase. Restore is the only

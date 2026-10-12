@@ -7,6 +7,7 @@ import { isTauriAppPlatform } from '@/services/environment';
 import { eventDispatcher } from '@/utils/event';
 import { isGoogleOAuthRedirectUrl } from '@/services/sync/providers/gdrive/auth/reverseDnsRedirect';
 import { isOneDriveOAuthRedirectUrl } from '@/services/sync/providers/onedrive/microsoftOAuthConfig';
+import { isAppAuthCallbackUrl } from '@/helpers/auth';
 
 interface SingleInstancePayload {
   args: string[];
@@ -80,7 +81,10 @@ export function useAppUrlIngress() {
       // they must never reach a consumer (the book-import path would otherwise
       // mistake the reverse-DNS redirect URL for a file to open).
       const appUrls = urls.filter(
-        (url) => !isGoogleOAuthRedirectUrl(url) && !isOneDriveOAuthRedirectUrl(url),
+        (url) =>
+          !isGoogleOAuthRedirectUrl(url) &&
+          !isOneDriveOAuthRedirectUrl(url) &&
+          !['glossa', 'glossa-dev', 'readest'].some((scheme) => isAppAuthCallbackUrl(url, scheme)),
       );
       if (!appUrls.length) return;
       console.log('App incoming URL:', appUrls, 'action:', action);

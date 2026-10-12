@@ -5,6 +5,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 
+import { prepareGlossaCloudConfig } from './glossa-cloud-config.mjs';
+
 const REQUIRED_NODE_MAJOR = 24;
 const GLOSSA_IDENTIFIER = 'app.glossa.reader.dev';
 const scriptPath = fileURLToPath(import.meta.url);
@@ -57,8 +59,10 @@ if (currentNodeMajor !== REQUIRED_NODE_MAJOR && process.env.GLOSSA_DEV_REEXECUTE
     homeDirectory ? `${homeDirectory}/.cargo/bin` : '',
   ].filter(Boolean);
   const path = [...toolDirectories, process.env.PATH ?? ''].join(':');
+  const cloudConfig = prepareGlossaCloudConfig(repositoryRoot, { dev: true });
   const commandEnvironment = {
     ...process.env,
+    ...cloudConfig.environment,
     PATH: path,
     CARGO_TARGET_DIR: targetDirectory,
     DBUS_ID: GLOSSA_IDENTIFIER,
@@ -94,6 +98,8 @@ if (currentNodeMajor !== REQUIRED_NODE_MAJOR && process.env.GLOSSA_DEV_REEXECUTE
       'dev',
       '--config',
       configPath,
+      '--config',
+      cloudConfig.configPath,
     ];
     if (requestedArgs.length > 0) tauriArguments.push('--', '--', ...requestedArgs);
 

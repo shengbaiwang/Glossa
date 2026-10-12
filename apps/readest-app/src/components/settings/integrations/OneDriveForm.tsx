@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import { getMicrosoftClientId } from '@/services/sync/providers/onedrive/buildOneDriveProvider';
 import React, { useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -9,7 +10,7 @@ import {
   runOneDriveConnect,
   runOneDriveDisconnect,
 } from '@/services/sync/providers/onedrive/onedriveConnect';
-import { hasValidWebOneDriveToken } from '@/services/sync/providers/onedrive/webAuthCodeFlow';
+import { hasUsableWebOneDriveSession } from '@/services/sync/providers/onedrive/webAuthCodeFlow';
 import { Tips } from '../primitives';
 import FileSyncForm from './FileSyncForm';
 import { persistCloudProviderEnabled } from './cloudSync';
@@ -49,7 +50,8 @@ const OneDriveForm: React.FC = () => {
 
   const stored = settings.onedrive;
   const isActive = !!stored?.enabled;
-  const isConfigured = !!stored?.accountLabel;
+  const clientId = getMicrosoftClientId();
+  const isConfigured = !!clientId && stored?.oauthClientId === clientId;
   const [isConnecting, setIsConnecting] = useState(false);
 
   // On web the token is refreshed transparently via the shared `PersistedOAuth`
@@ -58,7 +60,8 @@ const OneDriveForm: React.FC = () => {
   // token after the tab closes. When that happens, swap Disconnect →
   // Reconnect and disable Sync now; the user-facing "session expired" notice
   // is a one-time toast in the reader (see useFileSync), not a hint here.
-  const sessionExpired = isActive && isWebAppPlatform() && !hasValidWebOneDriveToken();
+  const sessionExpired =
+    isActive && (!isConfigured || (isWebAppPlatform() && !hasUsableWebOneDriveSession()));
 
   const persistOneDrive = async (patch: Partial<typeof stored>) => {
     const latest = useSettingsStore.getState().settings;
@@ -70,9 +73,14 @@ const OneDriveForm: React.FC = () => {
   // Switch OneDrive on, optionally stamping a freshly-resolved account label.
   // Every other provider is left untouched (#5062).
   const activate = async (accountLabel?: string) => {
-    await persistCloudProviderEnabled(envConfig, 'onedrive', true, (s) =>
-      accountLabel === undefined ? s : { ...s, onedrive: { ...s.onedrive, accountLabel } },
-    );
+    await persistCloudProviderEnabled(envConfig, 'onedrive', true, (s) => ({
+      ...s,
+      onedrive: {
+        ...s.onedrive,
+        accountLabel: accountLabel ?? s.onedrive?.accountLabel,
+        oauthClientId: clientId,
+      },
+    }));
   };
 
   const handleConnect = async () => {
@@ -103,10 +111,18 @@ const OneDriveForm: React.FC = () => {
     // Other providers keep syncing.
     await persistCloudProviderEnabled(envConfig, 'onedrive', false, (s) => ({
       ...s,
-      onedrive: { ...s.onedrive, accountLabel: undefined },
+      onedrive: { ...s.onedrive, accountLabel: undefined, oauthClientId: undefined },
     }));
     eventDispatcher.dispatch('toast', { type: 'info', message: _('Disconnected') });
   };
+
+  if (!getMicrosoftClientId()) {
+    return (
+      <p role='status' className='text-base-content/70 text-sm'>
+        {_('OneDrive connection is not configured for Glossa yet.')}
+      </p>
+    );
+  }
 
   if (isActive) {
     return (

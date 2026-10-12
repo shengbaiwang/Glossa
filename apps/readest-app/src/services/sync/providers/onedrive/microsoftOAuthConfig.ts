@@ -6,6 +6,7 @@
  * the platform manifests. `prompt=select_account` lets a user pick which MS
  * account to connect.
  */
+import { getAppScheme } from '@/services/appIdentity';
 import type { OAuthClientConfig } from '@/services/sync/providers/oauth/oauthFlow';
 
 export const MICROSOFT_AUTH_ENDPOINT =
@@ -13,7 +14,7 @@ export const MICROSOFT_AUTH_ENDPOINT =
 export const MICROSOFT_TOKEN_ENDPOINT =
   'https://login.microsoftonline.com/common/oauth2/v2.0/token';
 export const ONEDRIVE_SCOPE = 'Files.ReadWrite.AppFolder offline_access User.Read';
-export const ONEDRIVE_REDIRECT_SCHEME = 'readest-onedrive';
+export const ONEDRIVE_REDIRECT_SCHEME = `${getAppScheme()}-onedrive`;
 export const ONEDRIVE_REDIRECT_URI = `${ONEDRIVE_REDIRECT_SCHEME}://auth`;
 
 export const buildMicrosoftOAuthConfig = (clientId: string): OAuthClientConfig => ({

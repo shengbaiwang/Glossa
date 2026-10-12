@@ -1,37 +1,37 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { handleAuthCallback } from '@/helpers/auth';
+import { handleAuthCallback, parseOAuthCallbackUrl } from '@/helpers/auth';
 
 export default function AuthCallback() {
   const router = useRouter();
   const { login } = useAuth();
+  const started = useRef(false);
+  const active = useRef(false);
 
   useEffect(() => {
-    const hash = window.location.hash || '';
-    const params = new URLSearchParams(hash.slice(1));
-
-    const accessToken = params.get('access_token');
-    const refreshToken = params.get('refresh_token');
-    const type = params.get('type');
-    const next = params.get('next') ?? '/';
-    const error = params.get('error');
-    const errorDescription = params.get('error_description');
-    const errorCode = params.get('error_code');
-
-    handleAuthCallback({
-      accessToken,
-      refreshToken,
-      type,
-      next,
-      error,
-      errorCode,
-      errorDescription,
+    active.current = true;
+    if (started.current)
+      return () => {
+        active.current = false;
+      };
+    started.current = true;
+    const params = parseOAuthCallbackUrl(window.location.href);
+    // Remove credentials from the address bar before any navigation or render.
+    window.history.replaceState(null, '', window.location.pathname);
+    void handleAuthCallback({
+      ...params,
+      next: params.next ?? undefined,
       login,
-      navigate: router.push,
+      navigate: (path) => {
+        if (active.current) router.push(path);
+      },
     });
+    return () => {
+      active.current = false;
+    };
   }, [login, router]);
 
   return (

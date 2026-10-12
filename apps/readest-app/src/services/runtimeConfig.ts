@@ -1,4 +1,7 @@
 export interface ReadestRuntimeConfig {
+  glossaAuthUrl?: string;
+  glossaAuthKey?: string;
+  glossaAuthRedirectUrl?: string;
   supabaseUrl?: string;
   supabaseAnonKey?: string;
   apiBaseUrl?: string;
@@ -17,6 +20,9 @@ export const getRuntimeConfig = () =>
   typeof window === 'undefined' ? undefined : window.__READEST_RUNTIME_CONFIG;
 
 export const getServerRuntimeConfig = (): ReadestRuntimeConfig => ({
+  glossaAuthUrl: process.env['NEXT_PUBLIC_GLOSSA_AUTH_URL'],
+  glossaAuthKey: process.env['NEXT_PUBLIC_GLOSSA_AUTH_KEY'],
+  glossaAuthRedirectUrl: process.env['NEXT_PUBLIC_GLOSSA_AUTH_REDIRECT_URL'],
   // Browser runtime config should prefer a public Supabase URL when provided.
   // SUPABASE_URL remains as a backward-compatible fallback for non-split setups.
   supabaseUrl:

@@ -20,6 +20,8 @@ export default defineConfig({
   optimizeDeps: {
     include: [
       '@supabase/supabase-js',
+      'next/link',
+      'react-icons/fc',
       '@tauri-apps/plugin-fs',
       '@tauri-apps/plugin-http',
       '@tauri-apps/api/path',

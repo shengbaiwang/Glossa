@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, vi } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useSettingsStore } from '@/store/settingsStore';
 import { setCachedUserPlan } from '@/services/sync/cloudSyncProvider';
 import { useLibraryStore } from '@/store/libraryStore';
@@ -45,6 +45,7 @@ vi.mock('@/services/sync/providers/gdrive/auth/webTokenStore', async (importOrig
 // false anyway; the mock makes the platform dependency explicit and togglable.
 vi.mock('@/services/sync/providers/icloud/buildICloudProvider', () => ({
   isICloudSupportedPlatform: vi.fn(() => false),
+  isICloudDriveFolder: vi.fn(() => false),
   buildICloudProvider: vi.fn(async () => null),
 }));
 
@@ -91,8 +92,14 @@ const multiProviderSettings = {
     rootPath: '/',
     syncBooks: true,
   },
-  googleDrive: { enabled: true, syncBooks: true },
+  googleDrive: { enabled: true, syncBooks: true, oauthClientId: 'glossa-client' },
 } as unknown as SystemSettings;
+
+beforeEach(() => {
+  vi.stubEnv('NEXT_PUBLIC_GLOSSA_GOOGLE_CLIENT_ID', 'glossa-client');
+  vi.stubEnv('NEXT_PUBLIC_GLOSSA_GOOGLE_WEB_CLIENT_ID', 'glossa-client');
+});
+afterEach(() => vi.unstubAllEnvs());
 
 describe('runFileLibrarySyncPass', () => {
   beforeEach(() => {
@@ -251,7 +258,7 @@ describe('getReadyFileSyncBackends', () => {
       password: 'p',
       rootPath: '/',
     },
-    googleDrive: { enabled: true },
+    googleDrive: { enabled: true, oauthClientId: 'glossa-client' },
   } as unknown as SystemSettings;
 
   beforeEach(() => {
@@ -277,12 +284,20 @@ describe('getReadyFileSyncBackends', () => {
     expect(getReadyFileSyncBackends(settings)).toEqual(['webdav', 'gdrive']);
   });
 
-  test('excludes everything when the plan gate pauses third-party sync', () => {
+  test('keeps personal sync ready on the free plan', () => {
     setCachedUserPlan('free');
-    expect(getReadyFileSyncBackends(settings)).toEqual([]);
+    expect(getReadyFileSyncBackends(settings)).toEqual(['webdav', 'gdrive']);
   });
 
   test('rules icloud out off Apple platforms (canBackendRun false)', () => {
     expect(canBackendRun('icloud')).toBe(false);
+  });
+  test('old or absent OAuth registrations are not reported as ready', () => {
+    expect(getReadyFileSyncBackends({ ...settings, googleDrive: { enabled: true } })).toEqual([
+      'webdav',
+    ]);
+    vi.stubEnv('NEXT_PUBLIC_GLOSSA_GOOGLE_WEB_CLIENT_ID', '');
+    vi.stubEnv('NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID', '');
+    expect(getReadyFileSyncBackends(settings)).toEqual(['webdav']);
   });
 });

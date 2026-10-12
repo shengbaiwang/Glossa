@@ -1,3 +1,4 @@
+import '@/__tests__/fixtures/legacyCloudPolicy';
 import { describe, test, expect, beforeEach, vi } from 'vitest';
 
 // transferManager is a singleton with heavy dependencies; mock it so the test

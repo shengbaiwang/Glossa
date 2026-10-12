@@ -8,6 +8,7 @@ import {
   consumeWebOAuthState,
   consumeWebPkceVerifier,
   exchangeWebAuthCode,
+  hasUsableWebOneDriveSession,
   hasValidWebOneDriveToken,
   loadWebOneDriveToken,
   oneDriveWebRedirectUri,
@@ -16,6 +17,8 @@ import {
 } from '@/services/sync/providers/onedrive/webAuthCodeFlow';
 
 beforeEach(() => {
+  vi.stubEnv('NEXT_PUBLIC_GLOSSA_MICROSOFT_CLIENT_ID', '');
+  vi.stubEnv('NEXT_PUBLIC_MICROSOFT_CLIENT_ID', '');
   window.sessionStorage.clear();
   Object.defineProperty(window, 'location', {
     value: { origin: 'http://localhost:3000', assign: vi.fn() },
@@ -26,6 +29,7 @@ beforeEach(() => {
 afterEach(() => {
   window.sessionStorage.clear();
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe('oneDriveWebRedirectUri', () => {
@@ -43,9 +47,9 @@ describe('beginWebOneDriveRedirect', () => {
       expect(window.location.assign).toHaveBeenCalled();
     });
 
-    const verifier = window.sessionStorage.getItem('onedrive_web_oauth_verifier');
-    const state = window.sessionStorage.getItem('onedrive_web_oauth_state');
-    const returnPath = window.sessionStorage.getItem('onedrive_web_oauth_return');
+    const verifier = window.sessionStorage.getItem('glossa_onedrive_web_oauth_verifier');
+    const state = window.sessionStorage.getItem('glossa_onedrive_web_oauth_state');
+    const returnPath = window.sessionStorage.getItem('glossa_onedrive_web_oauth_return');
     expect(verifier).toBeTruthy();
     expect(state).toBeTruthy();
     expect(returnPath).toBe('/library?x=1');
@@ -76,24 +80,24 @@ describe('beginWebOneDriveRedirect', () => {
 
 describe('consumeWebOAuthState / consumeWebPkceVerifier / consumeReturnPath', () => {
   test('state is read once then cleared', () => {
-    window.sessionStorage.setItem('onedrive_web_oauth_state', 'STATE1');
+    window.sessionStorage.setItem('glossa_onedrive_web_oauth_state', 'STATE1');
     expect(consumeWebOAuthState()).toBe('STATE1');
     expect(consumeWebOAuthState()).toBeNull();
   });
 
   test('verifier is read once then cleared', () => {
-    window.sessionStorage.setItem('onedrive_web_oauth_verifier', 'VERIFIER1');
+    window.sessionStorage.setItem('glossa_onedrive_web_oauth_verifier', 'VERIFIER1');
     expect(consumeWebPkceVerifier()).toBe('VERIFIER1');
     expect(consumeWebPkceVerifier()).toBeNull();
   });
 
   test('return path falls back to "/" and rejects non-same-origin paths', () => {
     expect(consumeReturnPath()).toBe('/');
-    window.sessionStorage.setItem('onedrive_web_oauth_return', '/library?q=1');
+    window.sessionStorage.setItem('glossa_onedrive_web_oauth_return', '/library?q=1');
     expect(consumeReturnPath()).toBe('/library?q=1');
-    window.sessionStorage.setItem('onedrive_web_oauth_return', '//evil.com');
+    window.sessionStorage.setItem('glossa_onedrive_web_oauth_return', '//evil.com');
     expect(consumeReturnPath()).toBe('/');
-    window.sessionStorage.setItem('onedrive_web_oauth_return', 'https://evil.com');
+    window.sessionStorage.setItem('glossa_onedrive_web_oauth_return', 'https://evil.com');
     expect(consumeReturnPath()).toBe('/');
   });
 });
@@ -151,8 +155,28 @@ describe('web token store', () => {
   });
 
   test('returns null for an unparseable stored value', () => {
-    window.sessionStorage.setItem('onedrive_web_token', 'not json');
+    window.sessionStorage.setItem('glossa_onedrive_web_token:unconfigured', 'not json');
     expect(loadWebOneDriveToken()).toBeNull();
+  });
+
+  test.each([
+    'null',
+    '{}',
+    '{"accessToken":"AT","expiresAt":"5000"}',
+    '{"accessToken":"AT","expiresAt":5000,"refreshToken":42}',
+  ])('rejects malformed token records: %s', (raw) => {
+    window.sessionStorage.setItem('glossa_onedrive_web_token:unconfigured', raw);
+    expect(loadWebOneDriveToken()).toBeNull();
+    expect(hasUsableWebOneDriveSession(1_000)).toBe(false);
+  });
+
+  test('an expired session remains usable only when it can refresh', () => {
+    expect(hasUsableWebOneDriveSession(9_000)).toBe(false);
+    saveWebOneDriveToken({ accessToken: 'AT', expiresAt: 5_000 });
+    expect(hasUsableWebOneDriveSession(1_000)).toBe(true);
+    expect(hasUsableWebOneDriveSession(9_000)).toBe(false);
+    saveWebOneDriveToken({ accessToken: 'AT', refreshToken: 'RT', expiresAt: 5_000 });
+    expect(hasUsableWebOneDriveSession(9_000)).toBe(true);
   });
 
   test('hasValidWebOneDriveToken reflects presence + expiry', () => {
@@ -177,7 +201,7 @@ describe('webOneDriveTokenPersistence', () => {
       refreshToken: 'RT',
       expiresAt: 999,
     });
-    expect(window.sessionStorage.getItem('onedrive_web_token')).toBeTruthy();
+    expect(window.sessionStorage.getItem('glossa_onedrive_web_token:unconfigured')).toBeTruthy();
 
     await webOneDriveTokenPersistence.clear();
     expect(await webOneDriveTokenPersistence.load()).toBeNull();

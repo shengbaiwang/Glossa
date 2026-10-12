@@ -61,7 +61,7 @@ export const runOneDriveConnect = async (): Promise<ConnectOneDriveResult> => {
   }
   const clientId = getMicrosoftClientId();
   if (!clientId) throw new Error('OneDrive is not configured in this build');
-  const persistence = await createOneDriveTokenPersistence();
+  const persistence = await createOneDriveTokenPersistence(getMicrosoftClientId());
   if (!persistence) throw new Error('OneDrive requires a Glossa app build with secure storage');
   return connectOneDrive({
     config: buildMicrosoftOAuthConfig(clientId),
@@ -78,6 +78,6 @@ export const runOneDriveDisconnect = async (): Promise<void> => {
     clearWebOneDriveToken();
     return;
   }
-  const persistence = await createOneDriveTokenPersistence();
+  const persistence = await createOneDriveTokenPersistence(getMicrosoftClientId());
   if (persistence) await disconnectOneDrive(persistence);
 };

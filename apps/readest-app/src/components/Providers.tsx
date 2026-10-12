@@ -27,6 +27,7 @@ import { DropdownProvider } from '@/context/DropdownContext';
 import { CommandPaletteProvider, CommandPalette } from '@/components/command-palette';
 
 import AppLockScreen from '@/components/AppLockScreen';
+import NativeAuthCallback from '@/components/NativeAuthCallback';
 import AppLockDialog from '@/components/settings/AppLockDialog';
 import PassphrasePrompt from '@/components/PassphrasePrompt';
 
@@ -158,6 +159,7 @@ const Providers = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <AuthProvider>
+      <NativeAuthCallback />
       <IconContext.Provider value={{ size: `${iconSize}px` }}>
         <SyncProvider>
           <DropdownProvider>

@@ -185,6 +185,8 @@ export interface WebDAVSettings {
  * and `lastSyncedAt` are device-local (excluded from cross-device restore).
  */
 export interface GoogleDriveSettings {
+  /** OAuth registration that owns the device-local token. */
+  oauthClientId?: string;
   enabled: boolean;
   /** Connected account's email (or display name), shown in the settings UI. */
   accountLabel?: string;
@@ -235,6 +237,8 @@ export interface S3Settings {
  * `deviceId`/`lastSyncedAt`/`providerSelectedAt` are device-local.
  */
 export interface OneDriveSettings {
+  /** OAuth registration that owns the device-local token. */
+  oauthClientId?: string;
   enabled: boolean;
   /** Connected account's userPrincipalName/email, shown in the settings UI. */
   accountLabel?: string;
@@ -256,6 +260,8 @@ export interface OneDriveSettings {
  * `deviceId`/`lastSyncedAt`/`providerSelectedAt` are device-local.
  */
 export interface ICloudSettings {
+  /** Selected macOS iCloud Drive folder; device-local and never backed up. */
+  documentsPath?: string;
   enabled: boolean;
   syncProgress?: boolean;
   syncNotes?: boolean;

@@ -1,3 +1,4 @@
+import '@/__tests__/fixtures/legacyCloudPolicy';
 import { describe, test, expect, beforeEach, vi } from 'vitest';
 import type { SystemSettings } from '@/types/settings';
 import { useFileSyncStore } from '@/store/fileSyncStore';

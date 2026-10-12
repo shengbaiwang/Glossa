@@ -3,18 +3,7 @@ import type { UserPlan } from '@/types/quota';
 import { isCloudSyncAllowed } from '@/utils/access';
 import type { FileSyncBackendKind } from '@/services/sync/file/providerRegistry';
 
-/**
- * The cloud sync provider kind for library data (book files, book rows,
- * progress, notes). 'readest' is the native Readest Cloud; the others are
- * the third-party file-sync backends.
- *
- * Providers are INDEPENDENT (#5062): any subset may sync the library at once,
- * including none. Readest Cloud's flag has a derived default so an absent value
- * reproduces the old exclusive behaviour; every third-party backend is a plain
- * per-device `enabled` flag. Account-level data (settings replicas, reading
- * stats, dictionaries/fonts, translations) always syncs via Readest Cloud while
- * signed in, regardless of this selection.
- */
+/** Personal cloud selection. The legacy 'readest' tag remains readable but never runs. */
 export type CloudSyncProviderKind = 'readest' | FileSyncBackendKind;
 
 /** Settings slice key for a third-party backend kind. */
@@ -57,20 +46,11 @@ export const getEnabledFileSyncBackends = (
 export const hasAnyThirdPartyEnabled = (settings: SystemSettings | null | undefined): boolean =>
   getEnabledFileSyncBackends(settings).length > 0;
 
-/**
- * Whether Readest Cloud syncs the library channels on this device.
- *
- * The `??` is load-bearing: an absent `readestCloud.enabled` reproduces the
- * pre-#5062 exclusive derivation (Readest Cloud owned the library exactly when
- * no third-party provider was enabled), so upgrading users need no migration
- * and disconnecting the last third-party provider still falls back to Readest
- * Cloud. Once the user touches a Cloud Sync checkbox the flag is explicit and
- * wins.
- */
-export const isReadestCloudEnabled = (settings: SystemSettings | null | undefined): boolean =>
-  settings?.readestCloud?.enabled ?? !hasAnyThirdPartyEnabled(settings);
+/** Preserve old flags without reactivating the original storage service. */
+export const isReadestCloudEnabled = (_settings: SystemSettings | null | undefined): boolean =>
+  false;
 
-/** Every provider syncing the library on this device, Readest Cloud first. */
+/** Enabled personal clouds; the legacy service is always disabled. */
 export const getCloudSyncProviders = (
   settings: SystemSettings | null | undefined,
 ): CloudSyncProviderKind[] => [

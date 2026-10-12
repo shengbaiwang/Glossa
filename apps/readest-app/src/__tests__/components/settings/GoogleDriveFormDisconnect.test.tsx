@@ -52,11 +52,16 @@ const bothEnabled = {
     password: 'hunter2',
     rootPath: '/',
   },
-  googleDrive: { enabled: true, accountLabel: 'alice@example.com' },
+  googleDrive: {
+    enabled: true,
+    accountLabel: 'alice@example.com',
+    oauthClientId: 'own.apps.googleusercontent.com',
+  },
 } as unknown as SystemSettings;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv('NEXT_PUBLIC_GLOSSA_GOOGLE_CLIENT_ID', 'own.apps.googleusercontent.com');
   useSettingsStore.setState({ settings: bothEnabled } as never);
   useLibraryStore.setState({ library: [], libraryLoaded: true } as never);
   useFileSyncStore.setState({ byKind: {}, activeKind: null, lastErrorByKind: {} });
@@ -64,6 +69,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllEnvs();
 });
 
 describe('GoogleDriveForm disconnect (#5062 regression)', () => {

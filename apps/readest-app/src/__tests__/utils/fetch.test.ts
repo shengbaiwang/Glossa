@@ -1,3 +1,5 @@
+// Retained upstream HTTP protocol tests; the production Glossa guard is tested separately.
+vi.mock('@/glossa/account/config', () => ({ isNativeCloudSyncAvailable: () => true }));
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock the access module before importing fetch utilities

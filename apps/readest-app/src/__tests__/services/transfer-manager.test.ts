@@ -1,3 +1,4 @@
+import '@/__tests__/fixtures/legacyCloudPolicy';
 import { describe, test, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
 import { useTransferStore, TransferItem } from '@/store/transferStore';
 import { useSettingsStore } from '@/store/settingsStore';

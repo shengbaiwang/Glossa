@@ -17,18 +17,11 @@ import { createOneDriveAuth } from './onedriveAuth';
 import { createOneDriveTokenPersistence } from './onedriveTokenStore';
 import { webOneDriveTokenPersistence } from './webAuthCodeFlow';
 
-/**
- * Official Readest Microsoft (Azure) app registration client id, baked into the
- * build so OneDrive sync works out of the box. One public client serves every
- * platform (native custom-scheme redirect + web SPA redirect). Not a secret — it
- * ships inside the app binary, like the Google client id. A forker overrides it
- * via `NEXT_PUBLIC_MICROSOFT_CLIENT_ID` at build (and must register their own
- * redirect URIs on that client).
- */
-const OFFICIAL_MICROSOFT_CLIENT_ID = '99ebebbc-a44b-40fc-b418-aade0f28900c';
-
+/** Public app registration owned by Glossa; no upstream default. */
 export const getMicrosoftClientId = (): string | undefined =>
-  process.env['NEXT_PUBLIC_MICROSOFT_CLIENT_ID'] || OFFICIAL_MICROSOFT_CLIENT_ID || undefined;
+  process.env['NEXT_PUBLIC_GLOSSA_MICROSOFT_CLIENT_ID'] ||
+  process.env['NEXT_PUBLIC_MICROSOFT_CLIENT_ID'] ||
+  undefined;
 
 /** Native `fetch` bypasses the WebView CSP for the graph.microsoft.com host. */
 const resolveFetch = (): FetchFn =>
@@ -54,7 +47,7 @@ export const buildOneDriveProvider = async (): Promise<FileSyncProvider | null> 
   if (!clientId) return null;
   // No ephemeral fallback for the refresh token: if secure storage is missing,
   // OneDrive is simply not available here.
-  const persistence = await createOneDriveTokenPersistence();
+  const persistence = await createOneDriveTokenPersistence(clientId);
   if (!persistence) return null;
   const fetchFn = resolveFetch();
   const auth = createOneDriveAuth({ clientId, fetchFn, persistence });

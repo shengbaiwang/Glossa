@@ -28,7 +28,8 @@ describe('ProviderLogin', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sign in with Apple' }));
 
     await waitFor(() => {
-      expect(consoleWarn).toHaveBeenCalledWith('Failed to sign in with apple:', error);
+      expect(screen.getByRole('alert').textContent).toContain('Unable to sign in');
+      expect(consoleWarn).not.toHaveBeenCalled();
     });
   });
 });

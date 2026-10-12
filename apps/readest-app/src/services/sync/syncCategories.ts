@@ -26,6 +26,7 @@
 import { useSettingsStore } from '@/store/settingsStore';
 import { isReadestCloudEnabled } from '@/services/sync/cloudSyncProvider';
 import { SYNC_CATEGORIES, type SyncCategory } from '@/types/settings';
+import { isNativeCloudSyncAvailable } from '@/glossa/account/config';
 
 export { SYNC_CATEGORIES };
 export type { SyncCategory };
@@ -122,6 +123,7 @@ const PROVIDER_GATED_CATEGORIES: ReadonlySet<SyncCategory> = new Set([
 ] as SyncCategory[]);
 
 export const isSyncCategoryEnabled = (id: string): boolean => {
+  if (!isNativeCloudSyncAvailable()) return false;
   const category = toCategory(id);
   if (!category) return true; // unknown id → always-on
   if (

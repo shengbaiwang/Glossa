@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -31,9 +31,16 @@ export default function OneDriveCallback() {
   const _ = useTranslation();
   const { envConfig } = useEnv();
   const setSettings = useSettingsStore((s) => s.setSettings);
+  const started = useRef(false);
+  const active = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
+    active.current = true;
+    if (started.current)
+      return () => {
+        active.current = false;
+      };
+    started.current = true;
     (async () => {
       const returnPath = consumeReturnPath();
       const expectedState = consumeWebOAuthState();
@@ -42,6 +49,7 @@ export default function OneDriveCallback() {
       const code = params.get('code');
       const returnedState = params.get('state');
       const oauthError = params.get('error');
+      window.history.replaceState(null, '', window.location.pathname);
       try {
         if (oauthError) throw new Error(oauthError);
         if (!expectedState || returnedState !== expectedState) {
@@ -76,19 +84,21 @@ export default function OneDriveCallback() {
           ...s,
           onedrive: {
             ...s.onedrive,
+            oauthClientId: getMicrosoftClientId(),
             accountLabel: accountLabel ?? s.onedrive?.accountLabel,
           },
         }));
-        eventDispatcher.dispatch('toast', { type: 'info', message: _('Connected') });
-      } catch (e) {
-        console.warn('[onedrive] web callback failed', e);
-        eventDispatcher.dispatch('toast', { type: 'error', message: _('Failed to connect') });
+        if (active.current)
+          eventDispatcher.dispatch('toast', { type: 'info', message: _('Connected') });
+      } catch {
+        if (active.current)
+          eventDispatcher.dispatch('toast', { type: 'error', message: _('Failed to connect') });
       } finally {
-        if (!cancelled) router.replace(returnPath);
+        if (active.current) router.replace(returnPath);
       }
     })();
     return () => {
-      cancelled = true;
+      active.current = false;
     };
   }, [envConfig, router, setSettings, _]);
 

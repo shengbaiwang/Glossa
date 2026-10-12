@@ -17,11 +17,7 @@ const readConfig = (name: string) =>
 
 // These are the registered redirects used by AuthPage, OneDrive and Google Drive.
 // Renaming the app must not leave an existing consent flow unable to return.
-const cloudCallbackSchemes = [
-  'readest',
-  'readest-onedrive',
-  'com.googleusercontent.apps.209390247301-ctpmep68ppfa56r1b8tr35e4qi4p60kq',
-];
+const cloudCallbackSchemes = ['readest'];
 
 describe('Glossa native application identity', () => {
   it.each([
@@ -50,6 +46,8 @@ describe('Glossa native authentication callbacks', () => {
     const schemes = readConfig(name).plugins['deep-link'].desktop.schemes;
     expect(schemes).toContain(name.includes('-dev') ? 'glossa-dev' : 'glossa');
     expect(schemes).toEqual(expect.arrayContaining(cloudCallbackSchemes));
+    expect(schemes).toContain(name.includes('-dev') ? 'glossa-dev-onedrive' : 'glossa-onedrive');
+    expect(schemes).not.toContain('readest-onedrive');
   });
 
   it('keeps mobile callback registration for the retained cloud account flows', () => {

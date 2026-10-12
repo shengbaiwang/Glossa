@@ -2,7 +2,7 @@ import { jwtDecode } from 'jwt-decode';
 import { supabase } from '@/utils/supabase';
 import { UserPlan } from '@/types/quota';
 import { DEFAULT_STORAGE_QUOTA } from '@/services/constants';
-import { isWebAppPlatform } from '@/services/environment';
+import { isGlossaAuthConfigured } from '@/glossa/account/config';
 
 import { getRuntimeConfig } from '@/services/runtimeConfig';
 
@@ -46,10 +46,8 @@ export const isEmailInPlan = (plan: UserPlan): boolean =>
   (EMAIL_IN_PLANS as readonly UserPlan[]).includes(plan);
 
 /**
- * Plans that include third-party cloud sync (WebDAV / Google Drive): any paid
- * plan — Plus, Pro, and Lifetime (`purchase`). Free users see an upgrade prompt
- * in Settings and the reader's auto-sync stays off, so syncing to a personal
- * cloud is a premium feature.
+ * Legacy plan values remain readable for compatibility with saved settings.
+ * Glossa personal cloud sync does not require a subscription or identity login.
  */
 export const CLOUD_SYNC_PLANS: readonly UserPlan[] = ['plus', 'pro', 'purchase'];
 
@@ -57,15 +55,9 @@ export const isCloudSyncInPlan = (plan: UserPlan): boolean =>
   (CLOUD_SYNC_PLANS as readonly UserPlan[]).includes(plan);
 
 /**
- * Master switch for the third-party cloud-sync premium paywall. ON: cloud
- * sync (WebDAV / Google Drive / S3) requires a {@link CLOUD_SYNC_PLANS} plan —
- * free users see the provider rows with a Premium badge and an upgrade route
- * instead of the config sub-pages, and a downgraded account's still-selected
- * provider is paused (never a silent fallback to Readest Cloud uploads, #4959).
- * Every gate goes through {@link isCloudSyncAllowed}, so this flag is the
- * whole toggle.
+ * Glossa does not sell storage plans. Every personal cloud remains available.
  */
-export const CLOUD_SYNC_REQUIRES_PREMIUM = true;
+export const CLOUD_SYNC_REQUIRES_PREMIUM = false;
 
 /**
  * Whether third-party cloud sync is available for a plan. Falls back to the
@@ -119,21 +111,14 @@ export const getStoragePlanData = (token: string) => {
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
-  // In browser context there might be two instances of supabase one in the app route
-  // and the other in the pages route, and they might have different sessions
-  // making the access token invalid for API calls. In that case we should use localStorage.
-  if (isWebAppPlatform()) {
-    return localStorage.getItem('token') ?? null;
-  }
+  // Only the independent SDK session is authoritative; legacy token keys stay unread.
+  if (!isGlossaAuthConfigured()) return null;
   const { data } = await supabase.auth.getSession();
   return data?.session?.access_token ?? null;
 };
 
 export const getUserID = async (): Promise<string | null> => {
-  if (isWebAppPlatform()) {
-    const user = localStorage.getItem('user') ?? '{}';
-    return JSON.parse(user).id ?? null;
-  }
+  if (!isGlossaAuthConfigured()) return null;
   const { data } = await supabase.auth.getSession();
   return data?.session?.user?.id ?? null;
 };

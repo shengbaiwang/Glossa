@@ -8,6 +8,7 @@ import {
   settingsKeyForBackend,
 } from '@/services/sync/cloudSyncProvider';
 import { eventDispatcher } from '@/utils/event';
+import { isNativeCloudSyncAvailable } from '@/glossa/account/config';
 
 /**
  * Mixed-fleet detection (UC1). The cloud sync provider selection is
@@ -33,6 +34,7 @@ export const checkMixedFleetOnce = async (
   settings: SystemSettings,
   _: TranslationFunc,
 ): Promise<boolean> => {
+  if (!isNativeCloudSyncAvailable()) return false;
   // Nothing to warn about while this device still writes the native rows: a
   // peer on Readest Cloud is not a fork, it is the same channel (#5062).
   if (isReadestCloudEnabled(settings)) return false;

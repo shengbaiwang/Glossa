@@ -26,8 +26,8 @@ const MS_PER_SEC = 1000;
 const DEFAULT_TOKEN_LIFETIME_SEC = 3600;
 
 /** sessionStorage keys for the CSRF state + post-connect return path. */
-const STATE_KEY = 'gdrive_web_oauth_state';
-const RETURN_KEY = 'gdrive_web_oauth_return';
+const STATE_KEY = 'glossa_gdrive_web_oauth_state';
+const RETURN_KEY = 'glossa_gdrive_web_oauth_return';
 
 /** Path of the OAuth callback route (must match the registered redirect URI). */
 export const WEB_OAUTH_CALLBACK_PATH = '/gdrive-callback';

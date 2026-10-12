@@ -14,7 +14,22 @@ vi.mock('@/utils/supabase', () => ({
   },
 }));
 
-import { handleAuthCallback, parseOAuthCallbackUrl } from '@/helpers/auth';
+import { handleAuthCallback, parseOAuthCallbackUrl, safeAuthReturnPath } from '@/helpers/auth';
+
+describe('safeAuthReturnPath', () => {
+  it.each([
+    'https://elsewhere.test',
+    '//elsewhere.test',
+    '/\\elsewhere.test',
+    '/a\nnext',
+    null,
+  ])('keeps unsafe redirects local: %s', (path) => {
+    expect(safeAuthReturnPath(path)).toBe('/library');
+  });
+  it('keeps an internal reading destination', () => {
+    expect(safeAuthReturnPath('/reader?book=test')).toBe('/reader?book=test');
+  });
+});
 
 describe('parseOAuthCallbackUrl', () => {
   it('should extract error params from a failed deeplink callback', () => {
@@ -77,6 +92,8 @@ describe('handleAuthCallback', () => {
   } as User;
 
   beforeEach(() => {
+    vi.stubEnv('NEXT_PUBLIC_GLOSSA_AUTH_URL', 'https://glossa.test');
+    vi.stubEnv('NEXT_PUBLIC_GLOSSA_AUTH_KEY', 'test-key');
     mockLogin = vi.fn<(accessToken: string, user: User) => void>();
     mockNavigate = vi.fn<(path: string) => void>();
     mockSetSession.mockReset();
@@ -86,6 +103,7 @@ describe('handleAuthCallback', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it('should navigate to /auth/error when error is present', async () => {
@@ -193,7 +211,7 @@ describe('handleAuthCallback', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/reader');
   });
 
-  it('should default next to "/" when not specified', async () => {
+  it('should default next to "/library" when not specified', async () => {
     mockSetSession.mockResolvedValue({ error: null });
     mockGetUser.mockResolvedValue({ data: { user: fakeUser } });
 
@@ -205,7 +223,7 @@ describe('handleAuthCallback', () => {
     });
 
     await vi.waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/');
+      expect(mockNavigate).toHaveBeenCalledWith('/library');
     });
   });
 
@@ -284,5 +302,25 @@ describe('handleAuthCallback', () => {
         refresh_token: 'my-refresh-token',
       });
     });
+  });
+  it('uses the SDK-refreshed token and contains rejected network requests', async () => {
+    mockSetSession.mockResolvedValue({
+      data: { session: { access_token: 'refreshed' } },
+      error: null,
+    });
+    mockGetUser.mockResolvedValue({ data: { user: fakeUser }, error: null });
+    const options = {
+      accessToken: 'expired',
+      refreshToken: 'refresh',
+      login: mockLogin,
+      navigate: mockNavigate,
+    };
+    await handleAuthCallback(options);
+    expect(mockLogin).toHaveBeenCalledWith('refreshed', fakeUser);
+    mockLogin.mockClear();
+    mockSetSession.mockRejectedValue(new Error('network unavailable'));
+    await handleAuthCallback(options);
+    expect(mockLogin).not.toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenLastCalledWith('/auth/error');
   });
 });

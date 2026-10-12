@@ -11,7 +11,8 @@
 import type { TokenSet } from '@/services/sync/providers/oauth/tokenEndpoint';
 
 /** sessionStorage key holding the serialised {@link TokenSet}. */
-const WEB_TOKEN_KEY = 'gdrive_web_token';
+const webTokenKey = () =>
+  `glossa_gdrive_web_token:${process.env['NEXT_PUBLIC_GLOSSA_GOOGLE_WEB_CLIENT_ID'] || process.env['NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID'] || 'unconfigured'}`;
 
 const getStorage = (): Storage | null => {
   try {
@@ -23,12 +24,12 @@ const getStorage = (): Storage | null => {
 
 /** Persist the access token (+ expiry) for this tab/session. */
 export const saveWebDriveToken = (tokens: TokenSet): void => {
-  getStorage()?.setItem(WEB_TOKEN_KEY, JSON.stringify(tokens));
+  getStorage()?.setItem(webTokenKey(), JSON.stringify(tokens));
 };
 
 /** Load the stored token, or null when absent/unparseable. */
 export const loadWebDriveToken = (): TokenSet | null => {
-  const raw = getStorage()?.getItem(WEB_TOKEN_KEY);
+  const raw = getStorage()?.getItem(webTokenKey());
   if (!raw) return null;
   try {
     return JSON.parse(raw) as TokenSet;
@@ -39,7 +40,7 @@ export const loadWebDriveToken = (): TokenSet | null => {
 
 /** Forget the stored token (Disconnect). */
 export const clearWebDriveToken = (): void => {
-  getStorage()?.removeItem(WEB_TOKEN_KEY);
+  getStorage()?.removeItem(webTokenKey());
 };
 
 /**

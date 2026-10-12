@@ -3,6 +3,7 @@ import { getAPIBaseUrl } from '@/services/environment';
 import { SyncError } from '@/libs/errors';
 import type { Hlc, ReplicaRow } from '@/types/replica';
 import type { SyncErrorCode } from '@/libs/errors';
+import { isNativeCloudSyncAvailable } from '@/glossa/account/config';
 
 const ENDPOINT = () => `${getAPIBaseUrl()}/sync/replicas`;
 const KEYS_ENDPOINT = () => `${getAPIBaseUrl()}/sync/replica-keys`;
@@ -39,6 +40,7 @@ const parseErrorBody = async (response: Response): Promise<ErrorBody> => {
 };
 
 const requireToken = async (): Promise<string> => {
+  if (!isNativeCloudSyncAvailable()) throw new SyncError('AUTH', 'Native cloud sync is disabled');
   const token = await getAccessToken();
   if (!token) throw new SyncError('AUTH', 'Not authenticated');
   return token;

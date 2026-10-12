@@ -20,12 +20,7 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": [
-          "glossa",
-          "readest-onedrive",
-          "com.googleusercontent.apps.209390247301-ctpmep68ppfa56r1b8tr35e4qi4p60kq",
-          "readest"
-        ]
+        "schemes": ["glossa", "glossa-onedrive", "readest"]
       }
     }
   }

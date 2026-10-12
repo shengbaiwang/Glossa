@@ -39,7 +39,7 @@ export interface CloudSyncProviderFlags {
   /** Optional: absent on payloads from pre-OneDrive windows (treated as unchanged). */
   onedrive?: { enabled: boolean; providerSelectedAt?: number };
   /** Optional: absent on payloads from pre-iCloud windows (treated as unchanged). */
-  icloud?: { enabled: boolean; providerSelectedAt?: number };
+  icloud?: { enabled: boolean; providerSelectedAt?: number; documentsPath?: string };
   /**
    * Optional in two senses: absent on payloads from pre-#5062 windows, and
    * absent when the source window has never had the slice written. `enabled`
@@ -139,6 +139,7 @@ export const broadcastGlobalSettings = async (
         icloud: {
           enabled: !!settings.icloud?.enabled,
           providerSelectedAt: settings.icloud?.providerSelectedAt,
+          documentsPath: settings.icloud?.documentsPath,
         },
       };
       if (settings.readestCloud) {

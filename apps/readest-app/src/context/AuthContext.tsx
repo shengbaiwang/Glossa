@@ -6,107 +6,75 @@ import {
   useContext,
   useCallback,
   useMemo,
-  ReactNode,
   useEffect,
+  type ReactNode,
 } from 'react';
-import { User } from '@supabase/supabase-js';
+import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/utils/supabase';
+import { isGlossaAuthConfigured } from '@/glossa/account/config';
 
 interface AuthContextType {
   token: string | null;
   user: User | null;
   login: (token: string, user: User) => void;
-  logout: () => void;
-  refresh: () => void;
+  logout: () => Promise<void>;
+  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [token, setToken] = useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('token');
-    }
-    return null;
-  });
-  const [user, setUser] = useState<User | null>(() => {
-    if (typeof window !== 'undefined') {
-      const userJson = localStorage.getItem('user');
-      return userJson ? JSON.parse(userJson) : null;
-    }
-    return null;
-  });
+  // The SDK owns the project-isolated session. Never read legacy token/user keys.
+  const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const syncSession = (
-      session: { access_token: string; refresh_token: string; user: User } | null,
-    ) => {
-      if (session) {
-        console.log('Syncing session');
-        const { access_token, refresh_token, user } = session;
-        localStorage.setItem('token', access_token);
-        localStorage.setItem('refresh_token', refresh_token);
-        localStorage.setItem('user', JSON.stringify(user));
-
-        setToken(access_token);
-        setUser(user);
-      } else {
-        localStorage.removeItem('token');
-        localStorage.removeItem('refresh_token');
-        localStorage.removeItem('user');
-        setToken(null);
-        setUser(null);
-      }
+    if (!isGlossaAuthConfigured()) return;
+    let active = true;
+    let revision = 0;
+    const syncSession = (session: Session | null) => {
+      if (!active) return;
+      setToken(session?.access_token ?? null);
+      setUser(session?.user ?? null);
     };
-    const refreshSession = async () => {
-      try {
-        await supabase.auth.refreshSession();
-      } catch {
-        syncSession(null);
-      }
-    };
-
-    const { data: subscription } = supabase.auth.onAuthStateChange((_, session) => {
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+      revision++;
       syncSession(session);
     });
-
-    refreshSession();
+    const initialRevision = revision;
+    void supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (revision === initialRevision) syncSession(error ? null : data.session);
+      })
+      .catch(() => {
+        if (revision === initialRevision) syncSession(null);
+      });
     return () => {
-      subscription?.subscription.unsubscribe();
+      active = false;
+      subscription.subscription.unsubscribe();
     };
   }, []);
 
-  // setToken / setUser from useState are stable across renders, so the empty
-  // deps array is correct. Wrapping in useCallback (and only including stable
-  // refs in the deps) is what makes the useMemo below actually memoize the
-  // context value — without this, login/logout/refresh would be recreated on
-  // every render and the memo would always invalidate.
   const login = useCallback((newToken: string, newUser: User) => {
-    console.log('Logging in');
+    if (!isGlossaAuthConfigured()) return;
     setToken(newToken);
     setUser(newUser);
-    localStorage.setItem('token', newToken);
-    localStorage.setItem('user', JSON.stringify(newUser));
   }, []);
 
   const logout = useCallback(async () => {
-    console.log('Logging out');
-    try {
-      await supabase.auth.refreshSession();
-    } catch {
-    } finally {
-      await supabase.auth.signOut();
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      setToken(null);
-      setUser(null);
+    if (isGlossaAuthConfigured()) {
+      const { error } = await supabase.auth.signOut({ scope: 'local' });
+      if (error) throw error;
     }
+    setToken(null);
+    setUser(null);
   }, []);
 
   const refresh = useCallback(async () => {
-    try {
-      await supabase.auth.refreshSession();
-    } catch {}
+    if (!isGlossaAuthConfigured()) return;
+    const { error } = await supabase.auth.refreshSession();
+    if (error) throw error;
   }, []);
 
   const value = useMemo(

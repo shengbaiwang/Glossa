@@ -8,10 +8,7 @@ declare global {
   }
 }
 
-const isGlossaDev = () => process.env['NEXT_PUBLIC_GLOSSA_RUNTIME_ID'] === 'app.glossa.reader.dev';
-
-export const getAppName = () => (isGlossaDev() ? 'Glossa Dev' : 'Glossa');
-export const getAppScheme = () => (isGlossaDev() ? 'glossa-dev' : 'glossa');
+export { getAppName, getAppScheme } from './appIdentity';
 
 export const isTauriAppPlatform = () => process.env['NEXT_PUBLIC_APP_PLATFORM'] === 'tauri';
 export const isWebAppPlatform = () => process.env['NEXT_PUBLIC_APP_PLATFORM'] === 'web';

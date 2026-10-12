@@ -28,11 +28,12 @@ import {
 } from './microsoftOAuthConfig';
 
 /** sessionStorage keys for the PKCE verifier, CSRF state, and return path. */
-const VERIFIER_KEY = 'onedrive_web_oauth_verifier';
-const STATE_KEY = 'onedrive_web_oauth_state';
-const RETURN_KEY = 'onedrive_web_oauth_return';
+const VERIFIER_KEY = 'glossa_onedrive_web_oauth_verifier';
+const STATE_KEY = 'glossa_onedrive_web_oauth_state';
+const RETURN_KEY = 'glossa_onedrive_web_oauth_return';
 /** sessionStorage key holding the serialised {@link TokenSet}. */
-const WEB_TOKEN_KEY = 'onedrive_web_token';
+const webTokenKey = () =>
+  `glossa_onedrive_web_token:${process.env['NEXT_PUBLIC_GLOSSA_MICROSOFT_CLIENT_ID'] || process.env['NEXT_PUBLIC_MICROSOFT_CLIENT_ID'] || 'unconfigured'}`;
 
 /** Path of the OAuth callback route (must match the registered redirect URI). */
 export const WEB_OAUTH_CALLBACK_PATH = '/onedrive-callback';
@@ -130,15 +131,35 @@ const getStorage = (): Storage | null => {
 
 /** Persist the token set (access + refresh + expiry) for this tab/session. */
 export const saveWebOneDriveToken = (tokens: TokenSet): void => {
-  getStorage()?.setItem(WEB_TOKEN_KEY, JSON.stringify(tokens));
+  getStorage()?.setItem(webTokenKey(), JSON.stringify(tokens));
 };
 
 /** Load the stored token, or null when absent/unparseable. */
 export const loadWebOneDriveToken = (): TokenSet | null => {
-  const raw = getStorage()?.getItem(WEB_TOKEN_KEY);
+  const raw = getStorage()?.getItem(webTokenKey());
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as TokenSet;
+    const tokens: unknown = JSON.parse(raw);
+    if (
+      typeof tokens !== 'object' ||
+      !tokens ||
+      !('accessToken' in tokens) ||
+      typeof tokens.accessToken !== 'string' ||
+      !tokens.accessToken ||
+      !('expiresAt' in tokens) ||
+      typeof tokens.expiresAt !== 'number' ||
+      !Number.isFinite(tokens.expiresAt) ||
+      ('refreshToken' in tokens &&
+        tokens.refreshToken !== undefined &&
+        typeof tokens.refreshToken !== 'string')
+    )
+      return null;
+    return {
+      accessToken: tokens.accessToken,
+      expiresAt: tokens.expiresAt,
+      refreshToken:
+        'refreshToken' in tokens ? (tokens.refreshToken as string | undefined) : undefined,
+    };
   } catch {
     return null;
   }
@@ -146,13 +167,19 @@ export const loadWebOneDriveToken = (): TokenSet | null => {
 
 /** Forget the stored token (Disconnect). */
 export const clearWebOneDriveToken = (): void => {
-  getStorage()?.removeItem(WEB_TOKEN_KEY);
+  getStorage()?.removeItem(webTokenKey());
 };
 
 /** Whether a usable (non-expired) access token is stored. */
 export const hasValidWebOneDriveToken = (now: number = Date.now()): boolean => {
   const tokens = loadWebOneDriveToken();
   return !!tokens && now < tokens.expiresAt;
+};
+
+/** An expired access token can still be refreshed through the stored PKCE session. */
+export const hasUsableWebOneDriveSession = (now: number = Date.now()): boolean => {
+  const tokens = loadWebOneDriveToken();
+  return !!tokens && (now < tokens.expiresAt || !!tokens.refreshToken);
 };
 
 /**

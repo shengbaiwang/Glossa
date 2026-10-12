@@ -1,4 +1,5 @@
 import { getAccessToken } from './access';
+import { isNativeCloudSyncAvailable } from '@/glossa/account/config';
 
 export const fetchWithTimeout = (url: string, options: RequestInit = {}, timeout = 10000) => {
   const controller = new AbortController();
@@ -11,6 +12,7 @@ export const fetchWithTimeout = (url: string, options: RequestInit = {}, timeout
 };
 
 export const fetchWithAuth = async (url: string, options: RequestInit) => {
+  if (!isNativeCloudSyncAvailable()) throw new Error('Native cloud storage is disabled');
   const token = await getAccessToken();
   if (!token) {
     throw new Error('Not authenticated');

@@ -2,6 +2,7 @@ import { Book, BookConfig, BookNote, BookDataRecord } from '@/types/book';
 import { getAPIBaseUrl } from '@/services/environment';
 import { getAccessToken } from '@/utils/access';
 import { fetchWithTimeout } from '@/utils/fetch';
+import { isNativeCloudSyncAvailable } from '@/glossa/account/config';
 
 const SYNC_API_ENDPOINT = getAPIBaseUrl() + '/sync';
 
@@ -65,6 +66,7 @@ export class SyncClient {
     metaHash?: string,
     limit?: number,
   ): Promise<SyncResult> {
+    if (!isNativeCloudSyncAvailable()) throw new Error('Native cloud sync is disabled');
     const token = await getAccessToken();
     if (!token) throw new Error('Not authenticated');
 
@@ -93,6 +95,7 @@ export class SyncClient {
    * Uses last-writer-wins logic as implemented on the server side.
    */
   async pushChanges(payload: SyncData): Promise<SyncResult> {
+    if (!isNativeCloudSyncAvailable()) throw new Error('Native cloud sync is disabled');
     const token = await getAccessToken();
     if (!token) throw new Error('Not authenticated');
 

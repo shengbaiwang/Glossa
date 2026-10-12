@@ -49,7 +49,6 @@ const parseCLIOpenWithFiles = async () => {
 const parseIntentOpenWithFiles = async (appService: AppService | null) => {
   const urls = await getCurrent();
   if (urls && urls.length > 0) {
-    console.log('Intent Open with URL:', urls);
     return urls
       .map((url) => {
         if (url.startsWith('file://')) {
@@ -61,7 +60,6 @@ const parseIntentOpenWithFiles = async (appService: AppService | null) => {
         } else if (url.startsWith('content://')) {
           return url;
         } else {
-          console.info('Skip non-file URL:', url);
           return null;
         }
       })

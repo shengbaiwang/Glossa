@@ -9,6 +9,7 @@ import { initReplicaSync } from '@/services/sync/replicaSync';
 import { createSettingsCursorStore } from '@/services/sync/replicaCursorStore';
 import { startReplicaTransferIntegration } from '@/services/sync/replicaTransferIntegration';
 import { enableReplicaAutoPersist } from '@/services/sync/replicaPersist';
+import { isNativeCloudSyncAvailable } from '@/glossa/account/config';
 
 interface EnvContextType {
   envConfig: EnvConfigType;
@@ -28,7 +29,7 @@ export const EnvProvider = ({ children }: { children: ReactNode }) => {
       setAppService(service);
       try {
         const settings = await service.loadSettings();
-        if (settings.replicaDeviceId) {
+        if (isNativeCloudSyncAvailable() && settings.replicaDeviceId) {
           const ctx = initReplicaSync({
             deviceId: settings.replicaDeviceId,
             cursorStore: createSettingsCursorStore(service),

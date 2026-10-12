@@ -116,6 +116,8 @@ export default function EmailPasswordAuth({
         if (error) setError(error.message);
         else setMessage(_('Check your email for the password reset link'));
       }
+    } catch {
+      setError(_('Unable to connect. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -167,6 +169,7 @@ export default function EmailPasswordAuth({
             name='password'
             type='password'
             required
+            minLength={view === 'sign_up' ? 8 : undefined}
             placeholder={_('Your password')}
             autoComplete={view === 'sign_in' ? 'current-password' : 'new-password'}
             className='input input-bordered eink-bordered w-full rounded-lg placeholder:text-sm'
@@ -175,17 +178,23 @@ export default function EmailPasswordAuth({
           />
         </div>
       )}
-      <button type='submit' className='btn btn-primary w-full rounded-lg' disabled={loading}>
+      <button type='submit' className='btn btn-contrast w-full rounded-lg' disabled={loading}>
         {loading && <span className='loading loading-spinner loading-sm' aria-hidden='true' />}
         {buttonLabel}
       </button>
       {message && (
-        <div className='eink-bordered border-base-200 bg-base-200/40 text-base-content/80 rounded-lg border px-3 py-2.5 text-center text-sm leading-relaxed'>
+        <div
+          role='status'
+          className='eink-bordered border-base-200 bg-base-200/40 text-base-content/80 rounded-lg border px-3 py-2.5 text-center text-sm leading-relaxed'
+        >
           {message}
         </div>
       )}
       {error && (
-        <div className='eink-bordered border-error/30 bg-error/5 text-error rounded-lg border px-3 py-2.5 text-center text-sm leading-relaxed'>
+        <div
+          role='alert'
+          className='eink-bordered border-error/30 bg-error/5 text-error rounded-lg border px-3 py-2.5 text-center text-sm leading-relaxed'
+        >
           {error}
         </div>
       )}

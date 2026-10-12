@@ -1,6 +1,7 @@
 'use client';
+import { getGoogleWebClientId } from '@/services/sync/providers/gdrive/buildGoogleDriveProvider';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -28,14 +29,23 @@ export default function GDriveCallback() {
   const _ = useTranslation();
   const { envConfig } = useEnv();
   const setSettings = useSettingsStore((s) => s.setSettings);
+  const started = useRef(false);
+  const active = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
+    active.current = true;
+    if (started.current)
+      return () => {
+        active.current = false;
+      };
+    started.current = true;
     (async () => {
       const returnPath = consumeReturnPath();
       const expectedState = consumeOAuthState();
       const result = parseImplicitRedirect(window.location.hash);
+      window.history.replaceState(null, '', window.location.pathname);
       try {
+        if (!getGoogleWebClientId()) throw new Error('Google Drive not configured');
         if (result.error) throw new Error(result.error);
         if (!expectedState || result.state !== expectedState) throw new Error('state mismatch');
         const tokens = tokenSetFromRedirect(result);
@@ -57,19 +67,21 @@ export default function GDriveCallback() {
           ...s,
           googleDrive: {
             ...s.googleDrive,
+            oauthClientId: getGoogleWebClientId(),
             accountLabel: accountLabel ?? s.googleDrive?.accountLabel,
           },
         }));
-        eventDispatcher.dispatch('toast', { type: 'info', message: _('Connected') });
-      } catch (e) {
-        console.warn('[gdrive] web callback failed', e);
-        eventDispatcher.dispatch('toast', { type: 'error', message: _('Failed to connect') });
+        if (active.current)
+          eventDispatcher.dispatch('toast', { type: 'info', message: _('Connected') });
+      } catch {
+        if (active.current)
+          eventDispatcher.dispatch('toast', { type: 'error', message: _('Failed to connect') });
       } finally {
-        if (!cancelled) router.replace(returnPath);
+        if (active.current) router.replace(returnPath);
       }
     })();
     return () => {
-      cancelled = true;
+      active.current = false;
     };
   }, [envConfig, router, setSettings, _]);
 

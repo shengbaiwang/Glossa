@@ -12,7 +12,7 @@ afterEach(() => vi.clearAllMocks());
 
 describe('driveTokenStore', () => {
   test('DRIVE_TOKEN_KEY is the stable Drive keychain slot', () => {
-    expect(DRIVE_TOKEN_KEY).toBe('gdrive_token_set');
+    expect(DRIVE_TOKEN_KEY).toBe('glossa_gdrive_token_set');
   });
 
   test('createDriveTokenPersistence returns null off-Tauri', async () => {

@@ -74,7 +74,7 @@ export const runGoogleDriveConnect = async (): Promise<ConnectGoogleDriveResult>
   if (!clientId) {
     throw new Error('Google Drive is not configured in this build');
   }
-  const persistence = await createDriveTokenPersistence();
+  const persistence = await createDriveTokenPersistence(getGoogleClientId());
   if (!persistence) {
     throw new Error('Google Drive requires a Glossa app build with secure storage');
   }
@@ -93,6 +93,6 @@ export const runGoogleDriveDisconnect = async (): Promise<void> => {
     clearWebDriveToken();
     return;
   }
-  const persistence = await createDriveTokenPersistence();
+  const persistence = await createDriveTokenPersistence(getGoogleClientId());
   if (persistence) await disconnectGoogleDrive(persistence);
 };

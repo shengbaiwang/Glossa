@@ -4,6 +4,7 @@ vi.mock('@tauri-apps/plugin-http', () => ({ fetch: vi.fn() }));
 vi.mock('@/services/environment', () => ({
   isTauriAppPlatform: vi.fn(),
   isWebAppPlatform: vi.fn(),
+  getAppScheme: () => 'glossa',
 }));
 vi.mock('@/utils/bridge', () => ({
   isSyncKeychainAvailable: vi.fn(),
@@ -27,17 +28,15 @@ afterEach(() => {
 });
 
 describe('buildOneDriveProvider', () => {
-  test('falls back to the baked official client id when the env override is unset', async () => {
+  test('does not use upstream client registration when unconfigured', async () => {
     vi.stubEnv('NEXT_PUBLIC_MICROSOFT_CLIENT_ID', '');
     // The baked default is a GUID (the Azure Application (client) ID).
-    expect(getMicrosoftClientId()).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-    );
+    expect(getMicrosoftClientId()).toBeUndefined();
     // With a baked default + keychain, OneDrive builds even without an env override.
     vi.mocked(isWebAppPlatform).mockReturnValue(false);
     vi.mocked(isTauriAppPlatform).mockReturnValue(true);
     vi.mocked(isSyncKeychainAvailable).mockResolvedValue({ available: true });
-    expect(await buildOneDriveProvider()).not.toBeNull();
+    expect(await buildOneDriveProvider()).toBeNull();
   });
 
   test('the env override wins over the baked default', () => {
@@ -55,12 +54,11 @@ describe('buildOneDriveProvider', () => {
     expect(isSyncKeychainAvailable).not.toHaveBeenCalled();
   });
 
-  test('web: builds with the baked client id when the env override is unset', async () => {
+  test('web: remains unavailable when unconfigured', async () => {
     vi.stubEnv('NEXT_PUBLIC_MICROSOFT_CLIENT_ID', '');
     vi.mocked(isWebAppPlatform).mockReturnValue(true);
     const provider = await buildOneDriveProvider();
-    expect(provider).not.toBeNull();
-    expect(provider?.rootPath).toBe('/');
+    expect(provider).toBeNull();
     expect(isSyncKeychainAvailable).not.toHaveBeenCalled();
   });
 

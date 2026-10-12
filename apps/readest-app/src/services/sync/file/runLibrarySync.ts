@@ -9,7 +9,17 @@ import { useLibraryStore } from '@/store/libraryStore';
 import { useFileSyncStore } from '@/store/fileSyncStore';
 import { isWebAppPlatform } from '@/services/environment';
 import { hasValidWebDriveToken } from '@/services/sync/providers/gdrive/auth/webTokenStore';
-import { isICloudSupportedPlatform } from '@/services/sync/providers/icloud/buildICloudProvider';
+import {
+  isICloudDriveFolder,
+  isICloudSupportedPlatform,
+} from '@/services/sync/providers/icloud/buildICloudProvider';
+import { getOSPlatform } from '@/utils/misc';
+import {
+  getGoogleClientId,
+  getGoogleWebClientId,
+} from '@/services/sync/providers/gdrive/buildGoogleDriveProvider';
+import { getMicrosoftClientId } from '@/services/sync/providers/onedrive/buildOneDriveProvider';
+import { hasUsableWebOneDriveSession } from '@/services/sync/providers/onedrive/webAuthCodeFlow';
 import {
   getActiveFileSyncBackends,
   settingsKeyForBackend,
@@ -35,9 +45,27 @@ import { FileSyncEngine, type SyncLibraryResult } from '@/services/sync/file/eng
  * Windows/Android/web device via a settings backup restore, and only the
  * iOS/macOS Tauri apps can reach a ubiquity container.
  */
-export const canBackendRun = (kind: FileSyncBackendKind): boolean => {
-  if (kind === 'gdrive' && isWebAppPlatform() && !hasValidWebDriveToken()) return false;
-  if (kind === 'icloud' && !isICloudSupportedPlatform()) return false;
+export const canBackendRun = (
+  kind: FileSyncBackendKind,
+  settings: SystemSettings | null | undefined = useSettingsStore.getState().settings,
+): boolean => {
+  if (kind === 'gdrive') {
+    const clientId = isWebAppPlatform() ? getGoogleWebClientId() : getGoogleClientId();
+    if (!clientId || settings?.googleDrive?.oauthClientId !== clientId) return false;
+    if (isWebAppPlatform() && !hasValidWebDriveToken()) return false;
+  }
+  if (kind === 'onedrive') {
+    const clientId = getMicrosoftClientId();
+    if (!clientId || settings?.onedrive?.oauthClientId !== clientId) return false;
+    if (isWebAppPlatform() && !hasUsableWebOneDriveSession()) return false;
+  }
+  if (kind === 'icloud') {
+    if (!isICloudSupportedPlatform()) return false;
+    if (getOSPlatform() === 'macos' && !isICloudDriveFolder(settings?.icloud?.documentsPath ?? ''))
+      return false;
+    if (getOSPlatform() === 'ios' && !process.env['NEXT_PUBLIC_GLOSSA_ICLOUD_CONTAINER'])
+      return false;
+  }
   return true;
 };
 
@@ -52,7 +80,7 @@ export const getReadyFileSyncBackends = (
   settings: SystemSettings | null | undefined,
   plan?: UserPlan,
 ): FileSyncBackendKind[] =>
-  getActiveFileSyncBackends(settings, plan).filter((k) => canBackendRun(k));
+  getActiveFileSyncBackends(settings, plan).filter((k) => canBackendRun(k, settings));
 
 /** Build one backend's engine, or null when it cannot run here. */
 const buildEngine = async (
@@ -137,9 +165,7 @@ export const runFileLibrarySyncPass = async (
   envConfig: EnvConfigType,
   _: TranslationFunc,
 ): Promise<SyncLibraryResult | null> => {
-  // Paused means paused (#4959): a downgraded account's still-enabled backends
-  // must not sync, and must not fall back to Readest Cloud either.
-  const backends = getActiveFileSyncBackends(useSettingsStore.getState().settings);
+  const backends = getReadyFileSyncBackends(useSettingsStore.getState().settings);
   if (backends.length === 0) return null;
 
   // NEVER sync a library that is not loaded from disk: pushing an empty index
