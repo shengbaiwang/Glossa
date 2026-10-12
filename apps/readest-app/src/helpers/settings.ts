@@ -74,7 +74,7 @@ export const saveViewSettings = async <K extends keyof ViewSettings>(
     useReaderStore.getState();
   const { getConfig, saveConfig } = useBookDataStore.getState();
 
-  const applyViewSettings = async (bookKey: string) => {
+  const applyViewSettings = async (bookKey: string, effectiveSettings = settings) => {
     const viewSettings = getViewSettings(bookKey);
     const viewState = getViewState(bookKey);
     if (bookKey && viewSettings && (viewSettings[key] !== value || forceSave)) {
@@ -90,7 +90,7 @@ export const saveViewSettings = async <K extends keyof ViewSettings>(
       // persist that unchanged value without restyling or moving the reading view.
       const config = getConfig(bookKey);
       if (viewState?.isPrimary && config) {
-        await saveConfig(envConfig, bookKey, config, settings);
+        await saveConfig(envConfig, bookKey, config, effectiveSettings);
       }
     }
   };
@@ -109,8 +109,11 @@ export const saveViewSettings = async <K extends keyof ViewSettings>(
     };
     setSettings(nextSettings);
 
-    for (const bookKey of bookKeys) {
-      await applyViewSettings(bookKey);
+    for (const targetBookKey of bookKeys) {
+      // A default must not overwrite another book's explicit local preferences.
+      if (getViewSettings(targetBookKey)?.isGlobal !== false) {
+        await applyViewSettings(targetBookKey, nextSettings);
+      }
     }
     await saveSettings(envConfig, nextSettings);
   } else if (bookKey) {

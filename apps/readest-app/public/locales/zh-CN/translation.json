@@ -2596,5 +2596,22 @@
   "The model returned an invalid mind map structure. Continue to repair it.": "模型返回的导图结构有误，可重试修正。",
   "The model omitted part of the reading range. Continue to complete it.": "模型遗漏了部分阅读材料，可重试补全。",
   "The model cited a source outside the supplied evidence. Continue to correct it.": "模型引用了未提供的来源，可重试修正。",
-  "This model service does not support JSON output.": "当前模型服务不支持 JSON 输出。"
+  "This model service does not support JSON output.": "当前模型服务不支持 JSON 输出。",
+  "Application": "应用",
+  "Reading Defaults": "阅读默认值",
+  "Library Data": "书库数据",
+  "Custom Styles": "自定义样式",
+  "Reading Appearance": "阅读外观",
+  "Book Actions": "书籍操作",
+  "This Book Only": "仅本书",
+  "All Books Default": "所有书籍默认",
+  "Apply Settings To": "生效范围",
+  "Restore Defaults": "恢复默认",
+  "Failed to save settings": "设置保存失败",
+  "{{count}} books refreshed": "已更新 {{count}} 本书",
+  "Startup": "启动",
+  "Lock Screen": "锁屏",
+  "Reload Book": "重新加载本书",
+  "App Lock": "应用锁",
+  "Sync Library": "同步书库"
 }

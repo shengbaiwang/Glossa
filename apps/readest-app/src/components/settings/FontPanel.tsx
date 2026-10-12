@@ -119,7 +119,11 @@ function FontNumber({
   );
 }
 
-const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }) => {
+const FontPanel: React.FC<SettingsPanelPanelProp & { showFooter?: boolean }> = ({
+  bookKey,
+  onRegisterReset,
+  showFooter = true,
+}) => {
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
   const { getView, getViewSettings } = useReaderStore();
@@ -542,36 +546,38 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
           </BoxedList>
         </div>
       )}
-      <div className='glossa-font-footer'>
-        {bookKey ? (
-          <div
-            role='group'
-            aria-label={_('Apply to')}
-            className='glossa-font-segments eink-bordered'
-          >
-            {[
-              { global: false, label: _('This Book') },
-              { global: true, label: _('All Books') },
-            ].map((item) => (
-              <button
-                key={item.label}
-                type='button'
-                className='glossa-button'
-                aria-pressed={scope === item.global}
-                onClick={() => void saveScope(item.global)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <span>{_('All Books')}</span>
-        )}
-        <button type='button' className='glossa-button' onClick={handleReset}>
-          <RotateCcw size={14} />
-          {_('Reset')}
-        </button>
-      </div>
+      {showFooter && (
+        <div className='glossa-font-footer'>
+          {bookKey ? (
+            <div
+              role='group'
+              aria-label={_('Apply to')}
+              className='glossa-font-segments eink-bordered'
+            >
+              {[
+                { global: false, label: _('This Book') },
+                { global: true, label: _('All Books') },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  type='button'
+                  className='glossa-button'
+                  aria-pressed={scope === item.global}
+                  onClick={() => void saveScope(item.global)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <span>{_('All Books')}</span>
+          )}
+          <button type='button' className='glossa-button' onClick={handleReset}>
+            <RotateCcw size={14} />
+            {_('Reset')}
+          </button>
+        </div>
+      )}
       {(failed || failedScope !== null) && (
         <div className='glossa-font-status' role='alert'>
           <span>{_('Could not save font settings')}</span>

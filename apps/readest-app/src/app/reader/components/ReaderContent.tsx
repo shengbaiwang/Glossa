@@ -11,6 +11,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
+import { useTransferStore } from '@/store/transferStore';
 import { useGamepad } from '@/hooks/useGamepad';
 import { useTranslation } from '@/hooks/useTranslation';
 import { SystemSettings } from '@/types/settings';
@@ -38,6 +39,11 @@ import SideBar from './sidebar/SideBar';
 import Notebook from './notebook/Notebook';
 import BooksGrid from './BooksGrid';
 import SettingsDialog from '@/components/settings/SettingsDialog';
+import { BackupWindow } from '@/app/library/components/BackupWindow';
+import { CacheManagerWindow } from '@/app/library/components/CacheManagerWindow';
+import { MigrateDataWindow } from '@/app/library/components/MigrateDataWindow';
+import ModalPortal from '@/components/ModalPortal';
+import TransferQueuePanel from '@/app/library/components/TransferQueuePanel';
 
 const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ ids, settings }) => {
   const _ = useTranslation();
@@ -51,6 +57,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
   const { getView, setBookKeys, getViewSettings } = useReaderStore();
   const { initViewState, getViewState, clearViewState } = useReaderStore();
   const { isSettingsDialogOpen, settingsDialogBookKey } = useSettingsStore();
+  const isTransferQueueOpen = useTransferStore((state) => state.isTransferQueueOpen);
   const [showDetailsBook, setShowDetailsBook] = useState<Book | null>(null);
 
   const isInitiating = useRef(false);
@@ -267,6 +274,14 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
         onCloseBook={handleCloseBook}
         onGoToLibrary={handleCloseBooksToLibrary}
       />
+      <BackupWindow />
+      <CacheManagerWindow />
+      <MigrateDataWindow />
+      {isTransferQueueOpen && (
+        <ModalPortal>
+          <TransferQueuePanel />
+        </ModalPortal>
+      )}
       {isSettingsDialogOpen && <SettingsDialog bookKey={settingsDialogBookKey} />}
       <Notebook />
       <ReadingSpeechPlayer />

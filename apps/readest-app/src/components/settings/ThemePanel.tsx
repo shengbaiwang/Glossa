@@ -9,6 +9,8 @@ import {
 import { useEnv } from '@/context/EnvContext';
 import { useThemeStore } from '@/store/themeStore';
 import { useReaderStore } from '@/store/readerStore';
+import { useBookDataStore } from '@/store/bookDataStore';
+import NumberInput from './NumberInput';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useResetViewSettings } from '@/hooks/useResetSettings';
@@ -40,7 +42,11 @@ import CodeHighlightingSettings from './theme/CodeHighlightingSettings';
 import ReadingRulerSettings from './theme/ReadingRulerSettings';
 import LibrarySettings from './theme/LibrarySettings';
 
-const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }) => {
+const ThemePanel: React.FC<SettingsPanelPanelProp & { readingOnly?: boolean }> = ({
+  bookKey,
+  onRegisterReset,
+  readingOnly = false,
+}) => {
   const _ = useTranslation();
   const { themeMode, themeColor, isDarkMode, setThemeMode, setThemeColor, saveCustomTheme } =
     useThemeStore();
@@ -48,6 +54,14 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
   const { settings, setSettings, saveSettings } = useSettingsStore();
   const { getView, getViewSettings } = useReaderStore();
   const viewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
+  const { getBookData } = useBookDataStore();
+  const isPDF = readingOnly && getBookData(bookKey)?.book?.format === 'PDF';
+  const [applyThemeToPDF, setApplyThemeToPDF] = useState(viewSettings.applyThemeToPDF ?? false);
+  useEffect(() => {
+    if (applyThemeToPDF === viewSettings.applyThemeToPDF) return;
+    void saveViewSettings(envConfig, bookKey, 'applyThemeToPDF', applyThemeToPDF);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyThemeToPDF]);
 
   // The Background Image picker is linked by default: one texture drives both
   // the library page and the reader. Turning on "Use Separate Reader
@@ -62,9 +76,11 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
     backgroundTransparency: settings.globalViewSettings?.backgroundTransparency ?? 0.4,
     backgroundSize: settings.globalViewSettings?.backgroundSize ?? 'cover',
   };
-  const currentBackground = separateReader
-    ? getBackgroundTextureSettings(textureScope, settings, bookKey ? viewSettings : undefined)
-    : sharedBackground;
+  const currentBackground = readingOnly
+    ? getBackgroundTextureSettings('reader', settings, viewSettings)
+    : separateReader
+      ? getBackgroundTextureSettings(textureScope, settings, bookKey ? viewSettings : undefined)
+      : sharedBackground;
   const currentTextureId = currentBackground.backgroundTextureId;
   const currentBackgroundTransparency = currentBackground.backgroundTransparency;
   const currentBackgroundSize = currentBackground.backgroundSize;
@@ -120,6 +136,7 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
   const handleReset = () => {
     resetToDefaults({
       overrideColor: setOverrideColor,
+      applyThemeToPDF: setApplyThemeToPDF,
       invertImgColorInDark: setInvertImgColorInDark,
       highlightTransparency: setHighlightTransparency,
       codeHighlighting: setcodeHighlighting,
@@ -128,14 +145,18 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
       readingRulerLines: setReadingRulerLines,
       readingRulerTransparency: setReadingRulerTransparency,
     });
-    setThemeColor('default');
-    setThemeMode('auto');
+    if (!readingOnly) {
+      setThemeColor('default');
+      setThemeMode('auto');
+    }
     setSelectedTextureId('none');
     setBackgroundTransparency(0.4);
     setBackgroundSize('cover');
-    setCustomHighlightColors(HIGHLIGHT_COLOR_HEX);
-    setUserHighlightColors([]);
-    setDefaultHighlightLabels({});
+    if (!readingOnly) {
+      setCustomHighlightColors(HIGHLIGHT_COLOR_HEX);
+      setUserHighlightColors([]);
+      setDefaultHighlightLabels({});
+    }
   };
 
   const handleTextureSelect = (id: string) => {
@@ -242,7 +263,9 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
 
   useEffect(() => {
     if (selectedTextureId === currentTextureId) return;
-    if (!separateReader) {
+    if (readingOnly) {
+      saveViewSettings(envConfig, bookKey, 'backgroundTextureId', selectedTextureId);
+    } else if (!separateReader) {
       // Linked: the shared value lives in the global view settings so every
       // book and the library follow it.
       saveViewSettings(envConfig, '', 'backgroundTextureId', selectedTextureId);
@@ -257,7 +280,9 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
 
   useEffect(() => {
     if (backgroundTransparency === currentBackgroundTransparency) return;
-    if (!separateReader) {
+    if (readingOnly) {
+      saveViewSettings(envConfig, bookKey, 'backgroundTransparency', backgroundTransparency);
+    } else if (!separateReader) {
       saveViewSettings(envConfig, '', 'backgroundTransparency', backgroundTransparency);
     } else if (textureScope === 'library') {
       saveSysSettings(envConfig, 'libraryBackgroundTransparency', backgroundTransparency);
@@ -270,7 +295,9 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
 
   useEffect(() => {
     if (backgroundSize === currentBackgroundSize) return;
-    if (!separateReader) {
+    if (readingOnly) {
+      saveViewSettings(envConfig, bookKey, 'backgroundSize', backgroundSize);
+    } else if (!separateReader) {
       saveViewSettings(envConfig, '', 'backgroundSize', backgroundSize);
     } else if (textureScope === 'library') {
       saveSysSettings(envConfig, 'libraryBackgroundSize', backgroundSize);
@@ -445,27 +472,38 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
         />
       ) : (
         <>
-          <ThemeModeSelector
-            themeMode={themeMode}
-            onThemeModeChange={setThemeMode}
-            hasAmbientLightSensor={!!appService?.hasAmbientLightSensor}
-            data-setting-id='settings.color.themeMode'
-          />
+          {!readingOnly && (
+            <ThemeModeSelector
+              themeMode={themeMode}
+              onThemeModeChange={setThemeMode}
+              hasAmbientLightSensor={!!appService?.hasAmbientLightSensor}
+              data-setting-id='settings.color.themeMode'
+            />
+          )}
 
-          <ThemeColorSelector
-            themes={themes.concat(customThemes)}
-            themeColor={themeColor}
-            isDarkMode={isDarkMode}
-            onThemeColorChange={setThemeColor}
-            onEditTheme={handleEditTheme}
-            onCreateTheme={() => {
-              setEditTheme(null);
-              setShowCustomThemeEditor(true);
-            }}
-            data-setting-id='settings.color.themeColor'
-          />
+          {!readingOnly && (
+            <ThemeColorSelector
+              themes={themes.concat(customThemes)}
+              themeColor={themeColor}
+              isDarkMode={isDarkMode}
+              onThemeColorChange={setThemeColor}
+              onEditTheme={handleEditTheme}
+              onCreateTheme={() => {
+                setEditTheme(null);
+                setShowCustomThemeEditor(true);
+              }}
+              data-setting-id='settings.color.themeColor'
+            />
+          )}
 
           <BoxedList title={_('Reading colors')}>
+            {isPDF && appService?.supportsCanvasContext2DFilter && (
+              <SettingsSwitchRow
+                label={_('Apply Theme Colors to PDF')}
+                checked={applyThemeToPDF}
+                onChange={() => setApplyThemeToPDF(!applyThemeToPDF)}
+              />
+            )}
             <SettingsSwitchRow
               data-setting-id='settings.color.overrideBookColor'
               label={_('Override Book Color')}
@@ -482,6 +520,7 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
           </BoxedList>
 
           <BackgroundTextureSelector
+            readerOnly={readingOnly}
             predefinedTextures={PREDEFINED_TEXTURES}
             customTextures={customTextures.filter((t) => !t.deletedAt)}
             separateReader={separateReader}
@@ -499,17 +538,31 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
             data-setting-id='settings.color.backgroundTexture'
           />
 
-          <HighlightColorsEditor
-            customHighlightColors={customHighlightColors}
-            userHighlightColors={userHighlightColors}
-            defaultHighlightLabels={defaultHighlightLabels}
-            highlightTransparency={highlightTransparency}
-            onCustomHighlightColorsChange={handleCustomHighlightColorsChange}
-            onUserHighlightColorsChange={handleUserHighlightColorsChange}
-            onDefaultHighlightLabelsChange={handleDefaultHighlightLabelsChange}
-            onTransparencyChange={setHighlightTransparency}
-            data-setting-id='settings.color.highlightColors'
-          />
+          {readingOnly && (
+            <BoxedList title={_('Highlight Colors')}>
+              <NumberInput
+                label={_('Transparency')}
+                value={highlightTransparency}
+                onChange={setHighlightTransparency}
+                min={0}
+                max={0.9}
+                step={0.1}
+              />
+            </BoxedList>
+          )}
+          {!readingOnly && (
+            <HighlightColorsEditor
+              customHighlightColors={customHighlightColors}
+              userHighlightColors={userHighlightColors}
+              defaultHighlightLabels={defaultHighlightLabels}
+              highlightTransparency={highlightTransparency}
+              onCustomHighlightColorsChange={handleCustomHighlightColorsChange}
+              onUserHighlightColorsChange={handleUserHighlightColorsChange}
+              onDefaultHighlightLabelsChange={handleDefaultHighlightLabelsChange}
+              onTransparencyChange={setHighlightTransparency}
+              data-setting-id='settings.color.highlightColors'
+            />
+          )}
 
           <ReadingRulerSettings
             enabled={readingRulerEnabled}
@@ -531,11 +584,13 @@ const ThemePanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
             data-setting-id='settings.color.codeHighlighting'
           />
 
-          <LibrarySettings
-            skeuomorphicCovers={skeuomorphicCovers}
-            onToggle={setSkeuomorphicCovers}
-            data-setting-id='settings.library.skeuomorphicCovers'
-          />
+          {!readingOnly && (
+            <LibrarySettings
+              skeuomorphicCovers={skeuomorphicCovers}
+              onToggle={setSkeuomorphicCovers}
+              data-setting-id='settings.library.skeuomorphicCovers'
+            />
+          )}
         </>
       )}
     </div>

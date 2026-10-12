@@ -11,11 +11,12 @@ const getViewMock = vi.fn<() => { renderer: { setStyles: typeof setStylesMock } 
 const getViewStateMock = vi.fn<() => { isPrimary: boolean } | undefined>(() => undefined);
 const getConfigMock = vi.fn<() => { viewSettings: Partial<ViewSettings> } | null>(() => null);
 const saveConfigMock = vi.fn(async () => {});
+const openBookKeys: string[] = [];
 
 vi.mock('@/store/readerStore', () => ({
   useReaderStore: {
     getState: () => ({
-      bookKeys: [],
+      bookKeys: openBookKeys,
       getView: getViewMock,
       getViewState: getViewStateMock,
       getViewSettings: getViewSettingsMock,
@@ -65,6 +66,7 @@ const makeTextureSettings = (overrides: Partial<SystemSettings> = {}): SystemSet
   }) as unknown as SystemSettings;
 
 beforeEach(() => {
+  openBookKeys.length = 0;
   getViewSettingsMock.mockReset();
   getViewSettingsMock.mockReturnValue(undefined);
   setViewSettingsMock.mockReset();
@@ -197,6 +199,18 @@ describe('getBackgroundTextureSettings', () => {
 });
 
 describe('saveViewSettings', () => {
+  test('updates defaults and following books without replacing a book-specific override', async () => {
+    openBookKeys.push('following', 'personal');
+    const following = { isGlobal: true, fontWeight: 400 };
+    const personal = { isGlobal: false, fontWeight: 650 };
+    getViewSettingsMock.mockImplementation((key) =>
+      key === 'following' ? following : key === 'personal' ? personal : undefined,
+    );
+    await saveViewSettings(envConfig, '', 'fontWeight', 500);
+    expect(following.fontWeight).toBe(500);
+    expect(personal.fontWeight).toBe(650);
+    expect(useSettingsStore.getState().settings.globalViewSettings.fontWeight).toBe(500);
+  });
   test('explicitly retries a failed per-book write without applying unchanged styles again', async () => {
     const viewSettings = { isGlobal: false, fontWeight: 400 };
     const config = { viewSettings };
@@ -227,6 +241,22 @@ describe('saveViewSettings', () => {
     expect(setViewSettingsMock).toHaveBeenCalledOnce();
     expect(setStylesMock).toHaveBeenCalledOnce();
     expect(useSettingsStore.getState().saveSettings).not.toHaveBeenCalled();
+  });
+
+  test('serializes a following book against the newly saved defaults', async () => {
+    const viewSettings = { isGlobal: true, fontWeight: 400 };
+    const config = { viewSettings };
+    openBookKeys.push('book-1');
+    getViewSettingsMock.mockReturnValue(viewSettings);
+    getViewStateMock.mockReturnValue({ isPrimary: true });
+    getConfigMock.mockReturnValue(config);
+    await saveViewSettings(envConfig, 'book-1', 'fontWeight', 700);
+    expect(saveConfigMock).toHaveBeenCalledWith(
+      envConfig,
+      'book-1',
+      config,
+      useSettingsStore.getState().settings,
+    );
   });
 
   test('global write swaps the settings reference so replicaSettingsSync subscribers fire', async () => {

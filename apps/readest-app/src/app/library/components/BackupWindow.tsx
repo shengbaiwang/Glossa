@@ -39,7 +39,7 @@ interface BackupResult {
 }
 
 interface BackupWindowProps {
-  onPullLibrary: (fullRefresh?: boolean, verbose?: boolean) => void;
+  onPullLibrary?: (fullRefresh?: boolean, verbose?: boolean) => void;
 }
 
 export const BackupWindow: React.FC<BackupWindowProps> = ({ onPullLibrary }) => {
@@ -151,7 +151,7 @@ export const BackupWindow: React.FC<BackupWindowProps> = ({ onPullLibrary }) => 
         settingsRestored,
       });
       setStatus('completed');
-      onPullLibrary(true);
+      onPullLibrary?.(true);
     } catch (error) {
       console.error('Restore failed:', error);
       setErrorMessage(_('Restore failed: {{error}}', { error: String(error) }));

@@ -76,6 +76,7 @@ vi.mock('@/store/settingsStore', () => ({
   useSettingsStore: () => ({
     settings: {},
     isSettingsDialogOpen: false,
+    openSettingsDialog: vi.fn(),
     setSettingsDialogOpen: vi.fn(),
     setSettingsDialogBookKey: vi.fn(),
     setRequestedPanel: vi.fn(),
@@ -166,7 +167,7 @@ it('shows the unified chrome: quiet buttons, one selected emphasis, Glossa icons
   const bar = screen.getByRole('banner', { name: 'Header Bar' });
 
   expect(screen.queryByRole('button', { name: 'Book Menu' })).toBeNull();
-  expect(screen.getAllByRole('button', { name: 'View Options' })).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: 'Book Actions' })).toHaveLength(1);
 
   const start = within(bar.querySelector('.header-tools-start') as HTMLElement)
     .getAllByRole('button')
@@ -175,7 +176,7 @@ it('shows the unified chrome: quiet buttons, one selected emphasis, Glossa icons
   const end = within(bar.querySelector('.header-tools-end') as HTMLElement)
     .getAllByRole('button')
     .map((button) => button.getAttribute('aria-label'));
-  expect(end).toEqual(['Add Bookmark', 'Font & Layout', 'View Options']);
+  expect(end).toEqual(['Add Bookmark', 'Reading Appearance', 'Book Actions', 'Settings']);
 
   const title = bar.querySelector('.glossa-reader-book-title')!;
   const titleRect = title.getBoundingClientRect();

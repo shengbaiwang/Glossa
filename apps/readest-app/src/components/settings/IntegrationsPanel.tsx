@@ -5,8 +5,10 @@ import { Cloud as RiCloudLine, Database as RiDatabase2Line } from '@/components/
 import { RiGoogleLine, RiMicrosoftLine, RiAppleLine } from 'react-icons/ri';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useTransferQueue } from '@/hooks/useTransferQueue';
 import { useKeyDownActions } from '@/hooks/useKeyDownActions';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useLibraryStore } from '@/store/libraryStore';
 
 import { useFileSyncStore } from '@/store/fileSyncStore';
 
@@ -36,7 +38,7 @@ import {
 import type { FileSyncBackendKind } from '@/services/sync/file/providerRegistry';
 import { canBackendRun, getReadyFileSyncBackends } from '@/services/sync/file/runLibrarySync';
 import SubPageHeader from './SubPageHeader';
-import { SectionTitle, SettingLabel, Tips } from './primitives';
+import { NavigationRow, SectionTitle, SettingLabel, Tips } from './primitives';
 
 type SubPage = 'webdav' | 'gdrive' | 's3' | 'onedrive' | 'icloud' | null;
 
@@ -51,10 +53,12 @@ type SubPage = 'webdav' | 'gdrive' | 's3' | 'onedrive' | 'icloud' | null;
  * this panel and CustomDictionaries should both consume them instead of
  * inlining the chassis.
  */
-const IntegrationsPanel: React.FC = () => {
+const IntegrationsPanel: React.FC<{ onSyncLibrary?: () => void }> = ({ onSyncLibrary }) => {
   const _ = useTranslation();
+  const { setIsTransferQueueOpen } = useTransferQueue();
   const { envConfig, appService } = useEnv();
   const { settings, requestedSubPage, setRequestedSubPage } = useSettingsStore();
+  const isLibrarySyncing = useLibraryStore((state) => state.isSyncing);
 
   // Surface a library-wide WebDAV sync that's mid-flight in the row's
   // status line. Keeps the user from feeling like the run was lost
@@ -357,6 +361,21 @@ const IntegrationsPanel: React.FC = () => {
       </div>
 
       <div className='w-full' data-setting-id='settings.integrations.cloudSync'>
+        {onSyncLibrary && (
+          <NavigationRow
+            title={_('Sync Library')}
+            status={isLibrarySyncing ? _('Syncing…') : undefined}
+            disabled={isLibrarySyncing}
+            onClick={onSyncLibrary}
+          />
+        )}
+        <NavigationRow
+          title={_('Cloud File Transfers')}
+          onClick={() => {
+            useSettingsStore.getState().setSettingsDialogOpen(false);
+            setIsTransferQueueOpen(true);
+          }}
+        />
         <SectionTitle className='mb-2'>{_('Cloud Sync')}</SectionTitle>
         <div className='card eink-bordered border-base-200 bg-base-100 overflow-hidden border'>
           <div

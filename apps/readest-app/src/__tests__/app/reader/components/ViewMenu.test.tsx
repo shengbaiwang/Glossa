@@ -1,7 +1,8 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSidebarStore } from '@/store/sidebarStore';
 import ViewMenu from '@/app/reader/components/ViewMenu';
+import ReadingDisplayControls from '@/components/settings/ReadingDisplayControls';
 
 const mocks = vi.hoisted(() => ({
   envConfig: {},
@@ -20,12 +21,14 @@ const mocks = vi.hoisted(() => ({
     annotationQuickAction: null as string | null,
   },
   saveViewSettings: vi.fn(),
+  openSettingsDialog: vi.fn(),
   setSettingsDialogOpen: vi.fn(),
   setSettingsDialogBookKey: vi.fn(),
   dispatch: vi.fn(),
   dispatchSync: vi.fn(),
   progress: undefined as [number, number] | undefined,
   saveSysSettings: vi.fn(),
+  recreateViewer: vi.fn(),
 }));
 
 vi.mock('@/hooks/useTranslation', () => ({
@@ -33,6 +36,7 @@ vi.mock('@/hooks/useTranslation', () => ({
     key.replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(values?.[name] ?? name)),
 }));
 vi.mock('@/hooks/useResponsiveSize', () => ({ useResponsiveSize: (size: number) => size }));
+vi.mock('@/hooks/useResetSettings', () => ({ useResetViewSettings: () => vi.fn() }));
 vi.mock('@/hooks/useKeyDownActions', () => ({ useKeyDownActions: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@/context/EnvContext', () => ({
@@ -55,7 +59,7 @@ vi.mock('@/store/bookDataStore', () => ({
 vi.mock('@/store/readerStore', () => ({
   useReaderStore: () => ({
     bookKeys: ['book-1', 'book-2'],
-    recreateViewer: vi.fn(),
+    recreateViewer: mocks.recreateViewer,
     getViewSettings: () => mocks.viewSettings,
     getViewState: () => ({}),
     getView: vi.fn(),
@@ -65,6 +69,7 @@ vi.mock('@/store/readerStore', () => ({
 vi.mock('@/store/settingsStore', () => ({
   useSettingsStore: () => ({
     settings: { globalReadSettings: {} },
+    openSettingsDialog: mocks.openSettingsDialog,
     setSettingsDialogOpen: mocks.setSettingsDialogOpen,
     setSettingsDialogBookKey: mocks.setSettingsDialogBookKey,
   }),
@@ -109,8 +114,23 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('reader ViewMenu', () => {
-  it('keeps the scroll icon while exposing a separate checked state', () => {
-    render(<ViewMenu bookKey='book-2' />);
+  it('reloads only the book targeted by its actions menu', () => {
+    const close = vi.fn();
+    render(<ViewMenu bookKey='book-2' setIsDropdownOpen={close} />);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reload Book' }));
+    expect(mocks.recreateViewer).toHaveBeenCalledWith(mocks.envConfig, 'book-2');
+    expect(close).toHaveBeenCalledWith(false);
+    expect(screen.queryByRole('menuitem', { name: 'Reload Page' })).toBeNull();
+  });
+  it('keeps global preferences out of current-book actions', () => {
+    render(<ViewMenu bookKey='book-1' />);
+    expect(screen.queryByRole('menuitem', { name: 'About Glossa' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Light Mode' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Fullscreen' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /Font & Layout/ })).toBeNull();
+  });
+  it('keeps the scroll icon and persists the new flow from Aa', async () => {
+    render(<ReadingDisplayControls bookKey='book-2' onRegisterReset={vi.fn()} />);
     const row = screen.getByRole('menuitemcheckbox', { name: 'Scrolled Mode - OFF' });
     const icon = row.querySelector('.glossa-menu-icon svg');
     expect(icon).not.toBeNull();
@@ -120,6 +140,17 @@ describe('reader ViewMenu', () => {
     expect(row.querySelector('.glossa-menu-icon svg')).toBe(icon);
     expect(row.querySelector('.glossa-menu-check svg')).not.toBeNull();
     expect(row.textContent).toContain('Shift+J');
+    await waitFor(() =>
+      expect(mocks.saveViewSettings).toHaveBeenCalledWith(
+        mocks.envConfig,
+        'book-2',
+        'scrolled',
+        true,
+        false,
+        false,
+        true,
+      ),
+    );
   });
 
   it.each([
@@ -204,7 +235,7 @@ describe('reader ViewMenu', () => {
       'book-1',
       'annotationQuickAction',
       'highlight',
-      false,
+      true,
       true,
     );
     expect(closeMenu).toHaveBeenCalledWith(false);
@@ -222,7 +253,7 @@ describe('reader ViewMenu', () => {
       'book-1',
       'annotationQuickAction',
       null,
-      false,
+      true,
       true,
     );
   });
@@ -240,7 +271,7 @@ describe('reader ViewMenu', () => {
       'book-1',
       'annotationQuickAction',
       'copy',
-      false,
+      true,
       true,
     );
   });
@@ -267,12 +298,11 @@ describe('reader ViewMenu', () => {
 
   it('keeps layout settings available when the compact header hides their shortcut', () => {
     const closeMenu = vi.fn();
-    render(<ViewMenu bookKey='book-1' setIsDropdownOpen={closeMenu} />);
+    render(<ViewMenu bookKey='book-1' setIsDropdownOpen={closeMenu} showReadingAppearance />);
 
-    fireEvent.click(screen.getByRole('menuitem', { name: /Font & Layout/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Reading Appearance/ }));
 
-    expect(mocks.setSettingsDialogBookKey).toHaveBeenCalledWith('book-1');
-    expect(mocks.setSettingsDialogOpen).toHaveBeenCalledWith(true);
+    expect(mocks.openSettingsDialog).toHaveBeenCalledWith('reading', 'book-1');
     expect(closeMenu).toHaveBeenCalledWith(false);
   });
 });

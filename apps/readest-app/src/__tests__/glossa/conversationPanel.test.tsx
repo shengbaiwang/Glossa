@@ -57,7 +57,8 @@ vi.mock('@/store/settingsStore', () => ({
     getState: () => ({
       setSettingsDialogBookKey: vi.fn(),
       setRequestedPanel: vi.fn(),
-      setSettingsDialogOpen: f.settings,
+      openSettingsDialog: f.settings,
+      setSettingsDialogOpen: vi.fn(),
     }),
   },
 }));
@@ -415,7 +416,7 @@ it('opens model setup when credentials are missing', async () => {
   f.status.mockResolvedValue({ configured: false });
   mount();
   fireEvent.click(await screen.findByRole('button', { name: 'Set up a model' }));
-  expect(f.settings).toHaveBeenCalledWith(true);
+  expect(f.settings).toHaveBeenCalledWith('application', '', 'Models');
 });
 it('switches models directly and continues the same conversation', async () => {
   mount();

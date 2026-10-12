@@ -103,9 +103,7 @@ function ReadingPassageBook<T extends PassageResult>(props: Props<T>) {
 
   const openModels = () => {
     const settings = useSettingsStore.getState();
-    settings.setSettingsDialogBookKey(bookKey);
-    settings.setRequestedPanel('Models');
-    settings.setSettingsDialogOpen(true);
+    settings.openSettingsDialog('application', '', 'Models');
   };
 
   return (

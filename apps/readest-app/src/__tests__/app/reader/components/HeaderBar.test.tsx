@@ -64,6 +64,7 @@ vi.mock('@/store/settingsStore', () => ({
   useSettingsStore: () => ({
     settings: {},
     isSettingsDialogOpen: false,
+    openSettingsDialog: vi.fn(),
     setSettingsDialogOpen: vi.fn(),
     setSettingsDialogBookKey: vi.fn(),
     setRequestedPanel: vi.fn(),
@@ -143,8 +144,9 @@ describe('reader top bar hierarchy', () => {
       .map((button) => button.getAttribute('aria-label'));
     expect(endLabels).toEqual([
       'Add Bookmark',
-      'Font & Layout',
-      'View Options',
+      'Reading Appearance',
+      'Book Actions',
+      'Settings',
       'Reading Assistant',
     ]);
   });

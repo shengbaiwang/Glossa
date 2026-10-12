@@ -65,6 +65,18 @@ afterEach(() => {
 const mount = () => render(<FontPanel bookKey='book' onRegisterReset={vi.fn()} />);
 
 describe('Glossa font settings', () => {
+  it('uses the dialog scope and reset controls without duplicating its footer', async () => {
+    saved.defaultFontSize = 24;
+    const registerReset = vi.fn();
+    render(<FontPanel bookKey='book' onRegisterReset={registerReset} showFooter={false} />);
+    expect(screen.queryByRole('group', { name: 'Apply to' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reset' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Manage Fonts' })).toBeTruthy();
+    act(() => registerReset.mock.calls[0]![0]());
+    await waitFor(() =>
+      expect(saveViewSettings).toHaveBeenCalledWith({}, 'book', 'defaultFontSize', 16),
+    );
+  });
   it('does not save unchanged settings merely by opening the panel', async () => {
     mount();
     await waitFor(() => expect(nativeFonts).toHaveBeenCalledOnce());

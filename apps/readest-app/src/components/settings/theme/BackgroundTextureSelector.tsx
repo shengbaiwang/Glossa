@@ -22,6 +22,7 @@ interface Texture {
 }
 
 interface BackgroundTextureSelectorProps {
+  readerOnly?: boolean;
   predefinedTextures: Texture[];
   customTextures: Texture[];
   /** True when the reader uses its own background instead of sharing. */
@@ -41,6 +42,7 @@ interface BackgroundTextureSelectorProps {
 }
 
 const BackgroundTextureSelector: React.FC<BackgroundTextureSelectorProps> = ({
+  readerOnly = false,
   predefinedTextures,
   customTextures,
   separateReader,
@@ -67,7 +69,7 @@ const BackgroundTextureSelector: React.FC<BackgroundTextureSelectorProps> = ({
         <SectionTitle>{_('Background Image')}</SectionTitle>
         {/* Scope switcher only appears once the reader is decoupled; while
             linked, one background drives both pages. */}
-        {separateReader && (
+        {separateReader && !readerOnly && (
           <div
             role='radiogroup'
             aria-label={_('Background Image')}
@@ -198,11 +200,13 @@ const BackgroundTextureSelector: React.FC<BackgroundTextureSelectorProps> = ({
             </SettingsRow>
           </>
         )}
-        <SettingsSwitchRow
-          label={_('Separate Background')}
-          checked={separateReader}
-          onChange={() => onSeparateReaderChange(!separateReader)}
-        />
+        {!readerOnly && (
+          <SettingsSwitchRow
+            label={_('Separate Background')}
+            checked={separateReader}
+            onChange={() => onSeparateReaderChange(!separateReader)}
+          />
+        )}
       </BoxedList>
     </div>
   );

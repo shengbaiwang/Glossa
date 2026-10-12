@@ -27,6 +27,7 @@ import SidebarToggler from './SidebarToggler';
 import BookmarkToggler from './BookmarkToggler';
 import NotebookToggler from './NotebookToggler';
 import SettingsToggler from './SettingsToggler';
+import ApplicationSettingsButton from '@/components/settings/ApplicationSettingsButton';
 
 import ViewMenu from './ViewMenu';
 import SyncInfoDialog from './SyncInfoDialog';
@@ -291,7 +292,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
           <BookmarkToggler bookKey={bookKey} />
           {!isHeaderCompact && <SettingsToggler bookKey={bookKey} />}
           <Dropdown
-            label={_('View Options')}
+            label={_('Book Actions')}
             containerClassName='h-8'
             className='exclude-title-bar-mousedown dropdown-bottom dropdown-end'
             buttonClassName='glossa-icon-button btn btn-ghost h-8 min-h-8 w-8 p-0 mt-0'
@@ -300,10 +301,12 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
           >
             <ViewMenu
               bookKey={bookKey}
+              showReadingAppearance={isHeaderCompact}
               onShowMetaHashDialog={() => setIsMetaHashDialogOpen(true)}
               onCloseBook={handleCloseBook}
             />
           </Dropdown>
+          <ApplicationSettingsButton />
           {isMetaHashDialogOpen && (
             <ModalPortal showOverlay={false}>
               <SyncInfoDialog

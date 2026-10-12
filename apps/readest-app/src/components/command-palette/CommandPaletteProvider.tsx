@@ -95,7 +95,8 @@ export const CommandPaletteProvider: React.FC<CommandPaletteProviderProps> = ({ 
   }, []);
 
   const openSettingsPanel = useCallback(
-    (_panel: SettingsPanelType, itemId?: string) => {
+    (panel: SettingsPanelType, itemId?: string) => {
+      useSettingsStore.getState().openSettingsDialog('application', '', panel);
       // panel is encoded in itemId (e.g., 'settings.font.defaultFontSize')
       // SettingsDialog will parse this to determine which panel to show
       if (itemId) {

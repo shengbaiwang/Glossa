@@ -2,6 +2,8 @@ import { Fzf, FzfResultItem, byLengthAsc } from 'fzf';
 import { SettingsPanelType } from '@/components/settings/SettingsDialog';
 import {
   Type as RiFontSize,
+  Settings2,
+  Database,
   PanelsTopLeft as RiDashboardLine,
   Languages as RiTranslate,
   Share2 as RiShareLine,
@@ -153,6 +155,8 @@ export const groupResultsByCategory = (
 
 // settings panel icon map
 const panelIcons: Record<SettingsPanelType, IconType> = {
+  General: Settings2,
+  Data: Database,
   Font: RiFontSize,
   Layout: RiDashboardLine,
   Theme: VscSymbolColor,

@@ -53,6 +53,7 @@ vi.mock('@/store/sidebarStore', () => ({
 
 vi.mock('@/store/settingsStore', () => ({
   useSettingsStore: () => ({
+    openSettingsDialog: vi.fn(),
     setSettingsDialogOpen: vi.fn(),
   }),
 }));

@@ -1641,3 +1641,10 @@ As of 2026-09-23, each generated node presents one concise, complete idea. Use p
 Click a sourced node to verify and navigate to local text, shown in a restrained excerpt pane below the editor. Double-click, F2 or the visible edit button changes an idea. Preserve immutable generated provenance; edited labels and new manual nodes are never certified quotations. The excerpt pane labels edited ideas and interpretations, supports multiple original passages, failure retry and return to reading position. Manual outline nodes still support direct entry.
 
 Use logical spacing for RTL, visible keyboard focus, compact controls matching Conversation, touch targets on coarse pointers, and explicit e-ink borders. Keep canvas scrolling inside the workspace and source text selectable. Success saving status is announced accessibly; actionable errors remain visible. See `../../docs/design/mindmap.md` and `src/styles/glossa-mindmap.css`.
+
+
+### 15. Glossa menu scopes — 2026-10-13
+
+Group commands by their target. The library view control changes shelf presentation. A shared Settings gear opens application preferences from the library and reader. Aa opens only Font / Layout / Color; book menus operate on the current book. Application settings group Application and Reading Defaults in a labelled sidebar, with a grouped native selector on narrow screens. Keep global language, cloud, models and conversation setup out of Aa.
+
+Use one visible This Book Only / All Books Default scope selector above reading controls and one reset action in the dialog header. Embedded panels must not repeat those controls. Global defaults preserve explicit per-book settings; serialize overrides against the updated defaults. Use shared ink/paper tokens, icon buttons, spacing, focus and selected states. Sidebar and scope controls support arrow-key navigation before the modal's event boundary; narrow screens, RTL and e-ink keep the same meanings. Saving failures remain actionable with retry.

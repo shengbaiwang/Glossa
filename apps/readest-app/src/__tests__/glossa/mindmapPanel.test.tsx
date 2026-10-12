@@ -38,6 +38,7 @@ vi.mock('@/store/readerStore', () => ({
 vi.mock('@/store/settingsStore', () => ({
   useSettingsStore: {
     getState: () => ({
+      openSettingsDialog: vi.fn(),
       setSettingsDialogBookKey: f.setBook,
       setRequestedPanel: f.setPanel,
       setSettingsDialogOpen: f.openSettings,

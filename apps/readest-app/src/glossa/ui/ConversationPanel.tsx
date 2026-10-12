@@ -343,15 +343,11 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
   }, [copied]);
   const openModels = () => {
     const settings = useSettingsStore.getState();
-    settings.setSettingsDialogBookKey(bookKey);
-    settings.setRequestedPanel('Models');
-    settings.setSettingsDialogOpen(true);
+    settings.openSettingsDialog('application', '', 'Models');
   };
   const openPrompts = () => {
     const settings = useSettingsStore.getState();
-    settings.setSettingsDialogBookKey(bookKey);
-    settings.setRequestedPanel('Conversation');
-    settings.setSettingsDialogOpen(true);
+    settings.openSettingsDialog('application', '', 'Conversation');
   };
   const capabilities = config ? providerCapabilities(config) : null;
   const effortLabels: Record<ReasoningEffort, string> = {

@@ -11,7 +11,6 @@ import {
   Trash2,
   ListOrdered,
   RefreshCw,
-  Info,
 } from '@/components/GlossaIcons';
 import { useEnv } from '@/context/EnvContext';
 import { useBookDataStore } from '@/store/bookDataStore';
@@ -20,14 +19,11 @@ import { useLibraryStore } from '@/store/libraryStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useParallelViewStore } from '@/store/parallelViewStore';
-import { isWebAppPlatform } from '@/services/environment';
 import { eventDispatcher } from '@/utils/event';
 import { FIXED_LAYOUT_FORMATS } from '@/types/book';
-import { GLOSSA_DOWNLOAD_URL } from '@/services/constants';
 import { useSettingsStore } from '@/store/settingsStore';
 import { saveSysSettings, saveViewSettings } from '@/helpers/settings';
 
-import { setAboutDialogVisible } from '@/components/AboutWindow';
 import useBooksManager from '../../hooks/useBooksManager';
 import MenuItem from '@/components/MenuItem';
 
@@ -80,16 +76,8 @@ const BookMenuItems: React.FC<BookMenuProps> = ({ bookKey, setIsDropdownOpen }) 
     openParallelView(id, bookKey);
     setIsDropdownOpen?.(false);
   };
-  const handleReloadPage = () => {
-    window.location.reload();
-    setIsDropdownOpen?.(false);
-  };
-  const showAboutGlossa = () => {
-    setAboutDialogVisible(true);
-    setIsDropdownOpen?.(false);
-  };
-  const downloadGlossa = () => {
-    window.open(GLOSSA_DOWNLOAD_URL, '_blank');
+  const handleReloadBook = () => {
+    recreateViewer(envConfig, bookKey);
     setIsDropdownOpen?.(false);
   };
   const handleExportAnnotations = () => {
@@ -213,23 +201,9 @@ const BookMenuItems: React.FC<BookMenuProps> = ({ bookKey, setIsDropdownOpen }) 
         onClick={handleToggleSortTOC}
       />
       <MenuItem
-        label={_('Reload Page')}
+        label={_('Reload Book')}
         Icon={<RefreshCw size={iconSize} />}
-        shortcut='Shift+R'
-        onClick={handleReloadPage}
-      />
-      <hr aria-hidden='true' className='border-base-200 my-1' />
-      {isWebAppPlatform() && (
-        <MenuItem
-          label={_('Download Glossa')}
-          Icon={<Download size={iconSize} />}
-          onClick={downloadGlossa}
-        />
-      )}
-      <MenuItem
-        label={_('About Glossa')}
-        Icon={<Info size={iconSize} />}
-        onClick={showAboutGlossa}
+        onClick={handleReloadBook}
       />
     </>
   );

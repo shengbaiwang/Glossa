@@ -15,21 +15,27 @@ const SettingsToggler: React.FC<SettingsTogglerProps> = ({ bookKey }) => {
   const _ = useTranslation();
   const iconSize = useResponsiveSize(18);
   const { setHoveredBookKey } = useReaderStore();
-  const { isSettingsDialogOpen, setSettingsDialogOpen } = useSettingsStore();
-  const { setSettingsDialogBookKey, setRequestedPanel } = useSettingsStore();
+  const {
+    isSettingsDialogOpen,
+    settingsDialogScope,
+    settingsDialogBookKey,
+    openSettingsDialog,
+    setSettingsDialogOpen,
+  } = useSettingsStore();
+  const isOpen =
+    isSettingsDialogOpen && settingsDialogScope === 'reading' && settingsDialogBookKey === bookKey;
   const handleToggleSettings = () => {
     setHoveredBookKey('');
-    setRequestedPanel('Font');
-    setSettingsDialogBookKey(bookKey);
-    setSettingsDialogOpen(!isSettingsDialogOpen);
+    if (isOpen) setSettingsDialogOpen(false);
+    else openSettingsDialog('reading', bookKey);
   };
   return (
     <Button
       icon={<Type size={iconSize} aria-hidden='true' />}
       className='glossa-icon-button'
-      aria-expanded={isSettingsDialogOpen}
+      aria-expanded={isOpen}
       onClick={handleToggleSettings}
-      label={_('Font & Layout')}
+      label={_('Reading Appearance')}
     ></Button>
   );
 };

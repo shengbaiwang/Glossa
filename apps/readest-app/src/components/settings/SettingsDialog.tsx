@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
-import { useSettingsStore } from '@/store/settingsStore';
+import { useSettingsStore, type SettingsDialogScope } from '@/store/settingsStore';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useCommandPalette } from '@/components/command-palette';
@@ -12,10 +12,11 @@ import {
   Hand,
   Languages,
   Cloud,
-  Accessibility,
   Ellipsis,
-  ChevronLeft,
-  ChevronRight,
+  RotateCcw,
+  Settings2,
+  Database,
+  Braces,
   X,
   Search,
   Server,
@@ -33,10 +34,15 @@ import DialogMenu from './DialogMenu';
 import ControlPanel from './ControlPanel';
 import LangPanel from './LangPanel';
 import MiscPanel from './MiscPanel';
+import ApplicationPanel from './ApplicationPanel';
+import SettingsScopeControl from './SettingsScopeControl';
+import ReadingDisplayControls from './ReadingDisplayControls';
 const ModelSettingsPanel = lazy(() => import('@/glossa/ui/ModelSettingsPanel'));
 const PromptSettingsPanel = lazy(() => import('@/glossa/ui/PromptSettingsPanel'));
 
 export type SettingsPanelType =
+  | 'General'
+  | 'Data'
   | 'Font'
   | 'Layout'
   | 'Theme'
@@ -58,15 +64,18 @@ type TabConfig = {
   disabled?: boolean;
 };
 
-const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
+const SettingsDialog: React.FC<{
+  bookKey: string;
+  scope?: SettingsDialogScope;
+  onSyncLibrary?: () => void;
+}> = ({ bookKey, scope: explicitScope, onSyncLibrary }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
   const closeIconSize = useResponsiveSize(16);
   const [isRtl] = useState(() => getDirFromUILanguage() === 'rtl');
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const [showAllTabLabels, setShowAllTabLabels] = useState(false);
-  const [canScrollTabsForward, setCanScrollTabsForward] = useState(false);
+  const displayReset = useRef<(() => void) | null>(null);
   const {
     setFontPanelView,
     setSettingsDialogOpen,
@@ -74,6 +83,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     setActiveSettingsItemId,
     requestedPanel,
     setRequestedPanel,
+    settingsDialogScope,
   } = useSettingsStore();
   const { open: openCommandPalette } = useCommandPalette();
 
@@ -82,7 +92,12 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     setSettingsDialogOpen(false);
   };
 
-  const tabConfig = [
+  const scope = explicitScope ?? settingsDialogScope ?? 'application';
+  const reading = scope === 'reading';
+  const panelBookKey = reading ? bookKey : '';
+  const tabConfig: TabConfig[] = [
+    { tab: 'General', icon: Settings2, label: _('General') },
+    { tab: 'Data', icon: Database, label: _('Library Data') },
     {
       tab: 'Font',
       icon: Type,
@@ -125,24 +140,38 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     },
     {
       tab: 'Custom',
-      icon: Accessibility,
-      label: _('Custom'),
+      icon: Braces,
+      label: _('Custom Styles'),
     },
-  ] as TabConfig[];
+  ].filter((tab) => !reading || ['Font', 'Layout', 'Theme'].includes(tab.tab)) as TabConfig[];
+
+  const panelGroups = reading
+    ? [{ label: '', tabs: ['Font', 'Layout', 'Theme'] }]
+    : [
+        {
+          label: _('Application'),
+          tabs: ['General', 'Theme', 'Language', 'Integrations', 'Models', 'Conversation', 'Data'],
+        },
+        { label: _('Reading Defaults'), tabs: ['Font', 'Layout', 'Control', 'Custom'] },
+      ];
 
   const [activePanel, setActivePanel] = useState<SettingsPanelType>(() => {
     // Deep-link: if a caller asked for a specific panel before opening the
     // dialog, honor that for the initial state. The store-clear lives in
     // a useEffect below so we never call a zustand setter during render
     // (would warn "Cannot update a component while rendering another").
-    if (requestedPanel && tabConfig.some((tab) => tab.tab === requestedPanel)) {
-      return requestedPanel as SettingsPanelType;
-    }
-    const lastPanel = localStorage.getItem('lastConfigPanel');
+    const requested = tabConfig.find(
+      (tab) => tab.tab.toLowerCase() === requestedPanel?.toLowerCase(),
+    );
+    if (requested) return requested.tab;
+    const lastPanel =
+      localStorage.getItem(
+        reading ? 'lastReadingAppearancePanel' : 'lastApplicationSettingsPanel',
+      ) ?? localStorage.getItem('lastConfigPanel');
     if (lastPanel && tabConfig.some((tab) => tab.tab === lastPanel)) {
       return lastPanel as SettingsPanelType;
     }
-    return 'Font' as SettingsPanelType;
+    return reading ? 'Font' : 'General';
   });
 
   // Clear the deep-link request after the initial render has consumed it,
@@ -150,14 +179,22 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   // once on mount; subsequent callers must call setRequestedPanel before
   // opening the dialog again.
   useEffect(() => {
-    if (requestedPanel) setRequestedPanel(null);
+    if (!requestedPanel) return;
+    const requested = tabConfig.find(
+      (tab) => tab.tab.toLowerCase() === requestedPanel.toLowerCase(),
+    );
+    if (requested) setActivePanel(requested.tab);
+    setRequestedPanel(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [requestedPanel, reading, setRequestedPanel]);
 
   const handleSetActivePanel = (tab: SettingsPanelType) => {
     setActivePanel(tab);
     setFontPanelView('main-fonts');
-    localStorage.setItem('lastConfigPanel', tab);
+    localStorage.setItem(
+      reading ? 'lastReadingAppearancePanel' : 'lastApplicationSettingsPanel',
+      tab,
+    );
   };
 
   // sync localStorage and fontPanelView when activePanel changes
@@ -166,13 +203,18 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     if (activePanelRef.current !== activePanel) {
       activePanelRef.current = activePanel;
       setFontPanelView('main-fonts');
-      localStorage.setItem('lastConfigPanel', activePanel);
+      localStorage.setItem(
+        reading ? 'lastReadingAppearancePanel' : 'lastApplicationSettingsPanel',
+        activePanel,
+      );
     }
-  }, [activePanel, setFontPanelView]);
+  }, [activePanel, reading, setFontPanelView]);
 
   const [resetFunctions, setResetFunctions] = useState<
     Record<SettingsPanelType, (() => void) | null>
   >({
+    General: null,
+    Data: null,
     Font: null,
     Layout: null,
     Theme: null,
@@ -189,6 +231,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   };
 
   const handleResetCurrentPanel = () => {
+    if (activePanel === 'Layout' && reading) displayReset.current?.();
     const resetFn = resetFunctions[activePanel];
     if (resetFn) {
       resetFn();
@@ -210,6 +253,10 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         font: 'Font',
         layout: 'Layout',
         theme: 'Theme',
+        color: 'Theme',
+        general: 'General',
+        data: 'Data',
+        models: 'Models',
         control: 'Control',
         language: 'Language',
         integrations: 'Integrations',
@@ -218,7 +265,11 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       };
       const panelKey = parts[1]?.toLowerCase();
       const targetPanel = panelMap[panelKey || ''];
-      if (targetPanel && targetPanel !== activePanel) {
+      if (
+        targetPanel &&
+        tabConfig.some((tab) => tab.tab === targetPanel) &&
+        targetPanel !== activePanel
+      ) {
         // eslint-disable-next-line react-hooks/set-state-in-effect -- panel switch based on external navigation is intended
         setActivePanel(targetPanel);
       }
@@ -240,72 +291,6 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     return () => clearTimeout(timeoutId);
   }, [activeSettingsItemId, activePanel, setActiveSettingsItemId]);
 
-  useEffect(() => {
-    setFontPanelView('main-fonts');
-
-    const container = tabsRef.current;
-    if (!container) return;
-
-    const checkButtonWidths = () => {
-      const threshold = (container.clientWidth - 64) / tabConfig.filter((t) => !t.disabled).length;
-      const hideLabel = Array.from(container.querySelectorAll('button')).some((button) => {
-        const labelSpan = button.querySelector('span');
-        const labelText = labelSpan?.textContent || '';
-        const clone = button.cloneNode(true) as HTMLButtonElement;
-        clone.style.position = 'absolute';
-        clone.style.visibility = 'hidden';
-        clone.style.width = 'auto';
-        const cloneSpan = clone.querySelector('span');
-        if (cloneSpan) {
-          cloneSpan.classList.remove('hidden');
-          cloneSpan.textContent = labelText;
-        }
-        document.body.appendChild(clone);
-        const fullWidth = clone.scrollWidth;
-        document.body.removeChild(clone);
-        return fullWidth > threshold;
-      });
-      setShowAllTabLabels(!hideLabel);
-    };
-
-    // |scrollLeft| (Math.abs) handles RTL, where modern browsers use 0 → -max
-    // for scrolling toward the visual-leading end of the strip.
-    const updateScrollState = () => {
-      const overflow = container.scrollWidth - container.clientWidth;
-      const scrolled = Math.abs(container.scrollLeft);
-      setCanScrollTabsForward(overflow > 1 && scrolled < overflow - 1);
-    };
-
-    const recompute = () => {
-      checkButtonWidths();
-      updateScrollState();
-    };
-
-    recompute();
-
-    const resizeObserver = new ResizeObserver(recompute);
-    resizeObserver.observe(container);
-    const mutationObserver = new MutationObserver(recompute);
-    mutationObserver.observe(container, {
-      subtree: true,
-      characterData: true,
-    });
-    container.addEventListener('scroll', updateScrollState, { passive: true });
-
-    return () => {
-      resizeObserver.disconnect();
-      mutationObserver.disconnect();
-      container.removeEventListener('scroll', updateScrollState);
-    };
-  }, [setFontPanelView]);
-
-  const handleScrollTabsForward = () => {
-    const container = tabsRef.current;
-    if (!container) return;
-    const amount = container.clientWidth * 0.7;
-    container.scrollBy({ left: isRtl ? -amount : amount, behavior: 'smooth' });
-  };
-
   const currentPanel = tabConfig.find((tab) => tab.tab === activePanel);
 
   const windowControls = (
@@ -318,25 +303,35 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       >
         <Search size={18} />
       </button>
-      <Dropdown
-        label={_('Settings Menu')}
-        className='dropdown-bottom dropdown-end'
-        buttonClassName='touch-target glossa-icon-button'
-        toggleButton={<Ellipsis size={18} />}
-      >
-        <DialogMenu
-          bookKey={bookKey}
-          activePanel={activePanel}
-          onReset={handleResetCurrentPanel}
-          resetLabel={
-            currentPanel ? _('Reset {{settings}}', { settings: currentPanel.label }) : undefined
-          }
-        />
-      </Dropdown>
+      {['Font', 'Layout', 'Theme', 'Control', 'Language', 'Custom'].includes(activePanel) && (
+        <button
+          type='button'
+          onClick={handleResetCurrentPanel}
+          aria-label={_('Restore Defaults')}
+          title={_('Reset {{settings}}', { settings: currentPanel?.label ?? '' })}
+          className='touch-target glossa-icon-button'
+        >
+          <RotateCcw size={18} />
+        </button>
+      )}
+      {activePanel === 'Font' && (
+        <Dropdown
+          label={_('Manage Custom Fonts')}
+          className='dropdown-bottom dropdown-end'
+          buttonClassName='touch-target glossa-icon-button'
+          toggleButton={<Ellipsis size={18} />}
+        >
+          <DialogMenu
+            bookKey={panelBookKey}
+            activePanel={activePanel}
+            onReset={handleResetCurrentPanel}
+          />
+        </Dropdown>
+      )}
       <button
         onClick={handleClose}
         aria-label={_('Close')}
-        className={'touch-target glossa-icon-button hidden sm:flex'}
+        className='touch-target glossa-icon-button'
       >
         <X size={closeIconSize} />
       </button>
@@ -352,11 +347,14 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       // inside RSVP shows on top instead of behind it (#3235), and below the
       // modal layer (z-120) so a modal opened from inside Settings (e.g. Add
       // OPDS Catalog) renders on top. !important beats the Dialog's hardcoded z-50.
-      className={clsx('glossa-settings modal-open !z-[110]', bookKey && 'glossa-reader-settings')}
-      contentClassName={bookKey || activePanel === 'Font' ? 'sm:!px-5' : undefined}
-      bgClassName={bookKey ? 'sm:!bg-black/20' : 'sm:!bg-black/50'}
+      className={clsx(
+        'glossa-settings modal-open !z-[110]',
+        reading ? 'glossa-reader-settings' : 'glossa-application-settings',
+      )}
+      contentClassName='!px-4 sm:!px-5'
+      bgClassName={reading ? 'sm:!bg-black/20' : 'sm:!bg-black/50'}
       boxClassName={clsx(
-        'sm:min-w-[520px] overflow-hidden not-eink:bg-base-200',
+        'overflow-hidden not-eink:bg-base-200',
         appService?.isMobile && 'sm:max-w-[90%] sm:w-3/4',
       )}
       snapHeight={appService?.isMobile ? 0.7 : undefined}
@@ -365,129 +363,181 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       // to keep a visible, theme-aware track on every platform.
       useOverlayScroll
       header={
-        <div className='flex w-full flex-col items-center'>
-          <div className='-mt-2 flex w-full items-center justify-center pb-2 sm:hidden'>
-            <button
-              tabIndex={-1}
-              aria-label={_('Close')}
-              onClick={handleClose}
-              className={'glossa-icon-button absolute start-3'}
-            >
-              {isRtl ? <ChevronRight /> : <ChevronLeft />}
-            </button>
-            <div className='glossa-dialog-title tab-title flex'>{currentPanel?.label || ''}</div>
-            <div className='absolute right-3'>{windowControls}</div>
+        <div className='glossa-settings-heading'>
+          <div className='glossa-dialog-title'>
+            {reading ? _('Reading Appearance') : _('Settings')}
           </div>
-          <div className='flex w-full flex-row items-center justify-between'>
-            <div
-              ref={tabsRef}
-              role='group'
-              aria-label={_('Settings Panels') + ' - ' + (currentPanel?.label || '')}
-              className={clsx(
-                'dialog-tabs ms-1 flex h-10 w-full items-center gap-1 overflow-x-auto sm:ms-0',
-              )}
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-            >
-              {tabConfig
-                .filter((t) => !t.disabled)
-                .map(({ tab, icon: Icon, label }) => (
-                  <button
-                    key={tab}
-                    data-tab={tab}
-                    aria-label={label}
-                    aria-pressed={activePanel === tab}
-                    tabIndex={0}
-                    title={label}
-                    className={clsx(
-                      'btn btn-ghost text-base-content btn-sm gap-1 px-2 max-[350px]:px-1',
-                      activePanel === tab ? 'btn-active' : '',
-                    )}
-                    onClick={() => handleSetActivePanel(tab)}
-                  >
-                    <Icon aria-hidden='true' />
-                    <span
-                      className={clsx(
-                        window.innerWidth < 640 && 'hidden',
-                        !(showAllTabLabels || activePanel === tab) && 'hidden',
-                      )}
-                    >
-                      {label}
-                    </span>
-                  </button>
-                ))}
-            </div>
-            {canScrollTabsForward && (
-              <button
-                type='button'
-                onClick={handleScrollTabsForward}
-                aria-label={_('Scroll tabs')}
-                title={_('Scroll tabs')}
-                tabIndex={-1}
-                className='glossa-icon-button'
-              >
-                {isRtl ? <ChevronLeft /> : <ChevronRight />}
-              </button>
-            )}
-            <div className='hidden sm:flex'>{windowControls}</div>
-          </div>
+          {windowControls}
         </div>
       }
     >
+      {!reading && (
+        <select
+          aria-label={_('Settings Panels')}
+          className='select eink-bordered glossa-settings-mobile-panel-select w-full'
+          value={activePanel}
+          onChange={(event) => handleSetActivePanel(event.target.value as SettingsPanelType)}
+        >
+          {panelGroups.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.tabs.map((tab) => {
+                const config = tabConfig.find((item) => item.tab === tab);
+                return (
+                  config && (
+                    <option key={tab} value={tab}>
+                      {config.label}
+                    </option>
+                  )
+                );
+              })}
+            </optgroup>
+          ))}
+        </select>
+      )}
       <div
-        ref={panelRef}
-        role='group'
-        aria-label={`${_(currentPanel?.label || '')} - ${_('Settings')}`}
+        className={clsx('glossa-settings-workspace', !reading && 'glossa-application-workspace')}
       >
-        {activePanel === 'Font' && (
-          <FontPanel
-            key={bookKey}
-            bookKey={bookKey}
-            onRegisterReset={(fn) => registerResetFunction('Font', fn)}
-          />
-        )}
-        {activePanel === 'Layout' && (
-          <LayoutPanel
-            bookKey={bookKey}
-            onRegisterReset={(fn) => registerResetFunction('Layout', fn)}
-          />
-        )}
-        {activePanel === 'Theme' && (
-          <ThemePanel
-            bookKey={bookKey}
-            onRegisterReset={(fn) => registerResetFunction('Theme', fn)}
-          />
-        )}
-        {activePanel === 'Control' && (
-          <ControlPanel
-            bookKey={bookKey}
-            onRegisterReset={(fn) => registerResetFunction('Control', fn)}
-          />
-        )}
+        <nav
+          ref={tabsRef}
+          aria-label={_('Settings Panels')}
+          className={clsx('glossa-settings-navigation', reading && 'dialog-tabs')}
+        >
+          {panelGroups.map((group) => (
+            <div key={group.label} className='glossa-settings-nav-group'>
+              {group.label && <div className='glossa-settings-group-label'>{group.label}</div>}
+              {group.tabs.map((tab) => {
+                const config = tabConfig.find((item) => item.tab === tab);
+                if (!config) return null;
+                const Icon = config.icon;
+                return (
+                  <button
+                    key={tab}
+                    type='button'
+                    data-tab={tab}
+                    aria-label={config.label}
+                    aria-pressed={activePanel === tab}
+                    className='glossa-settings-nav-button'
+                    onClick={() => handleSetActivePanel(config.tab)}
+                    onKeyDownCapture={(event) => {
+                      if (
+                        ![
+                          'ArrowRight',
+                          'ArrowLeft',
+                          'ArrowDown',
+                          'ArrowUp',
+                          'Home',
+                          'End',
+                        ].includes(event.key)
+                      )
+                        return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const buttons = Array.from(
+                        tabsRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? [],
+                      );
+                      const index = buttons.indexOf(event.currentTarget);
+                      const direction =
+                        event.key === 'ArrowDown' ||
+                        event.key === (isRtl ? 'ArrowLeft' : 'ArrowRight')
+                          ? 1
+                          : -1;
+                      const target =
+                        event.key === 'Home'
+                          ? buttons[0]
+                          : event.key === 'End'
+                            ? buttons.at(-1)
+                            : buttons[(index + direction + buttons.length) % buttons.length];
+                      target?.focus();
+                      target?.click();
+                    }}
+                  >
+                    <Icon aria-hidden='true' size={18} />
+                    <span>{config.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+        <div
+          ref={panelRef}
+          role='group'
+          aria-label={`${_(currentPanel?.label || '')} - ${_('Settings')}`}
+          className='glossa-settings-content'
+        >
+          {reading && <SettingsScopeControl bookKey={bookKey} />}
+          {!reading && <div className='glossa-settings-panel-title'>{currentPanel?.label}</div>}
+          {(activePanel === 'General' || activePanel === 'Data') && (
+            <ApplicationPanel section={activePanel} />
+          )}
+          {activePanel === 'Font' && (
+            <FontPanel
+              key={panelBookKey}
+              bookKey={panelBookKey}
+              showFooter={false}
+              onRegisterReset={(fn) => registerResetFunction('Font', fn)}
+            />
+          )}
+          {activePanel === 'Layout' && (
+            <>
+              {reading && (
+                <ReadingDisplayControls
+                  bookKey={bookKey}
+                  onRegisterReset={(fn) => {
+                    displayReset.current = fn;
+                  }}
+                />
+              )}
+              <LayoutPanel
+                key={panelBookKey}
+                bookKey={panelBookKey}
+                onRegisterReset={(fn) => registerResetFunction('Layout', fn)}
+              />
+            </>
+          )}
+          {activePanel === 'Theme' && (
+            <ThemePanel
+              key={panelBookKey}
+              readingOnly={reading}
+              bookKey={panelBookKey}
+              onRegisterReset={(fn) => registerResetFunction('Theme', fn)}
+            />
+          )}
+          {activePanel === 'Control' && (
+            <ControlPanel
+              key={panelBookKey}
+              bookKey={panelBookKey}
+              onRegisterReset={(fn) => registerResetFunction('Control', fn)}
+            />
+          )}
 
-        {activePanel === 'Language' && (
-          <LangPanel
-            bookKey={bookKey}
-            onRegisterReset={(fn) => registerResetFunction('Language', fn)}
-          />
-        )}
+          {activePanel === 'Language' && (
+            <LangPanel
+              key={panelBookKey}
+              bookKey={panelBookKey}
+              onRegisterReset={(fn) => registerResetFunction('Language', fn)}
+            />
+          )}
 
-        {activePanel === 'Integrations' && <IntegrationsPanel />}
-        {activePanel === 'Models' && (
-          <Suspense fallback={null}>
-            <ModelSettingsPanel />
-          </Suspense>
-        )}
-        {activePanel === 'Conversation' && (
-          <Suspense fallback={null}>
-            <PromptSettingsPanel />
-          </Suspense>
-        )}
-        {activePanel === 'Custom' && (
-          <MiscPanel
-            bookKey={bookKey}
-            onRegisterReset={(fn) => registerResetFunction('Custom', fn)}
-          />
-        )}
+          {activePanel === 'Integrations' && <IntegrationsPanel onSyncLibrary={onSyncLibrary} />}
+          {activePanel === 'Models' && (
+            <Suspense fallback={null}>
+              <ModelSettingsPanel />
+            </Suspense>
+          )}
+          {activePanel === 'Conversation' && (
+            <Suspense fallback={null}>
+              <PromptSettingsPanel />
+            </Suspense>
+          )}
+          {activePanel === 'Custom' && (
+            <MiscPanel
+              key={panelBookKey}
+              bookKey={panelBookKey}
+              onRegisterReset={(fn) => registerResetFunction('Custom', fn)}
+            />
+          )}
+        </div>
       </div>
     </Dialog>
   );

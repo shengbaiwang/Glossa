@@ -623,6 +623,143 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
   }
 }
 
+/* Application categories keep their labels visible; Aa has three local tabs. */
+.glossa-settings-heading {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 6px;
+}
+.glossa-settings-workspace {
+  min-width: 0;
+}
+.glossa-settings-navigation {
+  min-width: 0;
+}
+.glossa-settings-nav-group {
+  display: flex;
+  gap: 4px;
+}
+.glossa-settings-navigation {
+  display: flex;
+  overflow-x: auto;
+  gap: 8px;
+  padding-block: 8px;
+}
+.glossa-settings-group-label {
+  display: none;
+}
+.glossa-settings-nav-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  white-space: nowrap;
+  color: inherit;
+}
+.glossa-settings-nav-button:hover {
+  background: var(--glossa-hover);
+}
+.glossa-settings-nav-button[aria-pressed='true'] {
+  background: var(--glossa-selected);
+  font-weight: 600;
+}
+.glossa-settings-nav-button:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: -2px;
+}
+.glossa-settings-content {
+  min-width: 0;
+}
+.glossa-settings-mobile-panel-select {
+  margin-block: 8px;
+}
+.glossa-application-workspace .glossa-settings-navigation {
+  display: none;
+}
+.glossa-settings-scope [aria-disabled='true'] {
+  opacity: 0.6;
+}
+.glossa-settings-panel-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-block: 12px;
+}
+.glossa-settings-scope {
+  padding-block: 12px;
+  border-bottom: 1px solid var(--glossa-border);
+}
+.glossa-settings-scope .glossa-font-segments {
+  display: flex;
+}
+.glossa-settings-scope .glossa-button {
+  flex: 1;
+  min-height: 36px;
+}
+.glossa-settings-scope [aria-checked='true'] {
+  background: var(--glossa-selected);
+  font-weight: 600;
+}
+.glossa-settings-scope [aria-checked='true'] {
+  box-shadow: inset 0 -2px currentColor;
+}
+.glossa-reader-settings .glossa-settings-nav-group {
+  flex: 1;
+}
+.glossa-reader-settings .glossa-settings-nav-button {
+  flex: 1;
+  justify-content: center;
+}
+@media (min-width: 800px) {
+  .glossa-settings-mobile-panel-select {
+    display: none;
+  }
+  .glossa-application-settings > .modal-box {
+    width: 760px;
+    max-width: calc(100vw - 40px);
+  }
+  .glossa-application-workspace {
+    display: grid;
+    grid-template-columns: 158px minmax(0, 1fr);
+    gap: 20px;
+  }
+  .glossa-application-workspace .glossa-settings-navigation {
+    display: block;
+    overflow: visible;
+    padding-block: 12px;
+  }
+  .glossa-application-workspace .glossa-settings-nav-group {
+    flex-direction: column;
+    margin-block-end: 20px;
+  }
+  .glossa-application-workspace .glossa-settings-group-label {
+    display: block;
+    font-size: 12px;
+    opacity: 0.6;
+    padding: 8px 10px;
+  }
+  .glossa-application-workspace .glossa-settings-nav-button {
+    width: 100%;
+    white-space: normal;
+    text-align: start;
+  }
+}
+@media (pointer: coarse) {
+  .glossa-settings-nav-button,
+  .glossa-settings-scope .glossa-button {
+    min-height: 44px;
+  }
+}
+[data-eink='true'] .glossa-settings-nav-button[aria-pressed='true'],
+[data-eink='true'] .glossa-settings-scope [aria-checked='true'] {
+  outline: 1px solid currentColor;
+  box-shadow: none;
+}
+
 [data-eink='true'] .glossa-font-segments .glossa-button[aria-pressed='true'] {
   background: var(--glossa-ink) !important;
   color: var(--glossa-surface) !important;

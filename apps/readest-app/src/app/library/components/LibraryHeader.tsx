@@ -4,7 +4,6 @@ import {
   ChevronDown,
   CheckCheck,
   CheckSquare2,
-  Ellipsis,
   PanelLeft,
   Search,
   SearchCheck,
@@ -22,7 +21,7 @@ import { useTrafficLight } from '@/hooks/useTrafficLight';
 import useShortcuts from '@/hooks/useShortcuts';
 import WindowButtons from '@/components/WindowButtons';
 import Dropdown from '@/components/Dropdown';
-import SettingsMenu from './SettingsMenu';
+import ApplicationSettingsButton from '@/components/settings/ApplicationSettingsButton';
 import LibrarySearchOptionsMenu from './LibrarySearchOptionsMenu';
 import ViewMenu from './ViewMenu';
 
@@ -48,7 +47,6 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
   onToggleSidebar,
   isSelectMode,
   isSelectAll,
-  onPullLibrary,
   onToggleSelectMode,
   onSelectAll,
   onDeselectAll,
@@ -206,14 +204,7 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
             >
               <ViewMenu />
             </Dropdown>
-            <Dropdown
-              label={_('Settings Menu')}
-              className='dropdown-bottom dropdown-end'
-              buttonClassName='touch-target glossa-icon-button'
-              toggleButton={<Ellipsis size={21} aria-hidden='true' />}
-            >
-              <SettingsMenu onPullLibrary={onPullLibrary} />
-            </Dropdown>
+            <ApplicationSettingsButton />
           </>
         )}
         {appService?.hasWindowBar && (

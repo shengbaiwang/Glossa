@@ -23,7 +23,7 @@ const errorText = (error: unknown) =>
     ? error.message
     : 'The model service could not generate this mind map. Try again.';
 
-function useMapGeneration(bookKey: string) {
+function useMapGeneration() {
   const [config, setConfig] = useState<ProviderConfig | null>(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -77,9 +77,7 @@ function useMapGeneration(bookKey: string) {
   };
   const openSettings = () => {
     const settings = useSettingsStore.getState();
-    settings.setSettingsDialogBookKey(bookKey);
-    settings.setRequestedPanel('Models');
-    settings.setSettingsDialogOpen(true);
+    settings.openSettingsDialog('application', '', 'Models');
   };
   return { config, ready, busy, error, run, cancel, openSettings };
 }
@@ -112,7 +110,7 @@ function OverviewForm(
   props: ReadingPanelProps & { kind: 'chapter' | 'book'; onUseMap: (map: ReadingMindmap) => void },
 ) {
   const _ = useTranslation();
-  const model = useMapGeneration(props.bookKey);
+  const model = useMapGeneration();
   const access = useMemo(() => {
     try {
       return props.book.format === 'EPUB'
@@ -312,7 +310,7 @@ export function BranchGeneration(
   },
 ) {
   const _ = useTranslation();
-  const model = useMapGeneration(props.bookKey);
+  const model = useMapGeneration();
   const [result, setResult] = useState<ReadingMindmap | null>(null);
   const node = props.map.nodes.find((n) => n.id === props.nodeId);
   const generate = () =>

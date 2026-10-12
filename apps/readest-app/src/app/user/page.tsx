@@ -47,8 +47,7 @@ export default function ProfilePage() {
       : (getGlossaAuthRedirectUrl() ?? `${window.location.origin}/auth/callback`);
   const openCloudSettings = () => {
     const store = useSettingsStore.getState();
-    store.setRequestedPanel('integrations');
-    store.setSettingsDialogOpen(true);
+    store.openSettingsDialog('application', '', 'Integrations');
     router.push('/library');
   };
   const deleteFunction = getGlossaDeleteAccountFunction();

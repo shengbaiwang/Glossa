@@ -6,11 +6,14 @@ import { initDayjs } from '@/utils/time';
 import { broadcastGlobalSettings } from '@/utils/settingsSync';
 
 export type FontPanelView = 'main-fonts' | 'custom-fonts';
+export type SettingsDialogScope = 'application' | 'reading';
 
 interface SettingsState {
   settings: SystemSettings;
   settingsDialogBookKey: string;
   isSettingsDialogOpen: boolean;
+  settingsDialogScope: SettingsDialogScope;
+  openSettingsDialog: (scope: SettingsDialogScope, bookKey?: string, panel?: string) => void;
   fontPanelView: FontPanelView;
   activeSettingsItemId: string | null;
   /**
@@ -43,6 +46,16 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   settings: {} as SystemSettings,
   settingsDialogBookKey: '',
   isSettingsDialogOpen: false,
+  settingsDialogScope: 'application',
+  openSettingsDialog: (scope, bookKey = '', panel = scope === 'reading' ? 'Font' : 'General') =>
+    set({
+      settingsDialogScope: scope,
+      settingsDialogBookKey: bookKey,
+      requestedPanel: panel,
+      activeSettingsItemId: null,
+      requestedSubPage: null,
+      isSettingsDialogOpen: true,
+    }),
   fontPanelView: 'main-fonts',
   activeSettingsItemId: null,
   requestedPanel: null,
@@ -59,7 +72,13 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setSettingsDialogOpen: (open) => set({ isSettingsDialogOpen: open }),
   setFontPanelView: (view) => set({ fontPanelView: view }),
   setActiveSettingsItemId: (id) => set({ activeSettingsItemId: id }),
-  setRequestedPanel: (panel) => set({ requestedPanel: panel }),
+  setRequestedPanel: (panel) =>
+    set({
+      requestedPanel: panel,
+      ...(panel && !['font', 'layout', 'theme'].includes(panel.toLowerCase())
+        ? { settingsDialogScope: 'application' as const }
+        : {}),
+    }),
   setRequestedSubPage: (subPage) => set({ requestedSubPage: subPage }),
 
   applyUILanguage: (uiLanguage?: string) => {

@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import SettingsDialog from '@/components/settings/SettingsDialog';
 
@@ -35,8 +35,20 @@ vi.mock('@/components/Dialog', () => ({
 }));
 vi.mock('@/components/Dropdown', () => ({ default: () => null }));
 vi.mock('@/components/settings/DialogMenu', () => ({ default: () => null }));
-vi.mock('@/components/settings/FontPanel', () => ({ default: () => null }));
-vi.mock('@/components/settings/LayoutPanel', () => ({ default: () => null }));
+vi.mock('@/components/settings/FontPanel', () => ({
+  default: ({ bookKey }: { bookKey: string }) => (
+    <div data-testid='font-scope'>{bookKey || 'defaults'}</div>
+  ),
+}));
+vi.mock('@/components/settings/ApplicationPanel', () => ({ default: () => null }));
+vi.mock('@/components/settings/SettingsScopeControl', () => ({ default: () => null }));
+vi.mock('@/components/settings/ReadingDisplayControls', () => ({ default: () => null }));
+vi.mock('@/components/settings/LayoutPanel', () => ({
+  default: ({ bookKey }: { bookKey: string }) => {
+    const [source] = useState(bookKey);
+    return <div data-testid='layout-scope'>{source || 'defaults'}</div>;
+  },
+}));
 vi.mock('@/components/settings/ThemePanel', () => ({ default: () => null }));
 vi.mock('@/components/settings/ControlPanel', () => ({ default: () => null }));
 vi.mock('@/components/settings/LangPanel', () => ({ default: () => null }));
@@ -54,7 +66,9 @@ const panels = [
   'Cloud Sync',
   'Model Services',
   'Conversation',
-  'Custom',
+  'Custom Styles',
+  'General',
+  'Library Data',
 ];
 beforeEach(() => {
   vi.stubGlobal(
@@ -79,26 +93,34 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('keeps every reader settings tab in the same side sheet', () => {
+it('keeps application categories in the global settings dialog', () => {
   render(<SettingsDialog bookKey='synthetic-book' />);
   for (const name of panels) {
     fireEvent.click(screen.getByRole('button', { name }));
-    expect(screen.getByRole('dialog').classList.contains('glossa-reader-settings')).toBe(true);
+    expect(screen.getByRole('dialog').classList.contains('glossa-application-settings')).toBe(true);
   }
 });
 
-it('opens restored and requested non-font panels in the reader side sheet', () => {
+it('clears book-specific panel state when switching to application defaults', () => {
+  fixture.requestedPanel = 'Layout';
+  const { rerender } = render(<SettingsDialog bookKey='synthetic-book' scope='reading' />);
+  expect(screen.getByTestId('layout-scope').textContent).toBe('synthetic-book');
+  rerender(<SettingsDialog bookKey='synthetic-book' scope='application' />);
+  expect(screen.getByTestId('layout-scope').textContent).toBe('defaults');
+});
+
+it('opens restored and requested panels as application settings', () => {
   localStorage.setItem('lastConfigPanel', 'Theme');
   const view = render(<SettingsDialog bookKey='synthetic-book' />);
   expect(screen.getByRole('button', { name: 'Theme' }).getAttribute('aria-pressed')).toBe('true');
-  expect(screen.getByRole('dialog').classList.contains('glossa-reader-settings')).toBe(true);
+  expect(screen.getByRole('dialog').classList.contains('glossa-application-settings')).toBe(true);
   view.unmount();
   fixture.requestedPanel = 'Models';
   render(<SettingsDialog bookKey='synthetic-book' />);
   expect(screen.getByRole('button', { name: 'Model Services' }).getAttribute('aria-pressed')).toBe(
     'true',
   );
-  expect(screen.getByRole('dialog').classList.contains('glossa-reader-settings')).toBe(true);
+  expect(screen.getByRole('dialog').classList.contains('glossa-application-settings')).toBe(true);
 });
 
 it('retains the library settings dialog layout', () => {
@@ -107,4 +129,31 @@ it('retains the library settings dialog layout', () => {
     fireEvent.click(screen.getByRole('button', { name }));
     expect(screen.getByRole('dialog').classList.contains('glossa-reader-settings')).toBe(false);
   }
+});
+
+it('limits Aa to reading appearance even when a global panel was previously selected', () => {
+  localStorage.setItem('lastConfigPanel', 'Models');
+  render(<SettingsDialog bookKey='synthetic-book' scope='reading' />);
+  for (const name of ['Font', 'Layout', 'Theme']) {
+    expect(screen.getByRole('button', { name })).toBeTruthy();
+  }
+  for (const name of ['Cloud Sync', 'Model Services', 'Conversation', 'Language', 'Behavior']) {
+    expect(screen.queryByRole('button', { name })).toBeNull();
+  }
+  expect(screen.getByRole('button', { name: 'Font' }).getAttribute('aria-pressed')).toBe('true');
+});
+
+it('edits defaults from global settings opened inside a book', () => {
+  render(<SettingsDialog bookKey='synthetic-book' scope='application' />);
+  fireEvent.click(screen.getByRole('button', { name: 'Font' }));
+  expect(screen.getByTestId('font-scope').textContent).toBe('defaults');
+});
+
+it('retains the current book and allows keyboard navigation in Aa', () => {
+  render(<SettingsDialog bookKey='synthetic-book' scope='reading' />);
+  expect(screen.getByTestId('font-scope').textContent).toBe('synthetic-book');
+  const font = screen.getByRole('button', { name: 'Font' });
+  fireEvent.keyDown(font, { key: 'ArrowRight' });
+  expect(screen.getByRole('button', { name: 'Layout' }).getAttribute('aria-pressed')).toBe('true');
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Layout' }));
 });

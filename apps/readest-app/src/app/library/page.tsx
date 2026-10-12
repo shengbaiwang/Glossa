@@ -204,7 +204,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const { safeAreaInsets: insets, isRoundedWindow } = useThemeStore();
   const { clearBookData } = useBookDataStore();
   const { settings, setSettings, saveSettings } = useSettingsStore();
-  const { isSettingsDialogOpen, setSettingsDialogOpen } = useSettingsStore();
+  const { isSettingsDialogOpen } = useSettingsStore();
   // Field selector, not `const { isTransferQueueOpen } = useTransferStore()`:
   // a whole-store subscription re-renders the entire library tree on every
   // transfer progress tick (~10/sec per active upload), freezing the app
@@ -387,7 +387,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       }
     },
     onOpenFontLayoutSettings: () => {
-      setSettingsDialogOpen(true);
+      useSettingsStore.getState().openSettingsDialog('application');
     },
     onOpenBooks: () => {
       handleImportBooksFromFiles();
@@ -1960,7 +1960,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       <MigrateDataWindow />
       <BackupWindow onPullLibrary={pullLibrary} />
       <CacheManagerWindow />
-      {isSettingsDialogOpen && <SettingsDialog bookKey={''} />}
+      {isSettingsDialogOpen && (
+        <SettingsDialog bookKey={''} onSyncLibrary={() => void pullLibrary(true, true)} />
+      )}
 
       {failedImportsModal && (
         <FailedImportsDialog
