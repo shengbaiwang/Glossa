@@ -170,17 +170,7 @@ const PageTurnerSettings: React.FC<PageTurnerSettingsProps> = ({ bookKey, onRegi
 
   return (
     <div className='space-y-2'>
-      <BoxedList
-        title={_('Page Turner')}
-        data-setting-id='settings.control.pageTurner'
-        description={
-          appService?.isIOSApp
-            ? _(
-                'Press a button on your remote controller or keyboard, or use an Apple Pencil gesture, after tapping "Set key".',
-              )
-            : _('Press a button on your remote controller or keyboard after tapping "Set key".')
-        }
-      >
+      <BoxedList title={_('Page Turner')} data-setting-id='settings.control.pageTurner'>
         {appService?.isMobileApp && (
           <SettingsSwitchRow
             label={_('Use Volume Keys')}

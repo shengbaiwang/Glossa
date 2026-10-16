@@ -9,6 +9,7 @@ import {
   CloudUpload,
   Lock,
   Palette,
+  Settings,
 } from '@/components/GlossaIcons';
 
 afterEach(cleanup);
@@ -23,6 +24,7 @@ it('keeps navigation, editing, settings and sync glyphs on the same accessible d
     CloudUpload,
     Lock,
     Palette,
+    Settings,
   })) {
     const { container, unmount } = render(
       <Glyph size={18} className='role-fixture' aria-hidden={false} aria-label={name} />,

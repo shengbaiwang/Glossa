@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pdf-cancel-ocr"
+description = "Enables the pdf_cancel_ocr command without any pre-configured scope."
+commands.allow = ["pdf_cancel_ocr"]
+
+[[permission]]
+identifier = "deny-pdf-cancel-ocr"
+description = "Denies the pdf_cancel_ocr command without any pre-configured scope."
+commands.deny = ["pdf_cancel_ocr"]

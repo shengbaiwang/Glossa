@@ -104,7 +104,7 @@ describe('EmailPasswordAuth autofill (#5499)', () => {
       />,
     );
 
-    fireEvent.click(getByText('Send a magic link email'));
+    fireEvent.click(getByText('Sign in with email link'));
     let email = container.querySelector('input[name="email"]') as HTMLInputElement;
     autofill(email, 'magic@example.com');
     fireEvent.submit(container.querySelector('form') as HTMLFormElement);
@@ -115,7 +115,7 @@ describe('EmailPasswordAuth autofill (#5499)', () => {
       });
     });
 
-    fireEvent.click(getByText('Already have an account? Sign in'));
+    fireEvent.click(getByText('Sign in'));
     fireEvent.click(getByText('Forgot your password?'));
     email = container.querySelector('input[name="email"]') as HTMLInputElement;
     autofill(email, 'forgot@example.com');

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pdf-start-ocr"
+description = "Enables the pdf_start_ocr command without any pre-configured scope."
+commands.allow = ["pdf_start_ocr"]
+
+[[permission]]
+identifier = "deny-pdf-start-ocr"
+description = "Denies the pdf_start_ocr command without any pre-configured scope."
+commands.deny = ["pdf_start_ocr"]

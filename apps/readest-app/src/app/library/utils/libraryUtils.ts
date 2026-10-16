@@ -11,6 +11,7 @@ import {
   isCurrentlyReadingBook,
 } from '@/utils/book';
 import { md5Fingerprint } from '@/utils/md5';
+import { stubTranslation as _ } from '@/utils/misc';
 import { SIZE_PER_LOC, SIZE_PER_TIME_UNIT } from '@/services/constants';
 import { isFeedBook } from '@/services/rss/feedBookUrl';
 
@@ -19,6 +20,18 @@ const VALID_SORT_TYPES: LibrarySortByType[] = Object.values(LibrarySortByType);
 
 /** Valid group by types for the library */
 const VALID_GROUP_BY_TYPES: LibraryGroupByType[] = Object.values(LibraryGroupByType);
+
+const LIBRARY_CATEGORY_LABELS: Record<LibraryGroupByType, string> = {
+  [LibraryGroupByType.None]: _('All Books'),
+  [LibraryGroupByType.Group]: _('Groups'),
+  [LibraryGroupByType.Author]: _('Authors'),
+  [LibraryGroupByType.Series]: _('Series'),
+  [LibraryGroupByType.Tag]: _('Tags'),
+  [LibraryGroupByType.Subject]: _('Subjects'),
+};
+
+export const getLibraryCategoryLabel = (groupBy: LibraryGroupByType): string =>
+  LIBRARY_CATEGORY_LABELS[groupBy];
 
 /**
  * Safely cast a query parameter to LibrarySortByType with fallback.

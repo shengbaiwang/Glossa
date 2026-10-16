@@ -3,10 +3,12 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import ThemeEditor from '@/components/settings/theme/ThemeEditor';
 import { CustomTheme, themes } from '@/styles/themes';
 import { md5Fingerprint } from '@/utils/md5';
+import { getLocale } from '@/utils/misc';
 
 const customThemes: CustomTheme[] = [];
 
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (text: string) => text }));
+vi.mock('@/utils/misc', () => ({ getLocale: vi.fn(() => 'zh-CN') }));
 vi.mock('@/store/settingsStore', () => ({
   useSettingsStore: () => ({ settings: { globalReadSettings: { customThemes } } }),
 }));
@@ -27,10 +29,33 @@ const mount = (customTheme: CustomTheme | null = null) => {
   return { ...callbacks, baseTheme };
 };
 
-beforeEach(() => customThemes.splice(0));
+beforeEach(() => {
+  customThemes.splice(0);
+  vi.mocked(getLocale).mockReturnValue('zh-CN');
+});
 afterEach(() => cleanup());
 
 describe('Glossa custom theme editor', () => {
+  it.each([
+    ['zh-CN', '微雨从东来，好风与之俱'],
+    ['zh-TW', '微雨從東來，好風與之俱'],
+    ['en-US', 'Sunt lacrimae rerum et mentem mortalia tangunt.'],
+  ])('uses the original bilingual samples in both %s palette previews', (locale, verse) => {
+    vi.mocked(getLocale).mockReturnValue(locale);
+    mount();
+    for (const mode of ['Light Mode', 'Dark Mode']) {
+      const preview = screen.getByRole('region', { name: `${mode}: Preview` });
+      expect(preview.querySelector('p')?.textContent).toBe(verse);
+      const secondary = preview.querySelector('.glossa-theme-preview-accent');
+      if (locale.startsWith('zh-')) {
+        expect(secondary?.textContent).toBe('Sunt lacrimae rerum et mentem mortalia tangunt.');
+        expect(secondary?.getAttribute('lang')).toBe('la');
+      } else {
+        expect(secondary).toBeNull();
+      }
+    }
+  });
+
   it('starts a new theme from the selected preset in both modes', () => {
     const { baseTheme, onSave } = mount();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));

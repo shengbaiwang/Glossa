@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
-import { Check, Circle, ChevronRight, ChevronLeft } from '@/components/GlossaIcons';
+import { Check, Circle, ChevronRight, ChevronLeft, Folder, Pencil } from '@/components/GlossaIcons';
+import FolderNameEditor from './FolderNameEditor';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { BooksGroup } from '@/types/book';
@@ -13,15 +14,62 @@ interface GroupItemProps {
   group: BooksGroup;
   isSelectMode: boolean;
   groupSelected: boolean;
+  renaming?: boolean;
+  onStartRename?: () => void;
+  onCancelRename?: () => void;
+  onRename?: (name: string) => Promise<boolean>;
 }
 
-const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupSelected }) => {
+const GroupItem: React.FC<GroupItemProps> = ({
+  mode,
+  group,
+  isSelectMode,
+  groupSelected,
+  renaming,
+  onStartRename,
+  onCancelRename,
+  onRename,
+}) => {
   const _ = useTranslation();
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
+  const name =
+    renaming && onRename && onCancelRename ? (
+      <FolderNameEditor
+        initialName={group.displayName}
+        onSave={onRename}
+        onCancel={onCancelRename}
+      />
+    ) : (
+      <span
+        className='glossa-folder-label'
+        onPointerDown={
+          onStartRename && !isSelectMode ? (event) => event.stopPropagation() : undefined
+        }
+        onPointerUp={
+          onStartRename && !isSelectMode ? (event) => event.stopPropagation() : undefined
+        }
+        onDoubleClick={!isSelectMode ? onStartRename : undefined}
+      >
+        <span>{group.displayName}</span>
+        {onStartRename && !isSelectMode && (
+          <button
+            type='button'
+            className='glossa-icon-button glossa-folder-rename'
+            aria-label={_('Rename Folder')}
+            onClick={(event) => {
+              event.stopPropagation();
+              onStartRename();
+            }}
+          >
+            <Pencil size={14} />
+          </button>
+        )}
+      </span>
+    );
 
   const checkScrollArrows = () => {
     if (mode === 'list' && scrollContainerRef.current) {
@@ -107,9 +155,15 @@ const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupS
           mode === 'list' && 'items-center justify-start gap-4 py-2',
         )}
       >
+        {group.books.length === 0 && (
+          <div className='glossa-empty-folder-cover'>
+            <Folder size={48} strokeWidth={1.3} aria-hidden='true' />
+          </div>
+        )}
         <div
           className={clsx(
             mode === 'grid' && 'flex h-full w-full p-2',
+            group.books.length === 0 && 'hidden',
             mode === 'list' && 'relative min-w-0 max-w-[85%]',
           )}
         >
@@ -196,7 +250,7 @@ const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupS
         </div>
         {mode === 'list' && (
           <div className='text-base-content/75 w-28 min-w-24 max-w-40 overflow-hidden text-ellipsis text-base font-semibold'>
-            {group.displayName}
+            {name}
           </div>
         )}
         {groupSelected && <div className='glossa-book-selection-overlay absolute inset-0'></div>}
@@ -218,9 +272,7 @@ const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupS
       {mode === 'grid' && (
         <div className='glossa-book-metadata flex w-full flex-col pt-3'>
           <div className='min-w-0 flex-1'>
-            <h4 className='glossa-book-title line-clamp-2 min-h-[2.9em] font-medium'>
-              {group.displayName}
-            </h4>
+            <div className='glossa-book-title min-h-[2.9em] font-medium'>{name}</div>
           </div>
           <p className='glossa-book-author'>
             {_('{{count}} books', { count: group.books.length })}

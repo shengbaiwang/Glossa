@@ -463,13 +463,6 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
             />
             <span className='select-none'>
               <span className='block'>{_('Read books in place')}</span>
-              <span className='text-base-content/60 block text-xs'>
-                {readInPlaceLocked
-                  ? _('This folder is an external library. Books here are always read in place.')
-                  : _(
-                      'Read books from their original folders instead of copying them into the library. Saves disk space; cloud auto-upload still works if enabled.',
-                    )}
-              </span>
             </span>
           </label>
           {/* Auto-import sub-option. Only shown when the folder is read in
@@ -485,11 +478,6 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
               />
               <span className='select-none'>
                 <span className='block'>{_('Auto-import new books from this folder')}</span>
-                <span className='text-base-content/60 block text-xs'>
-                  {_(
-                    'When new books are added to this folder, import them automatically the next time Glossa opens or returns to the foreground.',
-                  )}
-                </span>
               </span>
             </label>
           )}
@@ -515,9 +503,6 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
             />
             <span className='select-none'>
               <span className='block'>{_('Create groups from subfolders')}</span>
-              <span className='text-base-content/60 block text-xs'>
-                {_('Each first-level subfolder becomes a library group.')}
-              </span>
             </span>
           </label>
           <label
@@ -535,9 +520,6 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
             />
             <span className='select-none'>
               <span className='block'>{_('Import all into library')}</span>
-              <span className='text-base-content/60 block text-xs'>
-                {_('Recursively add every matching file directly to the library.')}
-              </span>
             </span>
           </label>
         </div>

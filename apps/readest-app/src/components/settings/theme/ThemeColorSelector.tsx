@@ -2,6 +2,8 @@ import React, { useEffect, useId, useState } from 'react';
 import { Check, ChevronDown, Plus } from '@/components/GlossaIcons';
 import { Theme } from '@/styles/themes';
 import { useTranslation } from '@/hooks/useTranslation';
+import { getLocale } from '@/utils/misc';
+import { getFontPreviewSample } from '@/utils/fontPreview';
 import { SectionTitle } from '../primitives';
 
 interface ThemeColorSelectorProps {
@@ -26,6 +28,8 @@ const ThemeColorSelector: React.FC<ThemeColorSelectorProps> = ({
   'data-setting-id': settingId,
 }) => {
   const _ = useTranslation();
+  const sample = getFontPreviewSample(getLocale());
+  const latin = getFontPreviewSample('la');
   const groupId = useId();
   const selected = themes.find((theme) => theme.name === themeColor) ?? themes[0];
   const featured = featuredNames.flatMap((name) => themes.filter((theme) => theme.name === name));
@@ -116,10 +120,19 @@ const ThemeColorSelector: React.FC<ThemeColorSelectorProps> = ({
               {isDarkMode ? _('Dark Mode') : _('Light Mode')}
             </span>
           </div>
-          <p>{_('A quiet page, a clear mind.')}</p>
-          <span className='glossa-theme-preview-accent' style={{ color: palette.primary }}>
-            {_('Read at your own pace.')}
-          </span>
+          <p lang={sample.lang} dir={sample.dir}>
+            {sample.text}
+          </p>
+          {sample.text !== latin.text && (
+            <span
+              className='glossa-theme-preview-accent'
+              style={{ color: palette.primary }}
+              lang={latin.lang}
+              dir={latin.dir}
+            >
+              {latin.text}
+            </span>
+          )}
         </section>
       )}
       <div role='radiogroup' aria-labelledby={`${groupId}-label`}>

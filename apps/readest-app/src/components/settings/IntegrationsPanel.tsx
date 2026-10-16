@@ -29,7 +29,6 @@ import S3Form from './integrations/S3Form';
 import { persistCloudProviderEnabled } from './integrations/cloudSync';
 import { canToggleCloudProvider, getThirdPartyRowStatus } from './integrations/cloudSyncStatus';
 import {
-  getCloudSyncProviders,
   isReadestCloudEnabled,
   resolveCloudSyncGate,
   settingsKeyForBackend,
@@ -38,7 +37,7 @@ import {
 import type { FileSyncBackendKind } from '@/services/sync/file/providerRegistry';
 import { canBackendRun, getReadyFileSyncBackends } from '@/services/sync/file/runLibrarySync';
 import SubPageHeader from './SubPageHeader';
-import { NavigationRow, SectionTitle, SettingLabel, Tips } from './primitives';
+import { NavigationRow, SectionTitle, SettingLabel } from './primitives';
 
 type SubPage = 'webdav' | 'gdrive' | 's3' | 'onedrive' | 'icloud' | null;
 
@@ -136,23 +135,9 @@ const IntegrationsPanel: React.FC<{ onSyncLibrary?: () => void }> = ({ onSyncLib
         <SubPageHeader
           parentLabel={_('Cloud Sync')}
           currentLabel={_('WebDAV')}
-          description={_(
-            'Sync your library, reading progress, and highlights with a WebDAV server.',
-          )}
           onBack={() => setSubPage(null)}
         />
         <WebDAVForm />
-        {settings.webdav?.enabled && (
-          <div className='mt-5'>
-            <Tips>
-              <li>
-                {_('{{provider}} keeps a full copy of your books, progress, and annotations.', {
-                  provider: _('WebDAV'),
-                })}
-              </li>
-            </Tips>
-          </div>
-        )}
       </div>
     );
   if (subPage === 'gdrive')
@@ -161,23 +146,9 @@ const IntegrationsPanel: React.FC<{ onSyncLibrary?: () => void }> = ({ onSyncLib
         <SubPageHeader
           parentLabel={_('Cloud Sync')}
           currentLabel={_('Google Drive')}
-          description={_(
-            'Sync your library, reading progress, and highlights with your Google Drive.',
-          )}
           onBack={() => setSubPage(null)}
         />
         <GoogleDriveForm />
-        {settings.googleDrive?.enabled && (
-          <div className='mt-5'>
-            <Tips>
-              <li>
-                {_('{{provider}} keeps a full copy of your books, progress, and annotations.', {
-                  provider: _('Google Drive'),
-                })}
-              </li>
-            </Tips>
-          </div>
-        )}
       </div>
     );
   if (subPage === 's3')
@@ -186,36 +157,9 @@ const IntegrationsPanel: React.FC<{ onSyncLibrary?: () => void }> = ({ onSyncLib
         <SubPageHeader
           parentLabel={_('Cloud Sync')}
           currentLabel={_('S3-Compatible Storage')}
-          description={_(
-            'Sync your library, reading progress, and highlights with an S3-compatible bucket such as Cloudflare R2, AWS S3, or MinIO.',
-          )}
           onBack={() => setSubPage(null)}
         />
         <S3Form />
-        <div className='mt-5'>
-          <Tips>
-            {
-              <li>
-                {_('{{provider}} keeps a full copy of your books, progress, and annotations.', {
-                  provider: _('S3-Compatible Storage'),
-                })}
-              </li>
-            }
-            {<li>{_('App settings still sync through your Cloud account while signed in.')}</li>}
-            {
-              <li>
-                {_(
-                  'Make sure the bucket exists and the credentials have read/write access before connecting.',
-                )}
-              </li>
-            }
-            {isWebAppPlatform() && (
-              <li>
-                {_("In the browser, the bucket must allow this site's origin in its CORS policy.")}
-              </li>
-            )}
-          </Tips>
-        </div>
       </div>
     );
   if (subPage === 'onedrive')
@@ -224,23 +168,9 @@ const IntegrationsPanel: React.FC<{ onSyncLibrary?: () => void }> = ({ onSyncLib
         <SubPageHeader
           parentLabel={_('Cloud Sync')}
           currentLabel={_('OneDrive')}
-          description={_(
-            'Sync your library, reading progress, and highlights with your Microsoft OneDrive.',
-          )}
           onBack={() => setSubPage(null)}
         />
         <OneDriveForm />
-        {settings.onedrive?.enabled && (
-          <div className='mt-5'>
-            <Tips>
-              <li>
-                {_('{{provider}} keeps a full copy of your books, progress, and annotations.', {
-                  provider: _('OneDrive'),
-                })}
-              </li>
-            </Tips>
-          </div>
-        )}
       </div>
     );
   if (subPage === 'icloud')
@@ -249,23 +179,9 @@ const IntegrationsPanel: React.FC<{ onSyncLibrary?: () => void }> = ({ onSyncLib
         <SubPageHeader
           parentLabel={_('Cloud Sync')}
           currentLabel={_('iCloud')}
-          description={_(
-            'Sync your library, reading progress, and highlights with your iCloud Drive.',
-          )}
           onBack={() => setSubPage(null)}
         />
         <ICloudForm />
-        {settings.icloud?.enabled && (
-          <div className='mt-5'>
-            <Tips>
-              <li>
-                {_('{{provider}} keeps a full copy of your books, progress, and annotations.', {
-                  provider: _('iCloud'),
-                })}
-              </li>
-            </Tips>
-          </div>
-        )}
       </div>
     );
   // Cloud sync providers are independently selectable (#5062): any subset of
@@ -273,7 +189,6 @@ const IntegrationsPanel: React.FC<{ onSyncLibrary?: () => void }> = ({ onSyncLib
   // library at once. A "configured" third-party provider (WebDAV creds / a Drive
   // token) can be switched on inline; an unconfigured one must be opened to
   // connect.
-  const providers = getCloudSyncProviders(settings);
   const readestEnabled = isReadestCloudEnabled(settings);
   const cloudGate = resolveCloudSyncGate(settings);
   const enabledBackends = getReadyFileSyncBackends(settings);
@@ -354,10 +269,7 @@ const IntegrationsPanel: React.FC<{ onSyncLibrary?: () => void }> = ({ onSyncLib
   return (
     <div className='my-4 w-full space-y-6'>
       <div className='w-full px-4'>
-        <h2 className='mb-1.5 text-lg font-semibold tracking-tight'>{_('Cloud Sync')}</h2>
-        <p className='text-base-content/70 text-sm leading-relaxed'>
-          {_('Sync your library, reading progress, and highlights with Cloud.')}
-        </p>
+        <h2 className='text-lg font-semibold tracking-tight'>{_('Cloud Sync')}</h2>
       </div>
 
       <div className='w-full' data-setting-id='settings.integrations.cloudSync'>
@@ -469,17 +381,6 @@ const IntegrationsPanel: React.FC<{ onSyncLibrary?: () => void }> = ({ onSyncLib
             )}
           </div>
         </div>
-        {providers.length === 0 && (
-          <div className='mt-5'>
-            <Tips>
-              <li>
-                {_(
-                  'Library sync is off. Your books, progress, and annotations stay on this device.',
-                )}
-              </li>
-            </Tips>
-          </div>
-        )}
       </div>
     </div>
   );

@@ -502,7 +502,6 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
         {appService?.hasScreenBrightness && (
           <SettingsSwitchRow
             label={_('Swipe for Brightness')}
-            description={_('Slide along the left edge')}
             checked={swipeBrightnessGesture}
             onChange={() => setSwipeBrightnessGesture(!swipeBrightnessGesture)}
             data-setting-id='settings.control.swipeBrightnessGesture'
@@ -510,7 +509,6 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
         )}
         <SettingsSwitchRow
           label={_('Keep Screen Awake')}
-          description={_('Only while reading')}
           checked={screenWakeLock}
           onChange={() => setScreenWakeLock(!screenWakeLock)}
           data-setting-id='settings.control.screenWakeLock'
@@ -518,7 +516,6 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
         {!appService?.isMobile && (
           <SettingsSwitchRow
             label={_('Auto-hide Cursor')}
-            description={_('After a moment of inactivity')}
             checked={autohideCursor}
             onChange={() => setAutohideCursor(!autohideCursor)}
             data-setting-id='settings.control.autohideCursor'
@@ -535,7 +532,6 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
           />
           <SettingsSwitchRow
             label={_('Nightly Builds')}
-            description={isNightlyChannel ? _('Early daily builds') : ''}
             checked={isNightlyChannel}
             onChange={toggleNightlyChannel}
             data-setting-id='settings.control.nightlyChannel'

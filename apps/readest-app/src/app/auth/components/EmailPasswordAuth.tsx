@@ -18,7 +18,10 @@ const FORM_IDS: Record<AuthView, string> = {
 };
 
 const LINK_CLASS =
-  'text-base-content/70 hover:text-base-content underline underline-offset-2 transition-colors duration-150';
+  'text-base-content/80 hover:text-base-content inline-flex min-h-8 items-center justify-center rounded-sm text-sm underline-offset-4 hover:underline focus-visible:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-base-content disabled:opacity-50 [@media(pointer:coarse)]:min-h-11';
+
+const INPUT_CLASS =
+  'input input-bordered eink-bordered text-base-content placeholder:text-base-content/50 h-11 min-h-11 w-full rounded-xl disabled:opacity-50';
 
 export default function EmailPasswordAuth({
   supabaseClient,
@@ -126,10 +129,8 @@ export default function EmailPasswordAuth({
   const buttonLabel = {
     sign_in: loading ? _('Signing in...') : _('Sign in'),
     sign_up: loading ? _('Signing up...') : _('Sign up'),
-    magic_link: loading ? _('Signing in ...') : _('Sign in'),
-    forgotten_password: loading
-      ? _('Sending reset instructions ...')
-      : _('Send reset password instructions'),
+    magic_link: loading ? _('Sending...') : _('Send sign-in link'),
+    forgotten_password: loading ? _('Sending...') : _('Send reset link'),
   }[view];
 
   return (
@@ -138,11 +139,11 @@ export default function EmailPasswordAuth({
       id={FORM_IDS[view]}
       method='post'
       onSubmit={handleSubmit}
-      className='w-full space-y-4'
+      className='flex w-full flex-col gap-4'
     >
-      <div className='form-control'>
-        <label className='label' htmlFor='email'>
-          <span className='label-text'>{_('Email address')}</span>
+      <div className='flex flex-col gap-1.5'>
+        <label className='text-sm font-medium' htmlFor='email'>
+          {_('Email address')}
         </label>
         <input
           id='email'
@@ -150,35 +151,48 @@ export default function EmailPasswordAuth({
           type='email'
           required
           defaultValue={defaultEmail}
-          placeholder={_('Your email address')}
+          placeholder='name@example.com'
           autoComplete={hasPassword ? 'username' : 'email'}
-          className='input input-bordered eink-bordered w-full rounded-lg placeholder:text-sm'
+          className={INPUT_CLASS}
           disabled={loading}
           onFocus={keepAboveKeyboard}
         />
       </div>
       {hasPassword && (
-        <div className='form-control'>
-          <label className='label' htmlFor='password'>
-            <span className='label-text'>
-              {view === 'sign_in' ? _('Your Password') : _('Create a Password')}
-            </span>
-          </label>
+        <div className='flex flex-col gap-1.5'>
+          <div className='flex flex-wrap items-center justify-between gap-x-3'>
+            <label className='text-sm font-medium' htmlFor='password'>
+              {view === 'sign_in' ? _('Password') : _('Create a Password')}
+            </label>
+            {view === 'sign_in' && (
+              <button
+                type='button'
+                className={LINK_CLASS}
+                disabled={loading}
+                onClick={switchView('forgotten_password')}
+              >
+                {_('Forgot your password?')}
+              </button>
+            )}
+          </div>
           <input
             id='password'
             name='password'
             type='password'
             required
             minLength={view === 'sign_up' ? 8 : undefined}
-            placeholder={_('Your password')}
             autoComplete={view === 'sign_in' ? 'current-password' : 'new-password'}
-            className='input input-bordered eink-bordered w-full rounded-lg placeholder:text-sm'
+            className={INPUT_CLASS}
             disabled={loading}
             onFocus={keepAboveKeyboard}
           />
         </div>
       )}
-      <button type='submit' className='btn btn-contrast w-full rounded-lg' disabled={loading}>
+      <button
+        type='submit'
+        className='btn btn-contrast h-11 min-h-11 w-full rounded-xl disabled:opacity-50'
+        disabled={loading}
+      >
         {loading && <span className='loading loading-spinner loading-sm' aria-hidden='true' />}
         {buttonLabel}
       </button>
@@ -198,26 +212,41 @@ export default function EmailPasswordAuth({
           {error}
         </div>
       )}
-      <div className='flex flex-col items-center gap-2.5 pt-1 text-sm'>
+      <div className='flex flex-col items-center gap-2 text-center text-sm'>
         {view === 'sign_in' && (
           <>
             {magicLink && (
-              <button type='button' className={LINK_CLASS} onClick={switchView('magic_link')}>
-                {_('Send a magic link email')}
+              <button
+                type='button'
+                className={LINK_CLASS}
+                disabled={loading}
+                onClick={switchView('magic_link')}
+              >
+                {_('Sign in with email link')}
               </button>
             )}
-            <button type='button' className={LINK_CLASS} onClick={switchView('forgotten_password')}>
-              {_('Forgot your password?')}
-            </button>
-            <button type='button' className={LINK_CLASS} onClick={switchView('sign_up')}>
+            <button
+              type='button'
+              className={LINK_CLASS}
+              disabled={loading}
+              onClick={switchView('sign_up')}
+            >
               {_("Don't have an account? Sign up")}
             </button>
           </>
         )}
         {view !== 'sign_in' && (
-          <button type='button' className={LINK_CLASS} onClick={switchView('sign_in')}>
-            {_('Already have an account? Sign in')}
-          </button>
+          <div className='flex flex-wrap items-center justify-center gap-x-1'>
+            <span className='text-base-content/70'>{_('Already have an account?')}</span>
+            <button
+              type='button'
+              className={`${LINK_CLASS} text-base-content font-medium`}
+              disabled={loading}
+              onClick={switchView('sign_in')}
+            >
+              {_('Sign in')}
+            </button>
+          </div>
         )}
       </div>
       {keyboardInset > 0 && (

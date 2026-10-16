@@ -1,0 +1,114 @@
+.glossa-pdf-tools {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-height: 55%;
+  overflow: auto;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--glossa-border);
+  font-size: var(--glossa-text-compact, 13px);
+  color: var(--glossa-ink);
+}
+.glossa-pdf-actions,
+.glossa-pdf-status,
+.glossa-pdf-outline-row,
+.glossa-pdf-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.glossa-pdf-tools button {
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  text-align: start;
+}
+.glossa-pdf-tools button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.glossa-pdf-tools button:hover:not(:disabled) {
+  background: var(--glossa-hover);
+}
+.glossa-pdf-tools :is(button, input):focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+.glossa-pdf-tools input {
+  min-width: 0;
+  min-height: 32px;
+  padding: 4px;
+  border: 1px solid var(--glossa-border);
+  border-radius: 5px;
+  color: inherit;
+  background: transparent;
+}
+.glossa-pdf-tools input[type='number'] {
+  width: 60px;
+  font-variant-numeric: tabular-nums;
+}
+.glossa-pdf-tools label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.glossa-pdf-status {
+  justify-content: space-between;
+  padding-top: 4px;
+}
+.glossa-pdf-status span {
+  color: var(--glossa-faint);
+}
+.glossa-pdf-error {
+  margin: 4px 0;
+  color: var(--glossa-ink);
+}
+.glossa-pdf-outline {
+  margin-top: 8px;
+}
+.glossa-pdf-outline ol {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+}
+.glossa-pdf-outline li {
+  border-bottom: 1px solid var(--glossa-border);
+  padding-block: 4px;
+}
+.glossa-pdf-outline-row {
+  flex-wrap: nowrap;
+}
+.glossa-pdf-outline-row > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.glossa-pdf-title {
+  overflow-wrap: anywhere;
+}
+.glossa-pdf-unverified {
+  margin-inline-start: 8px;
+  color: var(--glossa-faint);
+  font-size: 12px;
+}
+.glossa-pdf-row-actions {
+  gap: 2px;
+  justify-content: flex-end;
+}
+.glossa-pdf-row-actions button {
+  display: grid;
+  place-items: center;
+  min-width: 32px;
+}
+[data-eink='true'] .glossa-pdf-tools :is(button, input) {
+  border: 1px solid currentColor;
+}
+@media (pointer: coarse) {
+  .glossa-pdf-tools :is(button, input) {
+    min-height: 44px;
+  }
+  .glossa-pdf-row-actions button {
+    min-width: 44px;
+  }
+}

@@ -21,6 +21,8 @@ import {
   type BookContextMenuItemId,
 } from '@/app/library/utils/libraryUtils';
 import { md5Fingerprint } from '@/utils/md5';
+import { useLibraryStore } from '@/store/libraryStore';
+import { LIBRARY_ITEMS_MIME } from '../utils/libraryDragDrop';
 import BookItem from './BookItem';
 import GroupItem from './GroupItem';
 import BookContextMenuPopup, { type BookContextMenuItem } from './BookContextMenuPopup';
@@ -29,8 +31,18 @@ import { useOpenBook } from '../hooks/useOpenBook';
 export const generateBookshelfItems = (
   books: Book[],
   parentGroupName: string,
+  folderPaths: string[] = [],
 ): (Book | BooksGroup)[] => {
   const groupsMap = new Map<string, BooksGroup>();
+
+  for (const path of folderPaths) {
+    if (parentGroupName && !path.startsWith(`${parentGroupName}/`)) continue;
+    const relative = parentGroupName ? path.slice(parentGroupName.length + 1) : path;
+    const displayName = relative.split('/')[0]!;
+    if (!displayName) continue;
+    const name = parentGroupName ? `${parentGroupName}/${displayName}` : displayName;
+    groupsMap.set(name, { id: md5Fingerprint(name), name, displayName, books: [], updatedAt: 0 });
+  }
 
   for (const book of books) {
     if (book.deletedAt) continue;
@@ -127,6 +139,8 @@ interface BookshelfItemProps {
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   toggleSelection: (hash: string) => void;
   handleGroupBooks: () => void;
+  handleRenameFolder?: (path: string, name: string) => Promise<boolean>;
+  handleRemoveFolder?: (path: string) => Promise<boolean>;
   handleBookDownload: (
     book: Book,
     options?: { redownload?: boolean; queued?: boolean },
@@ -150,6 +164,8 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   setLoading,
   toggleSelection,
   handleGroupBooks,
+  handleRenameFolder,
+  handleRemoveFolder,
   handleBookUpload,
   handleBookDownload,
   handleSetSelectMode,
@@ -161,6 +177,8 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   const _ = useTranslation();
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
+  const [renaming, setRenaming] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
   const { openBook } = useOpenBook({ setLoading, handleBookDownload });
 
   const showBookDetailsModal = useCallback(async (book: Book) => {
@@ -286,6 +304,9 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
     // Single Menu.new({ items }) call keeps the order deterministic — see the
     // note in bookContextMenuHandler about the Menu.append() IPC race (#4389).
     return [
+      ...(handleRenameFolder
+        ? [{ text: _('Rename Folder'), action: () => setRenaming(true) }]
+        : []),
       {
         text: itemSelected ? _('Deselect Group') : _('Select Group'),
         action: async () => {
@@ -304,8 +325,12 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
         },
       },
       {
-        text: _('Delete'),
+        text: handleRemoveFolder ? _('Delete Empty Folder') : _('Delete'),
         action: async () => {
+          if (handleRemoveFolder) {
+            await handleRemoveFolder(group.name);
+            return;
+          }
           // Dispatch the constituent book hashes — `group.books` is the
           // rendered rollup and already includes books from nested sub-
           // folders, so the deletion path doesn't need to re-derive what
@@ -428,6 +453,11 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.target !== e.currentTarget) return;
+    if (e.key === 'F2' && 'books' in item && handleRenameFolder) {
+      e.preventDefault();
+      setRenaming(true);
+      return;
+    }
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       handleOpenItem();
@@ -450,6 +480,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   return (
     <div className={clsx(mode === 'grid' ? 'h-full' : 'glossa-library-list-row')}>
       <div
+        ref={cardRef}
         className={clsx(
           'glossa-book-card group',
           mode === 'grid' && 'glossa-book-card-grid flex h-full flex-col',
@@ -468,6 +499,17 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
         }}
         {...itemDataAttrs}
         {...handlers}
+        draggable={!renaming && !appService?.isMobile && ('format' in item || !!handleRenameFolder)}
+        onDragStart={(event) => {
+          if ((event.target as HTMLElement).closest('input, button, form')) {
+            event.preventDefault();
+            return;
+          }
+          const id = 'format' in item ? item.hash : item.id;
+          const ids = itemSelected ? useLibraryStore.getState().getSelectedBooks() : [id];
+          event.dataTransfer.setData(LIBRARY_ITEMS_MIME, JSON.stringify(ids));
+          event.dataTransfer.effectAllowed = 'move';
+        }}
       >
         <div className='flex h-full flex-col justify-end'>
           {'format' in item ? (
@@ -489,6 +531,15 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
               group={item}
               isSelectMode={isSelectMode}
               groupSelected={itemSelected}
+              renaming={renaming}
+              onStartRename={handleRenameFolder ? () => setRenaming(true) : undefined}
+              onCancelRename={() => {
+                setRenaming(false);
+                cardRef.current?.focus();
+              }}
+              onRename={
+                handleRenameFolder ? (name) => handleRenameFolder(item.name, name) : undefined
+              }
             />
           )}
         </div>

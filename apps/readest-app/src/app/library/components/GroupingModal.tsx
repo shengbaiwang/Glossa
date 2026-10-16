@@ -1,26 +1,10 @@
-import clsx from 'clsx';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Check as MdCheck,
-  ChevronRight as MdChevronRight,
-  Pencil as MdEdit,
-} from '@/components/GlossaIcons';
-import {
-  Folder as HiOutlineFolder,
-  FolderPlus as HiOutlineFolderAdd,
-  FolderMinus as HiOutlineFolderRemove,
-} from '@/components/GlossaIcons';
-import { ArrowLeft as IoMdArrowBack } from '@/components/GlossaIcons';
-
-import { Book, BookGroupType } from '@/types/book';
-import { isMd5 } from '@/utils/md5';
-import { useEnv } from '@/context/EnvContext';
+import { useEffect, useRef, useState } from 'react';
+import { Check, ChevronDown, ChevronRight, Folder, FolderPlus, X } from '@/components/GlossaIcons';
+import { Book } from '@/types/book';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useLibraryStore } from '@/store/libraryStore';
-import { useResponsiveSize } from '@/hooks/useResponsiveSize';
-import { useKeyDownActions } from '@/hooks/useKeyDownActions';
-import { BOOK_UNGROUPED_ID, BOOK_UNGROUPED_NAME } from '@/services/constants';
-import { buildGroupNameUpdatedAt, getBreadcrumbs } from '../utils/libraryUtils';
+import { useLibraryFolders } from '../hooks/useLibraryFolders';
+import { folderLabel, folderParent } from '../utils/libraryFolders';
+import FolderNameEditor from './FolderNameEditor';
 
 interface GroupingModalProps {
   libraryBooks: Book[];
@@ -30,400 +14,194 @@ interface GroupingModalProps {
   onConfirm: () => void;
 }
 
-const GroupingModal: React.FC<GroupingModalProps> = ({
-  libraryBooks,
+export default function GroupingModal({
   selectedBooks,
   parentGroupName,
   onCancel,
   onConfirm,
-}) => {
+}: GroupingModalProps) {
   const _ = useTranslation();
-  const { appService } = useEnv();
-  const {
-    setLibrary,
-    addGroup,
-    getGroups,
-    getGroupId,
-    getGroupsByParent,
-    getParentPath,
-    refreshGroups,
-  } = useLibraryStore();
-
-  const [currentPath, setCurrentPath] = useState<string | undefined>(undefined);
-  const [showInput, setShowInput] = useState(false);
-  const [editGroupName, setEditGroupName] = useState('');
-  const [selectedGroup, setSelectedGroup] = useState<BookGroupType | null>(null);
-  const [newGroup, setNewGroup] = useState<BookGroupType | null>(null);
-  const [isRenaming, setIsRenaming] = useState(false);
-  const [originalGroupName, setOriginalGroupName] = useState<string | null>(null);
-
-  const divRef = useKeyDownActions({ onCancel, onConfirm });
-  const editorRef = useRef<HTMLInputElement>(null);
-  const iconSize = useResponsiveSize(16);
-
-  const allGroups = getGroups();
-  const currentGroups = getGroupsByParent(currentPath);
-  const groupNameUpdatedAt = useMemo(() => buildGroupNameUpdatedAt(libraryBooks), [libraryBooks]);
-  const sortedCurrentGroups = [...currentGroups].sort(
-    (a, b) => (groupNameUpdatedAt.get(b.name) ?? 0) - (groupNameUpdatedAt.get(a.name) ?? 0),
-  );
-  const currentGroupsList =
-    newGroup &&
-    !sortedCurrentGroups.some((g) => g.id === newGroup.id) &&
-    !sortedCurrentGroups.some((g) => newGroup.name.startsWith(g.name))
-      ? [newGroup, ...sortedCurrentGroups]
-      : sortedCurrentGroups;
-
-  const isSelectedBooksHasGroup =
-    selectedBooks.some((hash) => !isMd5(hash)) ||
-    selectedBooks
-      .map((hash) => libraryBooks.find((book) => book.hash === hash)?.groupId)
-      .some((group) => group && group !== BOOK_UNGROUPED_NAME);
-
-  const canRenameGroup = selectedBooks.length === 1 && selectedBooks.every((id) => !isMd5(id));
-  const currentGroupForRename = canRenameGroup
-    ? allGroups.find((group) => group.id === selectedBooks[0])
-    : null;
-
-  const generateNextUntitledGroupName = () => {
-    const baseName = _('Untitled Group');
-    const basePattern = parentGroupName
-      ? `${parentGroupName}/${baseName}`
-      : currentPath
-        ? `${currentPath}/${baseName}`
-        : baseName;
-
-    const escapedPattern = basePattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const untitledGroupPattern = new RegExp(`^${escapedPattern}\\s*(\\d+)?$`);
-
-    const untitledGroupNumbers = allGroups
-      .map((group) => {
-        const match = group.name.match(untitledGroupPattern);
-        return match ? parseInt(match[1] || '1', 10) : null;
-      })
-      .filter((num) => num !== null) as number[];
-
-    const nextNumber = untitledGroupNumbers.length > 0 ? Math.max(...untitledGroupNumbers) + 1 : 1;
-
-    return `${basePattern} ${nextNumber}`;
-  };
-
-  const handleCreateGroup = () => {
-    const nextName = generateNextUntitledGroupName();
-    setEditGroupName(nextName);
-    setShowInput(true);
-    setIsRenaming(false);
-    setOriginalGroupName(null);
-    setSelectedGroup(null);
-  };
-
-  const handleRenameGroup = () => {
-    if (!currentGroupForRename) return;
-
-    setEditGroupName(currentGroupForRename.name);
-    setOriginalGroupName(currentGroupForRename.name);
-    setShowInput(true);
-    setIsRenaming(true);
-  };
-
-  const handleRemoveFromGroup = () => {
-    selectedBooks.forEach((id) => {
-      for (const book of libraryBooks.filter((book) => book.hash === id || book.groupId === id)) {
-        if (
-          book &&
-          book.groupId &&
-          book.groupName &&
-          book.groupId !== BOOK_UNGROUPED_ID &&
-          book.groupName !== BOOK_UNGROUPED_NAME
-        ) {
-          book.groupId = undefined;
-          book.groupName = undefined;
-          book.updatedAt = Date.now();
-        }
-      }
-    });
-    setLibrary([...libraryBooks]);
-    appService?.saveLibraryBooks(libraryBooks);
-    onConfirm();
-  };
-
-  const handleConfirmCreateGroup = () => {
-    let groupName = editGroupName.trim();
-    if (groupName) {
-      if (isRenaming && originalGroupName) {
-        // Renaming existing group
-        const oldGroupName = originalGroupName;
-
-        // Update the group name for all books in this group and nested groups
-        libraryBooks.forEach((book) => {
-          if (book.groupName === oldGroupName) {
-            book.groupName = groupName;
-            book.groupId = getGroupId(book.groupName);
-            book.updatedAt = Date.now();
-          } else if (book.groupName?.startsWith(oldGroupName + '/')) {
-            book.groupName = book.groupName.replace(oldGroupName, groupName);
-            book.groupId = getGroupId(book.groupName);
-            book.updatedAt = Date.now();
-          }
-        });
-
-        setLibrary([...libraryBooks]);
-        appService?.saveLibraryBooks(libraryBooks);
-
-        refreshGroups();
-        setShowInput(false);
-        setIsRenaming(false);
-        setOriginalGroupName(null);
-      } else {
-        // Creating new group
-        if (currentPath && !groupName.startsWith(currentPath + '/')) {
-          groupName = `${currentPath}/${groupName}`;
-        }
-
-        const newGroup = addGroup(groupName);
-        setNewGroup(newGroup);
-        setSelectedGroup(newGroup);
-        setShowInput(false);
-        const parentGroup = getParentPath(groupName);
-        if (parentGroup) {
-          setCurrentPath(parentGroup);
-        }
-      }
-    }
-  };
-
-  const handleToggleSelectGroup = (group: BookGroupType) => {
-    setSelectedGroup((prevGroup) => (prevGroup?.id === group.id ? null : group));
-  };
-
-  const handleNavigateToGroup = (group: BookGroupType) => {
-    setCurrentPath(group.name);
-  };
-
-  const handleNavigateBack = () => {
-    const parent = currentPath ? getParentPath(currentPath) : undefined;
-    setCurrentPath(parent);
-  };
-
-  const handleNavigateToPath = (path: string | undefined) => {
-    setCurrentPath(path);
-  };
-
-  const handleConfirmGrouping = () => {
-    selectedBooks.forEach((id) => {
-      for (const book of libraryBooks.filter((book) => book.hash === id || book.groupId === id)) {
-        if (book && selectedGroup) {
-          book.groupId = selectedGroup.id;
-          book.groupName = selectedGroup.name;
-          book.updatedAt = Date.now();
-        }
-      }
-    });
-    setLibrary([...libraryBooks]);
-    appService?.saveLibraryBooks(libraryBooks);
-    onConfirm();
-  };
-
-  const getDisplayName = (fullPath: string) => {
-    const segments = fullPath.split('/');
-    return segments[segments.length - 1];
-  };
-
+  const folders = useLibraryFolders();
+  const [target, setTarget] = useState(parentGroupName);
+  const [creating, setCreating] = useState(false);
+  const [collapsed, setCollapsed] = useState(new Set<string>());
+  const dialog = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (editorRef.current) {
-      editorRef.current.select();
-    }
-  }, [showInput]);
-
-  useEffect(() => {
-    refreshGroups();
-  }, [refreshGroups]);
-
-  useEffect(() => {
-    const groupIds = selectedBooks
-      .map((id) => libraryBooks.find((book) => book.hash === id || book.groupId === id)?.groupId)
-      .filter((groupId) => groupId);
-    if (Array.from(new Set(groupIds)).length === 1) {
-      setTimeout(() => {
-        const allGroups = getGroups();
-        const group = allGroups.find((group) => group.id === groupIds[0]);
-        setSelectedGroup(group || null);
-        if (group && !currentPath) {
-          const parent = getParentPath(group.name);
-          setCurrentPath(parent);
-        }
-      }, 0);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const previous = document.activeElement as HTMLElement | null;
+    dialog.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus();
+    return () => previous?.focus();
   }, []);
-
+  const paths = [...folders.paths].sort((a, b) => a.localeCompare(b));
+  const visiblePaths = paths.filter(
+    (path) => !paths.some((parent) => path.startsWith(`${parent}/`) && collapsed.has(parent)),
+  );
+  const cancel = () => {
+    if (!folders.busy) onCancel();
+  };
+  const choose = (path: string) => {
+    setTarget(path);
+    setCreating(false);
+    folders.clearError();
+  };
   return (
-    <div className='fixed inset-0 flex items-center justify-center'>
-      <div
-        ref={divRef}
-        className={clsx(
-          'glossa-dialog-card modal-box bg-base-100 overflow-y-auto rounded-2xl shadow-xl',
-          'max-h-[85%] w-[95%] min-w-64 max-w-[440px] p-6 sm:w-[70%]',
-        )}
-      >
-        <h2 className='glossa-dialog-title text-start'>{_('Group Books')}</h2>
-
-        {/* Action buttons */}
-        <div className={clsx('mt-4 grid grid-cols-1 gap-2 text-base md:grid-cols-2')}>
+    <div
+      ref={dialog}
+      className='modal modal-open'
+      role='dialog'
+      aria-modal='true'
+      aria-label={_('Move to Folder')}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && !creating) {
+          event.preventDefault();
+          cancel();
+        }
+        if (event.key === 'Tab') {
+          const controls = [
+            ...(dialog.current?.querySelectorAll<HTMLElement>(
+              'button:not(:disabled), input:not(:disabled)',
+            ) ?? []),
+          ];
+          const first = controls[0],
+            last = controls[controls.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last?.focus();
+          }
+          if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first?.focus();
+          }
+        }
+      }}
+    >
+      <div className='modal-box glossa-folder-picker'>
+        <header>
+          <h2>{_('Move to Folder')}</h2>
           <button
-            onClick={handleRemoveFromGroup}
-            className='glossa-button flex items-center gap-2 p-2 disabled:text-neutral-content'
-            disabled={!isSelectedBooksHasGroup}
+            type='button'
+            className='glossa-icon-button'
+            aria-label={_('Close')}
+            onClick={cancel}
+            disabled={folders.busy}
           >
-            <HiOutlineFolderRemove size={iconSize} />
-            <span className='truncate'>{_('Remove From Group')}</span>
+            <X size={18} />
           </button>
-          <button
-            onClick={handleCreateGroup}
-            className='glossa-button flex items-center gap-2 p-2 disabled:text-neutral-content'
-          >
-            <HiOutlineFolderAdd size={iconSize} />
-            <span className='truncate'>{_('Create New Group')}</span>
-          </button>
-          <button
-            onClick={handleRenameGroup}
-            className='glossa-button flex items-center gap-2 p-2 disabled:text-neutral-content'
-            disabled={!canRenameGroup}
-          >
-            <MdEdit size={iconSize} />
-            <span className='truncate'>{_('Rename Group')}</span>
-          </button>
-        </div>
-
-        {/* Create/Rename group input */}
-        {showInput && (
-          <div className='mt-4 space-y-2'>
-            <div className='flex items-center gap-2'>
-              <input
-                type='text'
-                ref={editorRef}
-                value={editGroupName}
-                onChange={(e) => setEditGroupName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleConfirmCreateGroup();
-                  if (e.key === 'Escape') {
-                    setShowInput(false);
-                    setIsRenaming(false);
-                    setOriginalGroupName(null);
-                  }
-                  e.stopPropagation();
-                }}
-                className='input input-ghost w-full border-0 px-2 text-base !outline-none sm:text-sm'
-              />
-              <button
-                className={clsx(
-                  'btn btn-ghost settings-content hover:bg-transparent',
-                  'flex h-[1.3em] min-h-[1.3em] items-end p-0',
-                  editGroupName ? '' : 'btn-disabled !bg-opacity-0',
-                )}
-                onClick={() => handleConfirmCreateGroup()}
-              >
-                <div className='pr-1 align-bottom text-base text-blue-500 sm:text-sm'>
-                  {_('Save')}
-                </div>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Breadcrumb navigation */}
-        {currentPath && (
-          <div className='mt-4 flex flex-wrap items-center gap-2 text-base'>
-            <button
-              onClick={handleNavigateBack}
-              className='hover:bg-base-300 flex items-center gap-1 rounded px-2 py-1'
-            >
-              <IoMdArrowBack size={iconSize} />
-            </button>
-            <button
-              onClick={() => handleNavigateToPath(undefined)}
-              className='hover:bg-base-300 rounded px-2 py-1'
-            >
-              {_('All')}
-            </button>
-            {getBreadcrumbs(currentPath).map((crumb, index, array) => {
-              const isLast = index === array.length - 1;
-              return (
-                <React.Fragment key={index}>
-                  <MdChevronRight size={iconSize} className='text-neutral-content' />
-                  {isLast ? (
-                    <span className='truncate rounded px-2 py-1'>{crumb.name}</span>
-                  ) : (
-                    <button
-                      onClick={() => handleNavigateToPath(crumb.path)}
-                      className='hover:bg-base-300 truncate rounded px-2 py-1'
-                    >
-                      {crumb.name}
-                    </button>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Groups list */}
-        <ul className='groups-list mt-4 grid grid-cols-2 gap-2 overflow-x-hidden'>
-          {currentGroupsList.map((group, index) => {
-            const displayName = getDisplayName(group.name);
-            const hasChildren = allGroups.some((g) => g.name.startsWith(group.name + '/'));
+        </header>
+        <div className='glossa-folder-tree' aria-label={_('Folders')}>
+          {['', ...visiblePaths].map((path) => {
+            const children = paths.some((p) => folderParent(p) === path);
+            const depth = path ? path.split('/').length : 0;
             return (
-              <div key={index} className='flex min-w-0 gap-1'>
-                <button
-                  className={clsx(
-                    'hover:bg-base-300 text-base-content flex min-w-0 max-w-[90%] flex-1',
-                    'items-center justify-between gap-2 rounded-md px-2 py-2',
-                  )}
-                  onClick={() => handleToggleSelectGroup(group)}
+              <div key={path}>
+                <div
+                  className='glossa-folder-tree-row'
+                  style={{ paddingInlineStart: `${Math.max(0, depth - 1) * 20}px` }}
                 >
-                  <div className='flex min-w-0 flex-1 items-center gap-2'>
-                    <span className='shrink-0'>
-                      <HiOutlineFolder size={iconSize} />
-                    </span>
-                    <span className='min-w-0 truncate text-base sm:text-sm'>{displayName}</span>
-                  </div>
-                  <span className='text-neutral-content flex shrink-0 text-sm'>
-                    {selectedGroup && selectedGroup.id === group.id && (
-                      <MdCheck className='text-base-content' size={iconSize} />
-                    )}
-                  </span>
-                </button>
-                {hasChildren && (
+                  {path && children ? (
+                    <button
+                      type='button'
+                      className='glossa-icon-button'
+                      aria-label={_(collapsed.has(path) ? 'Expand folder' : 'Collapse folder')}
+                      onClick={() =>
+                        setCollapsed((previous) => {
+                          const next = new Set(previous);
+                          if (next.has(path)) next.delete(path);
+                          else next.add(path);
+                          return next;
+                        })
+                      }
+                    >
+                      {collapsed.has(path) ? (
+                        <ChevronRight size={14} className='rtl:rotate-180' />
+                      ) : (
+                        <ChevronDown size={14} />
+                      )}
+                    </button>
+                  ) : (
+                    <span className='glossa-folder-tree-spacer' />
+                  )}
                   <button
-                    onClick={() => handleNavigateToGroup(group)}
-                    className='hover:bg-base-300 flex shrink-0 items-center rounded-md px-1'
+                    type='button'
+                    className='glossa-folder-destination'
+                    aria-pressed={target === path}
+                    disabled={folders.busy}
+                    onClick={() => choose(path)}
                   >
-                    <MdChevronRight size={iconSize} />
+                    <Folder size={18} aria-hidden='true' />
+                    <span>{path ? folderLabel(path) : _('All Books')}</span>
+                    {target === path && <Check size={16} aria-hidden='true' />}
                   </button>
+                </div>
+                {creating && target === path && (
+                  <div
+                    className='glossa-folder-draft'
+                    style={{ paddingInlineStart: `${depth * 20 + 30}px` }}
+                  >
+                    <FolderNameEditor
+                      onCancel={() => {
+                        setCreating(false);
+                        folders.clearError();
+                      }}
+                      onSave={async (name) => {
+                        const created = await folders.create(target, name);
+                        if (!created) return false;
+                        setCollapsed((previous) => {
+                          const next = new Set(previous);
+                          next.delete(target);
+                          return next;
+                        });
+                        setTarget(created);
+                        setCreating(false);
+                        return true;
+                      }}
+                    />
+                  </div>
                 )}
               </div>
             );
           })}
-        </ul>
-
-        {/* Footer actions */}
-        <div className='mt-6 flex justify-end gap-x-8 p-2'>
-          <button onClick={onCancel} className='flex items-center'>
-            {_('Cancel')}
-          </button>
-          <button
-            onClick={handleConfirmGrouping}
-            className={clsx(
-              'flex items-center text-blue-500',
-              !selectedGroup && 'btn-disabled opacity-50',
-            )}
-          >
-            {_('Confirm')}
-          </button>
         </div>
+        {folders.error && (
+          <p className='glossa-folder-error' role='alert'>
+            {folders.error}
+          </p>
+        )}
+        <footer>
+          <button
+            type='button'
+            className='glossa-folder-action'
+            disabled={folders.busy || target.includes('/') || creating}
+            onClick={() => {
+              folders.clearError();
+              setCreating(true);
+            }}
+          >
+            <FolderPlus size={18} aria-hidden='true' />
+            {_('New Folder')}
+          </button>
+          <div>
+            <button
+              type='button'
+              className='btn btn-ghost'
+              disabled={folders.busy}
+              onClick={cancel}
+            >
+              {_('Cancel')}
+            </button>
+            <button
+              type='button'
+              className='btn btn-primary'
+              disabled={folders.busy || creating}
+              onClick={async () => {
+                if (await folders.move(selectedBooks, target)) onConfirm();
+              }}
+            >
+              {_('Move')}
+            </button>
+          </div>
+        </footer>
       </div>
+      <div className='modal-backdrop' onClick={cancel} />
     </div>
   );
-};
-
-export default GroupingModal;
+}

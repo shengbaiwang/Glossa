@@ -1,8 +1,10 @@
 @import './glossa-mindmap.css';
+@import './glossa-pdf.css';
 @import './glossa-conversation.css';
 @import './glossa-icons.css';
 @import './glossa-foundations.css';
 @import './glossa-search.css';
+@import './glossa-metadata.css';
 /* Glossa: the icon's rounded ink strokes, carried through the application.
    All surfaces derive from the selected theme, including custom palettes. */
 :root {

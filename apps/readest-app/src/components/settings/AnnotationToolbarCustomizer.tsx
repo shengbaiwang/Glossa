@@ -301,9 +301,6 @@ const AnnotationToolbarCustomizer: React.FC<AnnotationToolbarCustomizerProps> = 
       <SubPageHeader
         parentLabel={_('Behavior')}
         currentLabel={_('Customize Toolbar')}
-        description={_(
-          'Drag tools between the rows to show or hide them and reorder the toolbar. You can also tap a tool to move it.',
-        )}
         onBack={onBack}
         rightSlot={
           <div className='flex shrink-0 items-center gap-1'>

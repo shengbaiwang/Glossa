@@ -114,6 +114,26 @@ const makeBook = (): Book =>
   }) as Book;
 
 describe('BookDetailModal cover refresh after save', () => {
+  it('restores the cover preview and labeled fields when resetting edits', async () => {
+    render(
+      <BookDetailModal
+        book={makeBook()}
+        isOpen
+        onClose={vi.fn()}
+        handleBookMetadataUpdate={vi.fn()}
+      />,
+    );
+    await screen.findByTestId('cover');
+    fireEvent.click(screen.getByTitle('Edit Metadata'));
+    const title = screen.getByRole('textbox', { name: 'Title' });
+    fireEvent.change(title, { target: { value: 'New Title' } });
+    fireEvent.click(screen.getByTitle('Remove cover image'));
+    expect(screen.getByTestId('cover').getAttribute('src')).toBe('_blank');
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    expect((title as HTMLInputElement).value).toBe('Old Title');
+    expect(screen.getByTestId('cover').getAttribute('src')).toBe('old-cover');
+  });
+
   it('updates the Book Details view cover when the cover is edited and saved', async () => {
     const book = makeBook();
     const onUpdate = vi.fn();

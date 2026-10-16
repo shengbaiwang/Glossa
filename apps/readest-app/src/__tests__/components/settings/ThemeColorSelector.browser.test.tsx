@@ -11,7 +11,10 @@ import '@/styles/glossa.css';
 const zh: Record<string, string> = await (await fetch('/locales/zh-CN/translation.json')).json();
 const t = (key: string) => zh[key] || key;
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => t }));
-vi.mock('@/utils/misc', () => ({ isCaselessUILang: () => true }));
+vi.mock('@/utils/misc', () => ({
+  isCaselessUILang: () => true,
+  getLocale: () => document.documentElement.lang || 'zh-CN',
+}));
 vi.mock('@/store/settingsStore', () => ({
   useSettingsStore: () => ({ settings: { globalReadSettings: { customThemes: [] } } }),
 }));
@@ -154,6 +157,10 @@ it('renders readable previews and cards across wide, 440px, 320px, dark and RTL/
     document.documentElement.setAttribute('data-eink', String(scenario.eink));
     view.rerender(<ThemeFixture dark={scenario.dark} width={scenario.panelWidth} />);
     const preview = screen.getByRole('region', { name: t('Reading preview') });
+    expect(preview.querySelector('p')?.textContent).toBe('微雨从东来，好风与之俱');
+    expect(preview.querySelector('.glossa-theme-preview-accent')?.textContent).toBe(
+      'Sunt lacrimae rerum et mentem mortalia tangunt.',
+    );
     const palette = themes[0]!.colors[scenario.dark ? 'dark' : 'light'];
     const probe = document.createElement('span');
     probe.style.backgroundColor = palette['base-100'];
@@ -184,6 +191,29 @@ it('renders readable previews and cards across wide, 440px, 320px, dark and RTL/
   await page.screenshot({
     path: '../../../../../../.glossa-dev/qa/glossa-theme-refined-preview.png',
   });
+
+  for (const locale of ['zh-TW', 'en-US']) {
+    await page.viewport(320, 960);
+    document.documentElement.lang = locale;
+    view.rerender(<ThemeFixture includeCustom={false} />);
+    const preview = screen.getByRole('region', { name: t('Reading preview') });
+    expect(preview.querySelector('p')?.textContent).toContain(
+      locale === 'zh-TW'
+        ? '微雨從東來，好風與之俱'
+        : 'Sunt lacrimae rerum et mentem mortalia tangunt.',
+    );
+    const secondary = preview.querySelector('.glossa-theme-preview-accent');
+    if (locale === 'zh-TW') {
+      expect(secondary?.textContent).toBe('Sunt lacrimae rerum et mentem mortalia tangunt.');
+    } else {
+      expect(secondary).toBeNull();
+    }
+    expect(preview.scrollWidth).toBeLessThanOrEqual(preview.clientWidth);
+    assertNoOverflow(sheet);
+    await page.screenshot({
+      path: `../../../../../../.glossa-dev/qa/glossa-theme-verse-${locale}-320.png`,
+    });
+  }
 }, 30_000);
 
 it('fits the custom editor and color picker to 320px, 440px and desktop containers', async () => {

@@ -41,6 +41,27 @@ const globals = {
   globalReadSettings: {} as SystemSettings['globalReadSettings'],
 };
 
+describe('explicit folder broadcasts', () => {
+  test('adopts a folder catalog, including an empty catalog, but routine payloads preserve it', () => {
+    const settings = { ...local, libraryFolders: ['文学'] };
+    expect(mergeSyncedGlobalSettings(settings, globals).libraryFolders).toEqual(['文学']);
+    expect(
+      mergeSyncedGlobalSettings(settings, { ...globals, libraryFolders: [] }).libraryFolders,
+    ).toEqual([]);
+  });
+
+  test('only sends folder paths after an explicit folder mutation', async () => {
+    vi.mocked(emit).mockClear();
+    const settings = { ...local, libraryFolders: ['文学', '文学/小说'] };
+    await broadcastGlobalSettings(settings);
+    expect(vi.mocked(emit).mock.calls.at(-1)?.[1]).not.toHaveProperty('libraryFolders');
+    await broadcastGlobalSettings(settings, { includeLibraryFolders: true });
+    expect(vi.mocked(emit).mock.calls.at(-1)?.[1]).toMatchObject({
+      libraryFolders: ['文学', '文学/小说'],
+    });
+  });
+});
+
 describe('mergeSyncedGlobalSettings: readestCloud', () => {
   test('adopts a broadcast Readest Cloud switch-off', () => {
     const merged = mergeSyncedGlobalSettings(local, {

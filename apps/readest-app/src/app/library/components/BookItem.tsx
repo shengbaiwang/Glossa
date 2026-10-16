@@ -129,7 +129,12 @@ const BookItem: React.FC<BookItemProps> = ({
           mode === 'list' && 'gap-1 py-0',
         )}
       >
-        <div className={clsx('min-w-0 flex-1', mode === 'list' && 'flex flex-col gap-1')}>
+        <div
+          className={clsx(
+            'glossa-book-copy min-w-0 flex-1',
+            mode === 'list' && 'flex flex-col gap-1',
+          )}
+        >
           <h4
             className={clsx(
               'glossa-book-title font-medium',
@@ -156,17 +161,15 @@ const BookItem: React.FC<BookItemProps> = ({
             'glossa-book-status flex items-center',
             book.progress || book.readingStatus ? 'justify-between' : 'justify-end',
           )}
-          style={{
-            height: `${iconSize15}px`,
-            minHeight: `${iconSize15}px`,
-          }}
+          style={mode === 'list' ? { height: iconSize15, minHeight: iconSize15 } : undefined}
         >
           {(book.progress || book.readingStatus) && (
             <ReadingProgress book={book} showTimeRemaining={showTimeRemaining} />
           )}
-          <div className='flex shrink-0 items-center justify-center gap-x-3'>
-            {!appService?.isMobile && (
+          <div className='glossa-book-actions flex shrink-0 items-center justify-center gap-x-3'>
+            {(mode === 'grid' || !appService?.isMobile) && (
               <button
+                type='button'
                 aria-label={_('Show Book Details')}
                 className='show-detail-button glossa-book-detail-button'
                 onPointerDown={(e) => e.stopPropagation()}
@@ -206,8 +209,10 @@ const BookItem: React.FC<BookItemProps> = ({
               // A feed book has no file to move either way, so it never gets a
               // cloud badge — it would only queue a transfer that fails (#5307).
               !isFeedBook(book) &&
-              (!book.uploadedAt || (book.uploadedAt && !book.downloadedAt)) && (
+              ((!book.uploadedAt && isReadestCloudStorageActive(settings)) ||
+                (book.uploadedAt && !book.downloadedAt)) && (
                 <button
+                  type='button'
                   aria-label={!book.uploadedAt ? _('Upload Book') : _('Download Book')}
                   className='show-cloud-button glossa-book-cloud-button'
                   onPointerDown={(e) => e.stopPropagation()}

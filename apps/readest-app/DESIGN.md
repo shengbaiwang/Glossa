@@ -1,5 +1,32 @@
 ## Glossa Design Language
 
+### Metadata editing — 2026-10-15
+
+Use the shared paper/ink dialog, 16px title, 14px body, 36px framed fields and
+9px control corners. Place the cover beside the title, subtitle and author;
+keep the remaining fields in a quiet two-column grid, stacking on narrow screens.
+Only the field area scrolls. Keep Reset at the leading edge and Cancel / Save
+at the trailing edge of a persistent footer, with Save as the single ink action.
+Retrieval and bulk locks are secondary actions within the scrolling content.
+
+Use neutral lock glyphs and an explicit pressed state; reveal unlocked field
+controls on pointer hover or keyboard focus, and keep them visible on touch and
+e-ink. Locked values remain readable. Labels, errors and field-specific lock names
+must be accessible. Cover preview follows the current editable metadata so Reset
+and retrieved covers stay consistent. Preserve local editing and retrieval behavior,
+visible focus, logical RTL alignment, safe areas and at least 44px touch controls.
+
+### Account forms — 2026-10-15
+
+Keep the centered 384px form, a 48px app icon and one title; omit a repeated account
+subtitle. Use short field labels, an example email address and no repeated password
+placeholder. Place password recovery beside the password label, followed by one
+solid submit action, email-link sign-in and a registration link with matching
+typography, color and spacing. The entire registration prompt is clickable.
+Links underline on hover or keyboard focus. Fields and the
+submit button are 44px high; touch links keep 44px targets. Preserve theme-ink
+contrast, keyboard focus, RTL wrapping, e-ink borders and autofill semantics.
+
 ### Mind map exploration — 2026-09-23
 
 The generation form uses a single range select (Whole chapter / Whole book), chapter selection when relevant, the shared model picker and one Generate / Stop action. Long-range reads start only on Generate. Show a compact stage indicator with genuinely completed, saved segments while working and saved counts after cancellation or failure. Keep internal routing, parallelism and cache choices out of the form. Reopening reads checkpoint metadata only; offer Continue generation or Restore generated map, plus an explicit Start again action. Distinguish local reading, segment extraction and synthesis timeouts. Resuming revalidates current book material and requests only missing work. Never replace the existing editable map with an unfinished result.
@@ -474,6 +501,52 @@ move focus within the sidebar; activation changes category. The toolbar search u
 the existing configurable Find shortcut. Existing settings and file-opening shortcuts
 remain available.
 
+Split library navigation into three quiet sections: Library contains All Books;
+My Groups shows actual folders and their children as direct destinations;
+Browse contains Authors, Series, Tags and Subjects. Separate them with
+24px of space and small muted headings. Use 18px icons, regular 13px labels,
+36px rows (44px on touch), and a subtle neutral selection with a 7px radius and
+medium label weight. Indent folder children, preserve the
+distinction between personal tags and metadata subjects, and match the main
+library title to the current browsing category. All Books keeps the overall
+Library title above the collection heading.
+
+Create folders and rename their labels inline in the sidebar. F2 and double click
+rename; the pencil remains available to touch. New Folder uses the current manual
+folder, with creation disabled inside the second level. The My Groups heading
+returns to all groups. Keep the active child open after a parent rename or move.
+Bookshelf books and manual folders can be dragged to sidebar folders; folder moves
+retain the full subtree, and All Books accepts moves back to the root. External
+files and folders use the hovered destination, retain directory names, and reject
+new third-level paths before persistence. Distinguish internal item payloads from
+external Files, clear drop feedback on cancellation, and retain the move picker
+for keyboard and touch operation.
+
+Manual Groups are user-created folders with two levels: a top-level folder and
+one layer of subfolders. Persist empty folders independently of book membership;
+keep the existing book path/ID protocol and preserve deeper legacy paths. Create
+in place, rename on the folder label (double click, F2 or pencil), and use the
+existing path breadcrumbs to return to a parent. The move picker shows a compact
+folder tree, can create a destination inline, and moves complete folder subtrees
+without flattening them. Reject duplicate siblings, self/descendant destinations
+and new third-level paths. Saving errors retain the draft and previous visible
+state; only empty folders can be directly deleted. Keep keyboard focus after
+creation/renaming, contain picker focus, and retain 44px touch targets and crisp
+e-ink selection. Empty directory persistence stays local; existing book grouping
+continues to use its current synchronization protocol.
+
+In the expanded desktop library sidebar, pin a labelled Settings gear below the
+scrollable category list. Hide the duplicate toolbar gear only while that sidebar
+is visible; restore it for normal browsing when collapsed or below 900px.
+Use the same application settings dialog and shortcut as the reader.
+
+Grid book cards keep the complete title (up to two lines) and place the author
+directly below its actual height. Reserve the second line's unused space below the
+author so covers and footers still align. Use plain reading-status text at the
+leading edge and details at the trailing edge. Keep the latter visible on hover or
+keyboard focus and directly available on touch, with a 44px touch target. Use the
+nested radius and quiet hover surface; preserve the original title and author data.
+
 Reader toolbar dimensions stay unchanged so first-line selection and content insets
 remain correct. Only app chrome uses the system UI font; book fonts remain user-owned.
 Below 900px, retain the compact library layout without the desktop sidebar. Logical
@@ -581,6 +654,12 @@ Custom palette generation and existing theme IDs remain compatible.
   omit decorative sample rules, preview underlines and section dividers. Use the
   same paper treatment in custom-theme previews. Preserve native radio keyboard
   behavior and isolate reading shortcuts in the settings dialog's capture phase.
+- Preserve the chosen literary specimen in the palette and custom-theme previews:
+  show Tao Yuanming's `微雨从东来，好风与之俱` above Vergil's
+  `Sunt lacrimae rerum et mentem mortalia tangunt.` Use traditional glyphs for
+  traditional Chinese and the primary color for the Latin line. Reuse the font
+  controls' existing samples; show the Latin line once when it is already the
+  main specimen. Preserve the original pairing without an author caption.
 - Keep automatic/light/dark appearance separate from the chosen color pair.
   Group book-color override and image inversion in the existing settings primitives.
 - Start a custom theme from the current pair, with separate light/dark previews.
@@ -600,7 +679,7 @@ RTL mirroring, the narrow-screen dialog and the library settings layout.
 ### Glossa font controls — 2026-09-09
 
 Use short labels, native buttons and visible font samples. For this user-requested
-surface, omit the introductory description required by upstream §2.9; the controls
+surface, omit the introductory description; the controls
 and preview provide orientation. Keep the paper/ink palette, 12px controls, 9px
 segmented buttons, visible keyboard focus and crisp e-ink selection states.
 
@@ -764,29 +843,23 @@ logical properties.
 case (rare — usually only icon glyphs that have a fixed orientation) should
 be flipped to the logical equivalent.
 
-#### 2.9 Every panel and sub-page starts with title + description (REQUIRED)
+#### 2.9 Every panel and sub-page starts with a title
 
-Every settings panel and every sub-page must open with:
+Every settings panel and every sub-page must open with a title:
 
 1. **A title** — the panel name. Style: `text-lg font-semibold tracking-tight`. In a
    top-level panel this is an `<h2>`; in a sub-page this is the `parentLabel /
 currentLabel` breadcrumb in `SubPageHeader` (which uses the same typography so the
    word stays anchored visually as the user navigates in/out).
-2. **A one-line description** — a short sentence under the title explaining what this
-   surface does or how it fits in the user's workflow. Style: `text-sm
-text-base-content/70 leading-relaxed`. Skip it only when the surface is so trivial
-   the breadcrumb already says everything (rare — when in doubt, write one).
-
-Why: orientation, visual rhythm, and Adwaita parity (`AdwPreferencesPage` always has
-both). The same vertical opening across every surface makes the system feel cohesive
-and gives users a predictable place to learn what a screen does.
+Do not append standing explanatory captions, tutorial footnotes or repeated feature
+descriptions. The user requested their removal on 2026-10-15; this supersedes the
+upstream title-plus-description requirement. Preserve operational status, actual
+content, errors, source verification and necessary safety limitations.
 
 **Canonical components.** The `<SubPageHeader>` primitive in
 `src/components/settings/SubPageHeader.tsx` accepts a `description?: React.ReactNode`
-prop that renders the description in the canonical style — sub-pages should pass it
-there rather than rolling their own `<p>` below the header. Top-level panels currently
-inline the title + description; if a third or fourth panel needs the same pattern,
-extract a `<PanelHeader>` primitive following the same shape.
+prop for necessary status or limitations, rather than a repeat of the title. Keep
+the breadcrumb and controls sufficient to orient the user.
 
 **Examples.**
 
@@ -795,7 +868,6 @@ extract a `<PanelHeader>` primitive following the same shape.
 <SubPageHeader
   parentLabel={_('Integrations')}
   currentLabel={_('OPDS Catalogs')}
-  description={_('Browse and download books from online catalogs')}
   onBack={() => setSubPage(null)}
 />
 
@@ -1645,6 +1717,10 @@ Use logical spacing for RTL, visible keyboard focus, compact controls matching C
 
 ### 15. Glossa menu scopes — 2026-10-13
 
-Group commands by their target. The library view control changes shelf presentation. A shared Settings gear opens application preferences from the library and reader. Aa opens only Font / Layout / Color; book menus operate on the current book. Application settings group Application and Reading Defaults in a labelled sidebar, with a grouped native selector on narrow screens. Keep global language, cloud, models and conversation setup out of Aa.
+Group commands by their target. The library view control uses horizontal sliders and contains shelf presentation plus Select Books as its first command. Keep the selection check in that menu rather than as a separate normal toolbar button; selection mode retains Select All / Deselect / Done. A shared Settings gear opens application preferences from the library and reader, with a silhouette distinct from the view sliders. The expanded desktop library uses a labelled Settings row at the sidebar bottom; collapsed and narrow layouts use the toolbar gear. Aa opens only Font / Layout / Color; book menus operate on the current book. Application settings group Application and Reading Defaults in a labelled sidebar, with a grouped native selector on narrow screens. Keep global language, cloud, models and conversation setup out of Aa.
+
+List and Grid each occupy one row, with their size controls at the trailing edge. Minus makes items smaller and Plus makes them larger in both modes. List scales covers, text and row spacing together (80–140%, 10% steps); Grid retains column settings and a compact Auto toggle on its own row, starting manual changes from the visible automatic column count. Keep the menu open while sizing, activate the adjusted view and preserve each mode's saved preference. Do not add a separate Columns heading or control row. Old settings keep the original list size; group-cover previews follow list sizing while Continue reading retains its own card size.
+
+The view menu does not repeat Group by from the library navigation. Use a 280px viewport-bounded paper/ink surface, shared menu typography and spacing, with the selected view wash spanning its entire row. Book Covers is a quiet group heading with Crop / Fit side by side; Continue reading remains a direct switch and primary/secondary sorting stays collapsed until requested. Only the effective sort key is checked, including grouping-based defaults. Use the shared borderless row states and underline keyboard focus, logical alignment for RTL, crisp e-ink boundaries and at least 44px touch targets.
 
 Use one visible This Book Only / All Books Default scope selector above reading controls and one reset action in the dialog header. Embedded panels must not repeat those controls. Global defaults preserve explicit per-book settings; serialize overrides against the updated defaults. Use shared ink/paper tokens, icon buttons, spacing, focus and selected states. Sidebar and scope controls support arrow-key navigation before the modal's event boundary; narrow screens, RTL and e-ink keep the same meanings. Saving failures remain actionable with retry.

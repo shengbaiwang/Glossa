@@ -1,4 +1,5 @@
 import React from 'react';
+import { CheckSquare2, Minus, Plus } from '@/components/GlossaIcons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -12,26 +13,48 @@ import {
 } from '@/types/settings';
 import { saveSysSettings } from '@/helpers/settings';
 import { navigateToLibrary } from '@/utils/nav';
-import NumberInput from '@/components/settings/NumberInput';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';
 import { ensureLibraryGroupByType } from '../utils/libraryUtils';
 
 interface ViewMenuProps {
+  onSelectBooks: () => void;
   setIsDropdownOpen?: (isOpen: boolean) => void;
 }
 
-const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
+const ViewMenu: React.FC<ViewMenuProps> = ({ onSelectBooks, setIsDropdownOpen }) => {
   const _ = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { envConfig } = useEnv();
   const { settings } = useSettingsStore();
 
-  const viewMode = settings.libraryViewMode;
+  const viewMode = searchParams?.get('view') || settings.libraryViewMode;
   const coverFit = settings.libraryCoverFit;
   const autoColumns = settings.libraryAutoColumns;
   const columns = settings.libraryColumns;
+  const listScale = settings.libraryListScale ?? 100;
+  const minColumns = window.innerWidth < 640 ? 1 : window.innerWidth < 1024 ? 2 : 3;
+  const maxColumns = window.innerWidth < 640 ? 4 : window.innerWidth < 1024 ? 6 : 12;
+  const getGridColumns = () => {
+    if (!autoColumns) return columns;
+    const grid = document.querySelector('.glossa-collection-grid');
+    const tracks = grid && window.getComputedStyle(grid).gridTemplateColumns;
+    if (tracks && tracks !== 'none') return tracks.split(/\s+/).length;
+    const width = window.innerWidth;
+    return width < 640
+      ? 2
+      : width < 768
+        ? 3
+        : width < 1024
+          ? 4
+          : width < 1280
+            ? 5
+            : width < 1536
+              ? 6
+              : 8;
+  };
+  const gridColumns = getGridColumns();
   const groupBy = ensureLibraryGroupByType(searchParams?.get('groupBy'), settings.libraryGroupBy);
   const sortBy = settings.librarySortBy;
   const isAscending = settings.librarySortAscending;
@@ -54,22 +77,13 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
   const isThenAscending = settings.libraryThenSortAscending ?? true;
 
   const viewOptions = [
-    { label: _('List'), value: 'list' },
-    { label: _('Grid'), value: 'grid' },
+    { label: _('List'), value: 'list' as const },
+    { label: _('Grid'), value: 'grid' as const },
   ];
 
   const coverFitOptions = [
     { label: _('Crop'), value: 'crop' },
     { label: _('Fit'), value: 'fit' },
-  ];
-
-  const groupByOptions = [
-    { label: _('Authors'), value: LibraryGroupByType.Author },
-    { label: _('Books'), value: LibraryGroupByType.None },
-    { label: _('Groups'), value: LibraryGroupByType.Group },
-    { label: _('Series'), value: LibraryGroupByType.Series },
-    { label: _('Tags'), value: LibraryGroupByType.Tag },
-    { label: _('Subjects'), value: LibraryGroupByType.Subject },
   ];
 
   const sortByOptions = [
@@ -111,8 +125,8 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
   };
 
   const handleToggleAutoColumns = async () => {
-    const newValue = !settings.libraryAutoColumns;
-    await saveSysSettings(envConfig, 'libraryAutoColumns', newValue);
+    if (autoColumns) await saveSysSettings(envConfig, 'libraryColumns', getGridColumns());
+    await saveSysSettings(envConfig, 'libraryAutoColumns', !autoColumns);
   };
 
   const handleToggleRecentShelf = async () => {
@@ -123,23 +137,23 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
     );
   };
 
-  const handleSetColumns = async (value: number) => {
-    await saveSysSettings(envConfig, 'libraryColumns', value);
-    await saveSysSettings(envConfig, 'libraryAutoColumns', false);
-  };
-
-  const handleSetGroupBy = async (value: LibraryGroupByType) => {
-    await saveSysSettings(envConfig, 'libraryGroupBy', value);
-
-    const params = new URLSearchParams(window.location.search);
-    if (value === LibraryGroupByType.Group) {
-      params.delete('groupBy');
+  const handleSetViewSize = async (mode: LibraryViewModeType, direction: number) => {
+    if (mode === 'list') {
+      await saveSysSettings(
+        envConfig,
+        'libraryListScale',
+        Math.max(80, Math.min(140, listScale + direction * 10)),
+      );
     } else {
-      params.set('groupBy', value);
+      // More columns make covers smaller; begin with the actual automatic layout.
+      await saveSysSettings(
+        envConfig,
+        'libraryColumns',
+        Math.max(minColumns, Math.min(maxColumns, getGridColumns() - direction)),
+      );
+      await saveSysSettings(envConfig, 'libraryAutoColumns', false);
     }
-    // Clear group navigation when changing groupBy mode
-    params.delete('group');
-    navigateToLibrary(router, `${params.toString()}`);
+    if (viewMode !== mode) await handleSetViewMode(mode);
   };
 
   const handleSetSortBy = async (value: LibrarySortByType) => {
@@ -183,98 +197,99 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
 
   return (
     <Menu
-      className='view-menu dropdown-content no-triangle z-20 mt-2 shadow-2xl'
+      className='view-menu glossa-menu-surface dropdown-content no-triangle z-20 mt-2'
       onCancel={() => setIsDropdownOpen?.(false)}
     >
+      <MenuItem
+        label={_('Select Books')}
+        Icon={<CheckSquare2 size={16} aria-hidden='true' />}
+        onClick={onSelectBooks}
+        setIsDropdownOpen={setIsDropdownOpen}
+        transient
+      />
+      <hr aria-hidden='true' className='border-base-200 my-1' />
       {/* View Mode */}
       {viewOptions.map((option) => (
-        <MenuItem
+        <div
           key={option.value}
-          label={option.label}
-          buttonClass='min-h-8 !py-1'
-          toggled={viewMode === option.value}
-          onClick={() => handleSetViewMode(option.value as LibraryViewModeType)}
-          transient
-        />
-      ))}
-
-      {/* Columns */}
-      <hr aria-hidden='true' className='border-base-200 my-1' />
-      <MenuItem
-        label={_('Columns')}
-        buttonClass='min-h-8 !py-1'
-        labelClass='text-sm sm:text-xs'
-        disabled
-      />
-      <MenuItem
-        label={_('Auto')}
-        buttonClass='min-h-10 !py-2'
-        toggled={autoColumns}
-        disabled={viewMode === 'list'}
-        siblings={
-          <NumberInput
-            className='!h-10 !p-0 !pe-1 !ps-0'
-            inputClassName={`!p-0 text-center text-base sm:text-sm !w-10 !h-6 !pe-0 ${autoColumns ? 'opacity-50' : ''}`}
-            label={''}
-            value={columns}
-            disabled={viewMode === 'list'}
-            onChange={handleSetColumns}
-            min={window.innerWidth < 640 ? 1 : window.innerWidth < 1024 ? 2 : 3}
-            max={window.innerWidth < 640 ? 4 : window.innerWidth < 1024 ? 6 : 12}
+          role='group'
+          aria-label={option.label}
+          className='glossa-library-view-row'
+        >
+          <MenuItem
+            label={option.label}
+            buttonClass='glossa-library-view-choice'
+            toggled={viewMode === option.value}
+            onClick={() => handleSetViewMode(option.value)}
+            siblings={
+              <div className='glossa-library-view-size'>
+                {option.value === 'grid' ? (
+                  <button
+                    type='button'
+                    role='menuitemcheckbox'
+                    aria-label={`${option.label} / ${_('Auto')}`}
+                    aria-checked={autoColumns}
+                    title={_('Auto')}
+                    className='glossa-menu-item glossa-library-size-value'
+                    onClick={handleToggleAutoColumns}
+                  >
+                    {autoColumns ? _('Auto') : columns}
+                  </button>
+                ) : (
+                  <span className='glossa-library-size-value'>{listScale}%</span>
+                )}
+                <button
+                  type='button'
+                  aria-label={_('Decrease')}
+                  className='glossa-icon-button glossa-tool-icon'
+                  disabled={option.value === 'list' ? listScale <= 80 : gridColumns >= maxColumns}
+                  onClick={() => handleSetViewSize(option.value, -1)}
+                >
+                  <Minus size={16} aria-hidden='true' />
+                </button>
+                <button
+                  type='button'
+                  aria-label={_('Increase')}
+                  className='glossa-icon-button glossa-tool-icon'
+                  disabled={option.value === 'list' ? listScale >= 140 : gridColumns <= minColumns}
+                  onClick={() => handleSetViewSize(option.value, 1)}
+                >
+                  <Plus size={16} aria-hidden='true' />
+                </button>
+              </div>
+            }
           />
-        }
-        onClick={() => handleToggleAutoColumns()}
-      />
+        </div>
+      ))}
 
       {/* Book Covers */}
       <hr aria-hidden='true' className='border-base-200 my-1' />
-      <MenuItem
-        label={_('Book Covers')}
-        buttonClass='min-h-8 !py-1'
-        labelClass='text-sm sm:text-xs'
-        disabled
-      />
-      {coverFitOptions.map((option) => (
-        <MenuItem
-          key={option.value}
-          label={option.label}
-          buttonClass='min-h-8 !py-1'
-          toggled={coverFit === option.value}
-          onClick={() => handleToggleCropCovers(option.value as LibraryCoverFitType)}
-          transient
-        />
-      ))}
+      <div role='group' aria-label={_('Book Covers')}>
+        <div className='glossa-library-menu-heading'>{_('Book Covers')}</div>
+        <div className='glossa-library-cover-options'>
+          {coverFitOptions.map((option) => (
+            <MenuItem
+              key={option.value}
+              label={option.label}
+              toggled={coverFit === option.value}
+              onClick={() => handleToggleCropCovers(option.value as LibraryCoverFitType)}
+            />
+          ))}
+        </div>
+      </div>
 
       {/* Recently read shelf */}
       <hr aria-hidden='true' className='border-base-200 my-1' />
       <MenuItem
         label={_('Continue reading')}
-        buttonClass='min-h-8 !py-1'
         toggled={settings.libraryRecentShelfEnabled}
         onClick={handleToggleRecentShelf}
         transient
       />
 
-      {/* Group By - Collapsible */}
-      <hr aria-hidden='true' className='border-base-200 my-1' />
-      <MenuItem label={_('Group by...')} detailsOpen={true} buttonClass='py-[4px]'>
-        <ul className='ms-0 flex flex-col ps-0 before:hidden'>
-          {groupByOptions.map((option) => (
-            <MenuItem
-              key={option.value}
-              label={option.label}
-              buttonClass='min-h-8 !py-1'
-              toggled={groupBy === option.value}
-              onClick={() => handleSetGroupBy(option.value as LibraryGroupByType)}
-              transient
-            />
-          ))}
-        </ul>
-      </MenuItem>
-
       {/* Sort By - Collapsible */}
       <hr aria-hidden='true' className='border-base-200 my-1' />
-      <MenuItem label={_('Sort by...')} detailsOpen={false} buttonClass='py-[4px]'>
+      <MenuItem label={_('Sort by...')} detailsOpen={false}>
         <ul className='ms-0 flex flex-col ps-0 before:hidden'>
           {sortByOptions.map((option) => {
             const isImplicit = primaryIsImplicit && option.value === primaryEffective;
@@ -283,7 +298,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
               <MenuItem
                 key={option.value}
                 label={isImplicit ? `${option.label} (${_('Auto')})` : option.label}
-                buttonClass='min-h-8 !py-1'
                 toggled={toggled}
                 onClick={() => handleSetSortBy(option.value as LibrarySortByType)}
                 transient
@@ -295,7 +309,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
             <MenuItem
               key={option.value.toString()}
               label={option.label}
-              buttonClass='min-h-8 !py-1'
               toggled={isAscending === option.value}
               onClick={() => handleSetSortAscending(option.value)}
               transient
@@ -305,18 +318,15 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
       </MenuItem>
 
       {/* Then by - secondary sort, collapsible */}
-      <hr aria-hidden='true' className='border-base-200 my-1' />
-      <MenuItem label={_('Then by...')} detailsOpen={false} buttonClass='py-[4px]'>
+      <MenuItem label={_('Then by...')} detailsOpen={false}>
         <ul className='ms-0 flex flex-col ps-0 before:hidden'>
           {thenSortByOptions.map((option) => {
             const isImplicit = secondaryIsImplicit && option.value === secondaryEffective;
-            const isExplicit = thenSortBy === option.value;
             return (
               <MenuItem
                 key={option.value}
                 label={isImplicit ? `${option.label} (${_('Auto')})` : option.label}
-                buttonClass='min-h-8 !py-1'
-                toggled={isExplicit || isImplicit}
+                toggled={secondaryEffective === option.value}
                 onClick={() => handleSetThenSortBy(option.value)}
                 transient
               />
@@ -329,7 +339,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
                 <MenuItem
                   key={option.value.toString()}
                   label={option.label}
-                  buttonClass='min-h-8 !py-1'
                   toggled={isThenAscending === option.value}
                   onClick={() => handleSetThenSortAscending(option.value)}
                   transient

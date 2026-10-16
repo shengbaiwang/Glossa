@@ -2,6 +2,7 @@ import { BookFormat } from '@/types/book';
 import { Collection, Contributor, Identifier, LanguageMap } from '@/utils/book';
 import { configureZip } from '@/utils/zip';
 import * as epubcfi from 'foliate-js/epubcfi.js';
+import type { OCRPage, PDFCache } from '@/services/pdfEnhancement';
 
 export const CFI = epubcfi;
 
@@ -96,6 +97,8 @@ export type BookMetadata = {
 };
 
 export interface BookDoc {
+  pdfCache?: PDFCache;
+  getPDFText?(index: number): Promise<string>;
   metadata: BookMetadata;
   rendition: {
     layout?: 'pre-paginated' | 'reflowable';
@@ -162,15 +165,18 @@ export interface DocumentLoaderOptions {
    * EPUB when the prefetch cache is hit.
    */
   nativeFilePath?: string;
+  pdfOCR?: (index: number) => Promise<OCRPage | null>;
 }
 
 export class DocumentLoader {
   private file: File;
   private nativeFilePath?: string;
+  private pdfOCR?: (index: number) => Promise<OCRPage | null>;
 
   constructor(file: File, options: DocumentLoaderOptions = {}) {
     this.file = file;
     this.nativeFilePath = options.nativeFilePath;
+    this.pdfOCR = options.pdfOCR;
   }
 
   private async isZip(): Promise<boolean> {
@@ -440,7 +446,40 @@ export class DocumentLoader {
         }
       } else if (await this.isPDF()) {
         const { makePDF } = await import('foliate-js/pdf.js');
-        book = await makePDF(this.file);
+        const pdf = await import('@/services/pdfEnhancement');
+        const cache =
+          this.nativeFilePath && pdf.supportsLocalPDF()
+            ? await pdf.openPDFCache(this.nativeFilePath).catch(() => null)
+            : null;
+        const available = new Set(cache?.pages);
+        const loaded = new Map<number, Promise<OCRPage | null>>();
+        const loadOCR =
+          this.pdfOCR ??
+          (cache
+            ? (index: number) => {
+                if (!available.has(index)) return Promise.resolve(null);
+                if (!loaded.has(index)) {
+                  if (loaded.size >= 16) loaded.delete(loaded.keys().next().value!);
+                  loaded.set(
+                    index,
+                    pdf.readOCRPage(cache.id, index).catch(() => null),
+                  );
+                }
+                return loaded.get(index)!;
+              }
+            : undefined);
+        book = await makePDF(this.file, { loadOCR });
+        const pdfBook = book as unknown as BookDoc;
+        if (cache) {
+          pdfBook.pdfCache = cache;
+          if (cache.outline?.every((entry) => entry.pageIndex < pdfBook.sections.length)) {
+            try {
+              pdfBook.toc = pdf.outlineToTOC(cache.outline, pdfBook.sections.length);
+            } catch {
+              // A damaged local outline must not prevent reading the original PDF.
+            }
+          }
+        }
         format = 'PDF';
       } else if (await (await import('foliate-js/mobi.js')).isMOBI(this.file)) {
         const fflate = await import('foliate-js/vendor/fflate.js');

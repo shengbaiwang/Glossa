@@ -23,6 +23,9 @@ export interface SelectedFile {
   path?: string;
   basePath?: string;
 
+  // Explicit destination for a dropped directory entry (including Web File objects).
+  groupName?: string;
+
   // Resolved display name (with extension). For Tauri `content://` / `file://`
   // URIs the `path` may not carry the filename/extension at all (opaque SAF
   // document ids on some Android devices), so the native content resolver is

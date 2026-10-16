@@ -14,7 +14,6 @@ import {
   runGoogleDriveDisconnect,
 } from '@/services/sync/providers/gdrive/googleDriveConnect';
 import { hasValidWebDriveToken } from '@/services/sync/providers/gdrive/auth/webTokenStore';
-import { Tips } from '../primitives';
 import FileSyncForm from './FileSyncForm';
 import { persistCloudProviderEnabled } from './cloudSync';
 
@@ -173,14 +172,7 @@ const GoogleDriveForm: React.FC = () => {
             {_('Use Google Drive')}
           </button>
         </div>
-        <Tips>
-          <li>
-            {_('Connected as {{account}}. Turn {{provider}} on to start syncing.', {
-              account: stored.accountLabel,
-              provider: 'Google Drive',
-            })}
-          </li>
-        </Tips>
+        {stored.accountLabel && <p role='status'>{stored.accountLabel}</p>}
       </div>
     );
   }
@@ -204,10 +196,6 @@ const GoogleDriveForm: React.FC = () => {
           )}
         </button>
       </div>
-      <Tips>
-        <li>{_('Sign-in opens in your browser.')}</li>
-        <li>{_('Glossa only accesses the files it creates in your Drive.')}</li>
-      </Tips>
     </div>
   );
 };

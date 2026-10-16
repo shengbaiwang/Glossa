@@ -3,7 +3,6 @@ import React, { useRef } from 'react';
 import {
   ChevronDown,
   CheckCheck,
-  CheckSquare2,
   PanelLeft,
   Search,
   SearchCheck,
@@ -91,6 +90,7 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
       className={clsx(
         'titlebar glossa-library-header z-10 w-full',
         isTrafficLightVisible && 'glossa-with-traffic-lights',
+        isSidebarVisible && 'glossa-library-sidebar-open',
       )}
       style={{
         marginTop: appService?.hasSafeAreaInset
@@ -187,24 +187,17 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
           </>
         ) : (
           <>
-            <button
-              type='button'
-              onClick={onToggleSelectMode}
-              aria-label={_('Select Books')}
-              title={_('Select Books')}
-              className='touch-target glossa-icon-button glossa-library-select'
-            >
-              <CheckSquare2 size={19} aria-hidden='true' />
-            </button>
             <Dropdown
               label={_('View Menu')}
               className='dropdown-bottom dropdown-end'
               buttonClassName='touch-target glossa-icon-button'
               toggleButton={<SlidersHorizontal size={19} aria-hidden='true' />}
             >
-              <ViewMenu />
+              <ViewMenu onSelectBooks={onToggleSelectMode} />
             </Dropdown>
-            <ApplicationSettingsButton />
+            <div className='glossa-library-toolbar-settings'>
+              <ApplicationSettingsButton />
+            </div>
           </>
         )}
         {appService?.hasWindowBar && (

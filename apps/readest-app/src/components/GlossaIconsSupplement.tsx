@@ -58,6 +58,7 @@ import {
   SearchX as SearchXGlyph,
   Send as SendGlyph,
   Server as ServerGlyph,
+  Settings as SettingsGlyph,
   Settings2 as Settings2Glyph,
   Share2 as Share2Glyph,
   Smartphone as SmartphoneGlyph,
@@ -144,6 +145,7 @@ export const RotateCw = /* @__PURE__ */ glossaGlyph(RotateCwGlyph);
 export const SearchX = /* @__PURE__ */ glossaGlyph(SearchXGlyph);
 export const Send = /* @__PURE__ */ glossaGlyph(SendGlyph);
 export const Server = /* @__PURE__ */ glossaGlyph(ServerGlyph);
+export const Settings = /* @__PURE__ */ glossaGlyph(SettingsGlyph);
 export const Settings2 = /* @__PURE__ */ glossaGlyph(Settings2Glyph);
 export const Share2 = /* @__PURE__ */ glossaGlyph(Share2Glyph);
 export const Smartphone = /* @__PURE__ */ glossaGlyph(SmartphoneGlyph);

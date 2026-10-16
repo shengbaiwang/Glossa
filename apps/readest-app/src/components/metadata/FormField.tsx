@@ -1,17 +1,7 @@
-import React from 'react';
+import React, { useId } from 'react';
 import clsx from 'clsx';
-import {
-  Info as MdOutlineInfo,
-  Lock as MdLock,
-  LockOpen as MdLockOpen,
-  CircleAlert as MdError,
-} from '@/components/GlossaIcons';
+import { Info, Lock, LockOpen, CircleAlert } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
-
-const inputBaseStyles =
-  'w-full rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500';
-const inputBackgroundStyles = 'bg-base-200/50';
-const labelStyles = 'text-base-content block text-sm font-medium';
 
 interface SourceIndicatorProps {
   source?: string;
@@ -19,45 +9,14 @@ interface SourceIndicatorProps {
 
 const SourceIndicator: React.FC<SourceIndicatorProps> = ({ source }) => {
   if (!source) return null;
-
   const [sourceName, confidence] = source.split('-');
-  const confidenceNum = parseInt(confidence!);
-
-  let color = 'text-green-500';
-  if (confidenceNum < 90) color = 'text-yellow-500';
-  if (confidenceNum < 70) color = 'text-red-500';
-
   return (
-    <div className='flex items-center justify-end gap-1 text-xs'>
-      <MdOutlineInfo className={clsx('h-3 w-3', color)} />
-      <span className={clsx('capitalize', color)}>
+    <div className='glossa-metadata-source glossa-supporting-text'>
+      <Info className='h-3 w-3' />
+      <span className='capitalize'>
         {sourceName} ({confidence}%)
       </span>
     </div>
-  );
-};
-
-interface LockButtonProps {
-  isLocked: boolean;
-  onToggle: () => void;
-  disabled?: boolean;
-}
-
-const LockButton: React.FC<LockButtonProps> = ({ isLocked, onToggle, disabled = false }) => {
-  return (
-    <button
-      type='button'
-      onClick={onToggle}
-      disabled={disabled}
-      className={clsx(
-        'focus:outline-non absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 transition-colors',
-        disabled && 'cursor-not-allowed opacity-50',
-        isLocked ? 'bg-green-100 text-green-500 hover:bg-green-200' : 'text-base-content',
-      )}
-      title={isLocked ? 'Unlock field' : 'Lock field'}
-    >
-      {isLocked ? <MdLock className='h-4 w-4' /> : <MdLockOpen className='h-4 w-4' />}
-    </button>
   );
 };
 
@@ -73,7 +32,6 @@ interface FormFieldProps {
   lockedFields: Record<string, boolean>;
   fieldErrors: Record<string, string>;
   onToggleFieldLock: (field: string) => void;
-
   value: string;
   onFieldChange: (field: string, value: string) => void;
   placeholder?: string;
@@ -93,7 +51,6 @@ const FormField: React.FC<FormFieldProps> = ({
   lockable = true,
   disabled = false,
   onToggleFieldLock,
-
   value,
   onFieldChange,
   placeholder,
@@ -101,67 +58,72 @@ const FormField: React.FC<FormFieldProps> = ({
   className,
 }) => {
   const _ = useTranslation();
-  const isLocked = lockedFields[field]!;
-  const source = fieldSources[field]!;
-  const error = fieldErrors[field]!;
+  const id = useId();
+  const errorId = `${id}-error`;
+  const isLocked = !!lockedFields[field];
+  const error = fieldErrors[field];
+  const lockAction = isLocked ? _('Unlock field') : _('Lock field');
+  const inputProps = {
+    id,
+    name: field,
+    value,
+    onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      onFieldChange(field, event.target.value),
+    placeholder: isLocked ? '' : placeholder,
+    disabled: disabled || isLocked,
+    'aria-required': required || undefined,
+    'aria-invalid': !!error,
+    'aria-describedby': error ? errorId : undefined,
+    className: clsx(
+      'glossa-field glossa-metadata-input eink-bordered',
+      lockable && 'has-lock',
+      className,
+    ),
+  };
 
   return (
-    <div className='flex flex-col gap-1'>
-      <div className={clsx(labelStyles, 'flex items-center justify-between')}>
-        <span>
-          {label} {required && '*'}
-        </span>
-        {isLocked && (
-          <span className='flex items-center gap-1 text-xs text-green-500'>
-            <MdLock className='h-3 w-3' />
-            {_('Locked')}
+    <div className='glossa-metadata-field' data-locked={isLocked}>
+      <label htmlFor={id}>
+        {label}
+        {required && (
+          <span aria-hidden='true' className='glossa-metadata-required'>
+            {' '}
+            *
           </span>
         )}
-      </div>
-      <div className='relative'>
+      </label>
+      <div className='glossa-metadata-control'>
         {type === 'input' ? (
           <input
+            {...inputProps}
             type={isNumber ? 'number' : 'text'}
-            min={1}
-            value={value}
-            onChange={(e) => onFieldChange(field, e.target.value)}
-            placeholder={isLocked ? '' : placeholder}
-            disabled={disabled || isLocked}
-            className={clsx(
-              inputBaseStyles,
-              inputBackgroundStyles,
-              lockable && 'pe-10',
-              isLocked ? 'cursor-not-allowed' : 'bg-gray-100 text-gray-500',
-              error && 'border-red-500 focus:ring-red-500',
-              className,
-            )}
+            min={isNumber ? 1 : undefined}
           />
         ) : (
-          <textarea
-            value={value}
-            onChange={(e) => onFieldChange(field, e.target.value)}
-            placeholder={isLocked ? '' : placeholder}
-            rows={rows || 4}
-            disabled={disabled || isLocked}
-            className={clsx(
-              inputBaseStyles,
-              inputBackgroundStyles,
-              lockable && 'pe-10',
-              isLocked ? 'cursor-not-allowed' : 'bg-gray-100 text-gray-500',
-              error && 'border-red-500 focus:ring-red-500',
-              className,
-            )}
-          />
+          <textarea {...inputProps} rows={rows || 4} />
         )}
-        {lockable && <LockButton isLocked={isLocked} onToggle={() => onToggleFieldLock(field)} />}
+        {lockable && (
+          <button
+            type='button'
+            onClick={() => onToggleFieldLock(field)}
+            disabled={disabled}
+            className='glossa-icon-button glossa-metadata-lock'
+            aria-label={`${lockAction}: ${label}`}
+            aria-pressed={isLocked}
+            title={lockAction}
+          >
+            {isLocked ? <Lock className='h-4 w-4' /> : <LockOpen className='h-4 w-4' />}
+          </button>
+        )}
       </div>
-      {error && (
-        <div className='flex items-center gap-1 text-xs text-red-600'>
-          <MdError className='h-3 w-3' />
+      {error ? (
+        <div id={errorId} className='glossa-metadata-error' role='alert'>
+          <CircleAlert className='h-3 w-3 shrink-0' />
           <span>{error}</span>
         </div>
+      ) : (
+        <SourceIndicator source={fieldSources[field]} />
       )}
-      {!error && <SourceIndicator source={source} />}
     </div>
   );
 };

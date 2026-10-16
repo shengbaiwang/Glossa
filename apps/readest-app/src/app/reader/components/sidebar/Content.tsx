@@ -11,6 +11,8 @@ import 'overlayscrollbars/overlayscrollbars.css';
 import TOCView from './TOCView';
 import BookmarkView from './BookmarkView';
 import TabNavigation from './TabNavigation';
+import PDFTools from './PDFTools';
+import { supportsLocalPDF } from '@/services/pdfEnhancement';
 
 const SidebarContent: React.FC<{
   renderNavigation?: (tabs: React.ReactNode) => React.ReactNode;
@@ -51,6 +53,9 @@ const SidebarContent: React.FC<{
         aria-labelledby={`${tabId}-tab-${activeTab}`}
         tabIndex={0}
       >
+        {bookDoc.getPDFText && supportsLocalPDF() && (
+          <PDFTools key={sideBarBookKey} bookDoc={bookDoc} bookKey={sideBarBookKey} />
+        )}
         {isSearchBarVisible ? (
           children
         ) : (

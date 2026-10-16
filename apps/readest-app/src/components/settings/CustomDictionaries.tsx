@@ -50,7 +50,7 @@ import {
   isValidUrlTemplate,
 } from '@/services/dictionaries/webSearchTemplates';
 import SubPageHeader from './SubPageHeader';
-import { BoxedList, SettingsRow, SettingsSelect, Tips } from './primitives';
+import { BoxedList, SettingsRow, SettingsSelect } from './primitives';
 
 /** Dictionary popup font-size multipliers, surfaced as percentages (#4443). */
 const FONT_SCALE_OPTIONS = [
@@ -793,13 +793,7 @@ const CustomDictionaries: React.FC<CustomDictionariesProps> = ({ onBack }) => {
         </div>
       </div>
 
-      <BoxedList
-        className='mt-4'
-        title={_('Appearance')}
-        description={_(
-          'Sets the text size of dictionary results, independent of the reading view.',
-        )}
-      >
+      <BoxedList className='mt-4' title={_('Appearance')}>
         <SettingsRow label={_('Font Size')}>
           <SettingsSelect
             value={String(settings.fontScale ?? 1)}
@@ -902,15 +896,6 @@ const CustomDictionaries: React.FC<CustomDictionariesProps> = ({ onBack }) => {
         </div>
       )}
 
-      <Tips className='mt-4'>
-        <li>{_('StarDict bundles need .ifo, .idx, and .dict.dz files (.syn optional).')}</li>
-        <li>{_('MDict bundles use .mdx files; companion .mdd and .css files are optional.')}</li>
-        <li>{_('DICT bundles need a .index file and a .dict.dz file.')}</li>
-        <li>{_('Slob bundles need a .slob file.')}</li>
-        <li>{_('Babylon dictionaries are single .bgl files.')}</li>
-        <li>{_('Select all the bundle files together when importing.')}</li>
-      </Tips>
-
       {/* Add / edit web-search modal. Lightweight inline `<dialog>` (daisyUI
           modal classes); the heavier `Dialog.tsx` is overkill for a 2-field
           form. */}
@@ -942,9 +927,6 @@ const CustomDictionaries: React.FC<CustomDictionariesProps> = ({ onBack }) => {
                     setWebModal((m) => (m ? { ...m, urlTemplate: e.target.value } : m))
                   }
                 />
-                <span className='label-text-alt text-base-content/60 mt-1 text-xs'>
-                  {_('Use %WORD% where the looked-up word should appear.')}
-                </span>
               </label>
             </div>
             <div className='modal-action'>

@@ -19,7 +19,9 @@ import type { SystemSettings } from '@/types/settings';
  * carries stale globals. Only `globalViewSettings` / `globalReadSettings` —
  * the truly-global objects edited in the Settings dialog — are synced; every
  * device/window-local field (filesystem paths, `lastOpenBooks`, sync cursors,
- * screen brightness, ...) is left untouched on the receiving window.
+ * screen brightness, ...) is left untouched on the receiving window. Explicit
+ * folder mutations also broadcast their catalog so reader windows retain it
+ * when they next save settings; routine broadcasts never include that catalog.
  */
 export const SETTINGS_SYNC_EVENT = 'global-settings-window-sync';
 
@@ -62,6 +64,8 @@ export interface SettingsSyncPayload {
    * revert someone else's switch.
    */
   cloudSyncProviders?: CloudSyncProviderFlags;
+  /** Only included after an explicit folder mutation; routine stale saves never broadcast it. */
+  libraryFolders?: string[];
 }
 
 /**
@@ -72,7 +76,7 @@ export const mergeSyncedGlobalSettings = (
   local: SystemSettings,
   payload: Pick<
     SettingsSyncPayload,
-    'globalViewSettings' | 'globalReadSettings' | 'cloudSyncProviders'
+    'globalViewSettings' | 'globalReadSettings' | 'cloudSyncProviders' | 'libraryFolders'
   >,
 ): SystemSettings => {
   const merged: SystemSettings = {
@@ -80,6 +84,7 @@ export const mergeSyncedGlobalSettings = (
     globalViewSettings: payload.globalViewSettings,
     globalReadSettings: payload.globalReadSettings,
   };
+  if (payload.libraryFolders) merged.libraryFolders = payload.libraryFolders;
   if (payload.cloudSyncProviders) {
     merged.webdav = { ...local.webdav, ...payload.cloudSyncProviders.webdav };
     merged.googleDrive = { ...local.googleDrive, ...payload.cloudSyncProviders.googleDrive };
@@ -108,7 +113,7 @@ export const mergeSyncedGlobalSettings = (
  */
 export const broadcastGlobalSettings = async (
   settings: SystemSettings,
-  opts: { includeCloudSyncProviders?: boolean } = {},
+  opts: { includeCloudSyncProviders?: boolean; includeLibraryFolders?: boolean } = {},
 ): Promise<void> => {
   if (!isTauriAppPlatform()) return;
   if (!settings.globalViewSettings || !settings.globalReadSettings) return;
@@ -118,6 +123,7 @@ export const broadcastGlobalSettings = async (
       globalViewSettings: settings.globalViewSettings,
       globalReadSettings: settings.globalReadSettings,
     };
+    if (opts.includeLibraryFolders) payload.libraryFolders = settings.libraryFolders ?? [];
     if (opts.includeCloudSyncProviders) {
       payload.cloudSyncProviders = {
         webdav: {

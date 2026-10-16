@@ -499,9 +499,6 @@ const LibrarySearchResults = ({
           !displayedQueryIssue && (
             <div className='flex flex-col items-center gap-1 py-16 text-center' role='status'>
               <p className='text-base-content/70 text-sm font-medium'>{_('No results found')}</p>
-              <p className='text-base-content/50 text-xs'>
-                {_('Try a different term or search mode')}
-              </p>
             </div>
           )}
       </div>

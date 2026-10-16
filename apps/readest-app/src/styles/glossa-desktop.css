@@ -64,6 +64,10 @@
     gap: 4px;
   }
 
+  .glossa-library-sidebar-open .glossa-library-toolbar-settings {
+    display: none;
+  }
+
   .glossa-library-actions .glossa-icon-button {
     width: 32px;
     height: 32px;
@@ -79,49 +83,84 @@
   }
 
   .glossa-library-navigation {
+    --glossa-icon-navigation: 18px;
     display: flex;
     flex: 0 0 208px;
     flex-direction: column;
-    gap: 3px;
     padding: 22px 12px;
-    overflow-y: auto;
+    overflow: hidden;
     border-inline-end: 1px solid var(--glossa-border);
     background: var(--glossa-wash);
+  }
+
+  .glossa-library-navigation-categories {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .glossa-library-navigation-section {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    gap: 3px;
+  }
+
+  .glossa-library-navigation-footer {
+    margin-block-start: auto;
+    padding-block-start: 16px;
+    flex-shrink: 0;
+  }
+
+  .glossa-library-settings-button {
+    width: 100%;
   }
 
   .glossa-library-navigation h2 {
     padding: 0 10px 7px;
     color: var(--glossa-muted);
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 500;
   }
 
   .glossa-library-navigation button {
     display: flex;
-    min-height: 34px;
+    min-height: 36px;
     flex-shrink: 0;
     align-items: center;
     gap: 10px;
     padding: 7px 10px;
     border: 1px solid transparent;
-    border-radius: var(--glossa-radius-navigation);
+    border-radius: 7px;
     color: var(--glossa-ink);
     text-align: start;
     font-size: 13px;
+    font-weight: 400;
     line-height: 1.4;
   }
 
   .glossa-library-navigation button svg {
     flex-shrink: 0;
+    color: var(--glossa-muted);
   }
 
   .glossa-library-navigation button:hover {
     background: var(--glossa-surface);
   }
 
+  html[data-page='library'] .glossa-library-navigation button:focus-visible {
+    outline-offset: -2px;
+  }
+
   .glossa-library-navigation button[aria-current='page'] {
-    background: theme('colors.base-content / 0.09');
-    font-weight: 600;
+    background: theme('colors.base-content / 0.07');
+    font-weight: 500;
+  }
+
+  .glossa-library-navigation button[aria-current='page'] svg {
+    color: var(--glossa-ink);
   }
 
   .glossa-bookshelf {
@@ -163,10 +202,6 @@
     letter-spacing: -0.6px;
   }
 
-  .glossa-library-empty p {
-    line-height: 1.6;
-  }
-
   .glossa-reader-header,
   .glossa-reader-header :is(.header-tools-start, .header-tools-end, .header-title),
   .glossa-reader-panel-header {
@@ -199,5 +234,97 @@
   [data-eink='true'] .glossa-reader-toc-item[aria-current='page'] {
     border-color: var(--glossa-ink);
     background: var(--glossa-surface);
+  }
+}
+
+@media (min-width: 900px) and (pointer: coarse) {
+  .glossa-library-navigation button {
+    min-height: 44px;
+  }
+}
+
+@media (min-width: 900px) {
+  .glossa-library-my-folders h2 {
+    padding: 0;
+  }
+
+  .glossa-library-navigation .glossa-library-folders-heading {
+    min-height: 30px;
+    width: 100%;
+    padding-block: 4px 7px;
+    color: var(--glossa-muted);
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .glossa-library-folder-row {
+    display: flex;
+    flex-wrap: wrap;
+    min-width: 0;
+    align-items: center;
+  }
+
+  .glossa-library-folder-link {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .glossa-library-folder-link span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .glossa-library-navigation .glossa-library-folder-action {
+    width: 25px;
+    min-height: 36px;
+    justify-content: center;
+    padding: 3px;
+    visibility: hidden;
+  }
+
+  .glossa-library-folder-row:hover > .glossa-library-folder-action,
+  .glossa-library-folder-row:focus-within > .glossa-library-folder-action {
+    visibility: visible;
+  }
+
+  .glossa-library-navigation .glossa-library-new-folder {
+    color: var(--glossa-muted);
+    font-size: 12px;
+  }
+
+  .glossa-library-my-folders .glossa-folder-name-editor {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .glossa-library-my-folders .glossa-folder-name-editor button {
+    min-width: 26px;
+    padding: 3px;
+  }
+
+  .glossa-library-navigation button[data-drop-target],
+  .glossa-library-navigation button[data-external-drop] {
+    outline: 1px solid var(--glossa-ink);
+    outline-offset: -2px;
+    background: var(--glossa-surface);
+  }
+
+  [data-eink='true'] .glossa-library-folder-action {
+    visibility: visible;
+  }
+}
+
+@media (min-width: 900px) and (pointer: coarse) {
+  .glossa-library-navigation .glossa-library-folders-heading,
+  .glossa-library-navigation .glossa-library-folder-action,
+  .glossa-library-my-folders .glossa-folder-name-editor button {
+    min-height: 44px;
+  }
+
+  .glossa-library-navigation .glossa-library-folder-action,
+  .glossa-library-my-folders .glossa-folder-name-editor button {
+    min-width: 44px;
+    visibility: visible;
   }
 }

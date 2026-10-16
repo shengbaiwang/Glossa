@@ -51,11 +51,6 @@ describe('model service settings', () => {
     await screen.findByText('Model service saved.');
     expect(mocks.save).toHaveBeenCalledWith(mocks.active, 'synthetic-secret');
     expect(input.value).toBe('');
-    expect(
-      screen.getByText(
-        'In the browser, API keys last only for this session. Your service must allow browser connections.',
-      ),
-    ).toBeTruthy();
   });
 
   it('lets a fetched model become the manually editable selected model', async () => {

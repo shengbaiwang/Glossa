@@ -25,6 +25,9 @@ import { useThemeStore } from '@/store/themeStore';
 import { useAutoFocus } from '@/hooks/useAutoFocus';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useLibraryStore } from '@/store/libraryStore';
+import { useLibraryFolders } from '../hooks/useLibraryFolders';
+import FolderToolbar from './FolderToolbar';
+import { folderParent } from '../utils/libraryFolders';
 import { useTranslation } from '@/hooks/useTranslation';
 import { navigateToLibrary, navigateToReader, showReaderWindow } from '@/utils/nav';
 import {
@@ -39,6 +42,7 @@ import {
   expandBookshelfSelection,
   getBookSortValue,
   getGroupSortValue,
+  getLibraryCategoryLabel,
   compareSortValues,
   resolveEffectivePrimarySort,
   resolveEffectiveSecondarySort,
@@ -102,6 +106,7 @@ interface BookshelfProps {
 type BookshelfListContext = {
   autoColumns: boolean;
   fixedColumns: number;
+  listScale: number;
   /**
    * The recently-read shelf, rendered in the Virtuoso header so it scrolls with
    * the shelf content (not sticky). `null` when hidden. Passed through context
@@ -157,14 +162,16 @@ BookshelfGridList.displayName = 'BookshelfGridList';
 
 const BookshelfLinearList: Components<unknown, BookshelfListContext>['List'] = React.forwardRef<
   HTMLDivElement,
-  ListProps
->(({ children, style, 'data-testid': testId }, ref) => (
+  ListProps & { context?: BookshelfListContext }
+>(({ children, style, context, 'data-testid': testId }, ref) => (
   <div
     ref={ref}
     data-testid={testId}
     data-spatial-navigation='collection'
     className={BOOKSHELF_LIST_CLASSES}
-    style={style}
+    style={
+      { ...style, '--glossa-list-scale': (context?.listScale ?? 100) / 100 } as React.CSSProperties
+    }
   >
     {children}
   </div>
@@ -265,6 +272,27 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   // (getSelectedBooks() allocates a fresh array per call).
   const { selectedBooks: selectedBookSet } = useLibraryStore();
   const { getGroupName } = useLibraryStore();
+  const folders = useLibraryFolders();
+  const focusFolder = (path: string) =>
+    requestAnimationFrame(() => {
+      const card = [
+        ...(autofocusRef.current?.querySelectorAll<HTMLElement>('[data-group-name]') ?? []),
+      ].find((element) => element.dataset['groupName'] === path);
+      (
+        card ??
+        autofocusRef.current?.querySelector<HTMLButtonElement>('.glossa-folder-toolbar button')
+      )?.focus();
+    });
+  const createFolder = async (parent: string, name: string) => {
+    const path = await folders.create(parent, name);
+    if (path) focusFolder(path);
+    return path;
+  };
+  const renameFolder = async (path: string, name: string) => {
+    const saved = await folders.rename(path, name);
+    if (saved) focusFolder([folderParent(path), name.trim()].filter(Boolean).join('/'));
+    return saved;
+  };
 
   const uiLanguage = localStorage?.getItem('i18nextLng') || '';
 
@@ -283,7 +311,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       if (params.get('sort') === LibrarySortByType.Updated) params.delete('sort');
       if (params.get('order') === 'desc') params.delete('order');
       if (params.get('thenOrder') === 'asc') params.delete('thenOrder');
-      if (params.get('groupBy') === LibraryGroupByType.Group) params.delete('groupBy');
+      if (params.get('groupBy') === settings.libraryGroupBy) params.delete('groupBy');
       if (params.get('cover') === 'crop') params.delete('cover');
       if (params.get('view') === 'grid') params.delete('view');
 
@@ -294,7 +322,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
         navigateToLibrary(router, newParamString);
       }
     },
-    [router, searchParams],
+    [router, searchParams, settings.libraryGroupBy],
   );
 
   const filteredBooks = useMemo(() => {
@@ -319,20 +347,24 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       if (groupId && !manualGroupName) {
         return [];
       }
-      return generateBookshelfItems(filteredShelfBooks, groupName);
+      return generateBookshelfItems(filteredShelfBooks, groupName, queryTerm ? [] : folders.paths);
     } else {
       if (groupId) return filteredShelfBooks;
       return createBookGroups(filteredShelfBooks, groupBy);
     }
-  }, [filteredShelfBooks, groupBy, groupId, manualGroupName]);
+  }, [filteredShelfBooks, groupBy, groupId, manualGroupName, queryTerm, folders.paths]);
 
   useEffect(() => {
-    if (groupId && currentShelfBooks.length === 0) {
+    if (
+      groupId &&
+      currentShelfBooks.length === 0 &&
+      !(groupBy === LibraryGroupByType.Group && manualGroupName)
+    ) {
       updateUrlParams({ group: null });
     } else {
       updateUrlParams({});
     }
-  }, [searchParams, groupId, currentShelfBooks.length, updateUrlParams]);
+  }, [searchParams, groupId, groupBy, manualGroupName, currentShelfBooks.length, updateUrlParams]);
 
   const sortedBookshelfItems = useMemo(() => {
     const sortOrderMultiplier = sortOrder === 'asc' ? 1 : -1;
@@ -506,7 +538,22 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     setShowSelectModeActions(true);
   };
 
-  const deleteSelectedBooks = () => {
+  const deleteSelectedBooks = async () => {
+    const selection = getSelectedBooks();
+    const selectedItems = sortedBookshelfItems.filter((item) =>
+      selection.includes('hash' in item ? item.hash : item.id),
+    );
+    if (
+      groupBy === LibraryGroupByType.Group &&
+      selectedItems.length > 0 &&
+      selectedItems.every((item) => 'books' in item && item.books.length === 0)
+    ) {
+      for (const item of selectedItems) {
+        if (!('books' in item) || !(await folders.remove(item.name))) return;
+      }
+      handleSetSelectMode(false);
+      return;
+    }
     // Expand any group ids in the selection into the book hashes they
     // visually represent — `generateBookshelfItems` rolls nested-folder
     // books into the parent group, and we want every one of them queued
@@ -845,18 +892,26 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     () => ({
       autoColumns: settings.libraryAutoColumns,
       fixedColumns: settings.libraryColumns,
+      listScale: settings.libraryListScale ?? 100,
       recentShelfHeader,
       collectionTitle: queryTerm ? _('Search Results') : groupId ? _('Books') : _('All books'),
       collectionCount: _('{{count}} books', { count: currentShelfBooks.length }),
-      libraryTitle: !groupId && !queryTerm ? _('Your Library') : null,
+      libraryTitle:
+        !groupId && !queryTerm
+          ? groupBy === LibraryGroupByType.None
+            ? _('Your Library')
+            : _(getLibraryCategoryLabel(groupBy))
+          : null,
       footerHeight,
     }),
     [
       settings.libraryAutoColumns,
       settings.libraryColumns,
+      settings.libraryListScale,
       recentShelfHeader,
       queryTerm,
       groupId,
+      groupBy,
       currentShelfBooks.length,
       _,
       footerHeight,
@@ -900,6 +955,8 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           setLoading={setLoading}
           toggleSelection={toggleSelection}
           handleGroupBooks={groupSelectedBooks}
+          handleRenameFolder={groupBy === LibraryGroupByType.Group ? renameFolder : undefined}
+          handleRemoveFolder={groupBy === LibraryGroupByType.Group ? folders.remove : undefined}
           handleBookUpload={handleBookUpload}
           handleBookDownload={handleBookDownload}
           handleBookDelete={handleBookDelete}
@@ -933,6 +990,9 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       handleLibraryNavigation,
       handleUpdateReadingStatus,
       showTimeRemaining,
+      groupBy,
+      renameFolder,
+      folders.remove,
     ],
   );
 
@@ -956,6 +1016,9 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       aria-label={_('Bookshelf')}
       className='bookshelf glossa-bookshelf flex min-h-0 flex-grow flex-col focus:outline-none'
     >
+      {groupBy === LibraryGroupByType.Group && !queryTerm && (
+        <FolderToolbar parent={manualGroupName || ''} {...folders} create={createFolder} />
+      )}
       {!contentSearch?.query.trim() && queryTerm && (
         <div className='flex shrink-0 justify-center px-4 pb-2'>
           <button
@@ -989,11 +1052,29 @@ const Bookshelf: React.FC<BookshelfProps> = ({
         // WebKit when a search was cleared.
         <div ref={osRootRef} data-overlayscrollbars-initialize='' className='min-h-0 flex-1'>
           {!hasItems && (
-            <div className='glossa-library-no-results' role='status'>
-              <SearchX size={28} aria-hidden='true' />
-              <h2>{_('No books found')}</h2>
-              <p>{_('Try another title or author.')}</p>
-            </div>
+            <>
+              <BookshelfHeader context={listContext} />
+              <div className='glossa-library-no-results' role='status'>
+                <SearchX size={28} aria-hidden='true' />
+                <h2>
+                  {_(
+                    groupBy === LibraryGroupByType.Group && !queryTerm
+                      ? 'This folder is empty'
+                      : 'No books found',
+                  )}
+                </h2>
+                {groupBy === LibraryGroupByType.Group && !queryTerm && (
+                  <button
+                    type='button'
+                    className='glossa-folder-action'
+                    onClick={(event) => handleImportBooks(event.currentTarget)}
+                  >
+                    <Plus size={18} />
+                    {_('Import Books')}
+                  </button>
+                )}
+              </div>
+            </>
           )}
           {!contentSearch?.query.trim() && hasItems && isGridMode && (
             <VirtuosoGrid<unknown, BookshelfListContext>
@@ -1055,7 +1136,11 @@ const Bookshelf: React.FC<BookshelfProps> = ({
         <ModalPortal>
           <GroupingModal
             libraryBooks={libraryBooks}
-            selectedBooks={selectedBooks}
+            selectedBooks={
+              groupBy === LibraryGroupByType.Group
+                ? selectedBooks
+                : expandBookshelfSelection(selectedBooks, sortedBookshelfItems)
+            }
             parentGroupName={getGroupName(groupId) || ''}
             onCancel={() => {
               setShowGroupingModal(false);

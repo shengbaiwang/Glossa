@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pdf-save-outline"
+description = "Enables the pdf_save_outline command without any pre-configured scope."
+commands.allow = ["pdf_save_outline"]
+
+[[permission]]
+identifier = "deny-pdf-save-outline"
+description = "Denies the pdf_save_outline command without any pre-configured scope."
+commands.deny = ["pdf_save_outline"]

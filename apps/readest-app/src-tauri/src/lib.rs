@@ -32,6 +32,7 @@ mod macos;
 mod mobi_parser;
 mod nightly_update;
 mod parser_common;
+mod pdf_enhancement;
 mod range_file;
 mod sentry_config;
 #[cfg(desktop)]
@@ -435,6 +436,12 @@ pub fn run() {
             epub_parser::parse_epub_full,
             mobi_parser::parse_mobi_metadata,
             mobi_parser::extract_mobi_cover_full,
+            pdf_enhancement::pdf_open_cache,
+            pdf_enhancement::pdf_read_ocr_page,
+            pdf_enhancement::pdf_start_ocr,
+            pdf_enhancement::pdf_ocr_status,
+            pdf_enhancement::pdf_cancel_ocr,
+            pdf_enhancement::pdf_save_outline,
             #[cfg(target_os = "macos")]
             macos::safari_auth::auth_with_safari,
             #[cfg(target_os = "macos")]
@@ -769,6 +776,9 @@ pub fn run() {
         .run(
             #[allow(unused_variables)]
             |app_handle, event| {
+                if matches!(event, tauri::RunEvent::Exit) {
+                    pdf_enhancement::stop();
+                }
                 #[cfg(target_os = "macos")]
                 match event {
                     tauri::RunEvent::Opened { urls } => {

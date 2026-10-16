@@ -236,12 +236,18 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
           isOpen={isOpen}
           onClose={handleClose}
           boxClassName={clsx(
-            editMode ? 'sm:min-w-[600px] sm:max-w-[600px]' : 'sm:min-w-[480px] sm:max-w-[480px]',
-            'sm:h-auto sm:max-h-[90%]',
+            editMode
+              ? 'glossa-metadata-dialog'
+              : 'sm:min-w-[480px] sm:max-w-[480px] sm:h-auto sm:max-h-[90%]',
           )}
-          contentClassName='!px-6 !py-4'
+          contentClassName={editMode ? 'glossa-metadata-dialog-body' : '!px-6 !py-4'}
         >
-          <div className='flex w-full select-text items-start justify-center'>
+          <div
+            className={clsx(
+              'flex w-full select-text justify-center',
+              editMode ? 'min-h-0 flex-1' : 'items-start',
+            )}
+          >
             {editMode && bookMeta ? (
               <BookDetailEdit
                 book={book}

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { Book } from '@/types/book';
 import { BookMetadata } from '@/libs/document';
@@ -29,15 +29,6 @@ vi.mock('@/app/library/components/BookItem', () => ({
 }));
 
 import RecentShelf from '@/app/library/components/RecentShelf';
-
-// jsdom has no ResizeObserver; the shelf only uses it to place scroll arrows.
-beforeEach(() => {
-  global.ResizeObserver = class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  } as unknown as typeof ResizeObserver;
-});
 
 afterEach(() => {
   cleanup();

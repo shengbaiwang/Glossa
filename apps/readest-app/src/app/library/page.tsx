@@ -85,6 +85,8 @@ import { MigrateDataWindow } from './components/MigrateDataWindow';
 import { BackupWindow } from './components/BackupWindow';
 import { CacheManagerWindow } from './components/CacheManagerWindow';
 import { useDragDropImport } from './hooks/useDragDropImport';
+import { useLibraryFolders } from './hooks/useLibraryFolders';
+import { droppedFolderPath } from './utils/libraryDragDrop';
 import { useTransferQueue } from '@/hooks/useTransferQueue';
 import { useAppRouter } from '@/hooks/useAppRouter';
 import { Toast } from '@/components/Toast';
@@ -194,6 +196,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     setLibrary,
     getGroupId,
     getGroupName,
+    refreshGroups,
     checkOpenWithBooks,
     checkLastOpenBooks,
     setCheckOpenWithBooks,
@@ -352,6 +355,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   useLibraryFileSync();
 
   const { isDragging } = useDragDropImport();
+  const folders = useLibraryFolders();
 
   usePullToRefresh(
     scrollRef,
@@ -520,20 +524,34 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appService, envConfig]);
 
-  const handleImportBookFiles = useCallback(async (event: CustomEvent) => {
-    const selectedFiles: SelectedFile[] = event.detail.files;
-    const groupId: string = event.detail.groupId || '';
-    if (selectedFiles.length === 0) return;
-    await importBooks(selectedFiles, groupId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const handleImportBookFiles = useCallback(
+    async (event: CustomEvent) => {
+      const selectedFiles: SelectedFile[] = event.detail.files;
+      const groupId: string | undefined = event.detail.groupId;
+      const importedFolders: string[] = event.detail.folders ?? [];
+      if (importedFolders.length && !(await folders.ensure(importedFolders))) {
+        eventDispatcher.dispatch('toast', {
+          type: 'error',
+          message: _('Unable to save folders. Please try again.'),
+        });
+        return;
+      }
+      if (!selectedFiles?.length) return;
+      await importBooks(selectedFiles, groupId);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [appService, envConfig],
+  );
 
-  const handleImportBookDirectory = useCallback(async (event: CustomEvent) => {
-    const dirPath: string | undefined = event.detail?.path;
-    if (!dirPath) return;
-    await handleImportBooksFromDirectory(dirPath);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const handleImportBookDirectory = useCallback(
+    async (event: CustomEvent) => {
+      const dirPath: string | undefined = event.detail?.path;
+      if (!dirPath) return;
+      await handleImportBooksFromDirectory(dirPath, event.detail?.destination);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [appService, envConfig],
+  );
 
   useEffect(() => {
     eventDispatcher.on('import-book-files', handleImportBookFiles);
@@ -723,7 +741,11 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     const group = searchParams?.get('group') || '';
     const groupName = getGroupName(group);
     setCurrentGroupPath(groupName);
-  }, [libraryBooks, searchParams, getGroupName]);
+  }, [libraryBooks, searchParams, getGroupName, settings.libraryFolders]);
+
+  useEffect(() => {
+    refreshGroups();
+  }, [settings.libraryFolders, refreshGroups]);
 
   useEffect(() => {
     if (
@@ -848,7 +870,10 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         // import instead of moving the book to the root.
         let resolvedGroupId = groupId;
         let resolvedGroupName = groupId !== undefined ? getGroupName(groupId) : undefined;
-        if (resolvedGroupId === undefined && path && basePath) {
+        if (resolvedGroupId === undefined && selectedFile.groupName !== undefined) {
+          resolvedGroupName = selectedFile.groupName;
+          resolvedGroupId = resolvedGroupName ? getGroupId(resolvedGroupName) : '';
+        } else if (resolvedGroupId === undefined && path && basePath) {
           resolvedGroupName = getFolderImportGroupName(path, basePath);
           resolvedGroupId = getGroupId(resolvedGroupName);
         }
@@ -1222,7 +1247,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // (with its own progress/cancel UI) — from here on the built file takes
   // exactly the local-file import path, same as a clipped page.
 
-  const handleImportBooksFromDirectory = async (dirPath?: string) => {
+  const handleImportBooksFromDirectory = async (dirPath?: string, destination?: string) => {
     if (!appService || !isTauriAppPlatform()) return;
 
     setIsSelectMode(false);
@@ -1232,24 +1257,27 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     // the dialog. Manual menu invocations always go through the dialog
     // so users can pick formats and a size threshold before scanning.
     if (dirPath) {
-      await runFolderImport({
-        directory: dirPath,
-        extensions: SUPPORTED_BOOK_EXTS.slice(),
-        // The non-dialog path is invoked by URL ingress / drag-drop
-        // replay, where the user never picked any filter — keep the
-        // synthetic values minimal and non-restrictive.
-        selectedGroupIds: [],
-        minSizeKB: 0,
-        flatten: false,
-        // URL ingress / drag-drop don't go through the dialog and so
-        // can't set this. Default to the legacy "copy" behaviour;
-        // already-registered external roots will still be detected
-        // by `runFolderImport` itself via the prefix check, so books
-        // under a registered folder are imported in-place either way.
-        readInPlace: false,
-        // Non-dialog path never opts into auto-import.
-        autoImport: false,
-      });
+      await runFolderImport(
+        {
+          directory: dirPath,
+          extensions: SUPPORTED_BOOK_EXTS.slice(),
+          // The non-dialog path is invoked by URL ingress / drag-drop
+          // replay, where the user never picked any filter — keep the
+          // synthetic values minimal and non-restrictive.
+          selectedGroupIds: [],
+          minSizeKB: 0,
+          flatten: false,
+          // URL ingress / drag-drop don't go through the dialog and so
+          // can't set this. Default to the legacy "copy" behaviour;
+          // already-registered external roots will still be detected
+          // by `runFolderImport` itself via the prefix check, so books
+          // under a registered folder are imported in-place either way.
+          readInPlace: false,
+          // Non-dialog path never opts into auto-import.
+          autoImport: false,
+        },
+        destination,
+      );
       return;
     }
 
@@ -1524,7 +1552,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
    *               actually reseats them. Dropping basePath in flatten
    *               mode is therefore belt-and-suspenders.
    */
-  const runFolderImport = async (result: ImportFromFolderResult) => {
+  const runFolderImport = async (result: ImportFromFolderResult, dropDestination?: string) => {
     if (!appService || !result.directory) return;
     // Last-chance sanity check. The dialog's own pickImportDirectory
     // already validates fresh picks, but `result.directory` can also
@@ -1607,7 +1635,42 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     }));
     // Same mapping the auto-import scan uses, so a folder's later scans group
     // newly-found books exactly like this import does.
-    const toImportFiles = toWatchedFolderImports(result.directory, entries, result.flatten);
+    const toImportFiles: SelectedFile[] = toWatchedFolderImports(
+      result.directory,
+      entries,
+      result.flatten,
+    );
+    if (dropDestination !== undefined) {
+      try {
+        const root = droppedFolderPath(
+          getFilename(result.directory.replace(/[\\/]+$/, '')),
+          dropDestination,
+        );
+        for (const file of toImportFiles) {
+          file.groupName = droppedFolderPath(
+            getFolderImportGroupName(file.path!, result.directory),
+            dropDestination,
+          );
+        }
+        if (!(await folders.ensure([root, ...toImportFiles.map((file) => file.groupName!)]))) {
+          eventDispatcher.dispatch('toast', {
+            type: 'error',
+            message: _('Unable to save folders. Please try again.'),
+          });
+          return;
+        }
+      } catch (error) {
+        eventDispatcher.dispatch('toast', {
+          type: 'error',
+          message: _(
+            error instanceof Error && error.message === 'Folders support two levels'
+              ? 'Folders support two levels'
+              : 'Invalid folder name',
+          ),
+        });
+        return;
+      }
+    }
     if (toImportFiles.length === 0) {
       eventDispatcher.dispatch('toast', {
         type: 'info',
@@ -1620,7 +1683,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     // preserving structure we leave groupId undefined so importBooks
     // derives nested groupNames from each file's basePath.
     const targetGroupId = result.flatten ? searchParams?.get('group') || '' : undefined;
-    importBooks(toImportFiles, targetGroupId);
+    await importBooks(toImportFiles, targetGroupId);
   };
 
   const handleSetSelectMode = (selectMode: boolean) => {
@@ -1869,7 +1932,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
             />
           )}
           {showBookshelf &&
-            (libraryBooks.some((book) => !book.deletedAt) ? (
+            (libraryBooks.some((book) => !book.deletedAt) ||
+            ensureLibraryGroupByType(searchParams?.get('groupBy'), settings.libraryGroupBy) ===
+              LibraryGroupByType.Group ? (
               <div aria-label={_('Your Bookshelf')} className='flex min-h-0 flex-grow flex-col'>
                 <div
                   ref={containerRef}

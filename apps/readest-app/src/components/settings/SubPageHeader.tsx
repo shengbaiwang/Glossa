@@ -8,8 +8,8 @@ interface SubPageHeaderProps {
   /** Label of the current sub-page. */
   currentLabel: string;
   /**
-   * One-line explanation of what this sub-page does. Required by DESIGN.md §2.8
-   * for every sub-page; skip only when the breadcrumb already says everything.
+   * Optional operational status or necessary limitation. Do not repeat the
+   * breadcrumb with a standing explanation of what this sub-page does.
    * Accepts ReactNode so callers can embed `<a>` links etc.
    */
   description?: React.ReactNode;

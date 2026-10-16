@@ -14,7 +14,6 @@ import { CustomFont, mountCustomFont } from '@/styles/fonts';
 import { DEFAULT_BOOK_FONT } from '@/services/constants';
 import { isRemovedReadingFont } from '@/styles/readingFonts';
 import { queueReplicaBinaryUpload } from '@/services/sync/replicaBinaryUpload';
-import { Tips } from './primitives';
 
 interface CustomFontsProps {
   bookKey: string;
@@ -297,10 +296,6 @@ const CustomFonts: React.FC<CustomFontsProps> = ({ bookKey, onBack }) => {
           {fontError}
         </p>
       )}
-      <Tips className='mt-6'>
-        <li>{_('Supported font formats: .ttf, .otf, .woff, .woff2')}</li>
-        <li>{_('Custom fonts can be selected from the Font Face menu')}</li>
-      </Tips>
     </div>
   );
 };

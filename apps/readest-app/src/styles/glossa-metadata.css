@@ -1,0 +1,254 @@
+/* Metadata edits share the paper/ink form vocabulary. Only the fields scroll;
+   the dialog header and final actions stay in view. */
+.glossa-metadata-dialog.modal-box {
+  background: var(--glossa-surface);
+  color: var(--glossa-ink);
+}
+.glossa-metadata-dialog .glossa-metadata-dialog-body {
+  display: flex;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.glossa-metadata-editor {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  color: var(--glossa-ink);
+  font-size: var(--glossa-text-body);
+  line-height: var(--glossa-leading-ui);
+}
+.glossa-metadata-scroll {
+  min-height: 0;
+  padding: 16px var(--glossa-inset-dialog) 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.glossa-metadata-overview {
+  display: grid;
+  grid-template-columns: 144px minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+  margin-block-end: var(--glossa-space-section);
+}
+.glossa-metadata-cover,
+.glossa-metadata-title-fields,
+.glossa-metadata-fields {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+.glossa-metadata-cover {
+  gap: 8px;
+}
+.glossa-metadata-cover-preview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 28 / 41;
+  overflow: hidden;
+  border: 1px solid var(--glossa-border);
+  border-radius: 5px;
+  background: var(--glossa-wash);
+}
+.glossa-metadata-cover-preview:disabled {
+  cursor: default;
+}
+.glossa-metadata-cover-actions,
+.glossa-metadata-lock-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+}
+.glossa-metadata-cover-actions .glossa-metadata-replace {
+  min-width: 0;
+  min-height: 32px;
+  padding: 4px;
+  gap: 4px;
+  font-size: var(--glossa-text-caption);
+}
+.glossa-metadata-cover-actions .glossa-icon-button {
+  flex-shrink: 0;
+}
+.glossa-metadata-remove:not(:disabled) {
+  color: theme('colors.error');
+}
+.glossa-metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.glossa-metadata-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+.glossa-metadata-field > label {
+  width: fit-content;
+  font-weight: var(--glossa-weight-label);
+}
+.glossa-metadata-required {
+  color: var(--glossa-muted);
+}
+.glossa-metadata-control {
+  position: relative;
+  min-width: 0;
+}
+.glossa-metadata-input {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+}
+.glossa-metadata-input.has-lock {
+  padding-inline-end: 42px;
+}
+textarea.glossa-metadata-input {
+  min-height: 112px;
+  resize: vertical;
+}
+.glossa-metadata-field .glossa-metadata-lock {
+  position: absolute;
+  inset-block-start: 4px;
+  inset-inline-end: 4px;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-radius: 6px;
+  color: var(--glossa-muted);
+}
+.glossa-metadata-field[data-locked='true'] .glossa-metadata-lock {
+  color: var(--glossa-ink);
+}
+/* A locked value stays legible; the lock glyph and quiet wash convey the state. */
+.glossa-metadata-field[data-locked='true'] .glossa-metadata-input:disabled {
+  background: var(--glossa-wash);
+  color: var(--glossa-ink);
+  -webkit-text-fill-color: var(--glossa-ink);
+  opacity: 1;
+}
+.glossa-metadata-error,
+.glossa-metadata-source {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: var(--glossa-text-caption);
+  overflow-wrap: anywhere;
+}
+.glossa-metadata-error {
+  color: theme('colors.error');
+}
+.glossa-metadata-source {
+  justify-content: flex-end;
+}
+.glossa-metadata-source svg {
+  flex-shrink: 0;
+  align-self: center;
+}
+.glossa-metadata-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block-start: 20px;
+}
+.glossa-metadata-tools > .glossa-button {
+  padding-inline: 10px;
+  margin-inline-start: -10px;
+}
+.glossa-metadata-footer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px var(--glossa-inset-dialog) max(16px, env(safe-area-inset-bottom));
+  border-block-start: 1px solid var(--glossa-border);
+  background: var(--glossa-surface);
+}
+.glossa-metadata-editor .glossa-button {
+  min-height: 36px;
+  padding-block: 7px;
+  border-radius: var(--glossa-radius-nested);
+  font-size: inherit;
+}
+.glossa-metadata-footer > .glossa-button {
+  padding-inline: 10px;
+  margin-inline-start: -10px;
+}
+@media (min-width: 640px) {
+  .glossa-metadata-dialog.modal-box {
+    width: min(680px, calc(100vw - 48px));
+    min-width: 0;
+    max-width: none;
+    height: min(820px, 90dvh);
+    max-height: 90dvh;
+  }
+}
+@media (max-width: 639px) {
+  .glossa-metadata-overview {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+  .glossa-metadata-cover {
+    width: 144px;
+    margin-inline: auto;
+  }
+  .glossa-metadata-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .glossa-metadata-scroll {
+    padding-inline: 20px;
+  }
+  .glossa-metadata-footer {
+    padding-inline: 20px;
+  }
+}
+@media (hover: hover) and (pointer: fine) {
+  .glossa-metadata-field:not([data-locked='true']) .glossa-metadata-lock {
+    opacity: 0;
+  }
+  .glossa-metadata-field:is(:hover, :focus-within) .glossa-metadata-lock {
+    opacity: 1;
+  }
+}
+@media (pointer: coarse) {
+  .glossa-metadata-dialog .dialog-header button {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+  .glossa-metadata-editor :is(.glossa-button, .glossa-icon-button, .glossa-metadata-input) {
+    min-height: 44px;
+  }
+  .glossa-metadata-editor .glossa-icon-button {
+    width: 44px;
+    height: 44px;
+  }
+  .glossa-metadata-field .glossa-metadata-lock {
+    inset-block-start: 0;
+    inset-inline-end: 0;
+  }
+  .glossa-metadata-input.has-lock {
+    padding-inline-end: 52px;
+  }
+  .glossa-metadata-replace span {
+    display: none;
+  }
+  .glossa-metadata-cover-actions .glossa-metadata-replace {
+    width: 44px;
+  }
+}
+[data-eink='true'] .glossa-metadata-cover-preview {
+  box-shadow: none;
+  border-color: var(--glossa-ink);
+}
+[data-eink='true'] .glossa-metadata-lock {
+  opacity: 1 !important;
+}

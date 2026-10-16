@@ -426,9 +426,13 @@ export interface SystemSettings {
   /** Sort order of the secondary ("Then by") key, independent of `librarySortAscending` (#5119). */
   libraryThenSortAscending: boolean;
   libraryGroupBy: LibraryGroupByType;
+  /** Explicit manual folder paths, including empty folders; book group paths stay compatible. */
+  libraryFolders?: string[];
   libraryCoverFit: LibraryCoverFitType;
   libraryAutoColumns: boolean;
   libraryColumns: number;
+  /** List cover, text and spacing scale in percent; old settings default to 100. */
+  libraryListScale?: number;
   librarySkeuomorphicCovers: boolean;
   /** Show the recently-read carousel at the top of the library (issue #3797). */
   libraryRecentShelfEnabled: boolean;

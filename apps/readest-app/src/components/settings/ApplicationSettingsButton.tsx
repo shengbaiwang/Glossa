@@ -1,9 +1,11 @@
 import React from 'react';
-import { Settings2 } from '@/components/GlossaIcons';
+import { Settings } from '@/components/GlossaIcons';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
 
-const ApplicationSettingsButton: React.FC = () => {
+const ApplicationSettingsButton: React.FC<{ variant?: 'icon' | 'navigation' }> = ({
+  variant = 'icon',
+}) => {
   const _ = useTranslation();
   const { openSettingsDialog, isSettingsDialogOpen, settingsDialogScope } = useSettingsStore();
   return (
@@ -12,10 +14,15 @@ const ApplicationSettingsButton: React.FC = () => {
       aria-expanded={isSettingsDialogOpen && settingsDialogScope === 'application'}
       aria-label={_('Settings')}
       title={_('Settings')}
-      className='touch-target glossa-icon-button'
+      className={
+        variant === 'navigation'
+          ? 'touch-target glossa-library-settings-button'
+          : 'touch-target glossa-icon-button'
+      }
       onClick={() => openSettingsDialog('application')}
     >
-      <Settings2 size={18} aria-hidden='true' />
+      <Settings size={variant === 'navigation' ? 20 : 18} aria-hidden='true' />
+      {variant === 'navigation' && <span>{_('Settings')}</span>}
     </button>
   );
 };

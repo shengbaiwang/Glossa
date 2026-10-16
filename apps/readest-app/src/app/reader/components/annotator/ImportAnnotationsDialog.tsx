@@ -32,10 +32,7 @@ const ImportAnnotationsDialog: React.FC<ImportAnnotationsDialogProps> = ({
       boxClassName='sm:!h-auto sm:!max-h-[90vh] sm:!w-[420px]'
       contentClassName='sm:!px-6'
     >
-      <BoxedList
-        title={_('Import From')}
-        description={_('Import highlights and notes exported from Glossa or another reading app.')}
-      >
+      <BoxedList title={_('Import From')}>
         <NavigationRow
           icon={MdDataObject}
           title={_('Glossa')}

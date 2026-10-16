@@ -4,6 +4,8 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { CustomTheme, Theme, themes } from '@/styles/themes';
 import { md5Fingerprint } from '@/utils/md5';
 import { useSettingsStore } from '@/store/settingsStore';
+import { getLocale } from '@/utils/misc';
+import { getFontPreviewSample } from '@/utils/fontPreview';
 import BoxedList from '../primitives/BoxedList';
 import SettingsRow from '../primitives/SettingsRow';
 import ColorInput from './ColorInput';
@@ -24,6 +26,8 @@ const ThemeEditor: React.FC<ThemeEditorProps> = ({
   onCancel,
 }) => {
   const _ = useTranslation();
+  const sample = getFontPreviewSample(getLocale());
+  const latin = getFontPreviewSample('la');
   const { settings } = useSettingsStore();
   const nameId = useId();
   const errorId = useId();
@@ -201,10 +205,19 @@ const ThemeEditor: React.FC<ThemeEditorProps> = ({
                 className='glossa-theme-preview glossa-theme-editor-preview'
                 style={{ backgroundColor: palette.bg, color: palette.fg }}
               >
-                <p>{_('A quiet page, a little time, and room to think.')}</p>
-                <span className='glossa-theme-preview-accent' style={{ color: palette.primary }}>
-                  {_('Sample Link')}
-                </span>
+                <p lang={sample.lang} dir={sample.dir}>
+                  {sample.text}
+                </p>
+                {sample.text !== latin.text && (
+                  <span
+                    className='glossa-theme-preview-accent'
+                    style={{ color: palette.primary }}
+                    lang={latin.lang}
+                    dir={latin.dir}
+                  >
+                    {latin.text}
+                  </span>
+                )}
               </div>
             </fieldset>
           );

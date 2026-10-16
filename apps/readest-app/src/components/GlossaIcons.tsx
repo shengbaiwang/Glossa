@@ -550,6 +550,7 @@ export {
   SearchX,
   Send,
   Server,
+  Settings,
   Settings2,
   Share2,
   Smartphone,

@@ -1,13 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '@/hooks/useTranslation';
-import { isTauriAppPlatform } from '@/services/environment';
 import {
   BoxedList,
   SectionTitle,
   SettingsInput,
   SettingsRow,
   SettingsSelect,
-  Tips,
 } from '@/components/settings/primitives';
 import {
   clearProviderApiKey,
@@ -41,7 +39,6 @@ const ModelSettingsPanel: React.FC = () => {
   const [error, setError] = useState('');
   const request = useRef<AbortController | null>(null);
   const mounted = useRef(true);
-  const isNative = isTauriAppPlatform();
   const isCustom = !builtinProviders.some((preset) => preset.id === config.id);
   const isSaved = savedProviders.some((provider) => provider.id === config.id);
   const capabilities = providerCapabilities(config);
@@ -358,26 +355,6 @@ const ModelSettingsPanel: React.FC = () => {
           {message}
         </p>
       )}
-
-      <Tips title={_('About this connection')}>
-        <li>
-          {isNative
-            ? _('API keys are stored in your operating system keychain on this device.')
-            : _(
-                'In the browser, API keys last only for this session. Your service must allow browser connections.',
-              )}
-        </li>
-        <li>
-          {_(
-            'Only the chapter you choose is sent when you generate notes. Connection tests send a short test message.',
-          )}
-        </li>
-        <li>
-          {_(
-            'The API base usually ends in /v1. Local Ollama can use http://localhost:11434/v1 without a key.',
-          )}
-        </li>
-      </Tips>
     </div>
   );
 };

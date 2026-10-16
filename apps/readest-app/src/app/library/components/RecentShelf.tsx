@@ -1,6 +1,4 @@
 import clsx from 'clsx';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight } from '@/components/GlossaIcons';
 import { Book } from '@/types/book';
 import { LibraryCoverFitType } from '@/types/settings';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -134,38 +132,6 @@ const RecentShelf: React.FC<RecentShelfProps> = ({
   showTimeRemaining,
 }) => {
   const _ = useTranslation();
-  const scrollerRef = useRef<HTMLDivElement>(null);
-  const [showLeft, setShowLeft] = useState(false);
-  const [showRight, setShowRight] = useState(false);
-  const updateArrows = useCallback(() => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    const offset = Math.abs(el.scrollLeft);
-    setShowLeft(offset > 1);
-    setShowRight(offset + el.clientWidth < el.scrollWidth - 1);
-  }, []);
-
-  useEffect(() => {
-    updateArrows();
-    const el = scrollerRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver(updateArrows);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [updateArrows, books]);
-
-  const scrollByPage = (direction: -1 | 1) => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    const rtl = getComputedStyle(el).direction === 'rtl';
-    const reduceMotion =
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
-      document.documentElement.dataset['eink'] === 'true';
-    el.scrollBy({
-      left: direction * (rtl ? -1 : 1) * el.clientWidth * 0.8,
-      behavior: reduceMotion ? 'instant' : 'smooth',
-    });
-  };
 
   return (
     <section
@@ -173,34 +139,9 @@ const RecentShelf: React.FC<RecentShelfProps> = ({
       aria-label={_('Continue reading')}
     >
       <div className='glossa-recent-heading'>
-        <div>
-          <h2>{_('Continue reading')}</h2>
-          <p>{_('Continue reading where you left off.')}</p>
-        </div>
-        <div className='flex items-center gap-1'>
-          <button
-            type='button'
-            aria-label={_('Scroll left')}
-            disabled={!showLeft}
-            onClick={() => scrollByPage(-1)}
-            className='touch-target glossa-icon-button'
-          >
-            <ArrowLeft size={18} className='rtl:rotate-180' aria-hidden='true' />
-          </button>
-          <button
-            type='button'
-            aria-label={_('Scroll right')}
-            disabled={!showRight}
-            onClick={() => scrollByPage(1)}
-            className='touch-target glossa-icon-button'
-          >
-            <ArrowRight size={18} className='rtl:rotate-180' aria-hidden='true' />
-          </button>
-        </div>
+        <h2>{_('Continue reading')}</h2>
       </div>
       <div
-        ref={scrollerRef}
-        onScroll={updateArrows}
         data-spatial-navigation='recent'
         className='glossa-recent-scroller no-scrollbar overflow-x-auto overflow-y-hidden overscroll-x-contain'
       >

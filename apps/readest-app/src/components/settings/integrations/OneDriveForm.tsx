@@ -11,7 +11,6 @@ import {
   runOneDriveDisconnect,
 } from '@/services/sync/providers/onedrive/onedriveConnect';
 import { hasUsableWebOneDriveSession } from '@/services/sync/providers/onedrive/webAuthCodeFlow';
-import { Tips } from '../primitives';
 import FileSyncForm from './FileSyncForm';
 import { persistCloudProviderEnabled } from './cloudSync';
 
@@ -171,14 +170,7 @@ const OneDriveForm: React.FC = () => {
             {_('Use OneDrive')}
           </button>
         </div>
-        <Tips>
-          <li>
-            {_('Connected as {{account}}. Turn {{provider}} on to start syncing.', {
-              account: stored.accountLabel,
-              provider: 'OneDrive',
-            })}
-          </li>
-        </Tips>
+        {stored.accountLabel && <p role='status'>{stored.accountLabel}</p>}
       </div>
     );
   }
@@ -202,10 +194,6 @@ const OneDriveForm: React.FC = () => {
           )}
         </button>
       </div>
-      <Tips>
-        <li>{_('Sign-in opens in your browser.')}</li>
-        <li>{_('Glossa only accesses the files it creates in your OneDrive.')}</li>
-      </Tips>
     </div>
   );
 };

@@ -10,6 +10,9 @@ fn main() {
     if target_os == "windows" {
         build_windows_thumbnail();
     }
+    if target_os == "macos" {
+        build_pdf_ocr();
+    }
 
     propagate_sentry_dsn();
     propagate_app_version();
@@ -41,6 +44,12 @@ fn main() {
             "parse_epub_full",
             "parse_mobi_metadata",
             "extract_mobi_cover_full",
+            "pdf_open_cache",
+            "pdf_read_ocr_page",
+            "pdf_start_ocr",
+            "pdf_ocr_status",
+            "pdf_cancel_ocr",
+            "pdf_save_outline",
             "auth_with_safari",
             "start_apple_sign_in",
             "set_traffic_lights",
@@ -54,6 +63,30 @@ fn main() {
         ]),
     ))
     .expect("failed to run tauri-build");
+}
+
+fn build_pdf_ocr() {
+    let source = "src/macos/pdf_ocr.swift";
+    println!("cargo:rerun-if-changed={source}");
+    let output = PathBuf::from(env::var("OUT_DIR").unwrap()).join("glossa-pdf-ocr");
+    let arch = if env::var("TARGET").unwrap().starts_with("aarch64") {
+        "arm64"
+    } else {
+        "x86_64"
+    };
+    let status = Command::new("xcrun")
+        .args([
+            "swiftc",
+            "-O",
+            "-target",
+            &format!("{arch}-apple-macosx12.0"),
+            source,
+            "-o",
+        ])
+        .arg(output)
+        .status()
+        .expect("Swift compiler is required for the local PDF OCR worker");
+    assert!(status.success(), "failed to build the local PDF OCR worker");
 }
 
 /// Bake the app version from `package.json` into the crate as `READEST_APP_VERSION`

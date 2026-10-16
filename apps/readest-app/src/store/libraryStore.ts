@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { Book, BookGroupType, ReadingStatus } from '@/types/book';
 import { EnvConfigType, isTauriAppPlatform } from '@/services/environment';
-import { BOOK_UNGROUPED_NAME } from '@/services/constants';
 import { md5Fingerprint } from '@/utils/md5';
+import { useSettingsStore } from '@/store/settingsStore';
+import { collectFolderPaths } from '@/app/library/utils/libraryFolders';
 
 interface LibraryState {
   library: Book[]; // might contain deleted books
@@ -205,17 +206,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const { library } = get();
     const groups: Record<string, string> = {};
 
-    library.forEach((book) => {
-      if (book.groupName && book.groupName !== BOOK_UNGROUPED_NAME && !book.deletedAt) {
-        groups[md5Fingerprint(book.groupName)] = book.groupName;
-        let nextSlashIndex = book.groupName.indexOf('/', 0);
-        while (nextSlashIndex > 0) {
-          const groupName = book.groupName.substring(0, nextSlashIndex);
-          groups[md5Fingerprint(groupName)] = groupName;
-          nextSlashIndex = book.groupName.indexOf('/', nextSlashIndex + 1);
-        }
-      }
-    });
+    for (const path of collectFolderPaths(
+      library,
+      useSettingsStore.getState().settings.libraryFolders,
+    )) {
+      groups[md5Fingerprint(path)] = path;
+    }
 
     set({ groups });
   },
@@ -253,7 +249,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   getGroupName: (id: string) => {
-    return get().groups[id];
+    return (
+      get().groups[id] ??
+      collectFolderPaths([], useSettingsStore.getState().settings.libraryFolders).find(
+        (path) => md5Fingerprint(path) === id,
+      )
+    );
   },
 
   getParentPath: (path: string) => {
