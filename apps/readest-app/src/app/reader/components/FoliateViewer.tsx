@@ -734,7 +734,10 @@ const FoliateViewer: React.FC<{
         applyEinkMode(eink);
       }
       if (bookDoc?.rendition?.layout === 'pre-paginated') {
-        view.renderer.setAttribute('zoom', viewSettings.zoomMode);
+        view.renderer.setAttribute(
+          'zoom',
+          viewSettings.webtoonMode ? 'fit-width' : viewSettings.zoomMode,
+        );
         view.renderer.setAttribute('spread', viewSettings.spreadMode);
         view.renderer.setAttribute('scale-factor', viewSettings.zoomLevel);
         view.renderer.setAttribute('scroll-gap', getScrollGapAttr(viewSettings.webtoonMode));

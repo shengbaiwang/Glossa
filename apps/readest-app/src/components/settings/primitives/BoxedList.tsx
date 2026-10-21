@@ -27,8 +27,8 @@ interface BoxedListProps {
 
 /**
  * Adwaita-style `AdwPreferencesGroup` container. Renders an optional small
- * uppercase title + description, then the boxed-list card with `divide-y`
- * rows inside. See DESIGN.md §5.
+ * uppercase title + description, then the boxed-list card. Rows own their
+ * padding so interactive backgrounds and targets span the card. See DESIGN.md §5.
  */
 const BoxedList: React.FC<BoxedListProps> = ({
   title,
@@ -43,7 +43,7 @@ const BoxedList: React.FC<BoxedListProps> = ({
     <div className={clsx('w-full', className)} data-setting-id={dataSettingId}>
       {title && <SectionTitle className='mb-2'>{title}</SectionTitle>}
       <div className={clsx('card eink-bordered glossa-group-card rounded-xl', cardClassName)}>
-        <div className={clsx('glossa-group ps-4', innerClassName)}>{children}</div>
+        <div className={clsx('glossa-group', innerClassName)}>{children}</div>
       </div>
       {description && <p className='glossa-supporting-text mb-2 mt-1 ps-4'>{description}</p>}
     </div>

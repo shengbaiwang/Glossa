@@ -16,6 +16,7 @@ import {
 import { DatabaseOpts, DatabaseService } from '@/types/database';
 import { SchemaType } from '@/services/database/migrate';
 import { Book, BookConfig, BookContent, ImportBookOptions, ViewSettings } from '@/types/book';
+import { eventDispatcher } from '@/utils/event';
 import type { BookNav } from '@/services/nav';
 import { getLibraryFilename, getLibraryBackupFilename } from '@/utils/book';
 
@@ -26,6 +27,9 @@ import { CustomTextureInfo } from '@/styles/textures';
 import { CustomFont, CustomFontInfo } from '@/styles/fonts';
 import type { ImportedDictionary } from './dictionaries/types';
 import type { SelectedFile } from '@/hooks/useFileSelector';
+import type { BookDoc } from '@/libs/document';
+import { pluginLoaders } from '@/glossa/plugins/loaders';
+import { runPluginTask } from '@/glossa/plugins/runtime';
 
 import * as BookSvc from './bookService';
 import * as CloudSvc from './cloudService';
@@ -324,12 +328,30 @@ export abstract class BaseAppService implements AppService {
     return BookSvc.importBook(this.fs, file, books, {
       saveBookConfig: this.saveBookConfig.bind(this),
       generateCoverImageUrl: this.generateCoverImageUrl.bind(this),
+      preparePDF: this.prepareBookContents.bind(this),
       // Pass the host platform through so the in-place fast path and the
       // lookup index can normalize source paths consistently on
       // case-insensitive filesystems (macOS / iOS / Windows).
       osPlatform: this.osPlatform,
       ...options,
     });
+  }
+
+  async prepareBookContents(book: Book, document?: BookDoc): Promise<void> {
+    if (book.format !== 'PDF') return;
+    // A failed optional plugin must not fail a successful book import.
+    try {
+      await runPluginTask('pdfAutoContents', async (signal) => {
+        const plugin = await pluginLoaders.pdfAutoContents();
+        if (!signal.aborted) await plugin.prepareContents(this, book, document, signal);
+      });
+    } catch {
+      const { default: i18n } = await import('i18next');
+      void eventDispatcher.dispatch('toast', {
+        type: 'error',
+        message: i18n.t('PDF contents plugin could not be loaded. Import this PDF again to retry.'),
+      });
+    }
   }
 
   async deleteBook(book: Book, deleteAction: DeleteAction): Promise<void> {

@@ -356,6 +356,8 @@ export interface HardwarePageTurnerSettings {
 }
 
 export interface SystemSettings {
+  /** Bundled feature availability. Missing flags keep the existing experience enabled. */
+  officialModules?: import('@/glossa/plugins/registry').PluginPreferences;
   version: number;
   migrationVersion: number;
   localBooksDir: string;
@@ -370,27 +372,31 @@ export interface SystemSettings {
    * settings backups via `BACKUP_SETTINGS_BLACKLIST`.
    */
   externalLibraryFolders?: string[];
+  /** Device-local defaults for future folder imports; existing roots keep their identity. */
+  folderImportReadInPlace?: boolean;
+  folderImportAutoImport?: boolean;
   /**
    * Absolute paths of the external library folders the user has opted into
    * auto-import for. On library open and whenever the app regains focus,
    * Readest re-scans each of these and imports any newly-added book files.
    * A subset of {@link externalLibraryFolders} (auto-import requires the
-   * folder to be read in place). Set per-folder from the Import-from-Folder
-   * dialog. Desktop + Android only. Device-local (paths are meaningful only
+   * folder to be read in place). New folder imports follow the defaults in
+   * Library Data settings; existing watches are managed there. Device-local (paths are meaningful only
    * on this filesystem) and excluded from cloud settings backups via
    * `BACKUP_SETTINGS_BLACKLIST`.
    */
   autoImportFolders?: string[];
   /**
-   * The subset of {@link autoImportFolders} the user imported with "Import all
-   * into library" (flatten). Auto-imported books from those folders go straight
-   * to the library root; every other watched folder mirrors its subfolders as
-   * groups, matching the dialog's default "Create groups from subfolders" —
-   * which is also what a folder watched before this list existed falls back to.
+   * The subset of {@link autoImportFolders} imported without mirroring subfolders.
+   * Their books stay in the selected folder's group. Other watches also mirror
+   * subfolders beneath that group. Watches created before explicit destinations
+   * existed default to a group named after the source folder.
    * Device-local, and excluded from cloud settings backups alongside
    * {@link autoImportFolders}.
    */
   autoImportFlattenFolders?: string[];
+  /** Device-local destination for future scans of a previously imported folder. */
+  autoImportFolderGroups?: Record<string, string>;
 
   keepLogin: boolean;
   alwaysOnTop: boolean;

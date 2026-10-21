@@ -222,7 +222,7 @@ describe('createBookGroups', () => {
       expect(john?.books[0]?.hash).toBe(jane?.books[0]?.hash);
     });
 
-    it('should leave books without author as ungrouped', () => {
+    it('groups missing authors together without mutating metadata', () => {
       const books = [
         createMockBook({ hash: '1', title: 'Book 1', author: 'Author A' }),
         createMockBook({ hash: '2', title: 'Book 2', author: '' }),
@@ -234,8 +234,15 @@ describe('createBookGroups', () => {
       const groups = result.filter((item): item is BooksGroup => 'books' in item);
       const ungrouped = result.filter((item): item is Book => 'format' in item);
 
-      expect(groups).toHaveLength(1);
-      expect(ungrouped).toHaveLength(2);
+      expect(groups).toHaveLength(2);
+      expect(ungrouped).toHaveLength(0);
+      const missing = groups.find((group) => group.displayName === 'Author not set')!;
+      expect(missing.books.map((book) => book.hash)).toEqual(['2', '3']);
+      expect(books.map((book) => book.author)).toEqual(['Author A', '', '   ']);
+      const regrouped = createBookGroups([...books].reverse(), LibraryGroupByType.Author);
+      expect(
+        regrouped.find((item) => 'books' in item && item.displayName === 'Author not set'),
+      ).toMatchObject({ id: missing.id });
     });
   });
 

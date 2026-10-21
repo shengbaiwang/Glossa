@@ -44,7 +44,7 @@ export const useDragDropImport = () => {
         type: 'error',
         message: _(
           error instanceof Error &&
-            ['Folders support two levels', 'Invalid folder name'].includes(error.message)
+            ['Up to 4 levels', 'Invalid folder name'].includes(error.message)
             ? error.message
             : 'Unable to import this folder. Please try again.',
         ),

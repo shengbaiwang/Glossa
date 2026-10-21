@@ -14,6 +14,12 @@ export const NOTE_PREFIX = 'foliate-note:';
 
 type RangeAnchor = (doc: Document) => Range;
 
+export interface PDFSelectionFragment {
+  index: number;
+  range: Range;
+  focus?: boolean;
+}
+
 export interface Renderer extends HTMLElement {
   scrolled?: boolean;
   scrollLocked: boolean;
@@ -44,8 +50,17 @@ export interface Renderer extends HTMLElement {
   goTo: (params: { index: number; anchor?: number | RangeAnchor }) => Promise<void>;
   setStyles?: (css: string) => void;
   primaryIndex: number;
+  /** Fixed-layout renderers expose the visible PDF page through index. */
+  readonly index?: number;
+  /** Actual CSS scale relative to the PDF page's intrinsic viewport. */
+  readonly scale?: number;
   getContents: () => { doc: Document; index?: number; overlayer?: unknown }[];
   scrollToAnchor?: (anchor: number | Range, reason?: string, smooth?: boolean) => void;
+  scrollToPageRect?: (
+    index: number,
+    rect: { x: number; y: number; width: number; height: number },
+    viewport?: { x: number; y: number; width: number; height: number },
+  ) => void;
   addEventListener: (
     type: string,
     listener: EventListener,
@@ -86,6 +101,13 @@ export interface FoliateView extends HTMLElement {
   goLeft: () => void;
   goRight: () => void;
   getCFI: (index: number, range: Range) => string;
+  getPDFSelection?: () => PDFSelectionFragment[] | null;
+  startPDFSelectionHandle?: (cfis: string[], side: 'start' | 'end') => Promise<boolean>;
+  extendPDFSelectionHandle?: (
+    direction: 'left' | 'right' | 'forward' | 'backward',
+  ) => Promise<boolean>;
+  movePDFSelectionHandle?: (point: { x: number; y: number }) => void;
+  stopPDFSelectionHandle?: () => void;
   getCFIProgress: (cfi: string) => Promise<{
     fraction: number;
     section: { current: number; total: number };

@@ -8,8 +8,11 @@ import type { BookNote } from '@/types/book';
 // range's CFI/text; a drag does not persist.
 
 const h = vi.hoisted(() => ({
-  view: { getCFI: vi.fn(() => 'new-cfi'), addAnnotation: vi.fn() },
-  updateBooknotes: vi.fn(() => ({})),
+  view: { getCFI: vi.fn((_index: number, _range: Range) => 'new-cfi'), addAnnotation: vi.fn() },
+  updateBooknotes: vi.fn((_key: string, notes: BookNote[]) => {
+    h.annotations = notes;
+    return { booknotes: notes };
+  }),
   saveConfig: vi.fn(),
   annotations: [] as BookNote[],
 }));
@@ -119,5 +122,82 @@ describe('useAnnotationEditor applyAnnotationRange', () => {
     expect(bubbleCalls).toContainEqual([
       expect.objectContaining({ value: `${NOTE_PREFIX}new-cfi` }),
     ]);
+  });
+});
+
+describe('PDF annotation endpoints', () => {
+  const fragments = () =>
+    [2, 3].map((index) => {
+      const doc = document.implementation.createHTMLDocument();
+      doc.body.textContent = `page ${index}`;
+      const range = doc.createRange();
+      range.selectNodeContents(doc.body.firstChild!);
+      return { index, range };
+    });
+  const cfi = (index: number) => `epubcfi(/6/${(index + 1) * 2}!/4/2,/1:0,/1:1)`;
+
+  beforeEach(() => {
+    h.view.getCFI.mockImplementation((...args: unknown[]) => cfi(args[0] as number));
+  });
+
+  test('updates all fragments as one record while retaining personal note and identity', async () => {
+    const noted = { ...annotation, pdfRanges: ['old-cfi', 'other-page'], note: 'my note' };
+    h.annotations = [noted];
+    const { result, setSelection } = setup(noted);
+    expect(await result.current.applyPDFAnnotationRanges(fragments())).toBe(true);
+    expect(h.annotations[0]).toMatchObject({
+      id: 'a1',
+      note: 'my note',
+      cfi: cfi(2),
+      pdfRanges: [cfi(2), cfi(3)],
+      text: 'edited text\nedited text',
+      page: 3,
+    });
+    expect(h.saveConfig).toHaveBeenCalledTimes(1);
+    expect(setSelection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        annotated: true,
+        pdfRanges: [cfi(2), cfi(3)],
+      }),
+    );
+  });
+
+  test('shrinking back to one page removes the obsolete multi-page field', async () => {
+    const noted = { ...annotation, pdfRanges: ['old-cfi', 'other-page'] };
+    h.annotations = [noted];
+    const { result } = setup(noted);
+    expect(await result.current.applyPDFAnnotationRanges(fragments().slice(0, 1))).toBe(true);
+    expect(h.annotations[0]!.pdfRanges).toBeUndefined();
+    expect(h.annotations[0]!.cfi).toBe(cfi(2));
+  });
+
+  test('does not replace a deleted or concurrently moved annotation', async () => {
+    const { result } = setup();
+    h.annotations = [{ ...annotation, cfi: 'concurrent-location' }];
+    expect(await result.current.applyPDFAnnotationRanges(fragments())).toBe(false);
+    expect(h.updateBooknotes).not.toHaveBeenCalled();
+    expect(h.saveConfig).not.toHaveBeenCalled();
+  });
+
+  test('keeps the original record if the gesture was cancelled during text conversion', async () => {
+    const { result } = setup();
+    expect(await result.current.applyPDFAnnotationRanges(fragments(), () => false)).toBe(false);
+    expect(h.updateBooknotes).not.toHaveBeenCalled();
+  });
+
+  test('rejects missing middle pages instead of saving an incomplete range', async () => {
+    const { result } = setup();
+    const parts = fragments();
+    parts[1]!.index = 27;
+    expect(await result.current.applyPDFAnnotationRanges(parts)).toBe(false);
+    expect(h.updateBooknotes).not.toHaveBeenCalled();
+  });
+
+  test('restores the original record and overlays when disk saving fails', async () => {
+    h.saveConfig.mockRejectedValueOnce(new Error('disk-full'));
+    const { result, setSelection } = setup();
+    expect(await result.current.applyPDFAnnotationRanges(fragments())).toBe(false);
+    expect(h.annotations[0]).toMatchObject(annotation);
+    expect(setSelection).not.toHaveBeenCalled();
   });
 });

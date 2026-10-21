@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { cleanup, renderHook } from '@testing-library/react';
+import { act, cleanup, renderHook } from '@testing-library/react';
 
 // A double-click (or touch double-tap) on a word should select that word and
 // route it through the same selection state that drives the quick action /
@@ -11,6 +11,11 @@ const h = vi.hoisted(() => ({
     prev: vi.fn(),
     deselect: vi.fn(),
     getCFI: vi.fn(() => 'cfi'),
+    addEventListener: vi.fn<(type: string, listener: () => Promise<void>) => void>(),
+    removeEventListener: vi.fn(),
+    getPDFSelection: vi.fn<() => { index: number; range: Range; focus?: boolean }[] | null>(
+      () => null,
+    ),
     renderer: { containerPosition: 100, scrollLocked: false },
   },
   appService: { isAndroidApp: false, isMobile: false },
@@ -55,7 +60,10 @@ import type { TextSelection } from '@/utils/sel';
 
 const ZERO_INSETS = { top: 0, right: 0, bottom: 0, left: 0 };
 
-const setup = (setSelection: (s: TextSelection | null) => void) => {
+const setup = (
+  setSelection: (s: TextSelection | null) => void,
+  getAnnotationText = vi.fn(async (range: Range) => range.toString()),
+) => {
   const noop = vi.fn();
   return renderHook(() =>
     useTextSelector(
@@ -65,7 +73,7 @@ const setup = (setSelection: (s: TextSelection | null) => void) => {
       noop,
       noop,
       // getAnnotationText: return the range text so we can assert the selected word
-      vi.fn(async (range: Range) => range.toString()),
+      getAnnotationText,
       noop,
     ),
   );
@@ -109,16 +117,211 @@ const makeRangeVisibleAt = (range: Range, x = 50, y = 50) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  h.view.getPDFSelection.mockReturnValue(null);
+  h.view.getCFI.mockReset().mockReturnValue('cfi');
   h.appService = { isAndroidApp: false, isMobile: false };
   h.osPlatform = 'macos';
   h.viewSettings = { scrolled: false };
   document.getSelection()?.removeAllRanges();
 });
 
+const pdfFragments = () =>
+  ['Alpha', 'Beta'].map((text, index) => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.textContent = text;
+    const range = doc.createRange();
+    range.selectNodeContents(doc.body);
+    return { index, range, focus: index === 1 };
+  });
+
+describe('useTextSelector cross-page PDF selection', () => {
+  const accept = () =>
+    h.view.addEventListener.mock.calls.find(([name]) => name === 'pdf-selection')![1];
+
+  test('publishes one ordered selection and keeps the popup at its focus page', async () => {
+    const setSelection = vi.fn();
+    const fragments = pdfFragments();
+    h.view.getPDFSelection.mockReturnValue(fragments);
+    h.view.getCFI.mockImplementation((index?: number) => `cfi-${index}`);
+    setup(setSelection);
+    await act(() => accept()());
+    expect(setSelection).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        cfi: 'cfi-0',
+        pdfRanges: ['cfi-0', 'cfi-1'],
+        text: 'Alpha\nBeta',
+        page: 1,
+        index: 1,
+        range: fragments[1]!.range,
+      }),
+    );
+  });
+
+  test('does not republish a selection after the reader unmounts during text conversion', async () => {
+    const setSelection = vi.fn();
+    let resolve!: (text: string) => void;
+    const transform = vi.fn(
+      () =>
+        new Promise<string>((done) => {
+          resolve = done;
+        }),
+    );
+    h.view.getPDFSelection.mockReturnValue(pdfFragments().slice(0, 1));
+    const { unmount } = setup(setSelection, transform);
+    const pending = accept()();
+    unmount();
+    resolve('Alpha');
+    await pending;
+    expect(setSelection).not.toHaveBeenCalled();
+  });
+
+  test('clears an unusable selection when text conversion fails', async () => {
+    const setSelection = vi.fn();
+    h.view.getPDFSelection.mockReturnValue(pdfFragments());
+    setup(
+      setSelection,
+      vi.fn(async () => {
+        throw new Error('conversion failed');
+      }),
+    );
+    await expect(accept()()).resolves.toBeUndefined();
+    expect(setSelection).not.toHaveBeenCalled();
+    expect(h.view.deselect).toHaveBeenCalled();
+  });
+});
+
 afterEach(() => {
   cleanup();
   delete (document as { caretRangeFromPoint?: unknown }).caretRangeFromPoint;
   document.body.innerHTML = '';
+});
+
+describe('useTextSelector asynchronous selection lifetime', () => {
+  const select = (start: number, end: number, node: Text) => {
+    const range = document.createRange();
+    range.setStart(node, start);
+    range.setEnd(node, end);
+    const selection = document.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return selection;
+  };
+  const deferred = () => {
+    let resolve!: (text: string) => void;
+    const promise = new Promise<string>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  };
+
+  test('does not restore cleared text when a pending conversion finishes', async () => {
+    const setSelection = vi.fn();
+    const pending = deferred();
+    const { result } = setup(
+      setSelection,
+      vi.fn(() => pending.promise),
+    );
+    const { node, doc } = makeDoc(null);
+    select(0, 5, node);
+    result.current.handleSelectionchange(doc, 0);
+    document.getSelection()!.removeAllRanges();
+    result.current.handleSelectionchange(doc, 0);
+    pending.resolve('Hello');
+    await act(() => pending.promise);
+    expect(setSelection).not.toHaveBeenCalledWith(expect.objectContaining({ text: 'Hello' }));
+    expect(result.current.isTextSelected.current).toBe(false);
+  });
+
+  test('publishes only the newest range when conversions finish out of order', async () => {
+    const setSelection = vi.fn();
+    const first = deferred();
+    const second = deferred();
+    const transform = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const { result } = setup(setSelection, transform);
+    const { node, doc } = makeDoc(null);
+    select(0, 5, node);
+    result.current.handleSelectionchange(doc, 0);
+    select(6, 11, node);
+    result.current.handleSelectionchange(doc, 0);
+    second.resolve('world');
+    await act(() => second.promise);
+    first.resolve('Hello');
+    await act(() => first.promise);
+    expect(setSelection).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ text: 'world' }),
+    );
+  });
+
+  test('rejects a range whose live endpoints change before selectionchange is delivered', async () => {
+    const setSelection = vi.fn();
+    const pending = deferred();
+    const { result } = setup(
+      setSelection,
+      vi.fn(() => pending.promise),
+    );
+    const { node, doc } = makeDoc(null);
+    const selection = select(0, 5, node);
+    result.current.handleSelectionchange(doc, 0);
+    selection.getRangeAt(0).setEnd(node, 11);
+    pending.resolve('Hello');
+    await act(() => pending.promise);
+    expect(setSelection).not.toHaveBeenCalled();
+  });
+
+  test('does not publish native text after the reader unmounts', async () => {
+    const setSelection = vi.fn();
+    const pending = deferred();
+    const { result, unmount } = setup(
+      setSelection,
+      vi.fn(() => pending.promise),
+    );
+    const { node, doc } = makeDoc(null);
+    select(0, 5, node);
+    result.current.handleSelectionchange(doc, 0);
+    unmount();
+    pending.resolve('Hello');
+    await pending.promise;
+    expect(setSelection).not.toHaveBeenCalled();
+  });
+
+  test('does not replace a newer cross-page selection with older native text', async () => {
+    const setSelection = vi.fn();
+    const pending = deferred();
+    const transform = vi
+      .fn(async (range: Range) => range.toString())
+      .mockReturnValueOnce(pending.promise);
+    const { result } = setup(setSelection, transform);
+    const { node, doc } = makeDoc(null);
+    select(0, 5, node);
+    result.current.handleSelectionchange(doc, 0);
+    h.view.getPDFSelection.mockReturnValue(pdfFragments());
+    const accept = h.view.addEventListener.mock.calls.find(
+      ([name]) => name === 'pdf-selection',
+    )![1];
+    await act(() => accept());
+    pending.resolve('Hello');
+    await act(() => pending.promise);
+    expect(setSelection).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ text: 'Alpha\nBeta' }),
+    );
+  });
+
+  test('handles native conversion failure without an unhandled rejection', async () => {
+    const setSelection = vi.fn();
+    const { result } = setup(
+      setSelection,
+      vi.fn(async () => {
+        throw new Error('conversion failed');
+      }),
+    );
+    const { doc } = makeDoc(8);
+    await expect(result.current.handleDoubleClick(doc, 0, 50, 50)).resolves.toBeUndefined();
+    expect(setSelection).not.toHaveBeenCalled();
+    expect(result.current.isTextSelected.current).toBe(false);
+  });
 });
 
 describe('useTextSelector double-click word selection', () => {

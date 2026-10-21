@@ -32,6 +32,8 @@ import { setBackupDialogVisible } from '@/app/library/components/BackupWindow';
 import { setCacheManagerDialogVisible } from '@/app/library/components/CacheManagerWindow';
 import { setMigrateDataDirDialogVisible } from '@/app/library/components/MigrateDataWindow';
 import { BoxedList, NavigationRow, SettingsSwitchRow } from './primitives';
+import FolderImportSettings from './FolderImportSettings';
+import OfficialModuleSettings from './OfficialModuleSettings';
 
 const ApplicationPanel: React.FC<{ section: 'General' | 'Data' }> = ({ section }) => {
   const _ = useTranslation();
@@ -100,6 +102,7 @@ const ApplicationPanel: React.FC<{ section: 'General' | 'Data' }> = ({ section }
   if (section === 'Data')
     return (
       <div className='my-4 space-y-6'>
+        {isTauriAppPlatform() && <FolderImportSettings />}
         <BoxedList title={_('Library Data')}>
           <NavigationRow
             title={_('Backup & Restore')}
@@ -149,6 +152,7 @@ const ApplicationPanel: React.FC<{ section: 'General' | 'Data' }> = ({ section }
           }}
         />
       </BoxedList>
+      <OfficialModuleSettings />
       {isTauriAppPlatform() && (
         <BoxedList title={_('Startup')}>
           <SettingsSwitchRow
@@ -168,6 +172,29 @@ const ApplicationPanel: React.FC<{ section: 'General' | 'Data' }> = ({ section }
             onChange={() =>
               void saveSysSettings(envConfig, 'openLastBooks', !settings.openLastBooks)
             }
+          />
+        </BoxedList>
+      )}
+      {appService?.hasUpdater && (
+        <BoxedList title={_('Update')} data-setting-id='settings.control.checkUpdates'>
+          <SettingsSwitchRow
+            label={_('Check Updates on Start')}
+            checked={!!settings.autoCheckUpdates}
+            onChange={() =>
+              void saveSysSettings(envConfig, 'autoCheckUpdates', !settings.autoCheckUpdates)
+            }
+          />
+          <SettingsSwitchRow
+            label={_('Nightly Builds')}
+            checked={settings.updateChannel === 'nightly'}
+            onChange={() =>
+              void saveSysSettings(
+                envConfig,
+                'updateChannel',
+                settings.updateChannel === 'nightly' ? 'stable' : 'nightly',
+              )
+            }
+            data-setting-id='settings.control.nightlyChannel'
           />
         </BoxedList>
       )}

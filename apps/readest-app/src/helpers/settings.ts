@@ -6,6 +6,12 @@ import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { getStyles } from '@/utils/style';
 
+/** Keep the previous local preference until the user changes it in Settings. */
+export const getFolderImportReadInPlace = (settings: SystemSettings): boolean =>
+  settings.folderImportReadInPlace ??
+  (typeof window !== 'undefined' &&
+    window.localStorage.getItem('readest:lastImportFolderReadInPlace') === '1');
+
 /**
  * Resolve the effective background texture for the library page (issue #4743).
  * By default the library and the reader share one linked background, so the

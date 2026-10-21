@@ -1211,3 +1211,29 @@
 [data-eink='true'] .glossa-chat-reading-options {
   box-shadow: none;
 }
+
+.glossa-chat-panel .glossa-chat-session-rename {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  appearance: none;
+  outline: none;
+  box-shadow: none;
+}
+.glossa-chat-panel .glossa-chat-session-rename:focus,
+html[data-page='reader'] .glossa-chat-session-rename:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+@media (pointer: coarse) {
+  .glossa-chat-panel .glossa-chat-session-rename {
+    min-height: 44px;
+  }
+}

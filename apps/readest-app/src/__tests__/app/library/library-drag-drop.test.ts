@@ -16,12 +16,12 @@ describe('library drag and drop', () => {
       expect(readLibraryItems(transfer(value))).toEqual([]);
   });
 
-  it('retains the dropped directory name and enforces two levels before importing', () => {
+  it('retains the dropped directory name and enforces four levels before importing', () => {
     expect(droppedFolderPath('文学', '')).toBe('文学');
     expect(droppedFolderPath('文学/小说', '')).toBe('文学/小说');
     expect(droppedFolderPath('小说', '文学')).toBe('文学/小说');
-    expect(() => droppedFolderPath('文学/小说/短篇', '')).toThrow('Folders support two levels');
-    expect(() => droppedFolderPath('小说', '文学/外国')).toThrow('Folders support two levels');
+    expect(() => droppedFolderPath('文学/小说/短篇/诗歌/第五层', '')).toThrow('Up to 4 levels');
+    expect(() => droppedFolderPath('小说', '文学/外国/诗歌/古典')).toThrow('Up to 4 levels');
     expect(() => droppedFolderPath('../小说', '')).toThrow('Invalid folder name');
   });
 

@@ -133,6 +133,7 @@ const ReadingDisplayControls: React.FC<{
       // scrolled / zoomLevel effects rather than duplicating their renderer wiring.
       if (!isScrolledMode) setScrolledMode(true);
       if (zoomLevel !== 100) setZoomLevel(100);
+      if (zoomMode !== 'fit-width') setZoomMode('fit-width');
       if (scrolledDirection !== 'vertical') setScrolledDirection('vertical');
       saveViewSettings(envConfig, bookKey, 'scrolled', true, false, false, true);
     }

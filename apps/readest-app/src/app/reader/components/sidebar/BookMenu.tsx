@@ -26,6 +26,8 @@ import { saveSysSettings, saveViewSettings } from '@/helpers/settings';
 
 import useBooksManager from '../../hooks/useBooksManager';
 import MenuItem from '@/components/MenuItem';
+import PDFTools from './PDFTools';
+import { supportsLocalPDF } from '@/services/pdfEnhancement';
 
 interface BookMenuProps {
   bookKey: string;
@@ -55,7 +57,8 @@ const BookMenuItems: React.FC<BookMenuProps> = ({ bookKey, setIsDropdownOpen }) 
       isSideBarPinned: !isPinned,
     });
   };
-  const { getConfig } = useBookDataStore();
+  const { getConfig, getBookData } = useBookDataStore();
+  const bookDoc = getBookData(bookKey)?.bookDoc;
   const { parallelViews, setParallel, unsetParallel } = useParallelViewStore();
   const viewSettings = getViewSettings(bookKey);
 
@@ -200,6 +203,9 @@ const BookMenuItems: React.FC<BookMenuProps> = ({ bookKey, setIsDropdownOpen }) 
         toggled={isSortedTOC}
         onClick={handleToggleSortTOC}
       />
+      {bookDoc?.getPDFText && supportsLocalPDF() && (
+        <PDFTools bookKey={bookKey} bookDoc={bookDoc} />
+      )}
       <MenuItem
         label={_('Reload Book')}
         Icon={<RefreshCw size={iconSize} />}

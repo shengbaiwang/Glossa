@@ -32,10 +32,59 @@ export function LibraryBig(props: GlossaIconProps) {
   );
 }
 
+export function BookSeries(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <rect x='3.5' y='8.5' width='10' height='12' rx='2' />
+      <path d='M7 5.5h8a2 2 0 0 1 2 2v10M10.5 2.5h8a2 2 0 0 1 2 2v10M7 8.5v12' />
+    </Icon>
+  );
+}
+
+/** A paper edge tucked into a low, bound folio; distinct from a series of book covers. */
+export function BookCollection(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <path d='M6.5 8.5v-3l11-2v5' />
+      <rect x='3.5' y='8.5' width='17' height='11' rx='2' />
+      <path d='M8 8.5v11' />
+    </Icon>
+  );
+}
+
 export function BookOpen(props: GlossaIconProps) {
   return (
     <Icon {...props}>
       <path d='M12 6.5C9.5 4.8 6.5 4.5 3.5 5.5v13c3-1 6-.7 8.5 1 2.5-1.7 5.5-2 8.5-1v-13c-3-1-6-.7-8.5 1Zm0 0v13' />
+    </Icon>
+  );
+}
+
+export function BookClosed(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <path d='M7 3.5h12v17H7a3 3 0 0 1-3-3v-11a3 3 0 0 1 3-3ZM4 17.5a3 3 0 0 1 3-3h12M8 3.5v11' />
+    </Icon>
+  );
+}
+
+export function LayoutGrid(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <rect x='4' y='4' width='6' height='6' rx='1.5' />
+      <rect x='14' y='4' width='6' height='6' rx='1.5' />
+      <rect x='4' y='14' width='6' height='6' rx='1.5' />
+      <rect x='14' y='14' width='6' height='6' rx='1.5' />
+    </Icon>
+  );
+}
+
+export function LayoutList(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <rect x='4' y='4' width='4' height='6' rx='1' />
+      <rect x='4' y='14' width='4' height='6' rx='1' />
+      <path d='M12 5.5h8M12 8.5h5M12 15.5h8M12 18.5h5' />
     </Icon>
   );
 }
@@ -560,3 +609,14 @@ export {
 } from './GlossaIconsSupplement';
 
 export { Clock, TriangleAlert } from './GlossaIconsSupplement';
+
+export function Pages(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <rect x='4' y='3.5' width='6' height='7' rx='1' />
+      <rect x='14' y='3.5' width='6' height='7' rx='1' />
+      <rect x='4' y='14' width='6' height='7' rx='1' />
+      <rect x='14' y='14' width='6' height='7' rx='1' />
+    </Icon>
+  );
+}

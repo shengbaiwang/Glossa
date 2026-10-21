@@ -1,4 +1,4 @@
-import { render, act, cleanup } from '@testing-library/react';
+import { render, act, cleanup, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import type { BookNote } from '@/types/book';
@@ -237,4 +237,41 @@ it('uses right-panel search results and restores all annotations when search clo
   expect(capturedVirtuosoProps?.['totalCount']).toBe(2);
   rerender(<BooknoteView bookKey='book1' toc={[]} notebookSearch={{ results: null }} />);
   expect(capturedVirtuosoProps?.['totalCount']).toBe(10);
+});
+
+it('keeps an externally opened editor in its own row even when search excludes that note', () => {
+  const edited = mockBooknotes.at(-1)!;
+  render(
+    <BooknoteView
+      bookKey='book1'
+      toc={[]}
+      notebookSearch={{ results: [mockBooknotes[0]!] }}
+      useNotebookEditor
+      noteEditor={{ id: edited.id, content: <textarea aria-label='Editing note' /> }}
+    />,
+  );
+  expect(capturedVirtuosoProps?.['totalCount']).toBe(4);
+  const itemContent = capturedVirtuosoProps!['itemContent'] as (index: number) => React.ReactNode;
+  render(<>{itemContent(3)}</>);
+  expect(screen.getByRole('textbox', { name: 'Editing note' })).toBeTruthy();
+  expect(scrollToIndexSpy).toHaveBeenCalledWith(
+    expect.objectContaining({ index: 3, behavior: 'auto' }),
+  );
+  scrollToIndexSpy.mockClear();
+  fireOverlayScrollbarsInitialized();
+  expect(scrollToIndexSpy).toHaveBeenCalledWith(expect.objectContaining({ index: 3 }));
+});
+
+it('does not rewind to the reading position when an inline editor closes', () => {
+  mockProgress = { location: mockBooknotes[0]!.cfi };
+  const { rerender } = render(
+    <BooknoteView
+      bookKey='book1'
+      toc={[]}
+      noteEditor={{ id: mockBooknotes.at(-1)!.id, content: <textarea /> }}
+    />,
+  );
+  scrollToIndexSpy.mockClear();
+  rerender(<BooknoteView bookKey='book1' toc={[]} />);
+  expect(scrollToIndexSpy).not.toHaveBeenCalled();
 });

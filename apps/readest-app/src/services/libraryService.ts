@@ -1,6 +1,7 @@
 import { FileSystem, SaveLibraryBooksOptions } from '@/types/system';
 import { Book } from '@/types/book';
 import { getLibraryFilename } from '@/utils/book';
+import { repairImportedMetadata } from '@/utils/importMetadata';
 import { safeLoadJSON, safeSaveJSON } from './persistence';
 
 const COVER_CONCURRENCY = 20;
@@ -28,6 +29,9 @@ export async function loadLibraryBooks(
   const books = await safeLoadJSON<Book[]>(fs, libraryFilename, 'Books', []);
 
   await processInBatches(books, COVER_CONCURRENCY, async (book) => {
+    // In-memory and idempotent: normal saves persist the correction. Loading
+    // never adds a competing disk write or changes reading timestamps.
+    repairImportedMetadata(book);
     book.coverImageUrl = await generateCoverImageUrl(book);
     book.updatedAt ??= book.lastUpdated || Date.now();
   });

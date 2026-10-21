@@ -8,6 +8,19 @@ import { planScrollModePages } from 'foliate-js/fixed-layout.js';
 const page = (index: number, state: string, visible: boolean) => ({ index, state, visible });
 
 describe('planScrollModePages', () => {
+  it('keeps pages backing a live PDF selection until it is dismissed', () => {
+    const pages = Array.from({ length: 15 }, (_, index) => ({
+      index,
+      state: 'loaded',
+      visible: index === 14,
+    }));
+    const options = { pages, currentIndex: 14, maxLoaded: 12, maxConcurrent: 2, loadingCount: 0 };
+    const pinned = planScrollModePages({ ...options, pinnedIndices: [0, 1] });
+    expect(pinned.evict).not.toContain(0);
+    expect(pinned.evict).not.toContain(1);
+    expect(pinned.evict).toHaveLength(3);
+    expect(planScrollModePages(options).evict).toContain(0);
+  });
   it('loads the nearest visible idle pages first, within the concurrency budget', () => {
     const pages = [
       page(8, 'idle', true),

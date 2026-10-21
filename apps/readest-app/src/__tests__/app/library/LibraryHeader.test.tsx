@@ -27,8 +27,10 @@ vi.mock('@/store/settingsStore', () => ({
 
 afterEach(cleanup);
 
-function LibraryToolbar() {
-  const [isSelectMode, setSelectMode] = useState(false);
+const importBooks = vi.fn();
+
+function LibraryToolbar({ selecting = false }: { selecting?: boolean }) {
+  const [isSelectMode, setSelectMode] = useState(selecting);
   const [isSelectAll, setSelectAll] = useState(false);
   return (
     <DropdownProvider>
@@ -38,6 +40,7 @@ function LibraryToolbar() {
         onToggleSelectMode={() => setSelectMode(!isSelectMode)}
         onSelectAll={() => setSelectAll(true)}
         onDeselectAll={() => setSelectAll(false)}
+        onImportBooks={importBooks}
         onPullLibrary={vi.fn()}
         searchQuery=''
         searchTarget='books'
@@ -50,33 +53,48 @@ function LibraryToolbar() {
   );
 }
 
-it('opens book selection from the view menu and preserves select all, deselect and done', () => {
-  const view = render(<LibraryToolbar />);
-  expect(screen.queryByRole('button', { name: 'Select Books' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'View Menu' }));
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Select Books' }));
-  expect(view.container.querySelector('.view-menu')).toBeNull();
+it('offers display options without a book selection command', () => {
+  render(<LibraryToolbar />);
+  fireEvent.click(screen.getByRole('button', { name: 'Library Display' }));
+  expect(screen.queryByRole('menuitem', { name: 'Select Books' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
+});
+
+it('preserves select all, deselect and done for selection entered from the bookshelf', () => {
+  render(<LibraryToolbar selecting />);
   fireEvent.click(screen.getByRole('button', { name: 'Select All' }));
   fireEvent.click(screen.getByRole('button', { name: 'Deselect' }));
   expect(screen.getByRole('button', { name: 'Select All' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Done' }));
-  const menu = screen.getByRole('button', { name: 'View Menu' });
+  const menu = screen.getByRole('button', { name: 'Library Display' });
   fireEvent.click(menu);
   expect(menu.getAttribute('aria-expanded')).toBe('true');
 });
 
 it('dismisses the view menu without entering selection mode', () => {
   render(<LibraryToolbar />);
-  const menu = screen.getByRole('button', { name: 'View Menu' });
+  const menu = screen.getByRole('button', { name: 'Library Display' });
   fireEvent.click(menu);
   fireEvent.keyDown(menu, { key: 'Escape' });
   expect(menu.getAttribute('aria-expanded')).toBe('false');
   expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
 });
 
-it('uses a settings gear alongside the view sliders', () => {
+it('labels the display grid alongside the global settings gear', () => {
   render(<LibraryToolbar />);
   const settings = screen.getByRole('button', { name: 'Settings' });
   expect(settings.querySelector('svg')?.classList.contains('lucide-settings')).toBe(true);
-  expect(screen.getByRole('button', { name: 'View Menu' }).querySelector('rect')).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Library Display' }).querySelector('rect'),
+  ).toBeTruthy();
+});
+
+it('opens import from the toolbar anchor and hides it during book selection', () => {
+  render(<LibraryToolbar />);
+  const button = screen.getByRole('button', { name: 'Import Books' });
+  fireEvent.click(button);
+  expect(importBooks).toHaveBeenCalledWith(button);
+  cleanup();
+  render(<LibraryToolbar selecting />);
+  expect(screen.queryByRole('button', { name: 'Import Books' })).toBeNull();
 });

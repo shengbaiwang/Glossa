@@ -4,6 +4,7 @@ import { useReaderStore } from '@/store/readerStore';
 import type { FooterBarChildProps } from './types';
 import { HistoryNavigation, PageNavigation } from './NavigationControls';
 import ProgressSlider from './ProgressSlider';
+import PDFScaleControls from './PDFScaleControls';
 
 const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
   bookKey,
@@ -47,6 +48,7 @@ const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
           onCommit={navigationHandlers.onProgressChange}
         />
       </div>
+      <PDFScaleControls bookKey={bookKey} />
     </div>
   );
 };

@@ -59,7 +59,7 @@
 .glossa-settings-row {
   min-height: var(--glossa-row-settings);
   column-gap: var(--glossa-space-row);
-  padding-inline-end: var(--glossa-inset-panel);
+  padding-inline: var(--glossa-inset-panel);
   padding-block: 8px;
 }
 .glossa-settings-row.glossa-navigation-row {
@@ -130,6 +130,9 @@
 }
 .glossa-choice-row[data-highlighted] {
   background: var(--glossa-hover);
+}
+.glossa-navigation-row:not(:disabled):active {
+  background: var(--glossa-selected);
 }
 .glossa-choice-row[data-highlighted][data-state='checked'] {
   background: var(--glossa-selected);

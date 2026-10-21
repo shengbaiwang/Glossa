@@ -194,7 +194,7 @@ const HighlightColorsEditor: React.FC<HighlightColorsEditorProps> = ({
   // pattern for color editing while preserving per-color labels.
   return (
     <BoxedList title={_('Highlight Colors')}>
-      <div className='grid grid-cols-3 gap-3 py-4 pe-4 sm:grid-cols-5'>
+      <div className='grid grid-cols-3 gap-3 px-4 py-4 sm:grid-cols-5'>
         {DEFAULT_HIGHLIGHT_COLORS.map((color, index, array) => {
           const position = index === 0 ? 'left' : index === array.length - 1 ? 'right' : 'center';
           const userLabel = defaultHighlightLabels[color] ?? '';
@@ -216,7 +216,7 @@ const HighlightColorsEditor: React.FC<HighlightColorsEditorProps> = ({
         })}
       </div>
 
-      <div className='py-4 pe-4'>
+      <div className='px-4 py-4'>
         <div
           className={clsx(
             'flex items-center justify-between',

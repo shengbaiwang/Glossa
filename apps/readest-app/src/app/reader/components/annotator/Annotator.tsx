@@ -43,7 +43,6 @@ import { Point, Position, TextSelection } from '@/utils/sel';
 import { getPopupPosition, getPosition, getTextFromRange } from '@/utils/sel';
 import { eventDispatcher } from '@/utils/event';
 import { findTocItemBS } from '@/services/nav';
-import { throttle } from '@/utils/throttle';
 import {
   beginGesture,
   createDeferredActionState,
@@ -57,6 +56,7 @@ import { getIndexFromCfi } from '@/utils/cfi';
 import { writeTextToClipboard } from '@/utils/clipboard';
 import { buildAnnotationUrl } from '@/utils/deeplink';
 import { DEFAULT_NOTE_EXPORT_CONFIG } from '@/services/constants';
+import { getPDFNoteRanges } from '@/services/pdfNoteRanges';
 
 import { getToolbarToolTypes } from '@/utils/annotationToolbar';
 import { AnnotationToolType } from '@/types/annotator';
@@ -81,6 +81,7 @@ import { annotationToolButtons } from './AnnotationTools';
 
 import AnnotationRangeEditor from './AnnotationRangeEditor';
 import SelectionRangeEditor from './SelectionRangeEditor';
+import PDFRangeEditor from './PDFRangeEditor';
 import AnnotationPopup from './AnnotationPopup';
 
 import useShortcuts from '@/hooks/useShortcuts';
@@ -140,6 +141,8 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   const primaryLang = bookData.book?.primaryLanguage || 'en';
 
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const selectionEventController = useRef<AbortController | null>(null);
+  const selectionDocuments = useRef(new WeakSet<Document>());
 
   const [selection, setSelection] = useState<TextSelection | null>(null);
 
@@ -264,19 +267,14 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     [primaryLang, transformCtx],
   );
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const handleDismissPopup = useCallback(
-    throttle(() => {
-      setLookup(null);
-      setSelection(null);
-      setShowAnnotPopup(false);
-      setShowAnnotationNotes(false);
-      setAnnotationNotes([]);
-
-      setEditingAnnotation(null);
-    }, 500),
-    [],
-  );
+  const handleDismissPopup = useCallback(() => {
+    setLookup(null);
+    setSelection(null);
+    setShowAnnotPopup(false);
+    setShowAnnotationNotes(false);
+    setAnnotationNotes([]);
+    setEditingAnnotation(null);
+  }, []);
 
   const {
     isTextSelected,
@@ -319,6 +317,10 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   const onLoad = (event: Event) => {
     const detail = (event as CustomEvent).detail;
     const { doc, index } = detail;
+    const controller = selectionEventController.current;
+    if (!doc || !controller || controller.signal.aborted || selectionDocuments.current.has(doc))
+      return;
+    selectionDocuments.current.add(doc);
 
     const handleTouchmove = (ev: TouchEvent) => {
       // Available on iOS, on Android not fired
@@ -330,8 +332,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
       handleTouchMove(ev);
     };
 
-    // Attach generic selection listeners for all formats, including PDF.
-    // For PDF we only guarantee Copy & Translate; highlight/annotate may be limited by CFI support.
+    // Attach the same selection tools for all formats, including PDF ranges.
     //
     // The renderer `scroll` listener and the Android `native-touch` bridge are
     // NOT attached here: onLoad fires for every (pre)loaded section, but those
@@ -340,12 +341,12 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     // mode over a long session. They are registered once per view via
     // useRendererInputListeners below. Popup repositioning on scroll is already
     // handled by the dedicated effect further down.
-    const opts = { passive: false };
+    const opts = { passive: false, signal: controller.signal };
     detail.doc?.addEventListener('touchstart', handleTouchStart, opts);
     detail.doc?.addEventListener('touchmove', handleTouchmove, opts);
     // Bound to the section so a selectionchange deferred during the drag can
     // be processed (and the popup shown once) when the gesture ends.
-    detail.doc?.addEventListener('touchend', handleTouchEnd.bind(null, doc, index));
+    detail.doc?.addEventListener('touchend', handleTouchEnd.bind(null, doc, index), opts);
     // Re-arm the instant quick action at the start of each gesture. Android does
     // this via the native-touch touchstart above; iOS/desktop have no such path,
     // and a single iOS long-press emits multiple selectionchange events for the
@@ -365,17 +366,21 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
         opts,
       );
     }
-    detail.doc?.addEventListener('mousedown', handleMouseDown);
+    detail.doc?.addEventListener('mousedown', handleMouseDown, opts);
     detail.doc?.addEventListener('pointerdown', handlePointerDown.bind(null, doc, index), opts);
     detail.doc?.addEventListener('pointermove', handlePointerMove.bind(null, doc, index), opts);
-    detail.doc?.addEventListener('pointercancel', handlePointerCancel.bind(null, doc, index));
-    detail.doc?.addEventListener('pointerup', handlePointerUp.bind(null, doc, index));
-    detail.doc?.addEventListener('selectionchange', handleSelectionchange.bind(null, doc, index));
+    detail.doc?.addEventListener('pointercancel', handlePointerCancel.bind(null, doc, index), opts);
+    detail.doc?.addEventListener('pointerup', handlePointerUp.bind(null, doc, index), opts);
+    detail.doc?.addEventListener(
+      'selectionchange',
+      handleSelectionchange.bind(null, doc, index),
+      opts,
+    );
 
     // For PDF selections, enable right-click context menu to directly open translator popup.
 
     // Disable the default context menu on mobile devices (selection handles suffice)
-    detail.doc?.addEventListener('contextmenu', handleContextmenu);
+    detail.doc?.addEventListener('contextmenu', handleContextmenu, opts);
   };
 
   const onCreateOverlay = (event: Event) => {
@@ -393,7 +398,13 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     // 1. Draw native overlays only for notes whose anchor (cfi) lives
     //    inside this section — same as before.
     activeAnnotations
-      .filter((booknote) => getIndexFromCfi(booknote.cfi) === detail.index)
+      .filter((booknote) => {
+        try {
+          return getPDFNoteRanges(booknote).some((cfi) => getIndexFromCfi(cfi) === detail.index);
+        } catch {
+          return false;
+        }
+      })
       .map((annotation) => {
         try {
           view?.addAnnotation(annotation);
@@ -492,6 +503,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
       note: note ?? '',
       rect: isNote ? detail.rect : undefined,
       cfi,
+      ...(annotation.pdfRanges ? { pdfRanges: annotation.pdfRanges } : {}),
       index,
       range,
       page: annotation.page || progress.page,
@@ -551,6 +563,32 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     onShowAnnotation,
     onRelocate,
   });
+
+  useEffect(() => {
+    if (!view) return;
+    const controller = new AbortController();
+    selectionEventController.current = controller;
+    selectionDocuments.current = new WeakSet();
+    // A retained renderer may already have loaded its pages before these tools
+    // mount. Reconnect them as well as future load events, exactly once per doc.
+    for (const content of view.renderer.getContents()) {
+      onLoad(new CustomEvent('load', { detail: content }));
+    }
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+
+  useEffect(() => {
+    if (!view) return;
+    const onLimit = () =>
+      eventDispatcher.dispatch('toast', {
+        type: 'info',
+        message: _('Select up to 24 PDF pages at a time'),
+        timeout: 2500,
+      });
+    view.addEventListener('pdf-selection-limit', onLimit);
+    return () => view.removeEventListener('pdf-selection-limit', onLimit);
+  }, [view, _]);
 
   // Android native-touch handler (the per-gesture engagement signal bridged from
   // MainActivity.kt). Registered once per view by useRendererInputListeners; it
@@ -843,6 +881,10 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
 
   useEffect(() => {
     setHighlightOptionsVisible(!!(selection && selection.annotated));
+    if (!selection) {
+      handleDismissPopup();
+      return;
+    }
     if (selection && selection.text.trim().length > 0) {
       const gridFrame = document.querySelector(`#gridcell-${bookKey}`);
       if (!gridFrame) return;
@@ -973,12 +1015,13 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     });
 
     const { booknotes: annotations = [] } = config;
-    const cfi = view?.getCFI(selection.index, selection.range);
+    const cfi = selection.cfi || view?.getCFI(selection.index, selection.range);
     if (!cfi) return;
     const annotation: BookNote = {
       id: uniqueId(),
       type: 'excerpt',
       cfi,
+      ...(selection.pdfRanges ? { pdfRanges: selection.pdfRanges } : {}),
       note: '',
       text: selection.text,
       page: selection.page,
@@ -1034,7 +1077,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     if (!selection || !selection.text) return null;
     setHighlightOptionsVisible(true);
     const { booknotes: annotations = [] } = config;
-    const cfi = view?.getCFI(selection.index, selection.range);
+    const cfi = selection.cfi || view?.getCFI(selection.index, selection.range);
     if (!cfi) return null;
     const style = highlightStyle || settings.globalReadSettings.highlightStyle;
     const color = settings.globalReadSettings.highlightStyles[style];
@@ -1044,11 +1087,12 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
       id: uniqueId(),
       type: 'annotation',
       cfi,
+      ...(selection.pdfRanges ? { pdfRanges: selection.pdfRanges } : {}),
       style,
       color,
       text: selection.text,
       note: '',
-      page: progress.page,
+      page: selection.page,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -1732,6 +1776,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
         </div>
       )}
       {showAnnotPopup &&
+        selection &&
         !lookup &&
         trianglePosition &&
         annotPopupPosition &&
@@ -1760,35 +1805,54 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
           />
         )}
 
-      {!editingAnnotation && selection?.handlesSuppressed && selection.range && (
-        <SelectionRangeEditor
-          bookKey={bookKey}
-          isVertical={viewSettings.vertical}
-          selection={selection}
-          handleColor={selectedColor}
-          onRangeChange={applyProgrammaticSelection}
-          onStartDrag={handleStartEditAnnotation}
-          noteAutoTurnPoint={noteAutoTurnPoint}
-          cancelAutoTurn={cancelAutoTurn}
-          onAutoTurn={onAutoTurn}
-        />
-      )}
-      {editingAnnotation && editingAnnotation.color && selection && (
-        <AnnotationRangeEditor
-          bookKey={bookKey}
-          isVertical={viewSettings.vertical}
-          annotation={editingAnnotation}
-          selection={selection}
-          handleColor={selectedColor}
-          externalDragPoint={externalDragPoint}
-          getAnnotationText={getAnnotationText}
-          setSelection={setSelection}
-          onStartEdit={handleStartEditAnnotation}
-          noteAutoTurnPoint={noteAutoTurnPoint}
-          cancelAutoTurn={cancelAutoTurn}
-          onAutoTurn={onAutoTurn}
-        />
-      )}
+      {bookData.book?.format === 'PDF' &&
+        selection?.range &&
+        (editingAnnotation || !selection.annotated) && (
+          <PDFRangeEditor
+            bookKey={bookKey}
+            annotation={editingAnnotation ?? undefined}
+            selection={selection}
+            handleColor={selectedColor}
+            getAnnotationText={getAnnotationText}
+            setSelection={setSelection}
+            onStartEdit={handleStartEditAnnotation}
+          />
+        )}
+      {bookData.book?.format !== 'PDF' &&
+        !editingAnnotation &&
+        selection?.handlesSuppressed &&
+        selection.range && (
+          <SelectionRangeEditor
+            bookKey={bookKey}
+            isVertical={viewSettings.vertical}
+            selection={selection}
+            handleColor={selectedColor}
+            onRangeChange={applyProgrammaticSelection}
+            onStartDrag={handleStartEditAnnotation}
+            noteAutoTurnPoint={noteAutoTurnPoint}
+            cancelAutoTurn={cancelAutoTurn}
+            onAutoTurn={onAutoTurn}
+          />
+        )}
+      {bookData.book?.format !== 'PDF' &&
+        editingAnnotation &&
+        editingAnnotation.color &&
+        selection && (
+          <AnnotationRangeEditor
+            bookKey={bookKey}
+            isVertical={viewSettings.vertical}
+            annotation={editingAnnotation}
+            selection={selection}
+            handleColor={selectedColor}
+            externalDragPoint={externalDragPoint}
+            getAnnotationText={getAnnotationText}
+            setSelection={setSelection}
+            onStartEdit={handleStartEditAnnotation}
+            noteAutoTurnPoint={noteAutoTurnPoint}
+            cancelAutoTurn={cancelAutoTurn}
+            onAutoTurn={onAutoTurn}
+          />
+        )}
       {showExportDialog && exportData && bookData.book && (
         <ExportMarkdownDialog
           bookKey={bookKey}

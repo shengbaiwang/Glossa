@@ -218,6 +218,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
           }
           const doc = await new DocumentLoader(file, {
             nativeFilePath: nativeFilePath ?? undefined,
+            autoPDFOCR: book.format === 'PDF',
           }).open();
           bookDoc = doc.book;
         }

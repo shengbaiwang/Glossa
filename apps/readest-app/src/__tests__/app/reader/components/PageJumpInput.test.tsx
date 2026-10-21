@@ -7,19 +7,34 @@ import {
   useSpatialNavigation,
 } from '@/app/reader/hooks/useSpatialNavigation';
 
-const navigation = vi.hoisted(() => ({ goToFraction: vi.fn() }));
+const navigation = vi.hoisted(() => ({ goToFraction: vi.fn(), goTo: vi.fn() }));
+const state = vi.hoisted(() => ({ pdf: false }));
 
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (key: string) => key }));
 vi.mock('@/store/readerStore', () => ({
   useReaderStore: () => ({
     hoveredBookKey: 'book',
     getView: () => navigation,
-    getViewSettings: () => ({ progressStyle: 'fraction' }),
-    getProgress: () => ({ pageinfo: { current: 22, total: 300 } }),
+    getViewSettings: () => ({ progressStyle: state.pdf ? 'reference' : 'fraction' }),
+    getProgress: () => ({
+      pageinfo: { current: 22, total: 300 },
+      section: { current: 46, total: 423 },
+    }),
   }),
 }));
 vi.mock('@/store/bookDataStore', () => ({
-  useBookDataStore: () => ({ getBookData: () => ({ isFixedLayout: false }) }),
+  useBookDataStore: () => ({
+    getBookData: () => ({
+      isFixedLayout: state.pdf,
+      book: { format: state.pdf ? 'PDF' : 'EPUB' },
+      bookDoc: {
+        pageList: Array.from({ length: 423 }, (_, i) => ({
+          label: i === 46 ? '3' : String(i + 1),
+          href: String(i),
+        })),
+      },
+    }),
+  }),
 }));
 
 const Footer = () => {
@@ -37,6 +52,7 @@ const Footer = () => {
 beforeEach(_resetLastKeyboardTime);
 afterEach(() => {
   cleanup();
+  state.pdf = false;
   vi.clearAllMocks();
 });
 
@@ -66,4 +82,17 @@ describe('page input inside the reader toolbar', () => {
     expect(document.activeElement).not.toBe(input);
     expect(navigation.goToFraction).not.toHaveBeenCalled();
   });
+});
+
+it('keeps PDF file pages distinct from printed labels when editing and navigating', () => {
+  state.pdf = true;
+  render(<PageJumpInput bookKey='book' showFraction />);
+  const input = screen.getByRole<HTMLInputElement>('textbox', { name: 'Go to Page' });
+  expect(input.value).toBe('47 / 423');
+  expect(screen.getByText(/Printed page/)).toBeTruthy();
+  act(() => input.focus());
+  fireEvent.change(input, { target: { value: '50 / 423' } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+  expect(navigation.goTo).toHaveBeenCalledWith(49);
+  expect(navigation.goToFraction).not.toHaveBeenCalled();
 });

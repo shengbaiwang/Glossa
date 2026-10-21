@@ -17,11 +17,13 @@ import {
   validateHistory,
 } from '@/glossa/conversation/store';
 import ConversationPanel from '@/glossa/ui/ConversationPanel';
+import OfficialModulePanel from '@/glossa/modules/OfficialModulePanel';
 import ConversationUsage from '@/glossa/ui/ConversationUsage';
 import '@/styles/globals.css';
 import '@/styles/glossa.css';
 const f = vi.hoisted(() => ({
   complete: vi.fn(),
+  officialModules: {} as { conversation?: boolean; mindmap?: boolean },
   translations: {} as Record<string, string>,
   config: {
     id: 'fixture',
@@ -47,14 +49,14 @@ vi.mock('@/store/readerProgressStore', () => ({
   }),
 }));
 vi.mock('@/store/settingsStore', () => ({
-  useSettingsStore: {
+  useSettingsStore: Object.assign(() => ({ settings: { officialModules: f.officialModules } }), {
     getState: () => ({
       openSettingsDialog: vi.fn(),
       setSettingsDialogBookKey: vi.fn(),
       setRequestedPanel: vi.fn(),
       setSettingsDialogOpen: vi.fn(),
     }),
-  },
+  }),
 }));
 vi.mock('@/glossa/ai/provider', async (original) => ({
   ...(await original<typeof import('@/glossa/ai/provider')>()),
@@ -77,6 +79,7 @@ vi.mock('@/glossa/ai/provider', async (original) => ({
 let view: FoliateView | undefined;
 beforeEach(() => {
   f.complete.mockReset();
+  f.officialModules = {};
   f.translations = {};
   f.config.model = 'fixture-model';
 });
@@ -123,7 +126,7 @@ async function fixture() {
   };
 }
 
-async function setup() {
+async function setup(officialModule = false) {
   await page.viewport(1160, 900);
   document.documentElement.setAttribute('data-theme', 'default-light');
   const data = await fixture();
@@ -147,7 +150,16 @@ async function setup() {
       className='bg-base-200'
       style={{ width: 420, height: 900, position: 'absolute', right: 0, top: 0 }}
     >
-      <ConversationPanel book={data.book} bookDoc={data.doc} bookKey={data.book.hash} />
+      {officialModule ? (
+        <OfficialModulePanel
+          moduleId='conversation'
+          book={data.book}
+          bookDoc={data.doc}
+          bookKey={data.book.hash}
+        />
+      ) : (
+        <ConversationPanel book={data.book} bookDoc={data.doc} bookKey={data.book.hash} />
+      )}
     </div>
   );
   const panel = render(wrapper());
@@ -572,11 +584,41 @@ it('preserves answer versions, restores a renamed history and lays out math, cod
   ]);
   expect(JSON.stringify(request.messages)).not.toMatch(/另一种解释|修改问题|解释公式的条件/);
   fireEvent.click(screen.getByRole('button', { name: 'Conversation menu' }));
+  const title = screen.getByRole('button', { name: 'Conversation history' });
+  const titleStyle = getComputedStyle(title);
+  const font = [titleStyle.fontSize, titleStyle.fontWeight, titleStyle.lineHeight];
+  const titleBounds = title.getBoundingClientRect();
   fireEvent.click(screen.getByRole('button', { name: 'Rename conversation' }));
+  const renameInput = screen.getByRole('textbox', { name: 'Conversation name' });
+  const inputStyle = getComputedStyle(renameInput);
+  expect([inputStyle.fontSize, inputStyle.fontWeight, inputStyle.lineHeight]).toEqual(font);
+  expect(inputStyle.borderWidth).toBe('0px');
+  expect(inputStyle.outlineStyle).toBe('none');
+  expect(inputStyle.boxShadow).toBe('none');
+  expect(inputStyle.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+  expect(Math.abs(renameInput.getBoundingClientRect().left - titleBounds.left)).toBeLessThan(1);
+  expect(Math.abs(renameInput.getBoundingClientRect().height - titleBounds.height)).toBeLessThan(1);
+  for (const [theme, width, eink] of [
+    ['default-light', 420, false],
+    ['default-dark', 420, false],
+    ['default-light', 320, true],
+  ] as const) {
+    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-eink', String(eink));
+    document.documentElement.dir = eink ? 'rtl' : 'ltr';
+    screen.getByTestId('chat-sidebar').style.width = `${width}px`;
+    expect(getComputedStyle(renameInput).outlineStyle).toBe('none');
+    expect(getComputedStyle(renameInput).borderWidth).toBe('0px');
+    await page.screenshot({
+      path: `../../../../../.glossa-dev/qa/conversation-inline-rename-${theme}-${width}.png`,
+    });
+  }
+  document.documentElement.dir = 'ltr';
+  screen.getByTestId('chat-sidebar').style.width = '420px';
   fireEvent.change(screen.getByRole('textbox', { name: 'Conversation name' }), {
     target: { value: '公式与条件' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  fireEvent.keyDown(screen.getByRole('textbox', { name: 'Conversation name' }), { key: 'Enter' });
   await waitFor(async () =>
     expect((await loadConversations(book.hash))?.sessions[0]?.title).toBe('公式与条件'),
   );
@@ -635,4 +677,46 @@ it('preserves answer versions, restores a renamed history and lays out math, cod
   await page.screenshot({
     path: '../../../../../.glossa-dev/qa/conversation-audit-long-input-narrow.png',
   });
+});
+
+it('stops a real streaming conversation on module disable and restores its saved partial answer', async () => {
+  let activeSignal: AbortSignal | undefined;
+  f.complete.mockImplementation((request: CompletionRequest) => {
+    activeSignal = request.signal;
+    request.onDelta?.('A preserved partial answer.');
+    return new Promise<string>((resolve) => {
+      request.signal?.addEventListener('abort', () => resolve('A preserved partial answer.'), {
+        once: true,
+      });
+    });
+  });
+  const data = await setup(true);
+  // This is a base-model request: no book body or harness task should be needed.
+  await userEvent.click(screen.getByRole('switch', { name: 'Citations' }));
+  await userEvent.fill(
+    screen.getByRole('textbox', { name: 'Message' }),
+    'Original module question',
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await waitFor(() => expect(activeSignal).toBeDefined());
+  await screen.findByRole('button', { name: 'Stop reply' });
+  const location = view?.lastLocation?.cfi;
+  f.officialModules = { conversation: false };
+  data.panel.rerender(data.wrapper());
+  await waitFor(() => expect(activeSignal?.aborted).toBe(true));
+  expect(screen.queryByRole('textbox', { name: 'Message' })).toBeNull();
+  await waitFor(async () => {
+    const saved = await loadConversations(data.book.hash);
+    const turn = saved?.sessions.find((s) => s.id === saved.activeId)?.turns[0];
+    expect(turn && 'status' in turn ? turn.status : undefined).toBe('stopped');
+  });
+  expect(view?.lastLocation?.cfi).toBe(location);
+  expect(view?.isConnected).toBe(true);
+  f.officialModules = {};
+  data.panel.rerender(data.wrapper());
+  expect(await screen.findByText('A preserved partial answer.')).toBeTruthy();
+  expect(
+    screen.getByText('Original module question', { selector: '.glossa-chat-question' }),
+  ).toBeTruthy();
+  expect(chatCalls()).toHaveLength(1);
 });

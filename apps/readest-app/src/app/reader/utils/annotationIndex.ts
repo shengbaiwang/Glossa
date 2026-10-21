@@ -1,5 +1,6 @@
 import { BookNote } from '@/types/book';
 import { createCfiLocationMatcher, getCfiSpinePrefix } from '@/utils/cfi';
+import { getPDFNoteRanges } from '@/services/pdfNoteRanges';
 
 export interface AnnotationIndex {
   /** Live annotations bucketed by CFI spine prefix (the chapter id). */
@@ -39,11 +40,19 @@ export function buildAnnotationIndex(booknotes: BookNote[]): AnnotationIndex {
       globals.push(item);
       continue;
     }
-    const spine = getCfiSpinePrefix(item.cfi);
-    if (!spine) continue;
-    const bucket = bySection.get(spine);
-    if (bucket) bucket.push(item);
-    else bySection.set(spine, [item]);
+    let ranges: string[];
+    try {
+      ranges = getPDFNoteRanges(item);
+    } catch {
+      continue;
+    }
+    for (const cfi of ranges) {
+      const spine = getCfiSpinePrefix(cfi);
+      if (!spine) continue;
+      const bucket = bySection.get(spine);
+      if (bucket) bucket.push(item);
+      else bySection.set(spine, [item]);
+    }
   }
   return { bySection, globals };
 }
@@ -74,7 +83,7 @@ export function selectLocationAnnotations(
     // deleted in place after the index was built still sits in this bucket. Re-
     // drawing it here would orphan its overlay (visible until reopen) — #4773.
     if (item.deletedAt) continue;
-    if (!matchesLocation(item.cfi)) continue;
+    if (!getPDFNoteRanges(item).some(matchesLocation)) continue;
     if (item.style) annotations.push(item);
     if (item.note && item.note.trim().length > 0) notes.push(item);
   }

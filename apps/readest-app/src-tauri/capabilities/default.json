@@ -232,6 +232,8 @@
     "allow-pdf-ocr-status",
     "allow-pdf-cancel-ocr",
     "allow-pdf-save-outline",
+    "allow-pdf-export-copy",
+    "allow-pdf-cancel-export",
     "allow-auth-with-safari",
     "allow-start-apple-sign-in",
     "allow-set-traffic-lights",

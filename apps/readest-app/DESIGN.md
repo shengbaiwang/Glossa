@@ -1,5 +1,46 @@
 ## Glossa Design Language
 
+### PDF reading controls — 2026-10-18
+
+Keep one file-page entry in the existing footer; show differing printed labels
+separately. Add quiet Fit Page / Fit Width actions and the actual rendered scale,
+with presets in the percentage menu. Fitting clears extra magnification. Keep
+controls inside narrow reading panes, using 44px touch targets and e-ink borders.
+
+Pages uses a virtual thumbnail grid with an ink page-number chip for the current
+page. Follow reader relocation without moving the book when merely scrolling
+thumbnails. Show position, overview and a small action menu; reveal page-selection
+boxes only on request. Do not expose batch-start page inputs or duplicate page-turn
+controls. Reserve stable tile geometry, use the shared paper surface and release
+out-of-view images. Region actions and bounded page copying retain their feedback. Failed thumbnails
+leave other pages usable and offer an inline retry. Arrow keys and Home/End move
+focus through virtual pages; Enter navigates, and closing overview restores focus.
+
+Reserve 48px for two-line PDF position controls inside the existing 52px footer.
+In narrow panes, keep scale presets and fitting in the percentage menu. File-page
+fractions retain LTR order in RTL chrome; the printed label joins the same tappable
+page-entry label. Check actual painted contrast after e-ink transitions.
+
+### Library groups — 2026-10-18
+
+Use “New group” / “New subgroup”, with naming inline and no check/cross controls.
+Keep the group icon, expander, text origin, type size, weight, row height and
+active-row appearance during rename. Edit the text in place without a field
+border, focus outline or added background; selection and the caret show focus.
+Use the same treatment for shelf names, destination creation and conversation
+titles, preserving touch targets. Enter / blur commits and Escape cancels outside
+IME composition; composition keys keep the draft open and a composing blur waits
+for the final text.
+Blank creates use “Untitled”, collisions get numeric suffixes; blank renames keep
+the original name and conflicting renames retain their draft.
+
+Keep New and Undo out of the list footer. The heading, blank-area context menu,
+right click / touch hold, menu key / Shift+F10 and keyboard shortcuts provide access.
+Drag whole branches into rows, at sibling edges or back to the root. Use a short
+name ghost, highlight and insertion line; only say “Up to 4 levels” when needed.
+Retain legacy deeper structures. Delete only the container, promoting books and
+child branches, with one confirmation for nonempty groups and safe one-step undo.
+
 ### Metadata editing — 2026-10-15
 
 Use the shared paper/ink dialog, 16px title, 14px body, 36px framed fields and
@@ -297,6 +338,14 @@ map junctions 1–1.5 units. Do not round arrow directions or bookmark notches i
 unrecognizable shapes. Selected states change the control surface, not glyph size
 or stroke weight; a filled bookmark and stop square retain their state meaning.
 
+All Books and the reader's Go to Library action share the `LibraryBig` standing-spine
+glyph. Series uses `BookSeries`, three staggered book covers, to distinguish an
+ordered collection from the library destination. Keep both on the shared grid and stroke.
+Custom groups use `BookCollection`: an angled paper edge tucked into a low,
+spine-marked folio. Reuse it in the sidebar, inline naming, move destination
+and empty group cover. Keep the monochrome theme ink and existing icon sizes;
+filesystem settings retain the ordinary folder glyph.
+
 | Role | Desktop glyph | Control / rounding |
 | --- | --- | --- |
 | Library toolbar and category navigation | 20px | 32px desktop icon button / 12px; category row keeps its own full-width target |
@@ -429,6 +478,14 @@ destination, not copied button classes or per-icon radii. Glyphs retain their
 18px desktop / 20px touch role size and 1.8-unit rounded strokes. Keep other
 functional levels on their own geometry; this is not a global radius change.
 
+PDF adds Pages between Contents and Bookmarks. The desktop sidebar minimum width
+must fit collapse, all destinations, their shared gaps, both edge insets and the
+divider, including the native macOS window-control clearance. Derive this minimum
+from the existing geometry tokens and 44px coarse-pointer targets; retain the
+saved width and full-width mobile sheet. Narrowing the pane must never push Search
+across the reader divider or shrink the targets. Keep the native clearance in the
+minimum during fullscreen so the pane does not jump when window controls return.
+
 Contents / Bookmarks / Search are three mutually exclusive destinations, matching
 Conversation / Mind map / Notes. Each tablist has exactly one selected tab and one
 tab stop; repeated activation keeps that destination open. Opening search through
@@ -512,8 +569,8 @@ library title to the current browsing category. All Books keeps the overall
 Library title above the collection heading.
 
 Create folders and rename their labels inline in the sidebar. F2 and double click
-rename; the pencil remains available to touch. New Folder uses the current manual
-folder, with creation disabled inside the second level. The My Groups heading
+rename; right click or long press opens the editing menu. New Folder uses the
+current manual folder, with creation disabled inside the second level. The My Groups heading
 returns to all groups. Keep the active child open after a parent rename or move.
 Bookshelf books and manual folders can be dragged to sidebar folders; folder moves
 retain the full subtree, and All Books accepts moves back to the root. External
@@ -525,7 +582,7 @@ for keyboard and touch operation.
 Manual Groups are user-created folders with two levels: a top-level folder and
 one layer of subfolders. Persist empty folders independently of book membership;
 keep the existing book path/ID protocol and preserve deeper legacy paths. Create
-in place, rename on the folder label (double click, F2 or pencil), and use the
+in place, rename on the folder label (double click, F2 or context menu), and use the
 existing path breadcrumbs to return to a parent. The move picker shows a compact
 folder tree, can create a destination inline, and moves complete folder subtrees
 without flattening them. Reject duplicate siblings, self/descendant destinations
@@ -1070,7 +1127,7 @@ The primitive renders:
 
 ```tsx
 <div className='card eink-bordered glossa-group-card rounded-xl'>
-  <div className='glossa-group ps-4'>{children}</div>
+  <div className='glossa-group'>{children}</div>
 </div>
 ```
 
@@ -1079,9 +1136,13 @@ The primitive renders:
 - `glossa-group-card` for the faint raised fill (`base-200` lifted ~4% toward
   white via `--glossa-group`) — **no outline in normal mode**
 - `eink-bordered` for the e-ink-mode contrast border
-- `glossa-group ps-4` for the text-aligned hairline separators: a 1px rule at
+- `glossa-group` for the text-aligned hairline separators: a 1px rule at
   9% ink that starts at the 16px text column (`inset-inline-start: 16px`), not
   the card edge
+- Rows own both 16px inline insets. Keep the group unpadded so hover/pressed
+  backgrounds, keyboard focus and pointer targets span the full card width.
+  Only the first/last row inherits the corresponding outer card corners;
+  separators keep their inset independently. Custom children own their padding.
 
 > **No `overflow-hidden` on the card.** Children may host popovers (color
 > pickers, dropdowns, tooltips) that need to escape the card bounds. The

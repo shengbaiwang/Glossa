@@ -4,9 +4,10 @@ import {
   ChevronDown,
   CheckCheck,
   PanelLeft,
+  Plus,
   Search,
   SearchCheck,
-  SlidersHorizontal,
+  LayoutGrid,
   X,
 } from '@/components/GlossaIcons';
 import GlossaMark from '@/components/GlossaMark';
@@ -29,6 +30,7 @@ interface LibraryHeaderProps {
   onToggleSidebar?: () => void;
   isSelectMode: boolean;
   isSelectAll: boolean;
+  onImportBooks: (anchor: HTMLElement) => void;
   onPullLibrary: () => void;
   onToggleSelectMode: () => void;
   onSelectAll: () => void;
@@ -47,6 +49,7 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
   isSelectMode,
   isSelectAll,
   onToggleSelectMode,
+  onImportBooks,
   onSelectAll,
   onDeselectAll,
   searchQuery,
@@ -187,13 +190,35 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
           </>
         ) : (
           <>
-            <Dropdown
-              label={_('View Menu')}
-              className='dropdown-bottom dropdown-end'
-              buttonClassName='touch-target glossa-icon-button'
-              toggleButton={<SlidersHorizontal size={19} aria-hidden='true' />}
+            <button
+              type='button'
+              className='touch-target glossa-button glossa-library-import'
+              aria-label={_('Import Books')}
+              aria-haspopup='menu'
+              onClick={(event) => onImportBooks(event.currentTarget)}
             >
-              <ViewMenu onSelectBooks={onToggleSelectMode} />
+              <Plus size={16} aria-hidden='true' />
+              <span>{_('Import')}</span>
+            </button>
+            <Dropdown
+              label={_('Library Display')}
+              className='dropdown-bottom dropdown-end'
+              buttonClassName='touch-target glossa-button glossa-library-display-trigger'
+              onToggle={(open) => {
+                if (!open) {
+                  headerRef.current
+                    ?.querySelector<HTMLButtonElement>('.glossa-library-display-trigger')
+                    ?.focus();
+                }
+              }}
+              toggleButton={
+                <>
+                  <LayoutGrid size={18} aria-hidden='true' />
+                  <span>{_('Display')}</span>
+                </>
+              }
+            >
+              <ViewMenu />
             </Dropdown>
             <div className='glossa-library-toolbar-settings'>
               <ApplicationSettingsButton />

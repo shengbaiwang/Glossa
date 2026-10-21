@@ -6,7 +6,13 @@ import * as CFI from 'foliate-js/epubcfi.js';
 import { DocumentLoader, type BookDoc } from '@/libs/document';
 import type { FoliateView } from '@/types/view';
 import type { BookNote } from '@/types/book';
-import { parseOCRPage } from '@/services/pdfEnhancement';
+import {
+  parseOCRPage,
+  OCRContentsLines,
+  OCRPageText,
+  buildOutlineCandidates,
+  outlineToTOC,
+} from '@/services/pdfEnhancement';
 import recognized from '@/__tests__/fixtures/data/glossa-ocr-pages.json';
 import { DEFAULT_BOOK_SEARCH_CONFIG } from '@/services/constants';
 
@@ -31,6 +37,16 @@ async function open(withOCR = true) {
   view.renderer.setAttribute('spread', 'none');
   view.renderer.setAttribute('zoom', 'fit-width');
   await view.goTo(1);
+  if (withOCR)
+    await expect
+      .poll(
+        () =>
+          view!.renderer
+            .getContents()
+            .find((item) => item.index === 1)
+            ?.doc.querySelector('.textLayer')?.textContent,
+      )
+      .toContain('Copper marker');
   return view;
 }
 afterEach(async () => {
@@ -42,12 +58,42 @@ afterEach(async () => {
 });
 
 describe('real scanned PDF plus local Vision word boxes', () => {
+  it('repairs a scanned contents page, calibrates printed pages and navigates the verified destinations', async () => {
+    const v = await open();
+    const contents = parseOCRPage(recognized[0], 0)!;
+    const lines = OCRContentsLines(contents);
+    const entries = buildOutlineCandidates(
+      lines,
+      book!.pageList!.map((p) => p.label),
+      new Map([1, 2].map((index) => [index, OCRPageText(parseOCRPage(recognized[index], index))])),
+      1,
+      new Set([0]),
+    );
+    expect(entries.map((e) => [e.pageIndex, e.verified])).toEqual([
+      [1, true],
+      [2, true],
+    ]);
+    const toc = outlineToTOC(entries, book!.sections.length);
+    for (const entry of toc) {
+      await v.goTo(entry.href);
+      expect(CFI.fake.toIndex(CFI.parse(CFI.collapse(v.lastLocation!.cfi))[0])).toBe(entry.index);
+      await expect
+        .poll(
+          () =>
+            v.renderer
+              .getContents()
+              .find((c) => c.index === entry.index)
+              ?.doc.querySelector('.textLayer')?.textContent,
+        )
+        .toContain(entry.label);
+    }
+  });
   it('keeps images intact and makes recognized words searchable and selectable at their image positions', async () => {
     const v = await open();
     const doc = v.renderer.getContents().find((item) => item.index === 1)!.doc;
-    const word = Array.from(doc.querySelectorAll<HTMLElement>('.textLayer span')).find(
-      (s) => s.textContent === 'Copper ',
-    )!;
+    const word = Array.from(
+      doc.querySelectorAll<HTMLElement>('.textLayer span:not([data-pdf-legacy])'),
+    ).find((s) => s.textContent === 'Copper ')!;
     expect(word).toBeTruthy();
     const box = recognized[1]!.lines.find((w) => w.text === 'Copper ')!;
     const viewport = doc.querySelector('#canvas canvas')!.getBoundingClientRect();

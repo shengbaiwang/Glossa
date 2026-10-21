@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { isOfficialModuleEnabled } from '@/glossa/modules/registry';
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore, type SettingsDialogScope } from '@/store/settingsStore';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
@@ -77,6 +78,7 @@ const SettingsDialog: React.FC<{
   const panelRef = useRef<HTMLDivElement | null>(null);
   const displayReset = useRef<(() => void) | null>(null);
   const {
+    settings,
     setFontPanelView,
     setSettingsDialogOpen,
     activeSettingsItemId,
@@ -95,6 +97,8 @@ const SettingsDialog: React.FC<{
   const scope = explicitScope ?? settingsDialogScope ?? 'application';
   const reading = scope === 'reading';
   const panelBookKey = reading ? bookKey : '';
+  const conversationEnabled = isOfficialModuleEnabled(settings, 'conversation');
+  const modelsEnabled = conversationEnabled || isOfficialModuleEnabled(settings, 'mindmap');
   const tabConfig: TabConfig[] = [
     { tab: 'General', icon: Settings2, label: _('General') },
     { tab: 'Data', icon: Database, label: _('Library Data') },
@@ -116,7 +120,7 @@ const SettingsDialog: React.FC<{
     {
       tab: 'Control',
       icon: Hand,
-      label: _('Behavior'),
+      label: _('Reading Controls'),
     },
     {
       tab: 'Language',
@@ -143,7 +147,12 @@ const SettingsDialog: React.FC<{
       icon: Braces,
       label: _('Custom Styles'),
     },
-  ].filter((tab) => !reading || ['Font', 'Layout', 'Theme'].includes(tab.tab)) as TabConfig[];
+  ].filter((tab) => {
+    if (reading) return ['Font', 'Layout', 'Theme'].includes(tab.tab);
+    if (tab.tab === 'Conversation') return conversationEnabled;
+    if (tab.tab === 'Models') return modelsEnabled;
+    return true;
+  }) as TabConfig[];
 
   const panelGroups = reading
     ? [{ label: '', tabs: ['Font', 'Layout', 'Theme'] }]
@@ -173,6 +182,14 @@ const SettingsDialog: React.FC<{
     }
     return reading ? 'Font' : 'General';
   });
+
+  useEffect(() => {
+    if (!tabConfig.some((tab) => tab.tab === activePanel)) {
+      setActivePanel(reading ? 'Font' : 'General');
+    }
+    // Available panels depend only on scope and the two feature flags.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePanel, reading, conversationEnabled, modelsEnabled]);
 
   // Clear the deep-link request after the initial render has consumed it,
   // so the next dialog open doesn't stick on the same panel. Effect runs
@@ -264,7 +281,12 @@ const SettingsDialog: React.FC<{
         custom: 'Custom',
       };
       const panelKey = parts[1]?.toLowerCase();
-      const targetPanel = panelMap[panelKey || ''];
+      const targetPanel = [
+        'settings.control.checkUpdates',
+        'settings.control.nightlyChannel',
+      ].includes(activeSettingsItemId)
+        ? 'General'
+        : panelMap[panelKey || ''];
       if (
         targetPanel &&
         tabConfig.some((tab) => tab.tab === targetPanel) &&
@@ -281,6 +303,11 @@ const SettingsDialog: React.FC<{
         `[data-setting-id="${activeSettingsItemId}"]`,
       );
       if (element) {
+        let ancestor = element.parentElement;
+        while (ancestor && ancestor !== panelRef.current) {
+          if (ancestor instanceof HTMLDetailsElement) ancestor.open = true;
+          ancestor = ancestor.parentElement;
+        }
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         element.classList.add('settings-highlight');
         setTimeout(() => element.classList.remove('settings-highlight'), 2000);

@@ -19,12 +19,14 @@ interface Props {
   activeId: string;
   disabled?: boolean;
   onSelect: (id: string) => void;
+  onRename?: () => void;
 }
 export default function ConversationSessionPicker({
   sessions,
   activeId,
   disabled,
   onSelect,
+  onRename,
 }: Props) {
   const _ = useTranslation();
   const [open, setOpen] = useState(false);
@@ -67,6 +69,17 @@ export default function ConversationSessionPicker({
         aria-expanded={open}
         disabled={disabled}
         onClick={() => setOpen((value) => !value)}
+        onDoubleClick={() => {
+          setOpen(false);
+          onRename?.();
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'F2' && onRename) {
+            event.preventDefault();
+            setOpen(false);
+            onRename();
+          }
+        }}
       >
         <span>{label}</span>
         <ChevronDown size={14} />

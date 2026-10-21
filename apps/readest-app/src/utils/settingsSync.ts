@@ -2,6 +2,7 @@ import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { isTauriAppPlatform } from '@/services/environment';
 import type { SystemSettings } from '@/types/settings';
+import { OFFICIAL_MODULES, type OfficialModulePreferences } from '@/glossa/modules/registry';
 
 /**
  * Cross-window global-settings sync.
@@ -20,6 +21,7 @@ import type { SystemSettings } from '@/types/settings';
  * the truly-global objects edited in the Settings dialog — are synced; every
  * device/window-local field (filesystem paths, `lastOpenBooks`, sync cursors,
  * screen brightness, ...) is left untouched on the receiving window. Explicit
+ * module switches broadcast only the edited boolean flags; explicit
  * folder mutations also broadcast their catalog so reader windows retain it
  * when they next save settings; routine broadcasts never include that catalog.
  */
@@ -64,8 +66,12 @@ export interface SettingsSyncPayload {
    * revert someone else's switch.
    */
   cloudSyncProviders?: CloudSyncProviderFlags;
+  /** Explicit module edits only; contains no book data or credentials. */
+  officialModules?: OfficialModulePreferences;
   /** Only included after an explicit folder mutation; routine stale saves never broadcast it. */
   libraryFolders?: string[];
+  /** Same-device import destinations follow explicit group edits, never routine saves. */
+  autoImportFolderGroups?: Record<string, string>;
 }
 
 /**
@@ -76,7 +82,12 @@ export const mergeSyncedGlobalSettings = (
   local: SystemSettings,
   payload: Pick<
     SettingsSyncPayload,
-    'globalViewSettings' | 'globalReadSettings' | 'cloudSyncProviders' | 'libraryFolders'
+    | 'globalViewSettings'
+    | 'globalReadSettings'
+    | 'cloudSyncProviders'
+    | 'officialModules'
+    | 'libraryFolders'
+    | 'autoImportFolderGroups'
   >,
 ): SystemSettings => {
   const merged: SystemSettings = {
@@ -84,7 +95,16 @@ export const mergeSyncedGlobalSettings = (
     globalViewSettings: payload.globalViewSettings,
     globalReadSettings: payload.globalReadSettings,
   };
+  if (payload.officialModules) {
+    merged.officialModules = { ...local.officialModules };
+    for (const { id } of OFFICIAL_MODULES) {
+      const enabled = payload.officialModules[id];
+      if (typeof enabled === 'boolean') merged.officialModules[id] = enabled;
+    }
+  }
   if (payload.libraryFolders) merged.libraryFolders = payload.libraryFolders;
+  if (payload.autoImportFolderGroups)
+    merged.autoImportFolderGroups = payload.autoImportFolderGroups;
   if (payload.cloudSyncProviders) {
     merged.webdav = { ...local.webdav, ...payload.cloudSyncProviders.webdav };
     merged.googleDrive = { ...local.googleDrive, ...payload.cloudSyncProviders.googleDrive };
@@ -113,7 +133,11 @@ export const mergeSyncedGlobalSettings = (
  */
 export const broadcastGlobalSettings = async (
   settings: SystemSettings,
-  opts: { includeCloudSyncProviders?: boolean; includeLibraryFolders?: boolean } = {},
+  opts: {
+    includeCloudSyncProviders?: boolean;
+    includeLibraryFolders?: boolean;
+    officialModules?: OfficialModulePreferences;
+  } = {},
 ): Promise<void> => {
   if (!isTauriAppPlatform()) return;
   if (!settings.globalViewSettings || !settings.globalReadSettings) return;
@@ -123,7 +147,11 @@ export const broadcastGlobalSettings = async (
       globalViewSettings: settings.globalViewSettings,
       globalReadSettings: settings.globalReadSettings,
     };
-    if (opts.includeLibraryFolders) payload.libraryFolders = settings.libraryFolders ?? [];
+    if (opts.officialModules) payload.officialModules = opts.officialModules;
+    if (opts.includeLibraryFolders) {
+      payload.libraryFolders = settings.libraryFolders ?? [];
+      payload.autoImportFolderGroups = settings.autoImportFolderGroups ?? {};
+    }
     if (opts.includeCloudSyncProviders) {
       payload.cloudSyncProviders = {
         webdav: {

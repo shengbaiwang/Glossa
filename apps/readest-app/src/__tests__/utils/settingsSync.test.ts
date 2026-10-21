@@ -60,6 +60,22 @@ describe('explicit folder broadcasts', () => {
       libraryFolders: ['文学', '文学/小说'],
     });
   });
+
+  test('keeps watched import destinations aligned with renamed groups across local windows', async () => {
+    const settings = {
+      ...local,
+      libraryFolders: ['阅读'],
+      autoImportFolderGroups: { '/Books': '阅读' },
+    };
+    await broadcastGlobalSettings(settings);
+    expect(vi.mocked(emit).mock.calls.at(-1)?.[1]).not.toHaveProperty('autoImportFolderGroups');
+    await broadcastGlobalSettings(settings, { includeLibraryFolders: true });
+    const payload = vi.mocked(emit).mock.calls.at(-1)?.[1] as SettingsSyncPayload;
+    const reader = { ...local, autoImportFolderGroups: { '/Books': '旧分组' } };
+    expect(mergeSyncedGlobalSettings(reader, payload).autoImportFolderGroups).toEqual({
+      '/Books': '阅读',
+    });
+  });
 });
 
 describe('mergeSyncedGlobalSettings: readestCloud', () => {
@@ -208,4 +224,42 @@ describe('broadcastGlobalSettings: readestCloud in the emitted payload', () => {
     expect(serialized).not.toContain('hunter2');
     expect(serialized).not.toContain('lastSyncedAt');
   });
+});
+
+describe('official module window synchronization', () => {
+  test('only broadcasts explicit module changes and merges them without losing other flags', async () => {
+    const settings = { ...local, officialModules: { conversation: false, mindmap: true } };
+    await broadcastGlobalSettings(settings);
+    expect(vi.mocked(emit).mock.calls.at(-1)?.[1]).not.toHaveProperty('officialModules');
+    await broadcastGlobalSettings(settings, { officialModules: { conversation: false } });
+    const payload = vi.mocked(emit).mock.calls.at(-1)?.[1] as SettingsSyncPayload;
+    expect(payload.officialModules).toEqual({ conversation: false });
+    const reader = { ...local, officialModules: { conversation: true, mindmap: false } };
+    expect(mergeSyncedGlobalSettings(reader, payload).officialModules).toEqual({
+      conversation: false,
+      mindmap: false,
+    });
+    expect(mergeSyncedGlobalSettings(reader, globals).officialModules).toEqual(
+      reader.officialModules,
+    );
+  });
+});
+
+test('syncs the PDF plugin switch without altering AI plugins or accepting malformed flags', async () => {
+  const settings = { ...local, officialModules: { conversation: false, pdfAutoContents: false } };
+  await broadcastGlobalSettings(settings);
+  expect(vi.mocked(emit).mock.calls.at(-1)?.[1]).not.toHaveProperty('officialModules');
+  await broadcastGlobalSettings(settings, { officialModules: { pdfAutoContents: false } });
+  const payload = vi.mocked(emit).mock.calls.at(-1)?.[1] as SettingsSyncPayload;
+  expect(
+    mergeSyncedGlobalSettings({ ...local, officialModules: { mindmap: false } }, payload)
+      .officialModules,
+  ).toEqual({ mindmap: false, pdfAutoContents: false });
+  const malformed = {
+    ...globals,
+    officialModules: { pdfAutoContents: 'true', external: true },
+  } as unknown as SettingsSyncPayload;
+  expect(mergeSyncedGlobalSettings(settings, malformed).officialModules).toEqual(
+    settings.officialModules,
+  );
 });

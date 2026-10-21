@@ -1,5 +1,46 @@
 /* Pane controls own their state styles; never mix generic button pressed/hover
    rules with tab selection. The backplate is smaller than the hit target. */
+.glossa-reader-sidebar {
+  --glossa-sidebar-tab-count: 3;
+  --glossa-sidebar-target: var(--glossa-control-size);
+  --glossa-sidebar-start-inset: var(--glossa-pane-inset);
+}
+
+.glossa-reader-sidebar[data-pdf='true'] {
+  --glossa-sidebar-tab-count: 4;
+}
+
+@media (min-width: 640px) {
+  /* Include collapse, every destination, both edge insets and the divider.
+     A saved narrow width must not push Search into the reading header. */
+  .glossa-reader-sidebar {
+    min-width: max(
+      15rem,
+      calc(
+        var(--glossa-sidebar-start-inset) +
+        var(--glossa-pane-inset) +
+        (var(--glossa-sidebar-tab-count) + 1) *
+        var(--glossa-sidebar-target) +
+        (var(--glossa-sidebar-tab-count) - 1) *
+        var(--glossa-pane-gap) +
+        var(--glossa-pane-group-gap) +
+        1px
+      )
+    );
+  }
+
+  .glossa-reader-sidebar[data-native-window-controls='true'] {
+    /* Match the header's sm:ps-20; keep the minimum stable in fullscreen. */
+    --glossa-sidebar-start-inset: 5rem;
+  }
+}
+
+@media (pointer: coarse) {
+  .glossa-reader-sidebar {
+    --glossa-sidebar-target: 44px;
+  }
+}
+
 .glossa-pane-tabs {
   display: flex;
   min-width: 0;

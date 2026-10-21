@@ -594,6 +594,38 @@ describe('ingestFile', () => {
     expect(existing.groupName).toBe('Manual/Group');
   });
 
+  test('repairs legacy placeholder metadata on a folder fast-path hit without parsing or regrouping', async () => {
+    const deps = makeDeps({ externalLibraryFolders: ['/Library'] });
+    const sourcePath = '/Library/马基雅维里主义.pdf';
+    const existing = makeBook({
+      format: 'PDF',
+      title: 'ssreader',
+      sourceTitle: 'ssreader',
+      author: 'ssreader',
+      filePath: sourcePath,
+      groupId: 'manual',
+      progress: [17, 200],
+      metadata: { title: 'ssreader', author: 'ssreader', language: 'zh' },
+    });
+    const lookupIndex = {
+      byHash: new Map([[existing.hash, existing]]),
+      byMetaKey: new Map(),
+      byFilePath: new Map([[sourcePath, existing]]),
+    };
+    const book = await ingestFile(
+      { file: sourcePath, books: [existing], lookupIndex, groupId: '' },
+      deps,
+    );
+    expect(book).toBe(existing);
+    expect(book?.title).toBe('马基雅维里主义');
+    expect(book?.author).toBe('');
+    expect(book?.sourceTitle).toBe('ssreader');
+    expect(book?.groupId).toBe('manual');
+    expect(book?.progress).toEqual([17, 200]);
+    expect(book?.updatedAt).toBe(2000);
+    expect(deps.importBook).not.toHaveBeenCalled();
+  });
+
   test('without inPlace the byFilePath index is ignored and importBook runs', async () => {
     // Fast path is gated on `inPlace`. A classic copy-mode import (no
     // external library folder configured) that happens to point at a path
@@ -673,4 +705,32 @@ describe('ingestFile', () => {
     );
     expect(transferManager.queueUpload).not.toHaveBeenCalled();
   });
+});
+
+test('an explicit in-place PDF re-import retries contents without changing grouping, timestamps or upload state', async () => {
+  const deps = makeDeps({ externalLibraryFolders: ['/Library'] });
+  const existing = makeBook({ format: 'PDF', filePath: '/Library/book.pdf', groupId: 'manual' });
+  const prepare = vi.fn().mockResolvedValue(undefined);
+  deps.appService.prepareBookContents = prepare;
+  const lookupIndex = {
+    byHash: new Map(),
+    byMetaKey: new Map(),
+    byFilePath: new Map([['/Library/book.pdf', existing]]),
+  };
+  expect(
+    await ingestFile(
+      { file: '/Library/book.pdf', books: [existing], lookupIndex, groupId: '' },
+      deps,
+    ),
+  ).toBe(existing);
+  expect(prepare).toHaveBeenCalledExactlyOnceWith(existing);
+  expect(deps.importBook).not.toHaveBeenCalled();
+  expect(existing).toMatchObject({ updatedAt: 2000, createdAt: 1000, groupId: 'manual' });
+  expect(transferManager.queueUpload).not.toHaveBeenCalled();
+  prepare.mockClear();
+  await ingestFile(
+    { file: '/Library/book.pdf', books: [existing], lookupIndex, retryPDFContents: false },
+    deps,
+  );
+  expect(prepare).not.toHaveBeenCalled();
 });

@@ -1,0 +1,202 @@
+import { useEffect, useRef, useState } from 'react';
+
+export type FolderDrop = { path: string; edge: 'inside' | 'before' | 'after' };
+type Gesture = {
+  path: string;
+  x: number;
+  y: number;
+  lastX: number;
+  lastY: number;
+  id: number;
+  touch: boolean;
+  ready: boolean;
+  dragging: boolean;
+  timer?: ReturnType<typeof setTimeout>;
+};
+
+/** Pointer drag keeps touch scrolling until a hold, and uses the same branch move as menus. */
+export function useFolderDrag({
+  root,
+  disabled,
+  onMenu,
+  onDrop,
+  onExpand,
+  onStart,
+  onFinish,
+}: {
+  root: React.RefObject<HTMLElement | null>;
+  disabled: boolean;
+  onMenu: (path: string | null, position: { x: number; y: number }) => void;
+  onDrop: (path: string, target: FolderDrop) => Promise<boolean>;
+  onExpand: (path: string) => void;
+  onStart: () => void;
+  onFinish: (saved: boolean) => void;
+}) {
+  const latest = useRef({ disabled, onMenu, onDrop, onExpand, onStart, onFinish });
+  latest.current = { disabled, onMenu, onDrop, onExpand, onStart, onFinish };
+  const gesture = useRef<Gesture | null>(null);
+  const suppressClick = useRef(false);
+  const [drag, setDrag] = useState<{
+    path: string;
+    x: number;
+    y: number;
+    target?: FolderDrop;
+  } | null>(null);
+  useEffect(() => {
+    let expansion: ReturnType<typeof setTimeout> | undefined;
+    let over = '';
+    let frame = 0;
+    const project = (g: Gesture): FolderDrop | undefined => {
+      const bounds = root.current?.getBoundingClientRect();
+      if (
+        !bounds ||
+        g.lastX < bounds.left ||
+        g.lastX > bounds.right ||
+        g.lastY < bounds.top ||
+        g.lastY > bounds.bottom
+      )
+        return;
+      const rows = root.current?.querySelectorAll<HTMLElement>('[data-folder-drop]') ?? [];
+      for (const row of rows) {
+        const rect = row.getBoundingClientRect();
+        if (g.lastY < rect.top || g.lastY > rect.bottom) continue;
+        const path = row.dataset['folderDrop'] ?? '';
+        const offset = (g.lastY - rect.top) / rect.height;
+        return {
+          path,
+          edge:
+            !path || (offset > 0.25 && offset < 0.75)
+              ? 'inside'
+              : offset <= 0.25
+                ? 'before'
+                : 'after',
+        };
+      }
+      return { path: '', edge: 'inside' };
+    };
+    const update = () => {
+      const g = gesture.current;
+      if (!g?.dragging) return;
+      const target = project(g);
+      setDrag({ path: g.path, x: g.lastX, y: g.lastY, target });
+      const next = target?.edge === 'inside' ? target.path : '';
+      if (next !== over) {
+        clearTimeout(expansion);
+        over = next;
+        if (next) expansion = setTimeout(() => latest.current.onExpand(next), 650);
+      }
+      const scroll = root.current?.querySelector<HTMLElement>(
+        '.glossa-library-navigation-categories',
+      );
+      if (scroll) {
+        const rect = scroll.getBoundingClientRect();
+        if (g.lastY > rect.top && g.lastY < rect.top + 32) scroll.scrollTop -= 7;
+        else if (g.lastY < rect.bottom && g.lastY > rect.bottom - 32) scroll.scrollTop += 7;
+      }
+      frame = requestAnimationFrame(update);
+    };
+    const cancel = (notify: unknown = true) => {
+      if (notify && gesture.current?.dragging) latest.current.onFinish(false);
+      clearTimeout(gesture.current?.timer);
+      clearTimeout(expansion);
+      cancelAnimationFrame(frame);
+      gesture.current = null;
+      setDrag(null);
+      over = '';
+    };
+    const move = (event: PointerEvent) => {
+      const g = gesture.current;
+      if (!g || g.id !== event.pointerId) return;
+      g.lastX = event.clientX;
+      g.lastY = event.clientY;
+      if (Math.hypot(g.lastX - g.x, g.lastY - g.y) <= 7) return;
+      if (g.touch && !g.ready) {
+        cancel();
+        return;
+      }
+      if (!g.dragging) {
+        latest.current.onStart();
+        g.dragging = true;
+        suppressClick.current = true;
+        clearTimeout(g.timer);
+        latest.current.onMenu(null, { x: 0, y: 0 });
+        update();
+      }
+      event.preventDefault();
+    };
+    const up = (event: PointerEvent) => {
+      const g = gesture.current;
+      if (!g || g.id !== event.pointerId) return;
+      if (g.dragging || g.ready) {
+        event.preventDefault();
+        suppressClick.current = true;
+      }
+      if (g.dragging) {
+        g.lastX = event.clientX;
+        g.lastY = event.clientY;
+        const target = project(g);
+        if (target) {
+          void latest.current
+            .onDrop(g.path, target)
+            .then((saved) => latest.current.onFinish(saved));
+          cancel(false);
+        } else cancel();
+      } else {
+        cancel();
+      }
+      setTimeout(() => {
+        suppressClick.current = false;
+      }, 0);
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && gesture.current) {
+        event.preventDefault();
+        cancel();
+      }
+    };
+    document.addEventListener('pointermove', move, { passive: false });
+    document.addEventListener('pointerup', up, true);
+    document.addEventListener('pointercancel', cancel);
+    document.addEventListener('keydown', key);
+    window.addEventListener('blur', cancel);
+    return () => {
+      cancel(false);
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up, true);
+      document.removeEventListener('pointercancel', cancel);
+      document.removeEventListener('keydown', key);
+      window.removeEventListener('blur', cancel);
+    };
+  }, [root]);
+  return {
+    drag,
+    suppressClick,
+    start: (event: React.PointerEvent, path: string) => {
+      if (
+        latest.current.disabled ||
+        event.button !== 0 ||
+        (event.target as HTMLElement).closest('input, form, [data-expander]')
+      )
+        return;
+      suppressClick.current = false;
+      const g: Gesture = {
+        path,
+        x: event.clientX,
+        y: event.clientY,
+        lastX: event.clientX,
+        lastY: event.clientY,
+        id: event.pointerId,
+        touch: event.pointerType !== 'mouse',
+        ready: false,
+        dragging: false,
+      };
+      gesture.current = g;
+      if (g.touch)
+        g.timer = setTimeout(() => {
+          g.ready = true;
+          suppressClick.current = true;
+          latest.current.onMenu(path, { x: g.x, y: g.y });
+        }, 520);
+    },
+  };
+}

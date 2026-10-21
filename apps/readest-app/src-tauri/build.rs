@@ -50,6 +50,8 @@ fn main() {
             "pdf_ocr_status",
             "pdf_cancel_ocr",
             "pdf_save_outline",
+            "pdf_export_copy",
+            "pdf_cancel_export",
             "auth_with_safari",
             "start_apple_sign_in",
             "set_traffic_lights",

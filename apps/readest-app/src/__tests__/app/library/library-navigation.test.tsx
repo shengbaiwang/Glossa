@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import LibraryNavigation from '@/app/library/components/LibraryNavigation';
 import { useLibraryStore } from '@/store/libraryStore';
@@ -47,32 +47,33 @@ beforeEach(() => {
 });
 
 describe('LibraryNavigation', () => {
-  it('creates inline at the current level, focuses the result, and stops at two levels', async () => {
+  it('creates from the heading menu, defaults blank names and stops at four levels', async () => {
     mocks.search = new URLSearchParams('groupBy=group');
-    const { rerender } = render(<LibraryNavigation onNavigate={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'New Folder' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Folder name' }), {
-      target: { value: '学术' },
-    });
-    fireEvent.submit(screen.getByRole('textbox', { name: 'Folder name' }).closest('form')!);
+    render(<LibraryNavigation onNavigate={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'New group' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'My Groups' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New group' }));
+    fireEvent.submit(screen.getByRole('textbox').closest('form')!);
     await waitFor(() =>
-      expect(document.activeElement).toBe(screen.getByRole('button', { name: '学术' })),
+      expect(screen.getByRole('button', { name: 'Untitled' })).toBe(document.activeElement),
     );
-    mocks.search = new URLSearchParams(`groupBy=group&group=${md5Fingerprint('学术')}`);
-    rerender(<LibraryNavigation onNavigate={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'New Folder' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Folder name' }), {
-      target: { value: '阅读' },
-    });
-    fireEvent.submit(screen.getByRole('textbox', { name: 'Folder name' }).closest('form')!);
-    await waitFor(() =>
-      expect(document.activeElement).toBe(screen.getByRole('button', { name: '学术/阅读' })),
-    );
-    mocks.search = new URLSearchParams(`groupBy=group&group=${md5Fingerprint('学术/阅读')}`);
-    rerender(<LibraryNavigation onNavigate={vi.fn()} />);
-    expect((screen.getByRole('button', { name: 'New Folder' }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    for (const [parent, name] of [
+      ['Untitled', 'B'],
+      ['Untitled/B', 'C'],
+      ['Untitled/B/C', 'D'],
+    ]) {
+      fireEvent.contextMenu(screen.getByRole('button', { name: parent }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'New subgroup' }));
+      fireEvent.change(screen.getByRole('textbox'), { target: { value: name } });
+      fireEvent.submit(screen.getByRole('textbox').closest('form')!);
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: parent + '/' + name })).toBe(
+          document.activeElement,
+        ),
+      );
+    }
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Untitled/B/C/D' }));
+    expect(screen.queryByRole('menuitem', { name: 'New subgroup' })).toBeNull();
   });
 
   it('shows folders directly between the library and metadata browsing', () => {
@@ -122,7 +123,7 @@ describe('LibraryNavigation', () => {
     fireEvent.keyDown(books, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'My Groups' }));
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: '历史' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '文学' }));
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' });
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'My Groups' }));
     fireEvent.keyDown(document.activeElement!, { key: 'End' });
@@ -158,14 +159,71 @@ describe('LibraryNavigation', () => {
     expect(params.get('view')).toBe('list');
   });
 
+  it('keeps folder rows quiet and opens inline rename from the context menu', async () => {
+    render(<LibraryNavigation onNavigate={vi.fn()} />);
+    const folder = screen.getByRole('button', { name: '历史' });
+    fireEvent.mouseOver(folder);
+    expect(screen.queryByRole('button', { name: /^Rename group/ })).toBeNull();
+    expect(folder.closest('.glossa-library-folder-row')?.querySelectorAll('button')).toHaveLength(
+      1,
+    );
+    fireEvent.contextMenu(folder, { clientX: 80, clientY: 160 });
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Rename group' }));
+    expect((screen.getByRole('textbox', { name: 'Group name' }) as HTMLInputElement).value).toBe(
+      '历史',
+    );
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '历史' }));
+  });
+
+  it.each([
+    { key: 'ContextMenu' },
+    { key: 'F10', shiftKey: true },
+  ])('opens the folder menu with $key and restores focus on Escape', async (key) => {
+    render(<LibraryNavigation onNavigate={vi.fn()} />);
+    const folder = screen.getByRole('button', { name: '历史' });
+    folder.focus();
+    fireEvent.keyDown(folder, key);
+    const rename = await screen.findByRole('menuitem', { name: 'Rename group' });
+    expect(document.activeElement).toBe(rename);
+    fireEvent.keyDown(rename, { key: 'Escape' });
+    expect(screen.queryByRole('menuitem')).toBeNull();
+    expect(document.activeElement).toBe(folder);
+    expect(mocks.navigate).not.toHaveBeenCalled();
+  });
+
+  it('opens the menu on touch hold without navigating and cancels a moving hold', () => {
+    vi.useFakeTimers();
+    try {
+      render(<LibraryNavigation onNavigate={vi.fn()} />);
+      const folder = screen.getByRole('button', { name: '历史' });
+      const pointer = { button: 0, pointerId: 1, pointerType: 'touch', clientX: 80, clientY: 160 };
+      fireEvent.pointerDown(folder, pointer);
+      act(() => vi.advanceTimersByTime(600));
+      fireEvent.pointerUp(folder, pointer);
+      fireEvent.click(folder);
+      expect(screen.getByRole('menuitem', { name: 'Rename group' })).toBeTruthy();
+      expect(mocks.navigate).not.toHaveBeenCalled();
+      fireEvent.keyDown(screen.getByRole('menuitem', { name: 'Rename group' }), { key: 'Escape' });
+      fireEvent.pointerDown(folder, pointer);
+      fireEvent.pointerMove(folder, { ...pointer, clientY: 200 });
+      act(() => vi.advanceTimersByTime(600));
+      expect(screen.queryByRole('menuitem')).toBeNull();
+      fireEvent.pointerCancel(folder, pointer);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('renames the active parent inline and keeps its current child open', async () => {
     mocks.search = new URLSearchParams(`groupBy=group&group=${md5Fingerprint('文学/小说')}`);
     render(<LibraryNavigation onNavigate={vi.fn()} />);
     fireEvent.keyDown(screen.getByRole('button', { name: '文学' }), { key: 'F2' });
-    fireEvent.change(screen.getByRole('textbox', { name: 'Folder name' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Group name' }), {
       target: { value: '文艺' },
     });
-    fireEvent.submit(screen.getByRole('textbox', { name: 'Folder name' }).closest('form')!);
+    fireEvent.submit(screen.getByRole('textbox', { name: 'Group name' }).closest('form')!);
     await waitFor(() =>
       expect(useSettingsStore.getState().settings.libraryFolders).toContain('文艺/小说'),
     );
@@ -174,7 +232,7 @@ describe('LibraryNavigation', () => {
     );
   });
 
-  it('moves a dragged folder, persists it, and rejects a third level without altering data', async () => {
+  it('moves a dragged folder and persists a third level', async () => {
     render(<LibraryNavigation onNavigate={vi.fn()} />);
     const transfer = (path: string) => ({
       types: ['application/x-glossa-library-items'],
@@ -190,8 +248,18 @@ describe('LibraryNavigation', () => {
     fireEvent.drop(screen.getByRole('button', { name: '文学/小说' }), {
       dataTransfer: transfer('文学/历史'),
     });
-    await screen.findByRole('alert');
-    expect(useSettingsStore.getState().settings.libraryFolders).toContain('文学/历史');
-    expect(useSettingsStore.getState().settings.libraryFolders).not.toContain('文学/小说/历史');
+    await waitFor(() =>
+      expect(useSettingsStore.getState().settings.libraryFolders).toContain('文学/小说/历史'),
+    );
+    expect(useSettingsStore.getState().settings.libraryFolders).not.toContain('文学/历史');
   });
+});
+
+it('creates a root group with the keyboard shortcut without adding a bottom action', () => {
+  render(<LibraryNavigation onNavigate={vi.fn()} />);
+  const heading = screen.getByRole('button', { name: 'My Groups' });
+  heading.focus();
+  fireEvent.keyDown(heading, { key: 'N', ctrlKey: true, shiftKey: true });
+  expect(screen.getByRole('textbox')).toBe(document.activeElement);
+  expect(screen.queryByRole('button', { name: 'New group' })).toBeNull();
 });

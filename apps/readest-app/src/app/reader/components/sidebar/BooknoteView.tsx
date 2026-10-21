@@ -37,7 +37,9 @@ const BooknoteView: React.FC<{
   bookKey: string;
   toc: TOCItem[];
   notebookSearch?: { results: BookNote[] | null };
-}> = ({ bookKey, toc, notebookSearch }) => {
+  noteEditor?: { id: string; content: React.ReactNode };
+  useNotebookEditor?: boolean;
+}> = ({ bookKey, toc, notebookSearch, noteEditor, useNotebookEditor }) => {
   const _ = useTranslation();
   const { getConfig } = useBookDataStore();
   const { getProgress } = useReaderStore();
@@ -113,13 +115,25 @@ const BooknoteView: React.FC<{
           notebookSearch.results?.some((result) => result.id === note.id),
         )
       : liveAnnotations;
-    return filterBooknotes(candidates, {
+    const matches = filterBooknotes(candidates, {
       kind: filterKind,
       query,
       excludedColors,
       excludedStyles,
     });
-  }, [liveAnnotations, filterKind, query, excludedColors, excludedStyles, notebookSearch]);
+    const edited = liveAnnotations.find((note) => note.id === noteEditor?.id);
+    return edited && !matches.some((note) => note.id === edited.id)
+      ? [...matches, edited]
+      : matches;
+  }, [
+    liveAnnotations,
+    filterKind,
+    query,
+    excludedColors,
+    excludedStyles,
+    notebookSearch,
+    noteEditor?.id,
+  ]);
 
   // Build groups + sort by toc id and intra-group cfi.
   const sortedGroups = useMemo<BooknoteGroup[]>(() => {
@@ -194,11 +208,26 @@ const BooknoteView: React.FC<{
   const [containerHeight, setContainerHeight] = useState(400);
   const lastScrolledCfiRef = useRef<string | null>(null);
 
+  const editingIndex = noteEditor
+    ? flatItems.findIndex((row) => row.kind === 'note' && row.item.id === noteEditor.id)
+    : -1;
+  useEffect(() => {
+    if (editingIndex < 0) return;
+    const frame = requestAnimationFrame(() =>
+      virtuosoRef.current?.scrollToIndex({
+        index: editingIndex,
+        align: 'center',
+        behavior: 'auto',
+      }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [noteEditor?.id, editingIndex]);
+
   // Mirror the nearest index so the OverlayScrollbars `initialized` callback —
   // created at mount but fired after a deferred, timing-dependent init — reads
   // the current target instead of its stale mount-time closure.
   const nearestIndexRef = useRef(nearestIndex);
-  nearestIndexRef.current = nearestIndex;
+  nearestIndexRef.current = editingIndex >= 0 ? editingIndex : nearestIndex;
 
   // Center index of the currently visible window, kept fresh by Virtuoso's
   // rangeChanged. Lets the scroll effect jump instantly for far moves and
@@ -212,7 +241,7 @@ const BooknoteView: React.FC<{
   // effect skips that first jump and lets initialTopMostItemIndex handle it; the
   // OverlayScrollbars `initialized` re-apply restores it after the deferred init
   // resets scrollTop (mirrors TOCView).
-  const [initialTopIndex] = useState(() => nearestIndex);
+  const [initialTopIndex] = useState(() => (editingIndex >= 0 ? editingIndex : nearestIndex));
   const initialScrollHandledRef = useRef(initialTopIndex > 0);
 
   const [initialize, osInstance] = useOverlayScrollbars({
@@ -292,6 +321,11 @@ const BooknoteView: React.FC<{
     // While the user is filtering/searching, the list is a result set, not a
     // mirror of the reading position; jumping to the nearest note would yank
     // their scroll position on every keystroke.
+    if (noteEditor?.id) {
+      lastScrolledCfiRef.current = nearestCfi;
+      initialScrollHandledRef.current = false;
+      return;
+    }
     if (isFiltering) {
       // Forget the last auto-scroll target while filtering so that clearing
       // the filter re-centers on the reading position instead of being
@@ -327,7 +361,7 @@ const BooknoteView: React.FC<{
         });
       });
     }
-  }, [nearestCfi, nearestIndex, isFiltering]);
+  }, [nearestCfi, nearestIndex, isFiltering, noteEditor?.id]);
 
   const renderItem = useCallback(
     (index: number) => {
@@ -342,6 +376,7 @@ const BooknoteView: React.FC<{
           </div>
         );
       }
+      if (row.item.id === noteEditor?.id) return <div className='px-2'>{noteEditor.content}</div>;
       return (
         <ul className='px-2'>
           <BooknoteItem
@@ -349,12 +384,12 @@ const BooknoteView: React.FC<{
             item={row.item}
             isNearest={row.item.cfi === nearestCfi}
             onClick={handleBrowseBookNotes}
-            inlineNoteEditing
+            inlineNoteEditing={!useNotebookEditor}
           />
         </ul>
       );
     },
-    [flatItems, bookKey, nearestCfi, handleBrowseBookNotes],
+    [flatItems, bookKey, nearestCfi, handleBrowseBookNotes, noteEditor, useNotebookEditor],
   );
 
   // Always mount the listHostRef host so the height-measurement effect (and

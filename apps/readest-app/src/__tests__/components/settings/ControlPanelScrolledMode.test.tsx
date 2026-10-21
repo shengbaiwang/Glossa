@@ -13,7 +13,7 @@ import { render, cleanup, screen, fireEvent } from '@testing-library/react';
 let currentIsFixedLayout = false;
 
 vi.mock('@/context/EnvContext', () => ({
-  useEnv: () => ({ envConfig: {}, appService: { isMobileApp: false } }),
+  useEnv: () => ({ envConfig: {}, appService: { isMobileApp: false, hasUpdater: true } }),
 }));
 
 vi.mock('@/hooks/useTranslation', () => ({
@@ -136,4 +136,15 @@ describe('Scrolled Mode and the page-turn attributes', () => {
 
     expect(applyPageTurnAttributes).toHaveBeenCalled();
   });
+});
+
+it('keeps pagination and annotation controls ahead of collapsed device and animation options', () => {
+  const { container } = render(<ControlPanel bookKey='book1' onRegisterReset={vi.fn()} />);
+  const more = container.querySelector('details')!;
+  expect(more.open).toBe(false);
+  expect(screen.queryByText('Check Updates on Start')).toBeNull();
+  expect(more.contains(screen.getByText('Paging Animation'))).toBe(true);
+  expect(more.contains(screen.getByText('Keep Screen Awake'))).toBe(true);
+  expect(more.contains(screen.getByText('Click to Paginate'))).toBe(false);
+  expect(more.contains(screen.getByText('Enable Quick Actions'))).toBe(false);
 });

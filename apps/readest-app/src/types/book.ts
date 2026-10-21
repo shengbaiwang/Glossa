@@ -99,7 +99,8 @@ export interface Book {
   // Metadata md5 hash, used to aggregate different versions of the same book
   metaHash?: string;
   format: BookFormat;
-  title: string; // editable title from metadata
+  title: string; // editable title, initially the original filename without its extension
+  originalFilename?: string; // source name retained even when the managed copy is renamed
   sourceTitle?: string; // parsed when the book is imported and used to locate the file
   author: string;
   group?: string; // deprecated in favor of groupId and groupName
@@ -164,6 +165,8 @@ export interface BookNote {
   id: string;
   type: BookNoteType;
   cfi: string; // Canonicalized CFI for the note location
+  /** Ordered per-page CFIs for one contiguous PDF selection, including cfi. */
+  pdfRanges?: string[];
   xpointer0?: string; // Start XPointer for the note location
   xpointer1?: string; // End XPointer for the note location
   page?: number;

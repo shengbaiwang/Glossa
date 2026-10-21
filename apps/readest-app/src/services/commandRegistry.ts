@@ -1,4 +1,5 @@
 import { Fzf, FzfResultItem, byLengthAsc } from 'fzf';
+import { OFFICIAL_MODULES } from '@/glossa/modules/registry';
 import { SettingsPanelType } from '@/components/settings/SettingsDialog';
 import {
   Type as RiFontSize,
@@ -589,6 +590,30 @@ export const buildCommandRegistry = (options: CommandRegistryOptions): CommandIt
     action: () => openSettingsPanel(panel, def.id),
   });
 
+  for (const module of OFFICIAL_MODULES) {
+    items.push(
+      createSettingsItem(
+        {
+          id: `settings.general.module.${module.id}`,
+          labelKey: module.labelKey,
+          keywords: [
+            'plugin',
+            'module',
+            'official',
+            'enable',
+            'disable',
+            '插件',
+            '模块',
+            '启用',
+            '停用',
+          ],
+          section: _('Plugins'),
+        },
+        'General',
+      ),
+    );
+  }
+
   // add font panel items
   for (const def of fontPanelItems) {
     items.push(createSettingsItem(def, 'Font'));
@@ -606,7 +631,7 @@ export const buildCommandRegistry = (options: CommandRegistryOptions): CommandIt
 
   // add control panel items
   for (const def of controlPanelItems) {
-    items.push(createSettingsItem(def, 'Control', 'Behavior'));
+    items.push(createSettingsItem(def, 'Control', 'Reading Controls'));
   }
 
   // add language panel items

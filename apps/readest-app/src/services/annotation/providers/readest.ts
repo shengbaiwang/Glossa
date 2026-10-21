@@ -1,5 +1,6 @@
 import * as CFI from 'foliate-js/epubcfi.js';
 import { BookDoc, SectionItem } from '@/libs/document';
+import { getPDFNoteRanges } from '@/services/pdfNoteRanges';
 import {
   BookFormat,
   BookNote,
@@ -24,6 +25,7 @@ export interface ReadestAnnotationEntry {
   id: string;
   type: BookNoteType;
   cfi: string;
+  pdfRanges?: string[];
   text?: string;
   style?: HighlightStyle;
   color?: HighlightColor;
@@ -83,6 +85,7 @@ export const buildAnnotationExport = ({
         updatedAt: note.updatedAt,
       };
       if (note.text) entry.text = note.text;
+      if (note.pdfRanges !== undefined) entry.pdfRanges = getPDFNoteRanges(note);
       if (note.style) entry.style = note.style;
       if (note.color) entry.color = note.color;
       if (note.global) entry.global = true;
@@ -136,6 +139,13 @@ const parseEntry = (value: unknown): ReadestAnnotationEntry | null => {
   if (value['global'] === true) entry.global = true;
   if (xpointer0) entry.xpointer0 = xpointer0;
   if (xpointer1) entry.xpointer1 = xpointer1;
+  if (value['pdfRanges'] !== undefined) {
+    try {
+      entry.pdfRanges = getPDFNoteRanges({ cfi, pdfRanges: value['pdfRanges'] });
+    } catch {
+      return null;
+    }
+  }
   return entry;
 };
 
@@ -347,17 +357,37 @@ export const convertAnnotationExportToBookNotes = async (
     // whether its CFI still resolves.
     const expected = entry.type !== 'bookmark' && entry.text ? normalizeText(entry.text) : '';
 
-    const range = await rangeFromCfi(entry.cfi);
-    const matchesText = !!range && !!expected && normalizeText(range.toString()) === expected;
-
     let cfi: string | null = null;
     let moved = false;
-    if (matchesText || (!expected && range)) {
-      // Exact hit, or a bookmark whose CFI still lands somewhere valid.
-      cfi = entry.cfi;
-    } else if (expected) {
-      cfi = await searchForText(entry.text!);
-      moved = !!cfi;
+    if (entry.pdfRanges !== undefined) {
+      // Every page belongs to one annotation. Never turn a failed fragment
+      // into a partial single-page match via the ordinary text-search fallback.
+      try {
+        const ranges: Range[] = [];
+        for (const target of getPDFNoteRanges(entry)) {
+          const range = await rangeFromCfi(target);
+          if (!range || range.collapsed) throw new Error('pdf_annotation_unresolved');
+          ranges.push(range);
+        }
+        if (
+          !expected ||
+          normalizeText(ranges.map((range) => range.toString()).join('\n')) === expected
+        ) {
+          cfi = entry.cfi;
+        }
+      } catch {
+        // Count the whole record as unmatched below; retain the source export.
+      }
+    } else {
+      const range = await rangeFromCfi(entry.cfi);
+      const matchesText = !!range && !!expected && normalizeText(range.toString()) === expected;
+      if (matchesText || (!expected && range)) {
+        // Exact hit, or a bookmark whose CFI still lands somewhere valid.
+        cfi = entry.cfi;
+      } else if (expected) {
+        cfi = await searchForText(entry.text!);
+        moved = !!cfi;
+      }
     }
 
     if (!cfi) {
@@ -375,6 +405,7 @@ export const convertAnnotationExportToBookNotes = async (
       updatedAt: entry.updatedAt || entry.createdAt || Date.now(),
     };
     if (entry.text) note.text = entry.text;
+    if (entry.pdfRanges !== undefined) note.pdfRanges = [...entry.pdfRanges];
     if (entry.style) note.style = entry.style;
     if (entry.color) note.color = entry.color;
     if (entry.global) note.global = true;

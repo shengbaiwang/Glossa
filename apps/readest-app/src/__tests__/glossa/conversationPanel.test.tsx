@@ -670,7 +670,7 @@ it('renames the active conversation and shows the name in the switcher', async (
   fireEvent.change(screen.getByRole('textbox', { name: 'Conversation name' }), {
     target: { value: 'Reading notes' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  fireEvent.keyDown(screen.getByRole('textbox', { name: 'Conversation name' }), { key: 'Enter' });
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'Conversation history' }).textContent).toContain(
       'Reading notes',
@@ -708,7 +708,7 @@ it('lists sessions newest-first in a custom picker with preview, check mark, Esc
   fireEvent.change(screen.getByRole('textbox', { name: 'Conversation name' }), {
     target: { value: 'Notes' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  fireEvent.keyDown(screen.getByRole('textbox', { name: 'Conversation name' }), { key: 'Enter' });
   fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
   await typeQuestion('Second subject');
   send();
@@ -833,7 +833,7 @@ it('keeps a manual name when the suggested title arrives later', async () => {
   fireEvent.change(screen.getByRole('textbox', { name: 'Conversation name' }), {
     target: { value: 'My name' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  fireEvent.keyDown(screen.getByRole('textbox', { name: 'Conversation name' }), { key: 'Enter' });
   await act(async () => resolveTitle('Suggested'));
   expect(f.save.mock.calls.at(-1)![0].sessions[0].title).toBe('My name');
 });
@@ -1018,4 +1018,85 @@ it('copies the question bubble instead of the answer and reports copy failures',
   clipboard.write.mockRejectedValueOnce(new Error('clipboard unavailable'));
   fireEvent.click(copy);
   expect(await screen.findByText('The question could not be copied.')).toBeTruthy();
+});
+
+it('renames in the title row with F2, keeps IME input open, cancels with Escape and saves on blur', async () => {
+  mount();
+  await typeQuestion('Original title');
+  send();
+  await answer();
+  fireEvent.keyDown(screen.getByRole('button', { name: 'Conversation history' }), { key: 'F2' });
+  const input = screen.getByRole('textbox', { name: 'Conversation name' });
+  expect(input.closest('.glossa-chat-toolbar')).toBeTruthy();
+  fireEvent.change(input, { target: { value: 'Cancelled name' } });
+  fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+  expect(screen.getByRole('textbox', { name: 'Conversation name' })).toBe(input);
+  fireEvent.keyDown(input, { key: 'Escape' });
+  fireEvent.blur(input);
+  expect(screen.getByRole('button', { name: 'Conversation history' }).textContent).toContain(
+    'Original title',
+  );
+  fireEvent.doubleClick(screen.getByRole('button', { name: 'Conversation history' }));
+  const next = screen.getByRole('textbox', { name: 'Conversation name' });
+  fireEvent.change(next, { target: { value: 'Saved inline' } });
+  fireEvent.blur(next);
+  await waitFor(() => expect(f.save.mock.calls.at(-1)![0].sessions[0].title).toBe('Saved inline'));
+  expect(f.generate).toHaveBeenCalledTimes(1);
+});
+
+it('defers a conversation name save until IME composition finishes after blur', async () => {
+  mount();
+  await typeQuestion('Original title');
+  send();
+  await answer();
+  fireEvent.keyDown(screen.getByRole('button', { name: 'Conversation history' }), { key: 'F2' });
+  const input = screen.getByRole('textbox', { name: 'Conversation name' });
+  fireEvent.compositionStart(input);
+  fireEvent.change(input, { target: { value: '历史研究' } });
+  act(() => input.blur());
+  expect(screen.getByRole('textbox', { name: 'Conversation name' })).toBe(input);
+  fireEvent.compositionEnd(input);
+  await waitFor(() => expect(f.save.mock.calls.at(-1)![0].sessions[0].title).toBe('历史研究'));
+});
+
+it('saves a composing name to its original session if a new conversation opens first', async () => {
+  mount();
+  await typeQuestion('Original title');
+  send();
+  await answer();
+  fireEvent.keyDown(screen.getByRole('button', { name: 'Conversation history' }), { key: 'F2' });
+  const input = screen.getByRole('textbox', { name: 'Conversation name' });
+  fireEvent.compositionStart(input);
+  fireEvent.change(input, { target: { value: '历史研究' } });
+  act(() => input.blur());
+  fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
+  fireEvent.compositionEnd(input);
+  await waitFor(() => {
+    const saved = f.save.mock.calls.at(-1)![0];
+    expect(saved.sessions[0].title).toBe('历史研究');
+    expect(saved.sessions[1].title).toBeUndefined();
+    expect(saved.activeId).toBe(saved.sessions[1].id);
+  });
+});
+
+it('aborts session naming on module unload and ignores a late title without changing history', async () => {
+  let resolveTitle!: (title: string) => void;
+  f.title.mockImplementation(
+    () =>
+      new Promise<string>((done) => {
+        resolveTitle = done;
+      }),
+  );
+  const panel = mount();
+  await typeQuestion();
+  send();
+  await answer();
+  await waitFor(() => expect(f.title).toHaveBeenCalledOnce());
+  const saved = structuredClone(f.save.mock.calls.at(-1)![0]);
+  const count = f.save.mock.calls.length;
+  panel.unmount();
+  expect(f.title.mock.calls[0]![0].signal.aborted).toBe(true);
+  await act(async () => resolveTitle('Late title'));
+  expect(f.save).toHaveBeenCalledTimes(count);
+  expect(f.save.mock.calls.at(-1)![0]).toEqual(saved);
 });

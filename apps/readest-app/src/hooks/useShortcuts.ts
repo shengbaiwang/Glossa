@@ -38,6 +38,8 @@ const useShortcuts = (actions: KeyActionHandlers, dependencies: React.Dependency
   };
 
   const unifiedHandleKeyDown = (event: KeyboardEvent | MessageEvent) => {
+    // Menus and other focused controls own keys they have already handled.
+    if (event instanceof KeyboardEvent && event.defaultPrevented) return;
     // Check if the focus is on an input, textarea, or contenteditable element
     const activeElement = document.activeElement as HTMLElement;
     const isInteractiveElement =

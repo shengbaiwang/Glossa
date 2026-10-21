@@ -442,6 +442,8 @@ pub fn run() {
             pdf_enhancement::pdf_ocr_status,
             pdf_enhancement::pdf_cancel_ocr,
             pdf_enhancement::pdf_save_outline,
+            pdf_enhancement::pdf_export_copy,
+            pdf_enhancement::pdf_cancel_export,
             #[cfg(target_os = "macos")]
             macos::safari_auth::auth_with_safari,
             #[cfg(target_os = "macos")]

@@ -5,6 +5,7 @@ import { useReaderStore } from '@/store/readerStore';
 import { NavigationHandlers } from './types';
 import { HistoryNavigation, PageNavigation } from './NavigationControls';
 import ProgressSlider from './ProgressSlider';
+import PDFScaleControls from './PDFScaleControls';
 
 interface NavigationPanelProps {
   bookKey: string;
@@ -54,6 +55,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
         active={actionTab === 'progress'}
         onCommit={navigationHandlers.onProgressChange}
       />
+      <PDFScaleControls bookKey={bookKey} />
       <div className='glossa-mobile-navigation-secondary'>
         <HistoryNavigation
           {...controls}

@@ -11,8 +11,7 @@ import 'overlayscrollbars/overlayscrollbars.css';
 import TOCView from './TOCView';
 import BookmarkView from './BookmarkView';
 import TabNavigation from './TabNavigation';
-import PDFTools from './PDFTools';
-import { supportsLocalPDF } from '@/services/pdfEnhancement';
+import PDFPages from './PDFPages';
 
 const SidebarContent: React.FC<{
   renderNavigation?: (tabs: React.ReactNode) => React.ReactNode;
@@ -24,7 +23,8 @@ const SidebarContent: React.FC<{
   const { getConfig, setConfig } = useBookDataStore();
   const config = getConfig(sideBarBookKey);
   const storedTab = config?.viewSettings?.sideBarTab;
-  const savedTab = storedTab === 'bookmarks' ? storedTab : 'toc';
+  const savedTab =
+    storedTab === 'bookmarks' || (storedTab === 'pages' && bookDoc.getPDFImage) ? storedTab : 'toc';
   const activeTab = isSearchBarVisible ? 'search' : savedTab;
   const tabId = useId();
 
@@ -37,7 +37,12 @@ const SidebarContent: React.FC<{
   };
 
   const tabs = (
-    <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} idPrefix={tabId} />
+    <TabNavigation
+      activeTab={activeTab}
+      onTabChange={handleTabChange}
+      idPrefix={tabId}
+      pdf={!!bookDoc.getPDFImage}
+    />
   );
 
   return (
@@ -53,9 +58,6 @@ const SidebarContent: React.FC<{
         aria-labelledby={`${tabId}-tab-${activeTab}`}
         tabIndex={0}
       >
-        {bookDoc.getPDFText && supportsLocalPDF() && (
-          <PDFTools key={sideBarBookKey} bookDoc={bookDoc} bookKey={sideBarBookKey} />
-        )}
         {isSearchBarVisible ? (
           children
         ) : (
@@ -72,6 +74,9 @@ const SidebarContent: React.FC<{
             defer
           >
             <div className='scroll-container h-full'>
+              {activeTab === 'pages' && (
+                <PDFPages key={sideBarBookKey} bookKey={sideBarBookKey} bookDoc={bookDoc} />
+              )}
               {activeTab === 'toc' && bookDoc.toc && (
                 <TOCView toc={bookDoc.toc} bookKey={sideBarBookKey} />
               )}

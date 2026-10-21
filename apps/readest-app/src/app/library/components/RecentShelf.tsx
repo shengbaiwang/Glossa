@@ -87,7 +87,7 @@ const RecentSlide: React.FC<RecentSlideProps> = ({
     <div className='glossa-recent-slide min-w-0 shrink-0'>
       <div
         className={clsx(
-          'glossa-book-card glossa-resume-card eink-bordered group flex h-full cursor-pointer select-none flex-col',
+          'glossa-book-card glossa-resume-card group flex h-full cursor-pointer select-none flex-col',
           pressing && 'glossa-book-card-pressing',
           bookSelected && 'glossa-book-card-selected',
         )}

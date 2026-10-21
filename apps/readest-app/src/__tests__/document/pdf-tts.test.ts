@@ -50,6 +50,17 @@ const pdfNodeFilter = createRejectFilter({
 });
 
 describe('PDF TTS', () => {
+  it('reads the active OCR text once while preserving legacy annotation nodes', () => {
+    const doc = createPDFTextLayerDoc([]);
+    doc.querySelector('.textLayer')!.innerHTML =
+      '<span data-pdf-legacy>Original words.</span><br data-pdf-legacy>' +
+      '<div data-pdf-ocr-text="2"><span>Original words.</span><br></div>';
+    const tts = new TTS(doc, textWalker, pdfNodeFilter, highlight, 'word');
+    const text = [];
+    for (let ssml = tts.start(); ssml; ssml = tts.next()) text.push(stripTags(ssml));
+    expect(text.join(' ')).toBe('Original words.');
+    expect(doc.querySelector('[data-pdf-legacy]')!.textContent).toBe('Original words.');
+  });
   describe('TTS with PDF text layer document', () => {
     it('should generate SSML from text layer spans', () => {
       const doc = createPDFTextLayerDoc(['Alice was beginning to get very ', 'tired of sitting']);

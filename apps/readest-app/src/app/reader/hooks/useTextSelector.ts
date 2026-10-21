@@ -66,6 +66,15 @@ export const useTextSelector = (
   const isPopuped = useRef(false);
   const isUpToPopup = useRef(false);
   const isTextSelected = useRef(false);
+  // Native and coordinated PDF selections share one publication lifetime.
+  // A late transform must not reopen a cleared popup or replace newer text.
+  const selectionRevision = useRef(0);
+  useEffect(
+    () => () => {
+      selectionRevision.current++;
+    },
+    [bookKey, view],
+  );
   const isTouchStarted = useRef(false);
   // A touch selectionchange deferred until the gesture ends: iOS streams
   // selectionchange while a finger drags the system selection handles, and
@@ -170,28 +179,101 @@ export const useTextSelector = (
     handlesSuppressed = false,
     trimPoint?: { node: Node; offset: number } | null,
   ) => {
+    const revision = ++selectionRevision.current;
     isTextSelected.current = true;
-    const liveRange = sel.getRangeAt(0);
-    if (rebuildRange) {
-      sel.removeAllRanges();
-      sel.addRange(liveRange);
+    try {
+      const liveRange = sel.getRangeAt(0);
+      if (rebuildRange) {
+        sel.removeAllRanges();
+        sel.addRange(liveRange);
+      }
+      const { startContainer, startOffset, endContainer, endOffset } = liveRange;
+      // Keep the associated native Range for touch handles. Snapshot its
+      // endpoints separately: the browser can mutate that Range while awaiting.
+      const range = trimPoint ? liveRange.cloneRange() : liveRange;
+      if (trimPoint) trimRangeWhitespaceAroundPoint(range, trimPoint.node, trimPoint.offset);
+      const text = await getAnnotationText(range);
+      if (revision !== selectionRevision.current || !isValidSelection(sel)) return;
+      const current = sel.getRangeAt(0);
+      if (
+        current.startContainer !== startContainer ||
+        current.startOffset !== startOffset ||
+        current.endContainer !== endContainer ||
+        current.endOffset !== endOffset
+      )
+        return;
+      const progress = getProgress(bookKey);
+      setSelection({
+        key: bookKey,
+        text,
+        cfi: view?.getCFI(index, range),
+        page: bookData?.isFixedLayout ? index + 1 : progress?.page || 0,
+        range,
+        index,
+        handlesSuppressed,
+      });
+    } catch {
+      if (revision !== selectionRevision.current) return;
+      isTextSelected.current = false;
+      handleDismissPopup();
+      view?.deselect();
     }
-    // Selection.getRangeAt() returns the live, associated Range by reference.
-    // Clone only for double-click normalization so native touch paths retain
-    // their established Range behavior and browser handles stay untouched.
-    const range = trimPoint ? liveRange.cloneRange() : liveRange;
-    if (trimPoint) trimRangeWhitespaceAroundPoint(range, trimPoint.node, trimPoint.offset);
-    const progress = getProgress(bookKey);
-    setSelection({
-      key: bookKey,
-      text: await getAnnotationText(range),
-      cfi: view?.getCFI(index, range),
-      page: bookData?.isFixedLayout ? index + 1 : progress?.page || 0,
-      range,
-      index,
-      handlesSuppressed,
-    });
   };
+
+  useEffect(() => {
+    if (!view?.addEventListener) return;
+    let active = true;
+    const acceptPDFSelection = async () => {
+      const revision = ++selectionRevision.current;
+      const fragments = view.getPDFSelection?.();
+      if (!fragments?.length) {
+        isTextSelected.current = false;
+        isUpToPopup.current = false;
+        setSelection(null);
+        return;
+      }
+      try {
+        const texts: string[] = [];
+        // The transform pipeline carries mutable context, so run pages in order.
+        for (const fragment of fragments) {
+          texts.push(await getAnnotationText(fragment.range));
+          if (
+            !active ||
+            revision !== selectionRevision.current ||
+            view.getPDFSelection?.() !== fragments
+          )
+            return;
+        }
+        const focus = fragments.find((f) => f.focus) ?? fragments[fragments.length - 1]!;
+        const cfis = fragments.map((f) => view.getCFI(f.index, f.range));
+        isTextSelected.current = true;
+        isUpToPopup.current = true;
+        setSelection({
+          key: bookKey,
+          text: texts.join('\n'),
+          cfi: cfis[0],
+          ...(cfis.length > 1 ? { pdfRanges: cfis } : {}),
+          page: fragments[0]!.index + 1,
+          index: focus.index,
+          range: focus.range,
+        });
+      } catch {
+        if (
+          active &&
+          revision === selectionRevision.current &&
+          view.getPDFSelection?.() === fragments
+        ) {
+          view.deselect();
+          isTextSelected.current = false;
+        }
+      }
+    };
+    view.addEventListener('pdf-selection', acceptPDFSelection);
+    return () => {
+      active = false;
+      view.removeEventListener('pdf-selection', acceptPDFSelection);
+    };
+  }, [bookKey, view, getAnnotationText, setSelection]);
 
   const startInstantAnnotating = (target: HTMLElement, startPoint: Point) => {
     isInstantAnnotating.current = true;
@@ -280,6 +362,7 @@ export const useTextSelector = (
   };
 
   const handlePointerDown = (doc: Document, index: number, ev: PointerEvent) => {
+    selectionRevision.current++;
     lastPointerType.current = ev.pointerType;
     isPointerDown.current = true;
 
@@ -511,6 +594,7 @@ export const useTextSelector = (
 
   const handlePointerUp = async (doc: Document, index: number, ev?: PointerEvent) => {
     isPointerDown.current = false;
+    if (view?.getPDFSelection?.()?.length) return;
     const mouseDoubleClick = mouseDoubleClickRef.current;
     mouseDoubleClickRef.current = null;
     // A tap (or a long-press shorter than the hold) that never engaged: drop the
@@ -626,6 +710,7 @@ export const useTextSelector = (
     pointerCornerNow() === c || caretCornerNow(doc) === c;
 
   const handleSelectionchange = (doc: Document, index: number) => {
+    if (view?.getPDFSelection?.()?.length) return;
     // Echo of our own programmatic selection writes (handle suppression or a
     // custom-handle drag) — not user input.
     if (programmaticSelectionRef.current) return;
@@ -690,6 +775,7 @@ export const useTextSelector = (
     } else {
       // Selection cleared (e.g. clicking outside the selection).
       // Dismiss immediately on all platforms.
+      selectionRevision.current++;
       if (isTextSelected.current) {
         handleDismissPopup();
         isTextSelected.current = false;

@@ -211,9 +211,7 @@ describe('auto-import: watched folder with duplicated files', () => {
     expect(book.altFilePaths).toEqual([ORIGINAL_PATH]);
   });
 
-  // The other dedup arm: two different files (different bytes, so different
-  // hashes) that describe the same book and collapse on `metaHash`.
-  it('remembers both paths when two different files share a metaHash', async () => {
+  it('preserves separately named versions with different bytes despite matching metadata', async () => {
     mockPartialMD5.mockImplementation(async (file: File) =>
       file.name === ORIGINAL_PATH ? 'hash-a' : 'hash-b',
     );
@@ -221,12 +219,11 @@ describe('auto-import: watched folder with duplicated files', () => {
     const library: Book[] = [];
     const first = await runScan(library);
     expect(first).toEqual([ORIGINAL_PATH, DUPLICATE_PATH]);
-    expect(library.filter((b) => !b.deletedAt)).toHaveLength(1);
-
-    const book = library.find((b) => !b.deletedAt)!;
-    // The metaHash arm re-keys the survivor to the newest file's hash.
-    expect(book.hash).toBe('hash-b');
-    expect(book.altFilePaths).toEqual([ORIGINAL_PATH]);
+    expect(library.filter((b) => !b.deletedAt)).toHaveLength(2);
+    expect(library.map((book) => [book.title, book.originalFilename, book.filePath])).toEqual([
+      ['book', 'book.epub', ORIGINAL_PATH],
+      ['book-copy', 'book-copy.epub', DUPLICATE_PATH],
+    ]);
     expect(await runScan(library)).toEqual([]);
   });
 

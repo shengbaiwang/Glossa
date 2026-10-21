@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { type ReactNode, useState } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import SettingsDialog from '@/components/settings/SettingsDialog';
@@ -8,7 +8,9 @@ const fixture = vi.hoisted(() => ({
   setSettingsDialogOpen: vi.fn(),
   setActiveSettingsItemId: vi.fn(),
   setRequestedPanel: vi.fn(),
+  settings: { officialModules: {} as { conversation?: boolean; mindmap?: boolean } },
   requestedPanel: null as string | null,
+  activeSettingsItemId: null as string | null,
 }));
 vi.mock('@/context/EnvContext', () => ({ useEnv: () => ({ appService: {} }) }));
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (key: string) => key }));
@@ -50,7 +52,14 @@ vi.mock('@/components/settings/LayoutPanel', () => ({
   },
 }));
 vi.mock('@/components/settings/ThemePanel', () => ({ default: () => null }));
-vi.mock('@/components/settings/ControlPanel', () => ({ default: () => null }));
+vi.mock('@/components/settings/ControlPanel', () => ({
+  default: () => (
+    <details>
+      <summary>More reading controls</summary>
+      <div data-setting-id='settings.control.allowJavascript'>JavaScript target</div>
+    </details>
+  ),
+}));
 vi.mock('@/components/settings/LangPanel', () => ({ default: () => null }));
 vi.mock('@/components/settings/IntegrationsPanel', () => ({ default: () => null }));
 vi.mock('@/components/settings/MiscPanel', () => ({ default: () => null }));
@@ -61,7 +70,7 @@ const panels = [
   'Font',
   'Layout',
   'Theme',
-  'Behavior',
+  'Reading Controls',
   'Language',
   'Cloud Sync',
   'Model Services',
@@ -71,6 +80,7 @@ const panels = [
   'Library Data',
 ];
 beforeEach(() => {
+  fixture.settings.officialModules = {};
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -89,6 +99,7 @@ afterEach(() => {
   cleanup();
   localStorage.clear();
   fixture.requestedPanel = null;
+  fixture.activeSettingsItemId = null;
   vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
@@ -137,7 +148,13 @@ it('limits Aa to reading appearance even when a global panel was previously sele
   for (const name of ['Font', 'Layout', 'Theme']) {
     expect(screen.getByRole('button', { name })).toBeTruthy();
   }
-  for (const name of ['Cloud Sync', 'Model Services', 'Conversation', 'Language', 'Behavior']) {
+  for (const name of [
+    'Cloud Sync',
+    'Model Services',
+    'Conversation',
+    'Language',
+    'Reading Controls',
+  ]) {
     expect(screen.queryByRole('button', { name })).toBeNull();
   }
   expect(screen.getByRole('button', { name: 'Font' }).getAttribute('aria-pressed')).toBe('true');
@@ -156,4 +173,46 @@ it('retains the current book and allows keyboard navigation in Aa', () => {
   fireEvent.keyDown(font, { key: 'ArrowRight' });
   expect(screen.getByRole('button', { name: 'Layout' }).getAttribute('aria-pressed')).toBe('true');
   expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Layout' }));
+});
+
+it('opens collapsed ancestors before revealing a searched reading control', async () => {
+  fixture.requestedPanel = 'Control';
+  fixture.activeSettingsItemId = 'settings.control.allowJavascript';
+  const scroll = vi.fn();
+  const originalScroll = HTMLElement.prototype.scrollIntoView;
+  HTMLElement.prototype.scrollIntoView = scroll;
+  try {
+    const { container } = render(<SettingsDialog bookKey='' />);
+    await waitFor(() => expect(container.querySelector('details')?.open).toBe(true));
+    expect(scroll).toHaveBeenCalled();
+  } finally {
+    HTMLElement.prototype.scrollIntoView = originalScroll;
+  }
+});
+
+it('hides disabled feature settings and recovers an active or stale requested panel', async () => {
+  fixture.requestedPanel = 'Conversation';
+  const view = render(<SettingsDialog bookKey='' />);
+  expect(screen.getByRole('button', { name: 'Conversation' }).getAttribute('aria-pressed')).toBe(
+    'true',
+  );
+  fixture.requestedPanel = null;
+  fixture.settings.officialModules = { conversation: false };
+  view.rerender(<SettingsDialog bookKey='' />);
+  expect(screen.queryByRole('button', { name: 'Conversation' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Model Services' })).toBeTruthy();
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'General' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    ),
+  );
+  fixture.settings.officialModules.mindmap = false;
+  fixture.requestedPanel = 'Models';
+  view.rerender(<SettingsDialog bookKey='' />);
+  expect(screen.queryByRole('button', { name: 'Model Services' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'General' }).getAttribute('aria-pressed')).toBe('true');
+  view.unmount();
+  localStorage.setItem('lastApplicationSettingsPanel', 'Models');
+  render(<SettingsDialog bookKey='' />);
+  expect(screen.getByRole('button', { name: 'General' }).getAttribute('aria-pressed')).toBe('true');
 });

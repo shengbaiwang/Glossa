@@ -79,6 +79,12 @@ function MapBook(props: Props) {
   const [expanded, setExpanded] = useState(false);
   const [search, setSearch] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const pendingClick = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerType = useRef('mouse');
+  const cancelPendingClick = () => {
+    if (pendingClick.current !== null) clearTimeout(pendingClick.current);
+    pendingClick.current = null;
+  };
   const editBatch = useRef<string | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
@@ -93,6 +99,9 @@ function MapBook(props: Props) {
     from: number;
   } | null>(null);
   const map = session.data?.maps.find((m) => m.id === session.data?.activeId);
+  useEffect(() => cancelPendingClick, [map?.id, map?.view]);
+  const currentSelection = useRef(map?.selectedId);
+  currentSelection.current = map?.selectedId;
   const root = map?.nodes.find((n) => n.parentId === null);
   const selected = map?.nodes.find((n) => n.id === map.selectedId) ?? root;
   const focus = map?.nodes.find((n) => n.id === map.focusId) ?? root;
@@ -265,6 +274,8 @@ function MapBook(props: Props) {
     setEditingId(id);
   };
   const beginEdit = (node: MapNode) => {
+    cancelPendingClick();
+    setSourceSelection(null);
     editBatch.current = null;
     updateMap((m) => ({ ...m, selectedId: node.id }));
     setEditingId(node.id);
@@ -308,6 +319,7 @@ function MapBook(props: Props) {
   if (focus) collect(focus);
   const keydown = (event: KeyboardEvent) => {
     event.stopPropagation();
+    cancelPendingClick();
     if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     const command = event.metaKey || event.ctrlKey;
     const target = event.target as HTMLElement;
@@ -608,8 +620,25 @@ function MapBook(props: Props) {
               onFocus={() => {
                 if (map!.selectedId !== node.id) updateMap((m) => ({ ...m, selectedId: node.id }));
               }}
-              onClick={() => {
-                chooseNode(node);
+              onPointerDown={(event) => {
+                pointerType.current = event.pointerType;
+              }}
+              onClick={(event) => {
+                cancelPendingClick();
+                if (event.detail > 1) return;
+                updateMap((m) => ({ ...m, selectedId: node.id }));
+                setSourceSelection(null);
+                if (
+                  event.detail === 0 ||
+                  pointerType.current !== 'mouse' ||
+                  !getMapNodeSources(map!, node.id).length
+                )
+                  chooseNode(node);
+                else
+                  pendingClick.current = setTimeout(() => {
+                    pendingClick.current = null;
+                    if (currentSelection.current === node.id) chooseNode(node);
+                  }, 350);
               }}
               onDoubleClick={() => beginEdit(node)}
               dir='auto'
@@ -657,9 +686,7 @@ function MapBook(props: Props) {
     ? (map?.nodes.filter((n) => `${n.label} ${n.relation}`.toLocaleLowerCase().includes(query)) ??
       [])
     : [];
-  const sourceNode = map?.nodes.find(
-    (node) => node.id === sourceSelection?.nodeId && node.id === map.selectedId,
-  );
+  const sourceNode = map?.nodes.find((node) => node.id === map.selectedId);
   const nodeOrigin = sourceNode?.originMapId
     ? map?.extensions?.find((o) => o.id === sourceNode.originMapId)
     : map?.origin;

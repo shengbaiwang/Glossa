@@ -14,7 +14,7 @@ import '@/styles/glossa-reader.css';
 import '@/styles/glossa-desktop.css';
 import '@/styles/glossa-reader-sidebar.css';
 
-const f = vi.hoisted(() => ({ chinese: false }));
+const f = vi.hoisted(() => ({ chinese: false, trafficLight: false }));
 
 vi.mock('@/hooks/useTranslation', async () => {
   const translations: Record<string, string> = await fetch('/locales/zh-CN/translation.json').then(
@@ -29,7 +29,10 @@ vi.mock('@/hooks/useTranslation', async () => {
 });
 vi.mock('@/hooks/useResponsiveSize', () => ({ useResponsiveSize: (size: number) => size }));
 vi.mock('@/context/EnvContext', () => ({
-  useEnv: () => ({ envConfig: {}, appService: { isMobile: false } }),
+  useEnv: () => ({
+    envConfig: {},
+    appService: { isMobile: false, hasTrafficLight: f.trafficLight },
+  }),
 }));
 vi.mock('@/store/themeStore', () => ({
   useThemeStore: () => ({ systemUIVisible: true, statusBarHeight: 0 }),
@@ -89,7 +92,7 @@ vi.mock('@/store/trafficLightStore', () => ({
   }),
 }));
 vi.mock('@/hooks/useTrafficLight', () => ({
-  useTrafficLight: () => ({ isTrafficLightVisible: false }),
+  useTrafficLight: () => ({ isTrafficLightVisible: f.trafficLight }),
 }));
 vi.mock('@/app/reader/hooks/useSpatialNavigation', () => ({ useSpatialNavigation: vi.fn() }));
 vi.mock('@/utils/annotationToolbar', async (importOriginal) => ({
@@ -108,18 +111,26 @@ vi.mock('@/app/reader/components/annotator/QuickActionMenu', () => ({ default: (
 
 const insets = { top: 0, right: 0, bottom: 0, left: 0 };
 
-const LeftTabs = () => {
+const LeftTabs = ({ pdf = false }: { pdf?: boolean }) => {
   const [activeTab, setActiveTab] = useState('toc');
-  return <TabNavigation activeTab={activeTab} onTabChange={setActiveTab} />;
+  return <TabNavigation activeTab={activeTab} onTabChange={setActiveTab} pdf={pdf} />;
 };
 
-const renderChrome = () =>
+const renderChrome = ({ pdf = false, sidebarWidth = 256 } = {}) =>
   render(
     <div data-testid='frame' className='relative h-screen w-full overflow-hidden'>
       <div className='flex h-full min-h-0'>
-        <div className='glossa-reader-sidebar bg-base-200 relative z-20 flex w-64 shrink-0 flex-col'>
+        <div
+          className='glossa-reader-sidebar bg-base-200 relative z-20 flex shrink-0 flex-col'
+          data-pdf={pdf}
+          data-native-window-controls={f.trafficLight}
+          style={{
+            width: window.innerWidth < 640 ? '100%' : sidebarWidth,
+            maxWidth: window.innerWidth < 640 ? '100%' : '45%',
+          }}
+        >
           <SidebarHeader onClose={vi.fn()}>
-            <LeftTabs />
+            <LeftTabs pdf={pdf} />
           </SidebarHeader>
         </div>
         <div className='bg-base-100 relative min-w-0 flex-1'>
@@ -158,6 +169,70 @@ afterEach(() => {
   document.documentElement.removeAttribute('data-theme');
   document.documentElement.removeAttribute('data-eink');
   f.chinese = false;
+  f.trafficLight = false;
+  document.documentElement.style.removeProperty('font-size');
+});
+
+it('keeps every PDF navigation target inside a narrow macOS sidebar', async () => {
+  await page.viewport(1280, 120);
+  f.trafficLight = true;
+  document.documentElement.style.fontSize = '14px';
+  renderChrome({ pdf: true, sidebarWidth: 234 });
+  const tabs = screen.getByRole('tablist', { name: 'Sidebar' });
+  const sidebar = tabs.closest('.glossa-reader-sidebar')!;
+  const header = tabs.closest('.sidebar-header')!;
+  const targets = [
+    screen.getByRole('button', { name: 'Toggle Sidebar' }),
+    ...within(tabs).getAllByRole('tab'),
+  ];
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  expect(targets).toHaveLength(5);
+  for (const theme of ['default-light', 'default-dark']) {
+    document.documentElement.setAttribute('data-theme', theme);
+    for (const dir of ['ltr', 'rtl']) {
+      sidebar.setAttribute('dir', dir);
+      const bounds = sidebar.getBoundingClientRect();
+      const rects = targets.map((target) => target.getBoundingClientRect());
+      for (const rect of rects) {
+        expect(rect.left).toBeGreaterThanOrEqual(bounds.left + 10);
+        expect(rect.right).toBeLessThanOrEqual(bounds.right - 10);
+        expect(rect.width).toBe(coarse ? 44 : 32);
+        expect(rect.top).toBe(rects[0]!.top);
+      }
+      expect(header.getBoundingClientRect().height).toBe(coarse ? 48 : 44);
+      const search = within(tabs).getByRole('tab', { name: 'Search' });
+      await userEvent.click(search);
+      expect(search.getAttribute('aria-selected')).toBe('true');
+      await userEvent.keyboard('{Home}{End}');
+      expect(document.activeElement).toBe(search);
+    }
+  }
+  sidebar.setAttribute('dir', 'ltr');
+  await page.screenshot({
+    path: `../../../../../../../.glossa-dev/qa/pdf-sidebar-toolbar-${coarse ? 'touch' : 'pointer'}-dark.png`,
+  });
+});
+
+it('fits PDF controls at the desktop boundary and on a narrow mobile sheet', async () => {
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  for (const width of [640, 320]) {
+    await page.viewport(width, 120);
+    for (const native of [true, false]) {
+      f.trafficLight = native;
+      document.documentElement.setAttribute('data-eink', 'true');
+      renderChrome({ pdf: true, sidebarWidth: 234 });
+      const tabs = screen.getByRole('tablist', { name: 'Sidebar' });
+      const sidebar = tabs.closest('.glossa-reader-sidebar')!.getBoundingClientRect();
+      expect(sidebar.width).toBeLessThanOrEqual(width);
+      for (const tab of within(tabs).getAllByRole('tab')) {
+        const rect = tab.getBoundingClientRect();
+        expect(rect.left).toBeGreaterThanOrEqual(sidebar.left + 10);
+        expect(rect.right).toBeLessThanOrEqual(sidebar.right - 10);
+        expect(rect.width).toBe(coarse ? 44 : 32);
+      }
+      cleanup();
+    }
+  }
 });
 
 it('shows the unified chrome: quiet buttons, one selected emphasis, Glossa icons', async () => {

@@ -2,13 +2,15 @@ import { join } from '@tauri-apps/api/path';
 import { isContentURI, isFileURI, isValidURL } from './misc';
 
 export const getFilename = (fileOrUri: string) => {
-  if (isValidURL(fileOrUri) || isContentURI(fileOrUri) || isFileURI(fileOrUri)) {
+  const uri = isValidURL(fileOrUri) || isContentURI(fileOrUri) || isFileURI(fileOrUri);
+  if (uri) {
+    fileOrUri = fileOrUri.split('?')[0]!;
     fileOrUri = decodeURI(fileOrUri);
   }
   const normalizedPath = fileOrUri.replace(/\\/g, '/');
   const parts = normalizedPath.split('/');
   const lastPart = parts.pop()!;
-  return lastPart.split('?')[0]!;
+  return lastPart;
 };
 
 export const getBaseFilename = (filename: string) => {
@@ -38,8 +40,11 @@ export const getDirPath = (filePath: string) => {
  * group. Backslashes are normalized, so Windows paths derive the same names.
  */
 export const getFolderImportGroupName = (filePath: string, basePath: string) => {
-  const rootPath = getDirPath(basePath);
-  return getDirPath(filePath).replace(rootPath, '').replace(/^\//, '');
+  const root = basePath.replace(/\\/g, '/').replace(/\/+$/, '');
+  const directory = getDirPath(filePath);
+  if (directory !== root && !directory.startsWith(`${root}/`)) return '';
+  const name = getFilename(root);
+  return name + directory.slice(root.length);
 };
 
 export const joinPaths = async (...paths: string[]) => {

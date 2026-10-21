@@ -69,6 +69,21 @@ function createMockOptions(
 }
 
 describe('buildCommandRegistry', () => {
+  it('finds official module switches and opens their existing General settings rows', () => {
+    const options = createMockOptions();
+    const items = buildCommandRegistry(options);
+    const found = searchCommands('模块', items);
+    for (const id of ['conversation', 'mindmap']) {
+      const item = found.find(({ item }) => item.id === `settings.general.module.${id}`)?.item;
+      expect(item).toBeDefined();
+      item!.action();
+      expect(options.openSettingsPanel).toHaveBeenCalledWith(
+        'General',
+        `settings.general.module.${id}`,
+      );
+    }
+  });
+
   it('exposes direct reading font selection without retired or duplicate font settings', () => {
     const options = createMockOptions();
     const items = buildCommandRegistry(options);
@@ -129,9 +144,9 @@ describe('buildCommandRegistry', () => {
     const fontItem = items.find((i) => i.id === 'settings.font.defaultFontSize');
     expect(fontItem!.panelLabel).toBe('t:Font');
 
-    // Control panel items use panelLabel 'Behavior'
+    // Control panel items use panelLabel 'Reading Controls'
     const controlItem = items.find((i) => i.id === 'settings.control.scrolledMode');
-    expect(controlItem!.panelLabel).toBe('t:Behavior');
+    expect(controlItem!.panelLabel).toBe('t:Reading Controls');
   });
 
   it('should call openSettingsPanel when settings item action is invoked', () => {
@@ -259,8 +274,8 @@ describe('searchCommands', () => {
   });
 
   it('should search across panel label', () => {
-    const results = searchCommands('Behavior', items);
-    // Control panel items have panelLabel 'Behavior'
+    const results = searchCommands('Reading Controls', items);
+    // Control panel items have panelLabel 'Reading Controls'
     expect(results.length).toBeGreaterThan(0);
   });
 });

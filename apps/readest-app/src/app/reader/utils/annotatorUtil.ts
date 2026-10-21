@@ -360,6 +360,7 @@ export function mergeRestyledAnnotation(existing: BookNote, restyled: BookNote):
     note: existing.note,
     text: existing.text ?? restyled.text,
     global: existing.global || restyled.global,
+    ...(existing.pdfRanges ? { pdfRanges: existing.pdfRanges } : {}),
   };
 }
 

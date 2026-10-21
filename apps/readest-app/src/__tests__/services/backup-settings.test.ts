@@ -25,6 +25,9 @@ function makeSettings(overrides: Partial<SystemSettings> = {}): SystemSettings {
     localBooksDir: '/Users/me/Books',
     customRootDir: '/Users/me/readest',
     externalLibraryFolders: ['/Users/me/Duokan', '/Users/me/Calibre'],
+    folderImportReadInPlace: true,
+    folderImportAutoImport: true,
+    autoImportFolderGroups: { '/Users/me/Books': '阅读/Books' },
     keepLogin: true,
     screenBrightness: 0.7,
     autoScreenBrightness: false,
@@ -103,6 +106,9 @@ describe('sanitizeSettingsForBackup - blacklist', () => {
     expect(out['localBooksDir']).toBeUndefined();
     expect(out['customRootDir']).toBeUndefined();
     expect(out['externalLibraryFolders']).toBeUndefined();
+    expect(out['folderImportReadInPlace']).toBeUndefined();
+    expect(out['folderImportAutoImport']).toBeUndefined();
+    expect(out['autoImportFolderGroups']).toBeUndefined();
     expect(out['savedBookCoverForLockScreenPath']).toBeUndefined();
   });
 

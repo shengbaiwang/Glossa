@@ -114,6 +114,28 @@ const makeBook = (): Book =>
   }) as Book;
 
 describe('BookDetailModal cover refresh after save', () => {
+  it('edits and resets the corrected imported name without restoring raw placeholder metadata', async () => {
+    const book = makeBook();
+    book.title = '马基雅维里主义';
+    book.author = '';
+    book.metadata = { title: 'ssreader', author: 'ssreader', language: 'zh' };
+    const onUpdate = vi.fn();
+    render(
+      <BookDetailModal book={book} isOpen onClose={vi.fn()} handleBookMetadataUpdate={onUpdate} />,
+    );
+    await screen.findByTitle('Edit Metadata');
+    fireEvent.click(screen.getByTitle('Edit Metadata'));
+    const title = await screen.findByRole('textbox', { name: 'Title' });
+    await waitFor(() => expect((title as HTMLInputElement).value).toBe('马基雅维里主义'));
+    expect((screen.getByRole('textbox', { name: 'Author' }) as HTMLInputElement).value).toBe('');
+    fireEvent.change(title, { target: { value: 'temporary' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    expect((title as HTMLInputElement).value).toBe('马基雅维里主义');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(onUpdate.mock.calls[0]?.[1]).toMatchObject({ title: '马基雅维里主义', author: '' });
+    expect(book.metadata.title).toBe('ssreader');
+  });
+
   it('restores the cover preview and labeled fields when resetting edits', async () => {
     render(
       <BookDetailModal

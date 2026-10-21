@@ -18,8 +18,11 @@ const SCANNED = [
 ];
 
 /** Same derivation `importBooks` runs per file, applied to the built inputs. */
-const groupNames = (files: Array<{ path: string; basePath?: string }>) =>
-  files.map((file) => (file.basePath ? getFolderImportGroupName(file.path, file.basePath) : ''));
+const groupNames = (files: Array<{ path: string; basePath?: string; groupName?: string }>) =>
+  files.map(
+    (file) =>
+      file.groupName ?? (file.basePath ? getFolderImportGroupName(file.path, file.basePath) : ''),
+  );
 
 describe('auto-import: grouping of newly-found books', () => {
   const scanFolder = (folder: string, entries: typeof SCANNED, flatten: boolean) => {
@@ -42,11 +45,16 @@ describe('auto-import: grouping of newly-found books', () => {
     expect(groupNames(files)).toEqual(['watched/SciFi', 'watched/Poetry', 'watched']);
   });
 
-  it('keeps books in the library root for a flattened folder', () => {
+  it('retains the chosen folder name when subfolder grouping is disabled', () => {
     const files = scanFolder(WATCHED, SCANNED, true);
 
     expect(files.every((file) => file.basePath === undefined)).toBe(true);
-    expect(groupNames(files)).toEqual(['', '', '']);
+    expect(groupNames(files)).toEqual(['watched', 'watched', 'watched']);
+  });
+
+  it('retains the folder name for a flat folder and a trailing slash', () => {
+    expect(groupNames(scanFolder('/lib/watched/', [SCANNED[2]!], true))).toEqual(['watched']);
+    expect(getFolderImportGroupName('/lib/watched/loose.epub', '/lib/watched/')).toBe('watched');
   });
 
   it('derives the same groups from Windows paths', () => {
@@ -61,5 +69,18 @@ describe('auto-import: grouping of newly-found books', () => {
     );
 
     expect(groupNames(files)).toEqual(['Books/SciFi', 'Books']);
+  });
+
+  it('keeps later scans in the import destination, including after subfolder flattening', () => {
+    expect(groupNames(toWatchedFolderImports(WATCHED, SCANNED, false, '研究/watched'))).toEqual([
+      '研究/watched/SciFi',
+      '研究/watched/Poetry',
+      '研究/watched',
+    ]);
+    expect(groupNames(toWatchedFolderImports(WATCHED, SCANNED, true, '研究/watched'))).toEqual([
+      '研究/watched',
+      '研究/watched',
+      '研究/watched',
+    ]);
   });
 });

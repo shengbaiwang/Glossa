@@ -59,6 +59,39 @@ const makeBookDoc = (chapters: string[] = [CHAPTER_ONE, CHAPTER_TWO]): BookDoc =
     })),
   }) as unknown as BookDoc;
 
+it('round-trips one complete cross-page PDF annotation and rejects a mismatched later fragment', async () => {
+  const a = cfiFor(0, CHAPTER_ONE, 'quick brown fox');
+  const b = cfiFor(1, CHAPTER_TWO, 'Second chapter');
+  const note: BookNote = {
+    id: 'two-pages',
+    type: 'annotation',
+    cfi: a,
+    pdfRanges: [a, b],
+    text: 'quick brown fox\nSecond chapter',
+    note: 'one thought',
+    style: 'highlight',
+    createdAt: 1,
+    updatedAt: 2,
+  };
+  const exported = buildAnnotationExport({
+    book: { title: 'Original', author: 'Test', format: 'PDF' },
+    groups: [{ id: 0, href: a, label: 'First', booknotes: [note] }],
+    exportedAt: 3,
+  });
+  const payload = parseAnnotationExport(JSON.stringify(exported))!;
+  expect(payload.annotations[0]).toMatchObject({ pdfRanges: [a, b] });
+  const result = await convertAnnotationExportToBookNotes(payload, makeBookDoc());
+  expect(result.notes).toEqual([
+    expect.objectContaining({ cfi: a, pdfRanges: [a, b], text: note.text }),
+  ]);
+  const mismatched = await convertAnnotationExportToBookNotes(
+    payload,
+    makeBookDoc([CHAPTER_ONE, '<html><body><p>Changed text</p></body></html>']),
+  );
+  expect(mismatched.notes).toEqual([]);
+  expect(mismatched.unmatched).toBe(1);
+});
+
 const makeEntry = (overrides: Record<string, unknown> = {}) => ({
   id: 'note-1',
   type: 'annotation' as const,

@@ -393,6 +393,12 @@ it('generates into the editable workspace, keeps verified excerpts through edits
   f.progress.location = returnSource.anchor.cfi;
   f.goTo.mockImplementation((cfi: string) => view!.goTo(cfi));
 
+  const navigationCount = f.goTo.mock.calls.length;
+  await page.getByRole('button', { name: '它回答了什么问题', exact: true }).dblClick();
+  await screen.findByRole('textbox', { name: 'Idea text' });
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  expect(f.goTo.mock.calls.length).toBe(navigationCount);
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
   await page.getByRole('button', { name: '它回答了什么问题', exact: true }).click();
   await waitFor(() => expect(f.goTo).toHaveBeenLastCalledWith(expectedSource.anchor.cfi));
   await waitFor(() => expect(screen.queryByText('Locating source…')).toBeNull());

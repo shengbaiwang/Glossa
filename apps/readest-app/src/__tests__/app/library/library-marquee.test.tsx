@@ -1,0 +1,101 @@
+import { useRef, useState } from 'react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, expect, it } from 'vitest';
+import { useLibraryMarquee } from '@/app/library/hooks/useLibraryMarquee';
+
+afterEach(cleanup);
+function Shelf() {
+  const root = useRef<HTMLDivElement>(null);
+  const [ids, setIds] = useState<string[]>(['old']);
+  const [mode, setMode] = useState(false);
+  const marquee = useLibraryMarquee({
+    root,
+    scroller: root,
+    selected: ids,
+    selecting: mode,
+    enabled: true,
+    onSelect: setIds,
+    onMode: setMode,
+  });
+  return (
+    <div ref={root} {...marquee.handlers} data-testid='shelf'>
+      <div data-book-hash='a' data-testid='a' />
+      <div data-book-hash='b' data-testid='b' />
+      <button type='button'>Import</button>
+      <output>{`${mode}:${ids.join(',')}`}</output>
+      {marquee.rect && <div data-testid='rectangle' />}
+    </div>
+  );
+}
+function setup() {
+  render(<Shelf />);
+  for (const [id, left] of [
+    ['a', 20],
+    ['b', 120],
+  ] as const)
+    screen.getByTestId(id).getBoundingClientRect = () => ({
+      left,
+      top: 20,
+      right: left + 80,
+      bottom: 120,
+      width: 80,
+      height: 100,
+      x: left,
+      y: 20,
+      toJSON() {},
+    });
+  return screen.getByTestId('shelf');
+}
+const down = (target: HTMLElement, extra = {}) =>
+  fireEvent.pointerDown(target, {
+    pointerId: 1,
+    pointerType: 'mouse',
+    button: 0,
+    clientX: 5,
+    clientY: 5,
+    ...extra,
+  });
+const move = (x: number, y: number, id = 1) =>
+  fireEvent.pointerMove(document, { pointerId: id, pointerType: 'mouse', clientX: x, clientY: y });
+const up = () => fireEvent.pointerUp(document, { pointerId: 1, pointerType: 'mouse' });
+
+it('selects intersecting books from blank space and preserves the set after release', () => {
+  const shelf = setup();
+  down(shelf);
+  move(210, 130);
+  expect(screen.getByTestId('rectangle')).toBeTruthy();
+  expect(screen.getByText('true:a,b')).toBeTruthy();
+  up();
+  expect(screen.queryByTestId('rectangle')).toBeNull();
+  expect(screen.getByText('true:a,b')).toBeTruthy();
+});
+it('adds to the previous set with a modifier and shrinks selection when dragging back', () => {
+  const shelf = setup();
+  down(shelf, { shiftKey: true });
+  move(210, 130);
+  move(105, 130);
+  expect(screen.getByText('true:old,a')).toBeTruthy();
+  up();
+});
+it('restores the previous selection and mode when cancelled and ignores other pointers', () => {
+  const shelf = setup();
+  down(shelf);
+  move(210, 130, 2);
+  expect(screen.queryByTestId('rectangle')).toBeNull();
+  move(210, 130);
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(screen.getByText('false:old')).toBeTruthy();
+});
+it('leaves book drags, controls and touch scrolling to their existing interactions', () => {
+  setup();
+  down(screen.getByTestId('a'));
+  move(210, 130);
+  up();
+  down(screen.getByRole('button'));
+  move(210, 130);
+  up();
+  down(screen.getByTestId('shelf'), { pointerType: 'touch' });
+  move(210, 130);
+  up();
+  expect(screen.getByText('false:old')).toBeTruthy();
+});

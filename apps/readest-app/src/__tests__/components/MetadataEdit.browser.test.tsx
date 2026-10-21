@@ -80,11 +80,11 @@ afterEach(() => {
     document.documentElement.removeAttribute(attr);
 });
 
-async function openEditor() {
+async function openEditor(sourceBook: Book = book) {
   render(
     <main className='bg-base-100 text-base-content h-screen'>
       <BookDetailModal
-        book={book}
+        book={sourceBook}
         isOpen
         onClose={state.close}
         handleBookMetadataUpdate={state.save}
@@ -197,4 +197,29 @@ it('supports keyboard locking, validation, cover reset, cancel, save and Escape'
   ]);
   await userEvent.keyboard('{Escape}');
   expect(state.close).toHaveBeenCalled();
+});
+
+it('keeps a corrected imported title through reset and save while preserving the raw metadata', async () => {
+  await page.viewport(1100, 900);
+  const corrected: Book = {
+    ...book,
+    format: 'PDF',
+    title: '原创导入样本',
+    author: '',
+    sourceTitle: 'ssreader',
+    metadata: { title: 'ssreader', author: 'ssreader', language: 'zh' },
+  };
+  const title = (await openEditor(corrected)) as HTMLInputElement;
+  expect(title.value).toBe('原创导入样本');
+  expect((screen.getByRole('textbox', { name: '作者' }) as HTMLInputElement).value).toBe('');
+  await page.getByRole('textbox', { name: '书名' }).fill('临时修改');
+  await page.getByRole('button', { name: '重置', exact: true }).click();
+  expect(title.value).toBe('原创导入样本');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  expect(state.save).toHaveBeenCalledWith(
+    corrected,
+    expect.objectContaining({ title: '原创导入样本', author: '' }),
+    ['待读'],
+  );
+  expect(corrected.metadata?.title).toBe('ssreader');
 });

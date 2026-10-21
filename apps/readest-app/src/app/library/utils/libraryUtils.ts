@@ -548,8 +548,10 @@ const createSeriesGroups = (books: Book[]): (Book | BooksGroup)[] => {
 /**
  * Group books by author.
  * Books with multiple authors appear in ALL matching author groups.
- * Books without author appear as individual items.
+ * Books without an author share one navigable fallback group.
  */
+export const MISSING_AUTHOR_GROUP_ID = md5Fingerprint('glossa:missing-author');
+
 const createAuthorGroups = (books: Book[]): (Book | BooksGroup)[] => {
   const authorMap = new Map<string, Book[]>();
   const ungroupedBooks: Book[] = [];
@@ -588,7 +590,15 @@ const createAuthorGroups = (books: Book[]): (Book | BooksGroup)[] => {
     updatedAt: Math.max(...authorBooks.map((b) => b.updatedAt)),
   }));
 
-  return [...groups, ...ungroupedBooks];
+  if (ungroupedBooks.length)
+    groups.push({
+      id: MISSING_AUTHOR_GROUP_ID,
+      name: 'Author not set',
+      displayName: 'Author not set',
+      books: ungroupedBooks,
+      updatedAt: Math.max(...ungroupedBooks.map((book) => book.updatedAt)),
+    });
+  return groups;
 };
 
 const createValueGroups = (

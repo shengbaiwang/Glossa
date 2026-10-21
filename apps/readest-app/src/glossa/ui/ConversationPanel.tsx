@@ -137,6 +137,8 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
   const [editDraft, setEditDraft] = useState('');
   const [renaming, setRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
+  const renameActive = useRef<string | null>(null);
+  const renameComposing = useRef(false);
   const [searching, setSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [fontSize, setFontSize] = useState<ConversationFontSize>(() => getConversationFontSize());
@@ -384,7 +386,15 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
         const latest = historyRef.current;
         const target = latest?.sessions.find((s) => s.id === sessionId);
         // A name typed meanwhile always wins over the generated one.
-        if (!latest || !target || target.title || !title) return;
+        if (
+          controller.signal.aborted ||
+          !mounted.current ||
+          !latest ||
+          !target ||
+          target.title ||
+          !title
+        )
+          return;
         persist({
           ...latest,
           sessions: latest.sessions.map((s) => (s.id === sessionId ? { ...s, title } : s)),
@@ -597,18 +607,23 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
     sessionLabel(session, _('New conversation'));
   const startRenaming = () => {
     const active = history?.sessions.find((session) => session.id === history.activeId);
-    setRenameDraft(active?.title ?? '');
+    setRenameDraft(active ? localSessionLabel(active) : '');
     setRenaming(true);
+    renameActive.current = active?.id ?? null;
+    renameComposing.current = false;
     setSearching(false);
   };
-  const saveRename = () => {
+  const saveRename = (value = renameDraft) => {
+    const targetId = renameActive.current;
+    if (!targetId || renameComposing.current) return;
+    renameActive.current = null;
     const current = historyRef.current;
     if (!current) return;
-    const title = renameDraft.trim();
+    const title = value.trim();
     persist({
       ...current,
       sessions: current.sessions.map((session) => {
-        if (session.id !== current.activeId) return session;
+        if (session.id !== targetId) return session;
         const next = { ...session };
         if (title) next.title = title;
         else delete next.title;
@@ -707,12 +722,50 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
       onKeyDown={(e) => e.stopPropagation()}
     >
       <div className='glossa-chat-toolbar'>
-        <ConversationSessionPicker
-          sessions={history?.sessions ?? []}
-          activeId={history?.activeId ?? ''}
-          disabled={!history}
-          onSelect={(id) => changeSession(id)}
-        />
+        {renaming ? (
+          <input
+            className='glossa-chat-session-rename'
+            aria-label={_('Conversation name')}
+            value={renameDraft}
+            maxLength={120}
+            autoFocus
+            onFocus={(event) => event.currentTarget.select()}
+            onChange={(event) => setRenameDraft(event.target.value)}
+            onBlur={() => saveRename()}
+            onCompositionStart={() => {
+              renameComposing.current = true;
+            }}
+            onCompositionEnd={(event) => {
+              renameComposing.current = false;
+              if (document.activeElement !== event.currentTarget)
+                saveRename(event.currentTarget.value);
+            }}
+            onKeyDown={(event) => {
+              if (renameComposing.current || event.nativeEvent.isComposing || event.keyCode === 229)
+                return;
+              if (event.key === 'Enter' || event.key === 'Escape') {
+                event.preventDefault();
+                const panel = event.currentTarget.closest('section');
+                if (event.key === 'Enter') saveRename();
+                else {
+                  renameActive.current = null;
+                  setRenaming(false);
+                }
+                requestAnimationFrame(() =>
+                  panel?.querySelector<HTMLButtonElement>('.glossa-chat-session-trigger')?.focus(),
+                );
+              }
+            }}
+          />
+        ) : (
+          <ConversationSessionPicker
+            sessions={history?.sessions ?? []}
+            activeId={history?.activeId ?? ''}
+            disabled={!history}
+            onSelect={(id) => changeSession(id)}
+            onRename={startRenaming}
+          />
+        )}
         <button
           type='button'
           className='glossa-chat-text-button'
@@ -814,33 +867,6 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
           )}
         </div>
       </div>
-      {renaming && (
-        <form
-          className='glossa-chat-rename eink-bordered'
-          onSubmit={(event) => {
-            event.preventDefault();
-            saveRename();
-          }}
-        >
-          <input
-            aria-label={_('Conversation name')}
-            value={renameDraft}
-            maxLength={120}
-            autoFocus
-            onChange={(event) => setRenameDraft(event.target.value)}
-          />
-          <button type='submit' className='glossa-chat-text-button'>
-            {_('Save')}
-          </button>
-          <button
-            type='button'
-            className='glossa-chat-text-button'
-            onClick={() => setRenaming(false)}
-          >
-            {_('Cancel')}
-          </button>
-        </form>
-      )}
       {searching && (
         <div className='glossa-chat-search'>
           <input

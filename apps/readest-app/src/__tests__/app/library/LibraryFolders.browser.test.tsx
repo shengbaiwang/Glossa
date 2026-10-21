@@ -1,7 +1,7 @@
 import { useReducer, useState } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { page, userEvent } from 'vitest/browser';
+import { page, userEvent, commands } from 'vitest/browser';
 import Bookshelf from '@/app/library/components/Bookshelf';
 import GroupingModal from '@/app/library/components/GroupingModal';
 import LibraryNavigation from '@/app/library/components/LibraryNavigation';
@@ -53,7 +53,10 @@ vi.mock('@/services/environment', async (importOriginal) => ({
   isTauriAppPlatform: () => false,
 }));
 vi.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: null }) }));
-vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (key: string) => key }));
+vi.mock('@/hooks/useTranslation', () => ({
+  useTranslation: () => (key: string, values?: Record<string, unknown>) =>
+    key.replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(values?.[name] ?? `{{${name}}}`)),
+}));
 vi.mock('@/hooks/useMedianPageDurationSecs', () => ({
   useMedianPageDurationSecs: () => undefined,
 }));
@@ -90,12 +93,34 @@ function Shelf({ direct = false } = {}) {
       update();
     };
   const { library } = useLibraryStore();
+  const current = useSettingsStore
+    .getState()
+    .settings.libraryFolders?.find(
+      (path) => md5Fingerprint(path) === new URLSearchParams(mocks.search).get('group'),
+    );
   return (
     <div
       className='full-height flex flex-col'
       style={{ width: '100%', maxWidth: 1100, margin: 'auto' }}
     >
       <Bookshelf
+        renderGroupNavigation={
+          current
+            ? (openMenu) => (
+                <div className='glossa-shelf-breadcrumbs'>
+                  <button
+                    type='button'
+                    className='glossa-folder-heading-action'
+                    aria-current='location'
+                    aria-haspopup='menu'
+                    onClick={(event) => openMenu(event.currentTarget)}
+                  >
+                    {current}
+                  </button>
+                </div>
+              )
+            : undefined
+        }
         libraryBooks={library}
         isSelectMode={selecting}
         isSelectAll={false}
@@ -164,6 +189,131 @@ afterEach(() => {
     document.documentElement.removeAttribute(attr);
 });
 
+it.each([
+  'grid',
+  'list',
+] as const)('marquee-selects books in %s, moves the complete selection and supports undo', async (view) => {
+  await page.viewport(1100, 780);
+  mocks.search = 'groupBy=none';
+  window.history.replaceState(null, '', '?groupBy=none');
+  useSettingsStore.getState().setSettings({
+    ...useSettingsStore.getState().settings,
+    libraryFolders: ['研究'],
+    libraryViewMode: view,
+  });
+  useLibraryStore
+    .getState()
+    .setLibrary([original, { ...original, hash: 'b'.repeat(32), title: '另一部原创书籍' }]);
+  render(<DirectShelf />);
+  const first = await screen.findByRole('button', { name: original.title });
+  const second = await screen.findByRole('button', { name: '另一部原创书籍' });
+  const a = first.getBoundingClientRect(),
+    b = second.getBoundingClientRect();
+  await commands.dragPDFText(
+    { x: Math.min(a.left, b.left) - 8, y: Math.min(a.top, b.top) - 8 },
+    { x: Math.max(a.right, b.right) + 8, y: Math.max(a.bottom, b.bottom) + 8 },
+  );
+  await waitFor(() =>
+    expect(useLibraryStore.getState().getSelectedBooks().sort()).toEqual([
+      original.hash,
+      'b'.repeat(32),
+    ]),
+  );
+  expect(mocks.openBook).not.toHaveBeenCalled();
+  for (const theme of ['default-light', 'default-dark']) {
+    document.documentElement.setAttribute('data-theme', theme);
+    await page.screenshot({
+      path: `../../../../../../.glossa-dev/qa/library-marquee-${view}-${theme}.png`,
+    });
+  }
+  const folder = page.getByRole('navigation').getByRole('button', { name: '研究', exact: true });
+  await page.getByRole('button', { name: original.title, exact: true }).dropTo(folder);
+  await waitFor(() =>
+    expect(useLibraryStore.getState().library.every((book) => book.groupName === '研究')).toBe(
+      true,
+    ),
+  );
+  expect(mocks.saveLibraryBooks.mock.calls.at(-1)![0]).toHaveLength(2);
+  await userEvent.click(folder, { button: 'right' });
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Undo' }));
+  await waitFor(() =>
+    expect(useLibraryStore.getState().library.every((book) => !book.groupName)).toBe(true),
+  );
+});
+
+async function pointerMove(
+  from: string,
+  to: string,
+  edge: 'inside' | 'before' | 'after' = 'inside',
+) {
+  const nav = screen.getByRole('navigation');
+  const source = [...nav.querySelectorAll<HTMLButtonElement>('[data-folder-drop]')].find(
+    (b) => b.getAttribute('aria-label') === from,
+  )!;
+  const target = [...nav.querySelectorAll<HTMLButtonElement>('[data-folder-drop]')].find(
+    (b) => b.getAttribute('aria-label') === to,
+  )!;
+  const a = source.getBoundingClientRect(),
+    b = target.getBoundingClientRect();
+  const x = a.left + a.width / 2,
+    y = a.top + a.height / 2;
+  const tx = b.left + b.width / 2,
+    ty = b.top + b.height * (edge === 'before' ? 0.1 : edge === 'after' ? 0.9 : 0.5);
+  // This command uses Playwright's mouse, including intermediate pointer motion.
+  await commands.dragPDFText({ x, y }, { x: tx, y: ty });
+}
+
+it('keeps folder rows quiet on hover and exposes editing through context menus', async () => {
+  await page.viewport(1100, 780);
+  useSettingsStore.getState().setSettings({
+    ...useSettingsStore.getState().settings,
+    libraryFolders: ['历史'],
+  });
+  render(<DirectShelf />);
+  const nav = page.getByRole('navigation', { name: 'Library' });
+  const folder = nav.getByRole('button', { name: '历史', exact: true });
+  await userEvent.hover(folder);
+  expect(screen.queryByRole('button', { name: /^Rename group/ })).toBeNull();
+  const row = screen.getByRole('navigation').querySelector('.glossa-library-folder-row')!;
+  expect(row.querySelectorAll('button')).toHaveLength(1);
+  const link = row.querySelector('button')!.getBoundingClientRect();
+  expect(Math.abs(link.right - row.getBoundingClientRect().right)).toBeLessThan(1);
+  for (const theme of ['default-light', 'default-dark']) {
+    document.documentElement.setAttribute('data-theme', theme);
+    await page.screenshot({
+      path: `../../../../../../.glossa-dev/qa/folder-quiet-hover-${theme}.png`,
+    });
+  }
+  await userEvent.click(folder, { button: 'right' });
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Rename group' }));
+  await userEvent.fill(screen.getByRole('textbox', { name: 'Group name' }), '历史研究');
+  await userEvent.keyboard('{Enter}');
+  await waitFor(() =>
+    expect(useSettingsStore.getState().settings.libraryFolders).toContain('历史研究'),
+  );
+  expect(new URLSearchParams(mocks.search).get('group')).toBeNull();
+  fireEvent.pointerDown(screen.getByRole('navigation').querySelector('[aria-label="历史研究"]')!, {
+    button: 0,
+    pointerId: 8,
+    pointerType: 'touch',
+    clientX: 80,
+    clientY: 180,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  fireEvent.pointerUp(document, { pointerId: 8, pointerType: 'touch', clientX: 80, clientY: 180 });
+  await screen.findByRole('menuitem', { name: 'Rename group' });
+  expect(new URLSearchParams(mocks.search).get('group')).toBeNull();
+  await userEvent.keyboard('{Escape}');
+  expect(document.activeElement?.getAttribute('aria-label')).toBe('历史研究');
+  const card = page.getByRole('main').getByRole('button', { name: '历史研究', exact: true });
+  await userEvent.hover(card);
+  expect(screen.queryByRole('button', { name: /^Rename group/ })).toBeNull();
+  await userEvent.click(card, { button: 'right' });
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Rename group' }));
+  await userEvent.keyboard('{Escape}');
+  expect(screen.queryByRole('textbox', { name: 'Group name' })).toBeNull();
+});
+
 it('opens folders directly and drags books and imported folder subtrees from the sidebar', async () => {
   await page.viewport(1100, 780);
   useSettingsStore.getState().setSettings({
@@ -178,9 +328,7 @@ it('opens folders directly and drags books and imported folder subtrees from the
     .dropTo(nav.getByRole('button', { name: '文学/小说', exact: true }));
   await waitFor(() => expect(useLibraryStore.getState().library[0]?.groupName).toBe('文学/小说'));
   expect(mocks.openBook).not.toHaveBeenCalled();
-  await nav
-    .getByRole('button', { name: '历史', exact: true })
-    .dropTo(nav.getByRole('button', { name: '文学', exact: true }));
+  await pointerMove('历史', '文学');
   await waitFor(() =>
     expect(useSettingsStore.getState().settings.libraryFolders).toContain('文学/历史'),
   );
@@ -190,15 +338,15 @@ it('opens folders directly and drags books and imported folder subtrees from the
   );
   screen.getByRole('navigation').querySelector<HTMLButtonElement>('[aria-label="文学"]')!.focus();
   await userEvent.keyboard('{F2}');
-  await userEvent.fill(screen.getByRole('textbox', { name: 'Folder name' }), '文学研究');
+  await userEvent.fill(screen.getByRole('textbox', { name: 'Group name' }), '文学研究');
   await userEvent.keyboard('{Enter}');
   await waitFor(() =>
     expect(new URLSearchParams(mocks.search).get('group')).toBe(md5Fingerprint('文学研究/小说')),
   );
-  await nav
-    .getByRole('button', { name: '文学研究', exact: true })
-    .dropTo(nav.getByRole('button', { name: '研究', exact: true }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Folders support two levels');
+  await pointerMove('文学研究', '研究');
+  await waitFor(() =>
+    expect(useSettingsStore.getState().settings.libraryFolders).toContain('研究/文学研究/小说'),
+  );
   for (const theme of ['default-light', 'default-dark']) {
     document.documentElement.setAttribute('data-theme', theme);
     await page.screenshot({
@@ -249,13 +397,25 @@ it('routes an external file drop to its sidebar folder and leaves ordinary navig
 it('creates and renames empty folders, navigates two levels, and stays in a valid empty folder', async () => {
   await page.viewport(1100, 780);
   render(<Shelf />);
-  await userEvent.click(screen.getByRole('button', { name: 'New Folder' }));
-  await userEvent.fill(screen.getByRole('textbox', { name: 'Folder name' }), '文学');
-  await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await userEvent.click(screen.getByRole('button', { name: /^(All books|Books)$/ }));
+  await userEvent.click(screen.getByRole('menuitem', { name: /New (group|subgroup)/ }));
+  await userEvent.fill(screen.getByRole('textbox', { name: 'Group name' }), '文学');
+  await userEvent.keyboard('{Enter}');
   const card = await screen.findByRole('button', { name: '文学' });
+  const title = card.querySelector<HTMLElement>('.glossa-book-title')!;
+  const titleStyle = getComputedStyle(title);
+  const font = [titleStyle.fontSize, titleStyle.fontWeight, titleStyle.lineHeight];
+  const titleBounds = title.getBoundingClientRect();
   card.focus();
   await userEvent.keyboard('{F2}');
-  await userEvent.fill(screen.getByRole('textbox', { name: 'Folder name' }), '文学研究');
+  const edit = screen.getByRole('textbox', { name: 'Group name' });
+  const editStyle = getComputedStyle(edit);
+  expect([editStyle.fontSize, editStyle.fontWeight, editStyle.lineHeight]).toEqual(font);
+  expect(editStyle.borderWidth).toBe('0px');
+  expect(editStyle.outlineStyle).toBe('none');
+  expect(Math.abs(edit.getBoundingClientRect().left - titleBounds.left)).toBeLessThan(1);
+  expect(Math.abs(title.getBoundingClientRect().height - titleBounds.height)).toBeLessThan(1);
+  await userEvent.fill(screen.getByRole('textbox', { name: 'Group name' }), '文学研究');
   await userEvent.keyboard('{Enter}');
   await waitFor(() => expect(screen.getByRole('button', { name: '文学研究' })).toBeTruthy());
   screen.getByRole('button', { name: '文学研究' }).focus();
@@ -264,10 +424,13 @@ it('creates and renames empty folders, navigates two levels, and stays in a vali
     expect(new URLSearchParams(mocks.search).get('group')).toBe(md5Fingerprint('文学研究')),
   );
   expect(screen.getByText('This folder is empty')).toBeTruthy();
+  expect(document.querySelector('.bookshelf-import-item')).toBeNull();
   expect(new URLSearchParams(mocks.search).get('groupBy')).toBe('group');
-  await userEvent.click(screen.getByRole('button', { name: 'New Folder' }));
+  expect(screen.queryByRole('heading', { name: 'Books' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: '文学研究' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: /New (group|subgroup)/ }));
   await userEvent.fill(screen.getByRole('textbox'), '俄国文学');
-  await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await userEvent.keyboard('{Enter}');
   const child = await screen.findByRole('button', { name: '文学研究/俄国文学' });
   await page.screenshot({
     path: `../../../../../../.glossa-dev/qa/library-folder-cards-${matchMedia('(pointer: coarse)').matches ? 'touch' : 'pointer'}.png`,
@@ -279,7 +442,7 @@ it('creates and renames empty folders, navigates two levels, and stays in a vali
       md5Fingerprint('文学研究/俄国文学'),
     ),
   );
-  expect(screen.queryByRole('button', { name: 'New Folder' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'New subgroup' })).toBeNull();
   await userEvent.click(screen.getByRole('button', { name: 'Import Books' }));
   expect(mocks.importBooks).toHaveBeenCalled();
   useLibraryStore.getState().setLibrary([]);
@@ -315,7 +478,17 @@ it('offers a usable destination tree with inline children and no narrow-screen o
     />,
   );
   await userEvent.click(screen.getByRole('button', { name: '俄国文学' }));
-  expect(screen.getByRole('button', { name: 'New Folder' }).hasAttribute('disabled')).toBe(true);
+  const destination = screen.getByRole('button', { name: '俄国文学' });
+  await userEvent.click(screen.getByRole('button', { name: 'Move to group' }));
+  const createChild = await screen.findByRole('menuitem', { name: 'New subgroup' });
+  createChild.focus();
+  await userEvent.keyboard('{Enter}');
+  const name = screen.getByRole('textbox', { name: 'Group name' });
+  expect(getComputedStyle(name).fontSize).toBe(getComputedStyle(destination).fontSize);
+  expect(getComputedStyle(name).borderWidth).toBe('0px');
+  expect(getComputedStyle(name).outlineStyle).toBe('none');
+  await userEvent.keyboard('{Escape}');
+  expect(screen.queryByRole('button', { name: 'New group' })).toBeNull();
   for (const theme of ['default-light', 'default-dark']) {
     document.documentElement.setAttribute('data-theme', theme);
     // Theme colors transition in the shared modal styles.
@@ -358,4 +531,217 @@ it('deletes a selected empty folder instead of asking to delete zero books', asy
   await userEvent.click(await screen.findByRole('button', { name: 'Delete' }));
   await waitFor(() => expect(useSettingsStore.getState().settings.libraryFolders).toEqual([]));
   expect(screen.queryByText('Confirm Deletion')).toBeNull();
+});
+
+it('deletes a nonempty branch safely and restores it with keyboard undo', async () => {
+  await page.viewport(1100, 780);
+  useSettingsStore.getState().setSettings({
+    ...useSettingsStore.getState().settings,
+    libraryFolders: ['A', 'A/B', 'A/B/C', 'Target'],
+  });
+  useLibraryStore.getState().setLibrary([{ ...original, groupName: 'A/B/C', progress: [1, 4] }]);
+  render(<DirectShelf />);
+  await userEvent.click(
+    page.getByRole('navigation').getByRole('button', { name: 'A', exact: true }),
+    { button: 'right' },
+  );
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Delete group' }));
+  expect(
+    screen.getByText('Books and subgroups move up one level. Reading data is kept.'),
+  ).toBeTruthy();
+  await userEvent.click(screen.getByRole('button', { name: 'Delete group' }));
+  await waitFor(() => expect(useLibraryStore.getState().library[0]?.groupName).toBe('B/C'));
+  screen.getByRole('navigation').querySelector<HTMLButtonElement>('[aria-label="B"]')!.focus();
+  await userEvent.keyboard('{Control>}z{/Control}');
+  await waitFor(() => expect(useLibraryStore.getState().library[0]?.groupName).toBe('A/B/C'));
+  expect(useLibraryStore.getState().library[0]?.progress).toEqual([1, 4]);
+});
+
+it.each([
+  { theme: 'default-light', dir: 'ltr', active: false, eink: false },
+  { theme: 'default-dark', dir: 'ltr', active: true, eink: false },
+  { theme: 'default-light', dir: 'rtl', active: true, eink: true },
+])('keeps inline rename aligned and preserves navigation ($theme, $dir, active=$active)', async ({
+  theme,
+  dir,
+  active,
+  eink,
+}) => {
+  await page.viewport(1100, 780);
+  document.documentElement.setAttribute('data-theme', theme);
+  document.documentElement.setAttribute('dir', dir);
+  document.documentElement.setAttribute('data-eink', String(eink));
+  if (active) mocks.search = `groupBy=group&group=${md5Fingerprint('历史/思想')}`;
+  useSettingsStore.getState().setSettings({
+    ...useSettingsStore.getState().settings,
+    libraryFolders: ['历史', '历史/思想', '历史/思想/语言', '文学'],
+  });
+  render(<DirectShelf />);
+  const row = screen.getByRole('navigation').querySelector('[data-folder-row="历史/思想"]')!;
+  const before = row.getBoundingClientRect();
+  const background = getComputedStyle(
+    row.querySelector('button.glossa-library-folder-link')!,
+  ).backgroundColor;
+  const text = row.querySelector<HTMLElement>('.glossa-library-folder-link span')!;
+  const label = text.getBoundingClientRect();
+  const typography = getComputedStyle(text);
+  const originalFont = [typography.fontSize, typography.fontWeight, typography.lineHeight];
+  screen
+    .getByRole('navigation')
+    .querySelector<HTMLButtonElement>('[aria-label="历史/思想"]')!
+    .focus();
+  await userEvent.keyboard('{F2}');
+  const input = screen.getByRole('textbox');
+  expect(Math.abs(row.getBoundingClientRect().height - before.height)).toBeLessThan(1);
+  const edge = dir === 'rtl' ? 'right' : 'left';
+  expect(Math.abs(input.getBoundingClientRect()[edge] - label[edge])).toBeLessThan(1);
+  const inputBounds = input.getBoundingClientRect();
+  expect(
+    Math.abs(inputBounds.top + inputBounds.height / 2 - (label.top + label.height / 2)),
+  ).toBeLessThan(1);
+  const style = getComputedStyle(input);
+  expect([style.fontSize, style.fontWeight, style.lineHeight]).toEqual(originalFont);
+  expect(style.borderWidth).toBe('0px');
+  expect(style.outlineStyle).toBe('none');
+  expect(style.boxShadow).toBe('none');
+  expect(style.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+  if (active)
+    expect(
+      getComputedStyle(input.closest('.glossa-library-folder-edit-content')!).backgroundColor,
+    ).toBe(background);
+  await page.screenshot({
+    path: `../../../../../../.glossa-dev/qa/groups-inline-rename-${theme}-${dir}.png`,
+  });
+  await userEvent.fill(input, 'Renamed');
+  await userEvent.click(
+    page.getByRole('navigation').getByRole('button', { name: '文学', exact: true }),
+  );
+  await waitFor(() =>
+    expect(useSettingsStore.getState().settings.libraryFolders).toContain('历史/Renamed/语言'),
+  );
+  expect(new URLSearchParams(mocks.search).get('group')).toBe(md5Fingerprint('文学'));
+  await page.screenshot({ path: '../../../../../../.glossa-dev/qa/groups-integrated.png' });
+});
+
+it('reorders branches with mouse edges and rejects moving a full four-level branch too deep', async () => {
+  await page.viewport(1100, 780);
+  useSettingsStore.getState().setSettings({
+    ...useSettingsStore.getState().settings,
+    libraryFolders: ['A', 'A/B', 'A/B/C', 'A/B/C/D', 'Target', 'Last'],
+  });
+  render(<DirectShelf />);
+  await pointerMove('Last', 'Target', 'before');
+  await waitFor(() =>
+    expect(useSettingsStore.getState().settings.libraryFolders).toEqual([
+      'A',
+      'A/B',
+      'A/B/C',
+      'A/B/C/D',
+      'Last',
+      'Target',
+    ]),
+  );
+  const before = [...useSettingsStore.getState().settings.libraryFolders!];
+  await pointerMove('A', 'Target');
+  expect(await screen.findByRole('alert')).toHaveTextContent('Up to 4 levels');
+  expect(useSettingsStore.getState().settings.libraryFolders).toEqual(before);
+  await userEvent.click(
+    page.getByRole('navigation').getByRole('button', { name: 'Last', exact: true }),
+    { button: 'right' },
+  );
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Move to…' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'A/B/C' }));
+  await waitFor(() =>
+    expect(useSettingsStore.getState().settings.libraryFolders).toContain('A/B/C/Last'),
+  );
+});
+
+it('restores temporary expansion when a drag is cancelled with Escape', async () => {
+  await page.viewport(1100, 780);
+  useSettingsStore.getState().setSettings({
+    ...useSettingsStore.getState().settings,
+    libraryFolders: ['Source', 'Target', 'Target/Child'],
+  });
+  render(<DirectShelf />);
+  const nav = screen.getByRole('navigation');
+  const target = nav.querySelector<HTMLElement>('[aria-label="Target"]')!;
+  const source = nav.querySelector<HTMLElement>('[aria-label="Source"]')!;
+  await userEvent.click(nav.querySelector('[data-folder-row="Target"] [data-expander]')!);
+  expect(nav.querySelector('[aria-label="Target/Child"]')).toBeNull();
+  const a = source.getBoundingClientRect(),
+    b = target.getBoundingClientRect();
+  fireEvent.pointerDown(source, {
+    button: 0,
+    pointerId: 23,
+    pointerType: 'mouse',
+    clientX: a.left + 50,
+    clientY: a.top + 18,
+  });
+  fireEvent.pointerMove(document, {
+    pointerId: 23,
+    pointerType: 'mouse',
+    clientX: b.left + 50,
+    clientY: b.top + 18,
+  });
+  await waitFor(() => expect(nav.querySelector('[aria-label="Target/Child"]')).toBeTruthy());
+  fireEvent.keyDown(document, { key: 'Escape' });
+  await waitFor(() => expect(nav.querySelector('[aria-label="Target/Child"]')).toBeNull());
+  expect(useSettingsStore.getState().settings.libraryFolders).toEqual([
+    'Source',
+    'Target',
+    'Target/Child',
+  ]);
+});
+
+it('aligns new root and nested folder icons and names with the existing rows', async () => {
+  await page.viewport(1100, 780);
+  useSettingsStore.getState().setSettings({
+    ...useSettingsStore.getState().settings,
+    libraryFolders: ['A', 'A/B', 'A/B/C'],
+  });
+  render(<DirectShelf />);
+  const nav = screen.getByRole('navigation');
+  for (const parent of ['', 'A/B']) {
+    const trigger = parent
+      ? nav.querySelector<HTMLButtonElement>(`[aria-label="${parent}"]`)!
+      : screen.getByRole('button', { name: 'My Groups' });
+    if (parent) fireEvent.contextMenu(trigger);
+    else await userEvent.click(trigger);
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: parent ? 'New subgroup' : 'New group' }),
+    );
+    const editor = nav.querySelector('.glossa-library-folder-edit-row')!;
+    const reference = parent
+      ? nav.querySelector('[aria-label="A/B/C"]')!
+      : screen.getByRole('button', { name: 'All Books' });
+    expect(editor.querySelector('svg')!.getBoundingClientRect().left).toBeCloseTo(
+      reference.querySelector('svg')!.getBoundingClientRect().left,
+      0,
+    );
+    expect(screen.getByRole('textbox').getBoundingClientRect().left).toBeCloseTo(
+      reference.querySelector('span')!.getBoundingClientRect().left,
+      0,
+    );
+    await userEvent.keyboard('{Escape}');
+  }
+});
+
+it('shows author collections with matching counts and opens missing authors as a dedicated group', async () => {
+  await page.viewport(1100, 780);
+  mocks.search = 'groupBy=author';
+  const missing = [
+    { ...original, hash: 'b'.repeat(32), title: 'No author one', author: '' },
+    { ...original, hash: 'c'.repeat(32), title: 'No author two', author: '  ' },
+  ];
+  useLibraryStore.getState().setLibrary([original, ...missing]);
+  render(<Shelf />);
+  await screen.findByRole('heading', { name: 'Authors' });
+  expect(screen.queryByRole('heading', { name: 'All books' })).toBeNull();
+  expect(screen.getByText('2 groups')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: missing[0]!.title })).toBeNull();
+  await page.getByRole('button', { name: 'Author not set', exact: true }).click();
+  await screen.findByRole('button', { name: missing[0]!.title });
+  expect(screen.getByRole('button', { name: missing[1]!.title })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: original.title })).toBeNull();
+  expect(mocks.openBook).not.toHaveBeenCalled();
 });

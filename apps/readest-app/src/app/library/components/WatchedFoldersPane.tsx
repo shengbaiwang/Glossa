@@ -23,7 +23,8 @@ export interface WatchedFolder {
 
 interface WatchedFoldersPaneProps {
   folders: WatchedFolder[];
-  onBack: () => void;
+  onBack?: () => void;
+  disabled?: boolean;
   /** Stop auto-importing from `path`. The folder stays readable in place. */
   onUnwatch: (path: string) => void;
   onSetFlatten: (path: string, flatten: boolean) => void;
@@ -41,6 +42,7 @@ interface WatchedFoldersPaneProps {
 const WatchedFoldersPane: React.FC<WatchedFoldersPaneProps> = ({
   folders,
   onBack,
+  disabled = false,
   onUnwatch,
   onSetFlatten,
 }) => {
@@ -54,22 +56,19 @@ const WatchedFoldersPane: React.FC<WatchedFoldersPaneProps> = ({
           label, which the dialog's own title bar already shows. */}
       <div className='flex flex-col gap-1'>
         <div className='flex items-center gap-1'>
-          <button
-            type='button'
-            onClick={onBack}
-            className='btn btn-ghost btn-sm px-1'
-            aria-label={_('Back')}
-            title={_('Back')}
-          >
-            <BackIcon className='h-4 w-4' />
-          </button>
+          {onBack && (
+            <button
+              type='button'
+              onClick={onBack}
+              className='btn btn-ghost btn-sm px-1'
+              aria-label={_('Back')}
+              title={_('Back')}
+            >
+              <BackIcon className='h-4 w-4' />
+            </button>
+          )}
           <span className='text-base font-semibold tracking-tight'>{_('Watched Folders')}</span>
         </div>
-        <span className='text-base-content/65 text-[0.85em] leading-relaxed'>
-          {_(
-            'Glossa re-scans these folders when it opens or returns to the foreground and imports any new books. Each folder keeps the structure it was imported with.',
-          )}
-        </span>
       </div>
 
       {folders.length === 0 ? (
@@ -79,7 +78,7 @@ const WatchedFoldersPane: React.FC<WatchedFoldersPaneProps> = ({
       ) : (
         <BoxedList>
           {folders.map((folder) => (
-            <div key={folder.path} className='flex items-center gap-2 py-2 pe-2'>
+            <div key={folder.path} className='flex items-center gap-2 py-2 pe-2 ps-4'>
               <div className='min-w-0 flex-1'>
                 <div className='truncate font-medium' title={folder.path}>
                   {getFilename(folder.path) || folder.path}
@@ -87,6 +86,7 @@ const WatchedFoldersPane: React.FC<WatchedFoldersPaneProps> = ({
                 <div className='text-base-content/65 truncate text-[0.85em]'>{folder.path}</div>
               </div>
               <SettingsSelect
+                disabled={disabled}
                 value={folder.flatten ? 'flatten' : 'keep'}
                 onChange={(e) => onSetFlatten(folder.path, e.target.value === 'flatten')}
                 options={[
@@ -97,6 +97,7 @@ const WatchedFoldersPane: React.FC<WatchedFoldersPaneProps> = ({
               />
               <button
                 type='button'
+                disabled={disabled}
                 onClick={() => onUnwatch(folder.path)}
                 className='btn btn-ghost btn-sm shrink-0 px-1'
                 aria-label={_('Stop watching')}

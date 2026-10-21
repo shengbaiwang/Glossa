@@ -18,9 +18,18 @@ const pageSchema = z
     index: z.number().int().min(0).max(4999),
     native: z.boolean(),
     lines: z.array(lineSchema).max(10000),
+    recognizer: z.string().max(80).optional(),
+    emptyReason: z.enum(['no_observations', 'no_word_boxes']).optional(),
   })
   .refine((p) => p.lines.reduce((n, l) => n + l.text.length, 0) <= 100000);
 export type OCRPage = z.infer<typeof pageSchema>;
+// Empty legacy results own no text offsets. Nonempty/native layers are durable,
+// and a current empty checkpoint proves its bounded recovery already finished.
+export const needsOCRRecovery = (page: OCRPage | null) =>
+  !!page &&
+  !page.native &&
+  !page.lines.length &&
+  (page.recognizer !== 'vision-multiscale-1' || page.emptyReason === 'no_word_boxes');
 export const outlineEntrySchema = z.object({
   title: z.string().trim().min(1).max(500),
   pageIndex: z.number().int().min(0).max(4999),
@@ -33,10 +42,12 @@ const cacheSchema = z.object({
   pages: z.array(z.number().int().min(0).max(4999)).max(5000),
   outline: z.array(outlineEntrySchema).max(1000).nullable(),
   revision: z.number().int().nonnegative(),
+  generator: z.string().max(80).nullable().optional(),
 });
 export type PDFCache = z.infer<typeof cacheSchema>;
 const statusSchema = z.object({
   cacheId: z.string(),
+  jobId: z.string().optional(),
   state: z.enum(['running', 'completed', 'cancelled', 'failed']),
   completed: z.number().int().nonnegative(),
   total: z.number().int().nonnegative(),
@@ -62,24 +73,54 @@ export const parseOCRPage = (value: unknown, index: number): OCRPage | null => {
   const parsed = pageSchema.safeParse(value);
   return parsed.success && parsed.data.index === index ? parsed.data : null;
 };
-export const readOCRPage = async (cacheId: string, index: number) =>
-  parseOCRPage(await call('pdf_read_ocr_page', { cacheId, index }), index);
-export const startPDFOCR = async (source: string, cacheId: string, pages: number[]) =>
-  statusSchema.parse(await call('pdf_start_ocr', { source, cacheId, pages }));
+export const readOCRPage = async (
+  cacheId: string,
+  index: number,
+  detect = false,
+  contents = false,
+) =>
+  parseOCRPage(
+    await call('pdf_read_ocr_page', {
+      cacheId,
+      index,
+      ...(detect ? { detect } : {}),
+      ...(contents ? { contents } : {}),
+    }),
+    index,
+  );
+export const startPDFOCR = async (
+  source: string,
+  cacheId: string,
+  pages: number[],
+  detect = false,
+  contents = false,
+) =>
+  statusSchema.parse(
+    await call('pdf_start_ocr', {
+      source,
+      cacheId,
+      pages,
+      ...(detect ? { detect } : {}),
+      ...(contents ? { contents } : {}),
+    }),
+  );
 export const getPDFOCRStatus = async (cacheId: string): Promise<PDFOCRStatus | null> => {
   const value = await call('pdf_ocr_status', { cacheId });
   return value === null ? null : statusSchema.parse(value);
 };
-export const cancelPDFOCR = (cacheId: string) => call('pdf_cancel_ocr', { cacheId });
+export const cancelPDFOCR = (cacheId: string, jobId?: string) =>
+  call('pdf_cancel_ocr', { cacheId, ...(jobId ? { jobId } : {}) });
 export const waitForPDFOCR = async (
   cacheId: string,
   signal: AbortSignal,
   onStatus: (status: PDFOCRStatus) => void,
+  jobId?: string,
 ): Promise<PDFOCRStatus> => {
   while (!signal.aborted) {
     const status = await getPDFOCRStatus(cacheId);
     if (signal.aborted) break;
     if (!status) throw new Error('pdf_worker_unavailable');
+    if (jobId && status.jobId !== jobId) throw new Error('pdf_job_changed');
     onStatus(status);
     if (status.state !== 'running') return status;
     await new Promise<void>((resolve) => {
@@ -96,6 +137,103 @@ export const waitForPDFOCR = async (
 };
 export const OCRPageText = (page: OCRPage | null) =>
   page?.lines.map((line) => line.text + (line.endLine ? '\n' : '')).join('') ?? '';
+
+/** Reconstruct horizontal TOC rows without changing the persisted reading/CFI order. */
+export function OCRContentsLines(page: OCRPage, allRows = false): string[] {
+  type Fragment = {
+    text: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    words: OCRPage['lines'];
+  };
+  const fragments: Fragment[] = [];
+  let fragment: Fragment | undefined;
+  for (const word of page.lines) {
+    if (!fragment) fragment = { ...word, words: [word] };
+    else {
+      const right = Math.max(fragment.x + fragment.width, word.x + word.width);
+      const bottom = Math.max(fragment.y + fragment.height, word.y + word.height);
+      fragment.x = Math.min(fragment.x, word.x);
+      fragment.y = Math.min(fragment.y, word.y);
+      fragment.width = right - fragment.x;
+      fragment.height = bottom - fragment.y;
+      fragment.text += word.text;
+      fragment.words.push(word);
+    }
+    if (word.endLine) {
+      fragments.push(fragment);
+      fragment = undefined;
+    }
+  }
+  if (fragment) fragments.push(fragment);
+  // Large text fragments anchor rows first; tiny dot leaders must not merge adjacent rows.
+  const rows: { anchor: Fragment; parts: Fragment[] }[] = [];
+  for (const part of fragments.sort((a, b) => b.height - a.height)) {
+    const center = part.y + part.height / 2;
+    const row = rows
+      .filter(({ anchor }) => {
+        const overlap =
+          Math.min(anchor.y + anchor.height, part.y + part.height) - Math.max(anchor.y, part.y);
+        return (
+          overlap >= Math.min(anchor.height, part.height) * 0.5 &&
+          Math.abs(anchor.y + anchor.height / 2 - center) <=
+            Math.max(anchor.height, part.height) * 0.6
+        );
+      })
+      .sort(
+        (a, b) =>
+          Math.abs(a.anchor.y + a.anchor.height / 2 - center) -
+          Math.abs(b.anchor.y + b.anchor.height / 2 - center),
+      )[0];
+    if (row) row.parts.push(part);
+    else rows.push({ anchor: part, parts: [part] });
+  }
+  const prepared = rows
+    .sort((a, b) => a.anchor.y - b.anchor.y)
+    .map(({ parts, anchor }) => {
+      parts.sort((a, b) => a.x - b.x);
+      const text = parts
+        .map((p) => p.text.trim())
+        .join(' ')
+        .normalize('NFKC');
+      // A paragraph ending in a number is not a TOC row. Require printed leaders
+      // or an actual horizontal gap before a separate page-number token.
+      const words = parts.flatMap((p) => p.words).sort((a, b) => a.x - b.x);
+      const last = words.at(-1);
+      const previous = words.at(-2);
+      const gap =
+        last &&
+        previous &&
+        /^[.·…_。•⋯∙●‧﹒:：\s]*(?:\d{1,4}|[ivxlcdm]+)$/i.test(last.text.normalize('NFKC').trim()) &&
+        last.x - (previous.x + previous.width) >= Math.max(last.height, previous.height) * 1.5;
+      const leader = /[.·…_。•⋯∙●‧﹒](?:\s*[.·…_。•⋯∙●‧﹒])+\s*(?:\d{1,4}|[ivxlcdm]+)\s*$/i.test(
+        text,
+      );
+      // Vision often attaches a single leader dot to the page token. A real
+      // horizontal gap has already proved it is a separate number column.
+      const cleaned =
+        gap && last
+          ? text.replace(
+              /\S+$/,
+              last.text
+                .normalize('NFKC')
+                .trim()
+                .replace(/^[.·…_。•⋯∙●‧﹒:：\s]+/, ''),
+            )
+          : text;
+      return { text: cleaned, contents: !!(gap || leader), height: anchor.height };
+    });
+  const sizes = prepared
+    .filter((row) => row.contents)
+    .map((row) => row.height)
+    .sort((a, b) => a - b);
+  const minimum = (sizes[Math.floor(sizes.length / 2)] ?? 0) * 0.8;
+  return prepared
+    .filter((row) => (allRows ? row.height >= minimum : row.contents))
+    .map((row) => row.text);
+}
 
 const branchEnd = (entries: PDFOutlineEntry[], index: number) => {
   let end = index + 1;
@@ -151,6 +289,7 @@ export const savePDFOutline = async (
   cache: PDFCache,
   outline: PDFOutlineEntry[] | null,
   pageCount: number,
+  generator?: 'glossa-contents-2' | 'glossa-contents-3' | 'glossa-pages-1',
 ) => {
   if (outline) outlineToTOC(outline, pageCount);
   return cacheSchema.parse(
@@ -160,6 +299,7 @@ export const savePDFOutline = async (
       revision: cache.revision,
       outline,
       pageCount,
+      generator: generator ?? null,
     }),
   );
 };
@@ -198,15 +338,19 @@ export function buildOutlineCandidates(
   labels: string[],
   pageTexts: Map<number, string>,
   pageOffset = 0,
+  contentsPages: ReadonlySet<number> = new Set(),
 ): OutlineCandidate[] {
   const result: OutlineCandidate[] = [];
   for (const line of lines) {
-    const match = line.trim().match(/^(.+?)(?:\s*[.．·…_]{2,}\s*|\s+)(\d{1,4}|[ivxlcdm]+)\s*$/i);
+    const match = line
+      .normalize('NFKC')
+      .trim()
+      .match(/^(.+?)(?:\s*(?:[.·…_。•⋯∙●‧﹒]{2,}|•)\s*|\s+)(\d{1,4}|[ivxlcdm]+)\s*$/i);
     if (!match) continue;
-    const title = match[1]!.replace(/[.．·…_\s]+$/, '').trim();
+    const title = match[1]!.replace(/[.·…_。•⋯∙●‧﹒\s]+$/, '').trim();
     const printedPage = match[2]!;
     const matches = labels.flatMap((label, i) =>
-      label.toLowerCase() === printedPage.toLowerCase() ? [i] : [],
+      label.normalize('NFKC').trim().toLowerCase() === printedPage.toLowerCase() ? [i] : [],
     );
     if (title.length < 2 || title.length > 500 || matches.length !== 1) continue;
     const pageIndex = matches[0]! + pageOffset;
@@ -227,9 +371,34 @@ export function buildOutlineCandidates(
       title,
       pageIndex,
       level: Math.min(level, result.length ? result[result.length - 1]!.level + 1 : 0),
-      verified: target.includes(heading) || (bare.length >= 4 && target.includes(bare)),
+      verified:
+        !contentsPages.has(pageIndex) &&
+        (target.includes(heading) || (bare.length >= 4 && target.includes(bare))),
     });
     if (result.length === 1000) break;
   }
   return result;
+}
+
+export const exportPDFCopy = (
+  source: string,
+  cacheId: string,
+  destination: string,
+  annotations: unknown[],
+) => call('pdf_export_copy', { source, cacheId, destination, annotations });
+export const cancelPDFExport = (cacheId: string) => call('pdf_cancel_export', { cacheId });
+
+/** Calibrate against page labels as well as physical numbering. */
+export function calibratePDFPageOffset(
+  labels: string[],
+  printed: string,
+  actual: number,
+): number | null {
+  const label = printed.normalize('NFKC').trim().toLowerCase();
+  const matches = labels.flatMap((value, index) =>
+    value.normalize('NFKC').trim().toLowerCase() === label ? [index] : [],
+  );
+  return matches.length === 1 && Number.isInteger(actual) && actual >= 1 && actual <= labels.length
+    ? actual - 1 - matches[0]!
+    : null;
 }

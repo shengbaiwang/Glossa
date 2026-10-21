@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import { NodeAppService } from '@/services/nodeAppService';
+import type { Book } from '@/types/book';
 import { fsTests } from './suites/fs-tests';
 import { libraryTests } from './suites/library-tests';
 import { bookTests } from './suites/book-tests';
@@ -36,6 +37,49 @@ describe('NodeAppService', () => {
   afterEach(async () => {
     await fsp.rm(tmpDir, { recursive: true, force: true });
   });
+
+  it('imports an original PDF with software metadata, saves the corrected title, and reopens identical bytes', async () => {
+    await import('foliate-js/pdf.js');
+    const pdfjs = (
+      globalThis as unknown as {
+        pdfjsLib: { GlobalWorkerOptions: { workerSrc: string } };
+      }
+    ).pdfjsLib;
+    pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+      `file://${path.join(process.cwd(), 'public/vendor/pdfjs/pdf.worker.min.mjs')}`,
+    ).href;
+    // Original one-page fixture; offsets are ASCII byte offsets.
+    const objects = [
+      '<< /Type /Catalog /Pages 2 0 R >>',
+      '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << >> /Contents 4 0 R >>',
+      '<< /Length 0 >>\nstream\n\nendstream',
+      '<< /Title (ssreader) /Author (ssreader) >>',
+    ];
+    let pdf = '%PDF-1.4\n';
+    const offsets = [0];
+    for (const [i, object] of objects.entries()) {
+      offsets.push(pdf.length);
+      pdf += `${i + 1} 0 obj\n${object}\nendobj\n`;
+    }
+    const xref = pdf.length;
+    pdf += `xref\n0 6\n0000000000 65535 f \n`;
+    for (const offset of offsets.slice(1)) pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
+    pdf += `trailer\n<< /Size 6 /Root 1 0 R /Info 5 0 R >>\nstartxref\n${xref}\n%%EOF`;
+    const file = new File([pdf], '原创导入样本.pdf', { type: 'application/pdf' });
+    const books: Book[] = [];
+    const imported = await service.importBook(file, books, { saveCover: false });
+    expect(imported?.title).toBe('原创导入样本');
+    expect(imported?.author).toBe('');
+    expect(imported?.metadata).toMatchObject({ title: 'ssreader', author: 'ssreader' });
+    await service.saveLibraryBooks(books);
+    const [restored] = await service.loadLibraryBooks();
+    expect(restored?.title).toBe('原创导入样本');
+    expect(restored?.author).toBe('');
+    expect(restored?.hash).toBe(imported?.hash);
+    const reopened = await service.loadBookContent(restored!);
+    expect(await reopened.file.arrayBuffer()).toEqual(await file.arrayBuffer());
+  }, 30_000);
 
   it('should copy files from absolute path', async () => {
     const srcPath = path.join(tmpDir, 'source.txt');

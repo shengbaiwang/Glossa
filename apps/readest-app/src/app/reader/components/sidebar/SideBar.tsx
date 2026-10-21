@@ -186,6 +186,8 @@ const SideBar = ({}) => {
         )}
         role='navigation'
         aria-label={_('Sidebar')}
+        data-pdf={!!bookDoc.getPDFImage}
+        data-native-window-controls={!!appService?.hasTrafficLight}
         dir={viewSettings?.rtl && languageDir === 'rtl' ? 'rtl' : 'ltr'}
         style={{
           width: isMobile ? '100%' : `${sideBarWidth}`,

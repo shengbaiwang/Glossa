@@ -420,9 +420,16 @@ export const usePagination = (
   const handleHardwareDomKey = (event: KeyboardEvent | MessageEvent) => {
     let candidate: KeyCandidate;
     if (event instanceof KeyboardEvent) {
-      if (event.repeat) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target?.tagName ?? '')) {
+      if (event.repeat || event.defaultPrevented) return;
+      const target = event.target instanceof Element ? event.target : null;
+      // This listener runs before the control can consume its key. Portal menus
+      // can outlive toolbar hover, so hover alone cannot protect their focus.
+      if (
+        (target instanceof HTMLElement && target.isContentEditable) ||
+        target?.closest(
+          'button, a[href], input, textarea, select, [role="button"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="slider"], [role="tab"], [role="combobox"], [role="listbox"], [role="option"], [role="treeitem"]',
+        )
+      ) {
         return;
       }
       candidate = normalizeDomKeyEvent(event);

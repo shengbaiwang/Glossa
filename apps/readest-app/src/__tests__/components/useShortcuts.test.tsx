@@ -3,7 +3,10 @@ import { afterEach, expect, it, vi } from 'vitest';
 import useShortcuts from '@/hooks/useShortcuts';
 
 vi.mock('@/helpers/shortcuts', () => ({
-  loadShortcuts: () => ({ onCopySelection: { keys: ['ctrl+c', 'cmd+c'] } }),
+  loadShortcuts: () => ({
+    onCopySelection: { keys: ['ctrl+c', 'cmd+c'] },
+    onGoRight: { keys: [' ', 'ArrowDown'] },
+  }),
 }));
 
 afterEach(() => {
@@ -54,4 +57,20 @@ it('keeps forwarded book selection shortcuts working', () => {
     }),
   );
   expect(copyBookSelection).toHaveBeenCalledTimes(1);
+});
+
+it.each([' ', 'ArrowDown'])('leaves a consumed %j key to its focused control', (key) => {
+  const turnPage = vi.fn(() => true);
+  function Fixture() {
+    useShortcuts({ onGoRight: turnPage });
+    return <button onKeyDown={(event) => event.preventDefault()}>Zoom</button>;
+  }
+  const { getByRole } = render(<Fixture />);
+  const control = getByRole('button');
+  control.focus();
+  fireEvent.keyDown(control, { key });
+  expect(turnPage).not.toHaveBeenCalled();
+  control.blur();
+  fireEvent.keyDown(document.body, { key });
+  expect(turnPage).toHaveBeenCalledTimes(1);
 });

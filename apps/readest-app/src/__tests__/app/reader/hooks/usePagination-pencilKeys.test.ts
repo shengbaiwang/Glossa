@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { act, cleanup, renderHook } from '@testing-library/react';
+import { act, cleanup, fireEvent, renderHook } from '@testing-library/react';
 import type { HardwarePageTurnerSettings } from '@/types/settings';
 
 // Real deviceStore + eventDispatcher; only the native bridge boundary is
@@ -115,6 +115,38 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+});
+
+describe('hardware page-turn keys while using reader controls', () => {
+  test.each([
+    'button',
+    'menuitem',
+    'slider',
+  ])('leaves ArrowDown to a focused %s, including nested icons', (role) => {
+    h.settingsState.settings.hardwarePageTurner = {
+      ...PENCIL_TURNER,
+      bindings: {
+        ...PENCIL_TURNER.bindings,
+        pageNext: { source: 'dom', id: 'ArrowDown', label: 'Arrow Down' },
+      },
+    };
+    const view = makeView();
+    setupWithView(view);
+    const control = document.createElement(role === 'button' ? 'button' : 'div');
+    control.setAttribute('role', role);
+    control.tabIndex = 0;
+    const icon = control.appendChild(document.createElement('span'));
+    document.body.append(control);
+    try {
+      control.focus();
+      expect(fireEvent.keyDown(icon, { key: 'ArrowDown', code: 'ArrowDown' })).toBe(true);
+      expect(view.next).not.toHaveBeenCalled();
+    } finally {
+      control.remove();
+    }
+    fireEvent.keyDown(document.body, { key: 'ArrowDown', code: 'ArrowDown' });
+    expect(view.next).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('usePagination Apple Pencil bindings (#5501)', () => {

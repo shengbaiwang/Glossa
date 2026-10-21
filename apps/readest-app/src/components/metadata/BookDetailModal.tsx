@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import React, { useEffect, useState } from 'react';
 
 import { Book } from '@/types/book';
-import { getBookWithUpdatedMetadata } from '@/utils/book';
+import { formatAuthors, formatTitle, getBookWithUpdatedMetadata } from '@/utils/book';
 import { BookMetadata } from '@/libs/document';
 import { useEnv } from '@/context/EnvContext';
 import { useAuth } from '@/context/AuthContext';
@@ -119,7 +119,21 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
         if (!details && book.downloadedAt) {
           details = await appService.fetchBookDetails(book);
         }
-        setBookMeta(details);
+        // Imported fields may have been corrected without discarding the raw
+        // metadata. Editing/resetting starts from the name shown in the library.
+        setBookMeta(
+          details && book.metadata
+            ? {
+                ...details,
+                ...(book.title && book.title !== formatTitle(details.title)
+                  ? { title: book.title }
+                  : {}),
+                ...(book.author !== formatAuthors(details.author, book.primaryLanguage)
+                  ? { author: book.author }
+                  : {}),
+              }
+            : details,
+        );
         const size = await appService.getBookFileSize(book);
         setFileSize(size);
       } finally {

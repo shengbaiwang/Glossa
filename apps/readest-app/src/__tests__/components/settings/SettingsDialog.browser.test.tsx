@@ -70,7 +70,11 @@ vi.mock('@/store/readerStore', () => ({
     setViewSettings: vi.fn(),
   }),
 }));
-vi.mock('@/helpers/settings', () => ({ saveViewSettings: fixture.save, saveSysSettings: vi.fn() }));
+vi.mock('@/helpers/settings', async (original) => ({
+  ...(await original<typeof import('@/helpers/settings')>()),
+  saveViewSettings: fixture.save,
+  saveSysSettings: vi.fn(),
+}));
 vi.mock('@/utils/bridge', () => ({
   getSysFontsList: async () => ({ fonts: { 'Synthetic System Font': 'Synthetic System Font' } }),
   selectDirectory: vi.fn(),

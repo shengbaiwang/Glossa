@@ -9,11 +9,16 @@ const mocks = vi.hoisted(() => ({
   wait: vi.fn(),
   cancel: vi.fn(),
   save: vi.fn(),
+  exportCopy: vi.fn(),
+  exportCancel: vi.fn(),
+  destination: vi.fn(),
+  read: vi.fn(),
   recreate: vi.fn(),
   setConfig: vi.fn(),
   saveConfig: vi.fn(),
   appService: { resolveNativeBookFilePath: vi.fn(async () => '/original.pdf') },
 }));
+vi.mock('@tauri-apps/plugin-dialog', () => ({ save: mocks.destination }));
 vi.mock('@/context/EnvContext', () => ({
   useEnv: () => ({ envConfig: {}, appService: mocks.appService }),
 }));
@@ -47,6 +52,9 @@ vi.mock('@/services/pdfEnhancement', async (importOriginal) => ({
   waitForPDFOCR: mocks.wait,
   cancelPDFOCR: mocks.cancel,
   savePDFOutline: mocks.save,
+  readOCRPage: mocks.read,
+  exportPDFCopy: mocks.exportCopy,
+  cancelPDFExport: mocks.exportCancel,
 }));
 const doc = {
   sections: [{}, {}, {}],
@@ -60,6 +68,9 @@ const doc = {
 } as unknown as BookDoc;
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.exportCopy.mockReset().mockResolvedValue(undefined);
+  mocks.destination.mockReset().mockResolvedValue('/reading-copy.pdf');
+  mocks.read.mockReset().mockResolvedValue(null);
   mocks.cache.pages = [];
   mocks.start.mockImplementation(async (_source, _id, pages: number[]) => {
     mocks.cache.pages = pages;
@@ -89,57 +100,23 @@ beforeEach(() => {
   }));
 });
 afterEach(cleanup);
-async function mount() {
-  render(<PDFTools bookKey='a-view' bookDoc={doc} />);
+async function mount(bookDoc = doc) {
+  render(<PDFTools bookKey='a-view' bookDoc={bookDoc} />);
   await waitFor(() =>
     expect(
-      (screen.getByRole('button', { name: 'Recognize text' }) as HTMLButtonElement).disabled,
+      (screen.getByRole('menuitem', { name: 'Recognize text' }) as HTMLButtonElement).disabled,
     ).toBe(false),
   );
 }
-it('starts only on request and saves current reading location and notes before applying OCR', async () => {
+it('recognizes and applies on request while preserving current reading location and notes', async () => {
   await mount();
   expect(mocks.start).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Recognize text' }));
-  await screen.findByText('Text recognition complete 3/3');
-  fireEvent.click(screen.getByRole('button', { name: 'Apply recognized text' }));
-  await waitFor(() => expect(mocks.recreate).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Recognize text' }));
+  await waitFor(() => expect(mocks.recreate).toHaveBeenCalledTimes(1));
   expect(mocks.saveConfig.mock.calls[0]![2]).toMatchObject({
     location: 'current-page-cfi',
     booknotes: [{ id: 'keep' }],
   });
-});
-it('keeps contents as a draft, supports inline rename cancellation and undo, and applies explicitly', async () => {
-  await mount();
-  fireEvent.click(screen.getByRole('button', { name: 'Repair contents' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Recognize contents' }));
-  const chapter = await screen.findByRole('button', { name: 'Chapter 1 Reading' });
-  expect(mocks.save).not.toHaveBeenCalled();
-  fireEvent.keyDown(chapter, { key: 'F2' });
-  const title = screen.getByRole('textbox', { name: 'Chapter title' });
-  fireEvent.change(title, { target: { value: 'Discard this rename' } });
-  fireEvent.keyDown(title, { key: 'Escape' });
-  expect(screen.queryByText('Discard this rename')).toBeNull();
-  fireEvent.doubleClick(screen.getByRole('button', { name: 'Chapter 1 Reading' }));
-  const renamed = screen.getByRole('textbox', { name: 'Chapter title' });
-  fireEvent.change(renamed, { target: { value: 'My chapter' } });
-  fireEvent.blur(renamed);
-  expect(screen.getByRole('button', { name: /My chapter/ })).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-  expect(screen.getByRole('button', { name: 'Chapter 1 Reading' })).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  await waitFor(() => expect(mocks.save).toHaveBeenCalled());
-  expect(mocks.save.mock.calls[0]![2]).toHaveLength(2);
-});
-it('keeps an editable draft when saving fails', async () => {
-  mocks.save.mockRejectedValueOnce(new Error('disk full'));
-  await mount();
-  fireEvent.click(screen.getByRole('button', { name: 'Repair contents' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Add chapter' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  await screen.findByRole('alert');
-  expect(screen.getByRole('button', { name: /New chapter/ })).toBeTruthy();
-  expect(mocks.recreate).not.toHaveBeenCalled();
 });
 it('cancels the native task without applying or removing personal data', async () => {
   mocks.wait.mockImplementation(
@@ -149,7 +126,7 @@ it('cancels the native task without applying or removing personal data', async (
       }),
   );
   await mount();
-  fireEvent.click(screen.getByRole('button', { name: 'Recognize text' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Recognize text' }));
   await screen.findByText('Recognizing text 0/3');
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   await waitFor(() => expect(mocks.cancel).toHaveBeenCalledWith(mocks.cache.id));
@@ -165,11 +142,69 @@ it('cancels a task that finishes starting after the user cancelled preparation',
       }),
   );
   await mount();
-  fireEvent.click(screen.getByRole('button', { name: 'Recognize text' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Recognize text' }));
   await waitFor(() => expect(mocks.start).toHaveBeenCalled());
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   started({ cacheId: mocks.cache.id, state: 'running', completed: 0, total: 3, error: null });
-  await waitFor(() => expect(mocks.cancel).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(mocks.cancel).toHaveBeenCalledTimes(1));
   expect(mocks.wait).not.toHaveBeenCalled();
   expect(mocks.recreate).not.toHaveBeenCalled();
+});
+
+it('exports a separate reading copy only after choosing a destination', async () => {
+  await mount();
+  expect(mocks.exportCopy).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Export reading copy' }));
+  await waitFor(() =>
+    expect(mocks.exportCopy).toHaveBeenCalledWith(
+      '/original.pdf',
+      mocks.cache.id,
+      '/reading-copy.pdf',
+      [],
+    ),
+  );
+  expect(mocks.recreate).not.toHaveBeenCalled();
+  expect(mocks.save).not.toHaveBeenCalled();
+});
+it('does not export when the native save dialog is cancelled', async () => {
+  mocks.destination.mockResolvedValueOnce(null);
+  await mount();
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Export reading copy' }));
+  await waitFor(() => expect(mocks.destination).toHaveBeenCalled());
+  expect(mocks.exportCopy).not.toHaveBeenCalled();
+});
+it('keeps the source and personal state intact when exporting fails', async () => {
+  mocks.exportCopy.mockRejectedValueOnce(new Error('pdf_export_exists'));
+  await mount();
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Export reading copy' }));
+  await screen.findByRole('alert');
+  expect(mocks.recreate).not.toHaveBeenCalled();
+  expect(mocks.saveConfig).not.toHaveBeenCalled();
+});
+
+it('cancels export independently of text recognition and preserves all records', async () => {
+  let finish!: () => void;
+  mocks.exportCopy.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  await mount();
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Export reading copy' }));
+  await screen.findByText('Exporting PDF copy');
+  await waitFor(() => expect(mocks.exportCopy).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  await waitFor(() => expect(mocks.exportCancel).toHaveBeenCalledWith(mocks.cache.id));
+  expect(mocks.cancel).not.toHaveBeenCalled();
+  expect(mocks.saveConfig).not.toHaveBeenCalled();
+  finish();
+});
+
+it('offers optional actions without a repair form, saved-pages panel or apply step', async () => {
+  await mount();
+  expect(screen.queryByRole('button', { name: 'Repair contents' })).toBeNull();
+  expect(screen.queryByRole('spinbutton')).toBeNull();
+  expect(screen.queryByText('Saved pages')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Apply recognized text' })).toBeNull();
 });

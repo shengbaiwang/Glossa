@@ -112,3 +112,286 @@
     min-width: 44px;
   }
 }
+
+.glossa-pdf-pages {
+  background: var(--glossa-surface);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  font-size: var(--glossa-text-compact, 13px);
+  color: var(--glossa-ink);
+}
+.glossa-pdf-pages-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--glossa-border);
+}
+.glossa-pdf-page-position {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.glossa-pdf-printed-page {
+  color: var(--glossa-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.glossa-pdf-pages .glossa-pdf-icon-action {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  min-height: 32px;
+  flex-shrink: 0;
+  border-radius: 9px;
+}
+.glossa-pdf-pages button:hover:not(:disabled) {
+  background: var(--glossa-hover);
+}
+.glossa-pdf-pages :is(button, input):focus-visible {
+  outline: 2px solid var(--glossa-ink);
+  outline-offset: -2px;
+}
+.glossa-pdf-pages button:disabled {
+  opacity: 0.45;
+}
+.glossa-pdf-pages > .glossa-pdf-actions {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--glossa-border);
+}
+.glossa-pdf-actions button {
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: 7px;
+}
+.glossa-pdf-pages > p {
+  padding: 8px 12px;
+}
+.glossa-pdf-page-scroller {
+  flex: 1;
+  min-height: 0;
+}
+.glossa-pdf-page-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+}
+.glossa-pdf-page-tile {
+  position: relative;
+  min-width: 0;
+}
+.glossa-pdf-page-tile > button {
+  width: 100%;
+  height: 224px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 6px 6px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+}
+.glossa-pdf-thumbnail {
+  flex: 0 0 160px;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 160px;
+}
+.glossa-pdf-thumbnail img {
+  min-height: 0;
+  max-height: 160px;
+  width: 100%;
+  height: 160px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px #0002);
+}
+.glossa-pdf-thumbnail-label {
+  min-width: 28px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.glossa-pdf-page-tile [aria-current='page'] {
+  background: var(--glossa-selected);
+  border-color: var(--glossa-border);
+}
+.glossa-pdf-page-tile [aria-current='page'] .glossa-pdf-thumbnail-label {
+  background: var(--glossa-ink);
+  color: var(--glossa-surface);
+}
+.glossa-pdf-page-tile > input {
+  position: absolute;
+  inset-inline-end: 5px;
+  top: 5px;
+  width: 24px;
+  height: 24px;
+  accent-color: var(--glossa-ink);
+}
+.glossa-dialog-card.glossa-pdf-overview {
+  height: auto;
+  gap: 0;
+  position: fixed;
+  inset: 48px 24px 24px;
+  left: 24px;
+  top: 48px;
+  transform: none;
+  animation: none;
+  width: auto;
+  max-width: none;
+  display: flex;
+  padding: 0;
+  z-index: 60;
+  overflow: hidden;
+  background: var(--glossa-surface);
+  border: 1px solid var(--glossa-border);
+  border-radius: 12px;
+  box-shadow: 0 12px 48px #0003;
+}
+.glossa-pdf-overview .glossa-pdf-page-grid {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+.glossa-pdf-overview .glossa-pdf-pages-toolbar {
+  padding-inline-end: 48px;
+}
+[data-eink='true'] .glossa-pdf-overview {
+  box-shadow: none;
+  border-color: currentColor;
+}
+[data-eink='true'] .glossa-pdf-thumbnail img {
+  filter: none;
+}
+[data-eink='true'] .glossa-pdf-page-tile > button {
+  border-color: var(--glossa-border);
+}
+[data-eink='true'] .glossa-pdf-page-tile [aria-current='page'] {
+  border-color: currentColor;
+}
+@media (pointer: coarse) {
+  .glossa-pdf-pages button {
+    min-height: 44px;
+  }
+  .glossa-pdf-pages .glossa-pdf-icon-action {
+    width: 44px;
+    min-height: 44px;
+  }
+  .glossa-pdf-page-tile > input {
+    width: 44px;
+    height: 44px;
+  }
+}
+@media (max-width: 640px) {
+  .glossa-dialog-card.glossa-pdf-overview {
+    height: auto;
+    gap: 0;
+    inset: 12px;
+  }
+}
+
+.glossa-reader-navigation:has(.glossa-pdf-scale) {
+  min-height: 48px;
+}
+.glossa-reader-footer:has(.glossa-pdf-scale) {
+  min-height: 52px;
+}
+.glossa-page-position {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+.glossa-page-position .glossa-reader-page-input:hover,
+.glossa-page-position .glossa-reader-page-input[data-editing='true'] {
+  background-color: var(--glossa-hover);
+}
+.glossa-pdf-scale {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 2px;
+}
+.glossa-pdf-scale > button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 32px;
+  border-radius: 7px;
+  color: var(--glossa-muted);
+}
+.glossa-pdf-scale > .glossa-pdf-scale-value {
+  min-width: 64px;
+  gap: 4px;
+  color: var(--glossa-ink);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.glossa-pdf-scale > button:hover,
+.glossa-pdf-scale > button[aria-pressed='true'] {
+  background: var(--glossa-hover);
+  color: var(--glossa-ink);
+}
+.glossa-pdf-scale button:focus-visible {
+  outline: 2px solid var(--glossa-ink);
+  outline-offset: -2px;
+}
+.glossa-pdf-scale button:disabled {
+  opacity: 0.45;
+}
+.glossa-pdf-save-error {
+  position: absolute;
+  inset-inline-end: 0;
+  bottom: calc(100% + 8px);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: max-content;
+  max-width: min(300px, 80vw);
+  padding: 8px 12px;
+  border: 1px solid var(--glossa-border);
+  border-radius: 9px;
+  color: var(--glossa-ink);
+  background: var(--glossa-surface);
+  font-size: 13px;
+}
+.glossa-pdf-save-error button {
+  flex-shrink: 0;
+  text-decoration: underline;
+  min-height: 32px;
+}
+@container glossa-navigation (max-width: 620px) {
+  .glossa-pdf-scale > .glossa-pdf-scale-step {
+    display: none;
+  }
+}
+@container glossa-navigation (max-width: 520px) {
+  .glossa-pdf-scale > button[aria-pressed] {
+    display: none;
+  }
+}
+@media (pointer: coarse) {
+  .glossa-reader-navigation:has(.glossa-pdf-scale) {
+    min-height: 48px;
+  }
+  .glossa-pdf-scale > button {
+    min-width: 44px;
+    height: 44px;
+  }
+  .glossa-pdf-save-error button {
+    min-height: 44px;
+  }
+}
+[data-eink='true'] .glossa-pdf-scale > button {
+  border: 1px solid var(--glossa-border);
+}

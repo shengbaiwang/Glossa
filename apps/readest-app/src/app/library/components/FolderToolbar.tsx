@@ -1,47 +1,29 @@
-import { useEffect, useState } from 'react';
-import { FolderPlus } from '@/components/GlossaIcons';
-import { useTranslation } from '@/hooks/useTranslation';
 import FolderNameEditor from './FolderNameEditor';
 
 export default function FolderToolbar({
   parent,
   create,
-  busy,
   error,
   clearError,
+  active = false,
+  onClose,
 }: {
   parent: string;
   create: (parent: string, name: string) => Promise<string | undefined>;
   busy: boolean;
   error: string;
   clearError: () => void;
+  active?: boolean;
+  onClose?: (restoreFocus?: boolean) => void;
 }) {
-  const _ = useTranslation();
-  const [creating, setCreating] = useState(false);
-  useEffect(() => {
-    setCreating(false);
-  }, [parent]);
+  if (!active && !error) return null;
   return (
     <div className='glossa-folder-toolbar'>
-      {!parent.includes('/') && !creating && (
-        <button
-          type='button'
-          className='glossa-folder-action'
-          disabled={busy}
-          onClick={() => {
-            clearError();
-            setCreating(true);
-          }}
-        >
-          <FolderPlus size={18} aria-hidden='true' />
-          {_('New Folder')}
-        </button>
-      )}
-      {creating && (
+      {active && (
         <FolderNameEditor
           onSave={async (name) => !!(await create(parent, name))}
-          onCancel={() => {
-            setCreating(false);
+          onCancel={(restoreFocus) => {
+            onClose?.(restoreFocus);
             clearError();
           }}
         />

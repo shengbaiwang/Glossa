@@ -13,6 +13,7 @@ import { getExternalDragHandle, getHighlightColorHex } from '../../utils/annotat
 import MagnifierLoupe from './MagnifierLoupe';
 
 interface HandleProps {
+  label?: string;
   hidden?: boolean;
   position: Point;
   isVertical: boolean;
@@ -21,10 +22,13 @@ interface HandleProps {
   onDragStart: (pointerType: string) => void;
   onDrag: (point: Point) => void;
   onDragEnd: () => void;
+  onCancel?: () => void;
+  onKeyDown?: React.KeyboardEventHandler;
 }
 
 export const Handle: React.FC<HandleProps> = ({
   hidden,
+  label,
   position,
   isVertical,
   type,
@@ -32,26 +36,31 @@ export const Handle: React.FC<HandleProps> = ({
   onDragStart,
   onDrag,
   onDragEnd,
+  onCancel,
+  onKeyDown,
 }) => {
   const isDragging = useRef(false);
+  const activePointer = useRef<number | null>(null);
   const size = useResponsiveSize(24);
   const circleRadius = useResponsiveSize(8);
   const stemHeight = useResponsiveSize(12);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
+      if (e.button !== 0 || e.isPrimary === false || activePointer.current !== null) return;
       e.preventDefault();
       e.stopPropagation();
       isDragging.current = true;
+      activePointer.current = e.pointerId;
       onDragStart(e.pointerType);
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      e.currentTarget.setPointerCapture(e.pointerId);
     },
     [onDragStart],
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
-      if (!isDragging.current) return;
+      if (!isDragging.current || activePointer.current !== e.pointerId) return;
       e.preventDefault();
       e.stopPropagation();
       onDrag({ x: e.clientX, y: e.clientY });
@@ -61,11 +70,13 @@ export const Handle: React.FC<HandleProps> = ({
 
   const handlePointerUp = useCallback(
     (e: React.PointerEvent) => {
-      if (!isDragging.current) return;
+      if (!isDragging.current || activePointer.current !== e.pointerId) return;
       e.preventDefault();
       e.stopPropagation();
       isDragging.current = false;
-      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+      activePointer.current = null;
+      if (e.currentTarget.hasPointerCapture(e.pointerId))
+        e.currentTarget.releasePointerCapture(e.pointerId);
       onDragEnd();
     },
     [onDragEnd],
@@ -73,8 +84,15 @@ export const Handle: React.FC<HandleProps> = ({
 
   return (
     <div
+      role={label ? 'button' : undefined}
+      aria-label={label}
+      tabIndex={label ? 0 : undefined}
+      data-pdf-handle={label ? type : undefined}
+      onKeyDown={onKeyDown}
       className={clsx(
         'pointer-events-auto absolute z-50 cursor-grab touch-none active:cursor-grabbing',
+        label &&
+          'before:absolute before:-inset-2.5 before:content-[""] focus-visible:rounded-full focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2',
         hidden && 'hidden',
       )}
       style={{
@@ -96,7 +114,23 @@ export const Handle: React.FC<HandleProps> = ({
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
+      onPointerCancel={
+        onCancel
+          ? (e) => {
+              if (activePointer.current !== e.pointerId) return;
+              isDragging.current = false;
+              activePointer.current = null;
+              onCancel();
+            }
+          : handlePointerUp
+      }
+      onLostPointerCapture={(e) => {
+        if (isDragging.current && activePointer.current === e.pointerId) {
+          isDragging.current = false;
+          activePointer.current = null;
+          onCancel?.();
+        }
+      }}
     >
       <svg
         width={size}

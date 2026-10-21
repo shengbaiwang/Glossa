@@ -290,6 +290,8 @@ export class RemoteFile extends File implements ClosableFile {
   #order: number[] = [];
   #cache: Map<number, ArrayBuffer> = new Map(); // LRU cache
   #pendingFetches: Map<string, Promise<ArrayBuffer>> = new Map();
+  #controller = new AbortController();
+  #closed = false;
   // When true, byte ranges are carried in the URL query (?start=&end=) instead
   // of a `Range` header — see fromNativePath().
   #queryRange = false;
@@ -344,7 +346,9 @@ export class RemoteFile extends File implements ClosableFile {
   }
 
   async _open_with_head() {
-    const response = await fetch(this.url, { method: 'HEAD' });
+    const controller = this.#controller;
+    const response = await fetch(this.url, { method: 'HEAD', signal: controller.signal });
+    this.#checkOpen(controller);
     if (!response.ok) {
       throw new Error(`Failed to fetch file size: ${response.status}`);
     }
@@ -354,7 +358,12 @@ export class RemoteFile extends File implements ClosableFile {
   }
 
   async _open_with_range() {
-    const response = await fetch(this.url, { headers: { Range: `bytes=${0}-${1023}` } });
+    const controller = this.#controller;
+    const response = await fetch(this.url, {
+      headers: { Range: `bytes=${0}-${1023}` },
+      signal: controller.signal,
+    });
+    this.#checkOpen(controller);
     if (!response.ok) {
       throw new Error(`Failed to fetch file size: ${response.status}`);
     }
@@ -366,7 +375,9 @@ export class RemoteFile extends File implements ClosableFile {
   async _open_with_query() {
     // No `Range` header — the rangefile handler returns the file size in
     // `X-Total-Size` and the requested bytes as a plain 200 body.
-    const response = await fetch(`${this.url}&start=0&end=0`);
+    const controller = this.#controller;
+    const response = await fetch(`${this.url}&start=0&end=0`, { signal: controller.signal });
+    this.#checkOpen(controller);
     if (!response.ok) {
       throw new Error(`Failed to fetch file size: ${response.status}`);
     }
@@ -376,6 +387,10 @@ export class RemoteFile extends File implements ClosableFile {
   }
 
   async open() {
+    if (this.#closed) {
+      this.#controller = new AbortController();
+      this.#closed = false;
+    }
     if (this.#queryRange) {
       return this._open_with_query();
     }
@@ -388,33 +403,90 @@ export class RemoteFile extends File implements ClosableFile {
   }
 
   async close(): Promise<void> {
+    this.#closed = true;
+    this.#controller.abort();
     this.#cache.clear();
     this.#order = [];
+    this.#pendingFetches.clear();
+  }
+
+  #checkOpen(controller = this.#controller) {
+    if (this.#closed || controller.signal.aborted || controller !== this.#controller) {
+      throw new DOMException('Cancelled', 'AbortError');
+    }
   }
 
   async fetchRangePart(start: number, end: number) {
+    const controller = this.#controller;
+    this.#checkOpen(controller);
     start = Math.max(0, start);
     end = Math.min(this.size - 1, end);
-    // console.log(`Fetching range: ${start}-${end}, size: ${end - start + 1}`);
-    const response = this.#queryRange
-      ? await fetch(`${this.url}&start=${start}&end=${end}`)
-      : await fetch(this.url, { headers: { Range: `bytes=${start}-${end}` } });
-    if (!response.ok) {
-      throw new Error(`Failed to fetch range: ${response.status}`);
+    if (end < start) return new ArrayBuffer(0);
+    // A short or incorrectly offset block must never enter the parser/cache.
+    // Retry the identical range once; the caller retains its task deadline.
+    let code = 'pdf_range_read_failed';
+    for (let attempt = 0; attempt < 2; attempt++) {
+      this.#checkOpen(controller);
+      try {
+        const response = this.#queryRange
+          ? await fetch(`${this.url}&start=${start}&end=${end}`, { signal: controller.signal })
+          : await fetch(this.url, {
+              headers: { Range: `bytes=${start}-${end}` },
+              signal: controller.signal,
+            });
+        this.#checkOpen(controller);
+        if (!response.ok) throw new Error('pdf_range_read_failed');
+        const header = response.headers.get('content-range');
+        if (header) {
+          const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(header);
+          if (
+            !range ||
+            Number(range[1]) !== start ||
+            Number(range[2]) !== end ||
+            Number(range[3]) !== this.size
+          ) {
+            throw new Error('pdf_range_mismatch');
+          }
+        }
+        const buffer = await response.arrayBuffer();
+        this.#checkOpen(controller);
+        // HTTP permits a server to ignore Range and return the entire file.
+        if (!this.#queryRange && response.status === 200 && buffer.byteLength === this.size) {
+          return buffer.slice(start, end + 1);
+        }
+        if (buffer.byteLength !== end - start + 1) {
+          throw new Error(
+            buffer.byteLength < end - start + 1 ? 'pdf_range_truncated' : 'pdf_range_mismatch',
+          );
+        }
+        return buffer;
+      } catch (error) {
+        this.#checkOpen(controller);
+        const message = error instanceof Error ? error.message : '';
+        code =
+          message === 'pdf_range_truncated' || message === 'pdf_range_mismatch'
+            ? message
+            : 'pdf_range_read_failed';
+      }
     }
-    return response.arrayBuffer();
+    throw new Error(code);
   }
 
   // inclusive reading of the end: [start, end]
   async fetchRange(start: number, end: number): Promise<ArrayBuffer> {
+    const controller = this.#controller;
+    this.#checkOpen(controller);
     const rangeSize = end - start + 1;
+    if (rangeSize <= 0) return new ArrayBuffer(0);
     const MAX_RANGE_LEN = 1024 * 1000;
 
     if (rangeSize > MAX_RANGE_LEN) {
       const buffers: ArrayBuffer[] = [];
       for (let currentStart = start; currentStart <= end; currentStart += MAX_RANGE_LEN) {
         const currentEnd = Math.min(currentStart + MAX_RANGE_LEN - 1, end);
-        buffers.push(await this.fetchRangePart(currentStart, currentEnd));
+        const buffer = await this.fetchRangePart(currentStart, currentEnd);
+        this.#checkOpen(controller);
+        buffers.push(buffer);
       }
       const totalSize = buffers.reduce((sum, buffer) => sum + buffer.byteLength, 0);
       const combinedBuffer = new Uint8Array(totalSize);
@@ -430,7 +502,7 @@ export class RemoteFile extends File implements ClosableFile {
       const cachedChunkStart = Array.from(this.#cache.keys()).find((chunkStart) => {
         const buffer = this.#cache.get(chunkStart)!;
         const bufferSize = buffer.byteLength;
-        return start >= chunkStart && end <= chunkStart + bufferSize;
+        return start >= chunkStart && end < chunkStart + bufferSize;
       });
       if (cachedChunkStart !== undefined) {
         this.#updateAccessOrder(cachedChunkStart);
@@ -451,7 +523,8 @@ export class RemoteFile extends File implements ClosableFile {
       try {
         return await fetchPromise;
       } finally {
-        this.#pendingFetches.delete(fetchKey);
+        if (this.#pendingFetches.get(fetchKey) === fetchPromise)
+          this.#pendingFetches.delete(fetchKey);
       }
     }
   }
@@ -461,9 +534,11 @@ export class RemoteFile extends File implements ClosableFile {
     end: number,
     rangeSize: number,
   ): Promise<ArrayBuffer> {
+    const controller = this.#controller;
     const chunkStart = Math.max(0, start - 1024);
     const chunkEnd = Math.max(end, start + RemoteFile.MAX_CACHE_CHUNK_SIZE - 1024 - 1);
     const buffer = await this.fetchRangePart(chunkStart, chunkEnd);
+    this.#checkOpen(controller);
 
     // Only one thread reaches here per unique range
     this.#cache.set(chunkStart, buffer);

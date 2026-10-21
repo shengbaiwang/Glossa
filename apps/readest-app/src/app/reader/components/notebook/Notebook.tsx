@@ -1,6 +1,6 @@
 import ReaderPaneTabs from '../ReaderPaneTabs';
 import clsx from 'clsx';
-import React, { lazy, Suspense, useCallback, useEffect, useId, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { NotebookPen, Search, MessageCircle, GitBranch, Highlight } from '@/components/GlossaIcons';
 
 import { useSettingsStore } from '@/store/settingsStore';
@@ -23,8 +23,16 @@ import { getPanelTopInset } from '@/utils/insets';
 import { Overlay } from '@/components/Overlay';
 import { NOTE_PREFIX } from '@/types/view';
 import useShortcuts from '@/hooks/useShortcuts';
+import OfficialModulePanel from '@/glossa/modules/OfficialModulePanel';
+import {
+  PANEL_MODULES,
+  isOfficialModuleEnabled,
+  resolveNotebookTab,
+} from '@/glossa/modules/registry';
 import type { MapQuestionDraft } from '@/glossa/mindmap/export';
 import {
+  applyNoteBubbleTransition,
+  decideNoteBubbleTransition,
   findAnnotationAtCfi,
   removeBookNoteOverlays,
   removeEmptyAnnotationPlaceholder,
@@ -39,8 +47,6 @@ import BooknoteView from '../sidebar/BooknoteView';
 
 const MIN_NOTEBOOK_WIDTH = 0.15;
 const MAX_NOTEBOOK_WIDTH = 0.45;
-const MindmapPanel = lazy(() => import('@/glossa/ui/MindmapPanel'));
-const ConversationPanel = lazy(() => import('@/glossa/ui/ConversationPanel'));
 
 const Notebook: React.FC = ({}) => {
   const _ = useTranslation();
@@ -50,9 +56,14 @@ const Notebook: React.FC = ({}) => {
   const { sideBarBookKey } = useSidebarStore();
   const { notebookWidth, isNotebookVisible } = useNotebookStore();
   const { notebookActiveTab, setNotebookActiveTab } = useNotebookStore();
+  const conversationEnabled = isOfficialModuleEnabled(settings, 'conversation');
+  const availableTab = resolveNotebookTab(settings, notebookActiveTab);
+  useEffect(() => {
+    if (availableTab !== notebookActiveTab) setNotebookActiveTab(availableTab);
+  }, [availableTab, notebookActiveTab, setNotebookActiveTab]);
   const { notebookNewAnnotation, notebookEditAnnotation } = useNotebookStore();
   const { getBookData, getConfig, saveConfig, updateBooknotes } = useBookDataStore();
-  const { getView, getViewsById, getProgress, getViewSettings } = useReaderStore();
+  const { getView, getViewsById, getViewSettings } = useReaderStore();
   const { getNotebookWidth, setNotebookWidth, setNotebookVisible } = useNotebookStore();
   const { setNotebookNewAnnotation, setNotebookNewHighlightId } = useNotebookStore();
   const { setNotebookEditAnnotation } = useNotebookStore();
@@ -61,7 +72,7 @@ const Notebook: React.FC = ({}) => {
   const [searchResults, setSearchResults] = useState<BookNote[] | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [ideaDraft, setIdeaDraft] = useState<MapQuestionDraft | null>(null);
-  useEffect(() => setIdeaDraft(null), [sideBarBookKey]);
+  useEffect(() => setIdeaDraft(null), [sideBarBookKey, conversationEnabled]);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 640);
   const [isFullHeightInMobile, setIsFullHeightInMobile] = useState(isMobile);
   const tabId = useId();
@@ -212,7 +223,7 @@ const Notebook: React.FC = ({}) => {
     const view = getView(sideBarBookKey);
     const config = getConfig(sideBarBookKey)!;
 
-    const cfi = view?.getCFI(selection.index, selection.range);
+    const cfi = selection.cfi || view?.getCFI(selection.index, selection.range);
     if (!cfi) return false;
 
     const { booknotes: annotations = [] } = config;
@@ -240,6 +251,7 @@ const Notebook: React.FC = ({}) => {
         id: uniqueId(),
         type: 'annotation',
         cfi,
+        ...(selection.pdfRanges ? { pdfRanges: [...selection.pdfRanges] } : {}),
         style,
         color,
         note,
@@ -265,20 +277,29 @@ const Notebook: React.FC = ({}) => {
 
   const handleEditNote = (note: BookNote, isDelete: boolean) => {
     if (!sideBarBookKey) return false;
-    const view = getView(sideBarBookKey);
-    const config = getConfig(sideBarBookKey)!;
-    const progress = getProgress(sideBarBookKey)!;
+    const config = getConfig(sideBarBookKey);
+    if (!config) return false;
     const { booknotes: annotations = [] } = config;
-    const existingIndex = annotations.findIndex((item) => item.id === note.id);
+    const existingIndex = annotations.findIndex((item) => item.id === note.id && !item.deletedAt);
     if (existingIndex === -1) return false;
+    const previous = annotations[existingIndex]!;
+    note = { ...previous, note: note.note };
     if (isDelete) {
       note.deletedAt = Date.now();
     } else {
       note.updatedAt = Date.now();
     }
-    note.page = progress.page;
     annotations[existingIndex] = note;
-    view?.addAnnotation({ ...note, value: `${NOTE_PREFIX}${note.cfi}` }, true);
+    if (isDelete)
+      getViewsById(sideBarBookKey.split('-')[0]!).forEach((view) =>
+        removeBookNoteOverlays(view, note),
+      );
+    else
+      applyNoteBubbleTransition(
+        getViewsById(sideBarBookKey.split('-')[0]!),
+        note,
+        decideNoteBubbleTransition(previous.note, note.note),
+      );
     const updatedConfig = updateBooknotes(sideBarBookKey, annotations);
     if (updatedConfig) {
       saveConfig(envConfig, sideBarBookKey, updatedConfig, settings);
@@ -328,12 +349,19 @@ const Notebook: React.FC = ({}) => {
   const { book, bookDoc } = bookData;
   const languageDir = getBookDirFromLanguage(bookDoc.metadata.language);
   const supportsReadingAssistant = book.format === 'EPUB';
-  const activeTab = supportsReadingAssistant ? notebookActiveTab : 'notes';
+  const activeTab = supportsReadingAssistant ? availableTab : 'notes';
   const tabs = [
-    { id: 'conversation' as const, label: _('Conversation'), Icon: MessageCircle },
-    { id: 'mindmap' as const, label: _('Mind map'), Icon: GitBranch },
+    ...PANEL_MODULES.filter((module) => isOfficialModuleEnabled(settings, module.id)).map(
+      (module) => ({
+        id: module.id,
+        label: _(module.labelKey),
+        Icon: module.id === 'conversation' ? MessageCircle : GitBranch,
+      }),
+    ),
     { id: 'notes' as const, label: _('Notes'), Icon: Highlight },
   ];
+
+  const hasAssistantTabs = supportsReadingAssistant && tabs.length > 1;
 
   const hasAnnotations = allNotes.some((note) => note.type === 'annotation' && !note.deletedAt);
   const hasSearchResults =
@@ -424,7 +452,7 @@ const Notebook: React.FC = ({}) => {
             </div>
           )}
           <NotebookHeader handleClose={() => setNotebookVisible(false)}>
-            {supportsReadingAssistant && (
+            {hasAssistantTabs && (
               <ReaderPaneTabs
                 label={_('Notebook')}
                 activeTab={activeTab}
@@ -472,21 +500,14 @@ const Notebook: React.FC = ({}) => {
             id={`${tabId}-panel-conversation`}
             aria-labelledby={`${tabId}-tab-conversation`}
           >
-            <Suspense
-              fallback={
-                <p className='glossa-reader-muted px-4 py-3' role='status'>
-                  {_('Loading...')}
-                </p>
-              }
-            >
-              <ConversationPanel
-                book={book}
-                bookDoc={bookDoc}
-                bookKey={sideBarBookKey}
-                ideaDraft={ideaDraft}
-                onIdeaDraftConsumed={() => setIdeaDraft(null)}
-              />
-            </Suspense>
+            <OfficialModulePanel
+              moduleId='conversation'
+              book={book}
+              bookDoc={bookDoc}
+              bookKey={sideBarBookKey}
+              ideaDraft={ideaDraft}
+              onIdeaDraftConsumed={() => setIdeaDraft(null)}
+            />
           </div>
         )}
         {supportsReadingAssistant && activeTab === 'mindmap' && (
@@ -497,30 +518,27 @@ const Notebook: React.FC = ({}) => {
             aria-labelledby={`${tabId}-tab-mindmap`}
             tabIndex={0}
           >
-            <Suspense
-              fallback={
-                <p className='glossa-reader-muted px-4 py-3' role='status'>
-                  {_('Loading...')}
-                </p>
+            <OfficialModulePanel
+              moduleId='mindmap'
+              book={book}
+              bookDoc={bookDoc}
+              bookKey={sideBarBookKey}
+              onAsk={
+                conversationEnabled
+                  ? (draft) => {
+                      setIdeaDraft(draft);
+                      setNotebookActiveTab('conversation');
+                    }
+                  : undefined
               }
-            >
-              <MindmapPanel
-                book={book}
-                bookDoc={bookDoc}
-                bookKey={sideBarBookKey}
-                onAsk={(draft) => {
-                  setIdeaDraft(draft);
-                  setNotebookActiveTab('conversation');
-                }}
-              />
-            </Suspense>
+            />
           </div>
         )}
         <div
           className='scroll-container min-h-0 flex-1 overflow-y-auto'
-          role={supportsReadingAssistant ? 'tabpanel' : undefined}
+          role={hasAssistantTabs ? 'tabpanel' : undefined}
           id={`${tabId}-panel-notes`}
-          aria-labelledby={supportsReadingAssistant ? `${tabId}-tab-notes` : undefined}
+          aria-labelledby={hasAssistantTabs ? `${tabId}-tab-notes` : undefined}
           hidden={activeTab !== 'notes'}
           tabIndex={0}
         >
@@ -530,17 +548,40 @@ const Notebook: React.FC = ({}) => {
             </div>
           ) : (
             <div className='flex-grow px-3'>
-              {activeTab === 'notes' &&
-                hasAnnotations &&
-                !notebookNewAnnotation &&
-                !notebookEditAnnotation && (
-                  <BooknoteView
-                    key={sideBarBookKey}
-                    bookKey={sideBarBookKey}
-                    toc={bookDoc.toc ?? []}
-                    notebookSearch={{ results: isSearchBarVisible ? searchResults : null }}
-                  />
-                )}
+              {notebookNewAnnotation && !isSearchBarVisible && (
+                <NoteEditor
+                  key={sideBarBookKey}
+                  bookKey={sideBarBookKey}
+                  active={activeTab === 'notes'}
+                  onSave={handleSaveNote}
+                  onEdit={(item) => handleEditNote(item, false)}
+                />
+              )}
+              {activeTab === 'notes' && hasAnnotations && (
+                <BooknoteView
+                  key={sideBarBookKey}
+                  bookKey={sideBarBookKey}
+                  toc={bookDoc.toc ?? []}
+                  notebookSearch={{ results: isSearchBarVisible ? searchResults : null }}
+                  useNotebookEditor
+                  noteEditor={
+                    notebookEditAnnotation
+                      ? {
+                          id: notebookEditAnnotation.id,
+                          content: (
+                            <NoteEditor
+                              key={`${sideBarBookKey}:${notebookEditAnnotation.id}`}
+                              bookKey={sideBarBookKey}
+                              active={activeTab === 'notes'}
+                              onSave={handleSaveNote}
+                              onEdit={(item) => handleEditNote(item, false)}
+                            />
+                          ),
+                        }
+                      : undefined
+                  }
+                />
+              )}
               {isSearchBarVisible &&
                 searchResults &&
                 !hasSearchResults &&
@@ -607,11 +648,11 @@ const Notebook: React.FC = ({}) => {
                 ))}
               </ul>
               <div dir='ltr'>
-                {(notebookNewAnnotation || notebookEditAnnotation) && !isSearchBarVisible && (
+                {notebookEditAnnotation && !hasAnnotations && !isSearchBarVisible && (
                   <p className='glossa-eyebrow my-4'>{_('Notes')}</p>
                 )}
               </div>
-              {(notebookNewAnnotation || notebookEditAnnotation) && !isSearchBarVisible && (
+              {notebookEditAnnotation && !hasAnnotations && !isSearchBarVisible && (
                 <NoteEditor
                   key={sideBarBookKey}
                   bookKey={sideBarBookKey}

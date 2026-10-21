@@ -40,7 +40,6 @@ import BackgroundTextureSelector from './theme/BackgroundTextureSelector';
 import HighlightColorsEditor from './theme/HighlightColorsEditor';
 import CodeHighlightingSettings from './theme/CodeHighlightingSettings';
 import ReadingRulerSettings from './theme/ReadingRulerSettings';
-import LibrarySettings from './theme/LibrarySettings';
 
 const ThemePanel: React.FC<SettingsPanelPanelProp & { readingOnly?: boolean }> = ({
   bookKey,
@@ -118,8 +117,6 @@ const ThemePanel: React.FC<SettingsPanelPanelProp & { readingOnly?: boolean }> =
     viewSettings.readingRulerTransparency,
   );
   const [readingRulerColor, setReadingRulerColor] = useState(viewSettings.readingRulerColor);
-
-  const [skeuomorphicCovers, setSkeuomorphicCovers] = useState(settings.librarySkeuomorphicCovers);
 
   const {
     textures: customTextures,
@@ -369,12 +366,6 @@ const ThemePanel: React.FC<SettingsPanelPanelProp & { readingOnly?: boolean }> =
     );
   }, [settings]);
 
-  useEffect(() => {
-    if (skeuomorphicCovers === settings.librarySkeuomorphicCovers) return;
-
-    saveSysSettings(envConfig, 'librarySkeuomorphicCovers', skeuomorphicCovers);
-  }, [skeuomorphicCovers]);
-
   const handleSaveCustomTheme = async (customTheme: CustomTheme) => {
     await saveCustomTheme(envConfig, settings, customTheme);
     setSettings({ ...settings });
@@ -583,14 +574,6 @@ const ThemePanel: React.FC<SettingsPanelPanelProp & { readingOnly?: boolean }> =
             onLanguageChange={setCodeLanguage}
             data-setting-id='settings.color.codeHighlighting'
           />
-
-          {!readingOnly && (
-            <LibrarySettings
-              skeuomorphicCovers={skeuomorphicCovers}
-              onToggle={setSkeuomorphicCovers}
-              data-setting-id='settings.library.skeuomorphicCovers'
-            />
-          )}
         </>
       )}
     </div>

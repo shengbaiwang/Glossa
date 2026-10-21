@@ -7,7 +7,7 @@ import { useState, useRef, useEffect, Suspense, useCallback } from 'react';
 import { ReadonlyURLSearchParams, useSearchParams } from 'next/navigation';
 
 import { Book, BooksGroup, type LibrarySearchConfig } from '@/types/book';
-import { AppService, DeleteAction } from '@/types/system';
+import { AppService, DeleteAction, type FileItem } from '@/types/system';
 import {
   buildBookLookupIndex,
   collectKnownSourcePaths,
@@ -54,7 +54,7 @@ import { useAutoImportFolders } from './hooks/useAutoImportFolders';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useTransferStore } from '@/store/transferStore';
 import { useBackgroundTexture } from '@/hooks/useBackgroundTexture';
-import { getLibraryViewSettings } from '@/helpers/settings';
+import { getFolderImportReadInPlace, getLibraryViewSettings } from '@/helpers/settings';
 import { useAppUrlIngress } from '@/hooks/useAppUrlIngress';
 import { useOpenWithBooks } from '@/hooks/useOpenWithBooks';
 import { useOpenAnnotationLink } from '@/hooks/useOpenAnnotationLink';
@@ -105,7 +105,8 @@ import ImportMenuPopup from './components/ImportMenuPopup';
 import GroupHeader from './components/GroupHeader';
 import FailedImportsDialog, { FailedImport } from './components/FailedImportsDialog';
 import ImportFromFolderDialog, {
-  ImportFromFolderResult,
+  type ImportFromFolderResult,
+  type FolderImportOptions,
 } from './components/ImportFromFolderDialog';
 import ImportFromUrlDialog from './components/ImportFromUrlDialog';
 
@@ -157,26 +158,6 @@ const LAST_IMPORT_FOLDER_KEY = 'readest:lastImportFolder';
  * the next dialog open.
  */
 const LAST_IMPORT_FOLDER_MODE_KEY = 'readest:lastImportFolderMode';
-/**
- * Key used to persist the comma-separated list of FormatGroup ids the
- * user last ticked, e.g. "epub,pdf". Empty / missing falls back to the
- * dialog's built-in default ("epub,pdf").
- */
-const LAST_IMPORT_FOLDER_FORMATS_KEY = 'readest:lastImportFolderFormats';
-/**
- * Key used to persist the last "File size larger than" threshold (KB).
- * Stored as a stringified non-negative integer.
- */
-const LAST_IMPORT_FOLDER_MIN_SIZE_KEY = 'readest:lastImportFolderMinSizeKB';
-/**
- * Key used to persist the last "Read books in place" toggle value
- * (`'1'` or `'0'`). Restored as the dialog's initial toggle state.
- * The toggle only matters for fresh, not-yet-registered folders —
- * once a folder is registered as an external library folder, the
- * dialog forces the toggle ON regardless of this value.
- */
-const LAST_IMPORT_FOLDER_READ_IN_PLACE_KEY = 'readest:lastImportFolderReadInPlace';
-
 const LibraryPageWithSearchParams = () => {
   const searchParams = useSearchParams();
   return <LibraryPageContent searchParams={searchParams} />;
@@ -266,10 +247,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const [importFromFolderState, setImportFromFolderState] = useState<{
     initialDirectory: string;
     initialFolderMode: 'keep' | 'flatten';
-    initialSelectedGroupIds?: string[];
-    initialMinSizeKB?: number;
-    initialReadInPlace?: boolean;
-    initialAutoImport?: boolean;
   } | null>(null);
   const [currentGroupPath, setCurrentGroupPath] = useState<string | undefined>(undefined);
   const [currentVirtualGroup, setCurrentVirtualGroup] = useState<{
@@ -826,7 +803,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const importBooks = async (
     files: SelectedFile[],
     groupId?: string,
-    options: { silent?: boolean } = {},
+    options: FolderImportOptions & { silent?: boolean } = {},
   ): Promise<{ failedPaths: string[] }> => {
     setLoading(true);
     const { library } = useLibraryStore.getState();
@@ -892,6 +869,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
             file,
             books: library,
             lookupIndex,
+            retryPDFContents: !options.silent,
             groupId: resolvedGroupId,
             groupName: resolvedGroupName,
           },
@@ -911,54 +889,59 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       }
     };
 
-    const concurrency = 4;
-    for (let i = 0; i < files.length; i += concurrency) {
-      const batch = files.slice(i, i + concurrency);
-      const importedBooks = (await Promise.all(batch.map(processFile))).filter((book) => !!book);
-      // Update store state per batch (so the UI can render imported books
-      // incrementally) but defer disk persistence until the entire batch is
-      // done — saving library.json once per batch of 4 books was the dominant
-      // cost for large imports.
-      await updateBooks(envConfig, importedBooks, { skipSave: true });
-    }
+    try {
+      const concurrency = 4;
+      for (let i = 0; i < files.length; i += concurrency) {
+        if (options.signal?.aborted) break;
+        const batch = files.slice(i, i + concurrency);
+        const importedBooks = (await Promise.all(batch.map(processFile))).filter((book) => !!book);
+        // Update store state per batch (so the UI can render imported books
+        // incrementally) but defer disk persistence until the entire batch is
+        // done — saving library.json once per batch of 4 books was the dominant
+        // cost for large imports.
+        await updateBooks(envConfig, importedBooks, { skipSave: true });
+        options.onProgress?.(Math.min(i + batch.length, files.length), files.length);
+      }
 
-    // Persist the full library once after every file in the batch is done.
-    if (successfulImports.length > 0) {
-      const finalLibrary = useLibraryStore.getState().library;
-      const finalAppService = await envConfig.getAppService();
-      await finalAppService.saveLibraryBooks(finalLibrary);
-    }
+      // Persist the full library once after every file in the batch is done.
+      if (successfulImports.length > 0) {
+        const finalLibrary = useLibraryStore.getState().library;
+        const finalAppService = await envConfig.getAppService();
+        await finalAppService.saveLibraryBooks(finalLibrary);
+      }
 
-    pushLibrary();
+      pushLibrary();
 
-    if (!options.silent && failedImports.length > 1) {
-      setFailedImportsModal(failedImports);
-    } else if (!options.silent && failedImports.length === 1) {
-      const { filename, errorMessage } = failedImports[0]!;
-      eventDispatcher.dispatch('toast', {
-        message:
-          _('Failed to import book(s): {{filenames}}', {
-            filenames: listFormater(false).format([filename]),
-          }) + (errorMessage ? `\n${errorMessage}` : ''),
-        timeout: 5000,
-        type: 'error',
-      });
-    }
-    // Surface the success toast when books were imported. In silent (auto-import)
-    // mode failures are suppressed, so show success independently of them; in
-    // interactive mode keep the original behaviour (only when nothing failed).
-    if (successfulImports.length > 0 && (options.silent || failedImports.length === 0)) {
-      eventDispatcher.dispatch('toast', {
-        message: _('Successfully imported {{count}} book(s)', {
-          count: successfulImports.length,
-        }),
-        timeout: 2000,
-        type: 'success',
-      });
-    }
+      if (!options.silent && failedImports.length > 1) {
+        setFailedImportsModal(failedImports);
+      } else if (!options.silent && failedImports.length === 1) {
+        const { filename, errorMessage } = failedImports[0]!;
+        eventDispatcher.dispatch('toast', {
+          message:
+            _('Failed to import book(s): {{filenames}}', {
+              filenames: listFormater(false).format([filename]),
+            }) + (errorMessage ? `\n${errorMessage}` : ''),
+          timeout: 5000,
+          type: 'error',
+        });
+      }
+      // Surface the success toast when books were imported. In silent (auto-import)
+      // mode failures are suppressed, so show success independently of them; in
+      // interactive mode keep the original behaviour (only when nothing failed).
+      if (successfulImports.length > 0 && (options.silent || failedImports.length === 0)) {
+        eventDispatcher.dispatch('toast', {
+          message: _('Successfully imported {{count}} book(s)', {
+            count: successfulImports.length,
+          }),
+          timeout: 2000,
+          type: 'success',
+        });
+      }
 
-    setLoading(false);
-    return { failedPaths };
+      return { failedPaths };
+    } finally {
+      setLoading(false);
+    }
   };
 
   /**
@@ -969,7 +952,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
    * success toast then fires).
    */
   const autoImportFromWatchedFolders = async (folders: string[]) => {
-    if (!appService || loading) return;
+    if (!appService || loading || importFromFolderState) return;
     const { library } = useLibraryStore.getState();
     const osPlatform = appService.osPlatform;
     // Known local source paths — live AND soft-deleted (files the user deleted
@@ -1001,7 +984,12 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         // `importBooks` seats the book in the group its subfolder implies —
         // the same group the folder's initial import used (issue #5423).
         newFiles.push(
-          ...toWatchedFolderImports(folder, fresh, isFlattenedAutoImportFolder(folder)),
+          ...toWatchedFolderImports(
+            folder,
+            fresh,
+            isFlattenedAutoImportFolder(folder),
+            useSettingsStore.getState().settings.autoImportFolderGroups?.[normalizeRoot(folder)],
+          ),
         );
         for (const entry of fresh) {
           // Prevent the same file matching again via a later overlapping folder.
@@ -1252,66 +1240,40 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
 
     setIsSelectMode(false);
 
-    // When a path is supplied (e.g. URL ingress / drag-drop replay) we
-    // honour the legacy "import everything" behaviour without opening
-    // the dialog. Manual menu invocations always go through the dialog
-    // so users can pick formats and a size threshold before scanning.
     if (dirPath) {
-      await runFolderImport(
-        {
-          directory: dirPath,
-          extensions: SUPPORTED_BOOK_EXTS.slice(),
-          // The non-dialog path is invoked by URL ingress / drag-drop
-          // replay, where the user never picked any filter — keep the
-          // synthetic values minimal and non-restrictive.
-          selectedGroupIds: [],
-          minSizeKB: 0,
-          flatten: false,
-          // URL ingress / drag-drop don't go through the dialog and so
-          // can't set this. Default to the legacy "copy" behaviour;
-          // already-registered external roots will still be detected
-          // by `runFolderImport` itself via the prefix check, so books
-          // under a registered folder are imported in-place either way.
-          readInPlace: false,
-          // Non-dialog path never opts into auto-import.
-          autoImport: false,
-        },
-        destination,
-      );
+      try {
+        await runFolderImport({ directory: dirPath, flatten: false }, destination);
+      } catch {
+        eventDispatcher.dispatch('toast', {
+          type: 'error',
+          message: _('Couldn’t finish importing. Please try again.'),
+        });
+      }
       return;
     }
 
-    // Restore both the last-used folder and the last folder-structure
-    // mode from localStorage. Anything else (or first-time use) falls
-    // back to the dialog's built-in defaults.
     const ls = typeof window !== 'undefined' ? window.localStorage : null;
-    const storedDirectory = ls?.getItem(LAST_IMPORT_FOLDER_KEY) || '';
-    const storedMode = ls?.getItem(LAST_IMPORT_FOLDER_MODE_KEY);
-    const storedFormats = ls?.getItem(LAST_IMPORT_FOLDER_FORMATS_KEY);
-    const storedMinSize = ls?.getItem(LAST_IMPORT_FOLDER_MIN_SIZE_KEY);
-    const storedReadInPlace = ls?.getItem(LAST_IMPORT_FOLDER_READ_IN_PLACE_KEY);
-    const parsedFormats = storedFormats
-      ? storedFormats
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : undefined;
-    const parsedMinSize =
-      storedMinSize !== null && storedMinSize !== undefined
-        ? Number.parseInt(storedMinSize, 10)
-        : undefined;
     setImportFromFolderState({
-      initialDirectory: storedDirectory,
-      initialFolderMode: storedMode === 'flatten' ? 'flatten' : 'keep',
-      initialSelectedGroupIds: parsedFormats,
-      initialMinSizeKB:
-        parsedMinSize !== undefined && Number.isFinite(parsedMinSize) && parsedMinSize >= 0
-          ? parsedMinSize
-          : undefined,
-      initialReadInPlace: storedReadInPlace === '1',
-      initialAutoImport: isAutoImportFolder(storedDirectory),
+      initialDirectory: ls?.getItem(LAST_IMPORT_FOLDER_KEY) || '',
+      initialFolderMode:
+        ls?.getItem(LAST_IMPORT_FOLDER_MODE_KEY) === 'flatten' ? 'flatten' : 'keep',
     });
   };
+
+  const scanImportDirectory = useCallback(
+    async (directory: string, signal: AbortSignal): Promise<FileItem[]> => {
+      if (!appService) throw new Error('App service unavailable');
+      signal.throwIfAborted();
+      await appService.allowPathsInScopes?.([directory], true);
+      signal.throwIfAborted();
+      const files = await appService.readDirectory(directory, 'None', SUPPORTED_BOOK_EXTS.slice());
+      signal.throwIfAborted();
+      return files.filter((file) =>
+        SUPPORTED_BOOK_EXTS.includes(file.path.split('.').pop()?.toLowerCase() ?? ''),
+      );
+    },
+    [appService],
+  );
 
   /**
    * Pop the platform's native folder picker. Wrapped here (rather than
@@ -1397,54 +1359,15 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
    */
   const normalizeRoot = (p: string): string => p.replace(/\\/g, '/').replace(/\/+$/, '');
 
-  /**
-   * `true` when `directory` is already in
-   * `settings.externalLibraryFolders` after path normalization. Hands
-   * over to the ImportFromFolderDialog so it can render the "Read in
-   * place" toggle as ON-and-locked when the user re-imports from a
-   * folder they've already registered. The match is exact-string
-   * (after normalization) — sub-paths of a registered folder are NOT
-   * considered registered roots themselves, only the registered root
-   * is.
-   */
-  const isRegisteredExternalRoot = (directory: string): boolean => {
-    const target = normalizeRoot(directory);
-    if (!target) return false;
-    const roots = settings.externalLibraryFolders ?? [];
-    return roots.some((r) => normalizeRoot(r) === target);
-  };
-
-  /**
-   * `true` when `directory` is in `settings.autoImportFolders` after path
-   * normalization. Seeds the dialog's "Auto-import new books from this
-   * folder" checkbox so re-opening on a watched folder shows it ticked.
-   */
   const isAutoImportFolder = (directory: string): boolean => {
     const target = normalizeRoot(directory);
-    if (!target) return false;
-    const roots = settings.autoImportFolders ?? [];
-    return roots.some((r) => normalizeRoot(r) === target);
+    return (
+      !!target &&
+      (useSettingsStore.getState().settings.autoImportFolders ?? []).some(
+        (root) => normalizeRoot(root) === target,
+      )
+    );
   };
-
-  /**
-   * `true` when auto-imports from `directory` should go straight to the library
-   * root because the user imported it with "Import all into library". Read from
-   * the live store: the scan runs long after the dialog wrote the setting, and
-   * the component closure can still hold the pre-write snapshot. A folder
-   * watched before this list existed isn't in it and therefore keeps the
-   * dialog's default, "Create groups from subfolders".
-   */
-  /**
-   * The watched folders as the Import-from-Folder dialog's management sub-page
-   * wants them. Derived from `settings` (not the store snapshot) so removing or
-   * re-pointing a folder re-renders the list immediately.
-   */
-  const watchedFolders = (settings.autoImportFolders ?? []).map((path) => ({
-    path,
-    flatten: (settings.autoImportFlattenFolders ?? []).some(
-      (r) => normalizeRoot(r) === normalizeRoot(path),
-    ),
-  }));
 
   const isFlattenedAutoImportFolder = (directory: string): boolean => {
     const target = normalizeRoot(directory);
@@ -1457,10 +1380,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
    * Add `directory` to `settings.externalLibraryFolders` (and persist
    * settings) so the ingest layer's `shouldImportInPlace` will pick
    * up subsequent imports from the same folder automatically. No-op
-   * when the folder is already registered. Errors are swallowed
-   * because the import flow can still succeed in copy mode even if
-   * registration fails — we just won't get the in-place behaviour
-   * next launch.
+   * when the folder is already registered. A failed write keeps the
+   * import open for retry rather than silently switching file handling.
    */
   const registerExternalLibraryFolder = async (directory: string): Promise<void> => {
     const target = normalizeRoot(directory);
@@ -1476,24 +1397,28 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     try {
       await saveSettings(envConfig, nextSettings);
     } catch (e) {
-      console.error('Failed to persist externalLibraryFolders update:', e);
+      const current = useSettingsStore.getState().settings;
+      if (current.externalLibraryFolders === nextSettings.externalLibraryFolders) {
+        setSettings({ ...current, externalLibraryFolders: liveSettings.externalLibraryFolders });
+      }
+      throw e;
     }
   };
 
   /**
    * Add or remove `directory` from `settings.autoImportFolders` (and persist)
-   * per the user's per-folder "Auto-import new books from this folder" choice.
+   * according to the import defaults and existing per-folder watch state.
    * `flatten` records the same import's "Folder Structure" pick so later scans
    * can group newly-found books exactly like this import did — it is tracked in
    * a parallel list because only flattened folders need an entry. A no-op when
-   * the folder is already in the desired state. Errors are swallowed — the
-   * import itself still succeeds; we just won't watch (or stop watching) the
-   * folder until the next successful settings write.
+   * the folder is already in the desired state. Failed writes restore the
+   * edited fields and let the user retry the import.
    */
   const setAutoImportFolder = async (
     directory: string,
     enabled: boolean,
     flatten: boolean,
+    groupPath: string,
   ): Promise<void> => {
     const target = normalizeRoot(directory);
     if (!target) return;
@@ -1503,7 +1428,12 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     const present = existing.some((r) => normalizeRoot(r) === target);
     const flattenPresent = existingFlatten.some((r) => normalizeRoot(r) === target);
     const flattenWanted = enabled && flatten;
-    if (enabled === present && flattenWanted === flattenPresent) return;
+    if (
+      enabled === present &&
+      flattenWanted === flattenPresent &&
+      liveSettings.autoImportFolderGroups?.[target] === groupPath
+    )
+      return;
     // Append only when the folder isn't listed yet: re-adding an existing entry
     // would move it to the end and shuffle the Watched Folders list under the
     // user's finger every time they flip a row's structure.
@@ -1518,117 +1448,62 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       ...liveSettings,
       autoImportFolders: next,
       autoImportFlattenFolders: nextFlatten,
+      autoImportFolderGroups: { ...liveSettings.autoImportFolderGroups, [target]: groupPath },
     };
     setSettings(nextSettings);
     try {
       await saveSettings(envConfig, nextSettings);
     } catch (e) {
-      console.error('Failed to persist autoImportFolders update:', e);
+      const current = useSettingsStore.getState().settings;
+      setSettings({
+        ...current,
+        ...(current.autoImportFolders === nextSettings.autoImportFolders
+          ? { autoImportFolders: liveSettings.autoImportFolders }
+          : {}),
+        ...(current.autoImportFlattenFolders === nextSettings.autoImportFlattenFolders
+          ? { autoImportFlattenFolders: liveSettings.autoImportFlattenFolders }
+          : {}),
+        ...(current.autoImportFolderGroups === nextSettings.autoImportFolderGroups
+          ? { autoImportFolderGroups: liveSettings.autoImportFolderGroups }
+          : {}),
+      });
+      throw e;
     }
   };
 
-  /**
-   * Recursively scan {@link result.directory}, keep files matching one
-   * of {@link result.extensions} that are at least
-   * {@link result.minSizeKB} KB, and feed them through {@link importBooks}.
-   *
-   * Two cooperating signals carry "where should the imported books
-   * end up" downstream:
-   *   1. Each {@link SelectedFile}'s `basePath` — when present,
-   *      {@link importBooks}' `processFile` derives a nested groupName
-   *      relative to it (`<sub>` / `<sub>/<deeper>`).
-   *   2. The `groupId` argument passed to {@link importBooks} —
-   *      tri-state per the comment in `processFile`. An explicit
-   *      string (including '') wins over basePath-derived grouping.
-   *
-   * The two flatten/keep modes use these signals as follows:
-   *   - keep    → omit basePath? no, *include* basePath; pass
-   *               groupId=undefined so basePath wins.
-   *   - flatten → omit basePath AND pass an explicit groupId equal to
-   *               the user's currently-viewed group ('' = root). The
-   *               omitted basePath alone wouldn't be enough on a
-   *               re-import, since deduped books carry stale groupIds
-   *               from prior sessions; the explicit groupId is what
-   *               actually reseats them. Dropping basePath in flatten
-   *               mode is therefore belt-and-suspenders.
-   */
-  const runFolderImport = async (result: ImportFromFolderResult, dropDestination?: string) => {
+  /** Use exactly the previewed files; direct ingress scans all supported formats. */
+  const runFolderImport = async (
+    result: ImportFromFolderResult,
+    dropDestination?: string,
+    options: FolderImportOptions = {},
+  ) => {
     if (!appService || !result.directory) return;
-    // Last-chance sanity check. The dialog's own pickImportDirectory
-    // already validates fresh picks, but `result.directory` can also
-    // come from the persisted "last import folder" in localStorage —
-    // which may have been a bad path (e.g. user picked "On My iPhone"
-    // root last session, app remembered it, user just hits OK now).
-    // Catch that here so they get the same clear guidance instead of
-    // a fs_scope error from readDirectory below.
-    if (!validatePickedDirectory(result.directory)) return;
-
-    // The user can opt the chosen folder into "in place" via the
-    // dialog toggle; the same effect happens automatically when the
-    // folder is already a registered external library folder (the
-    // ingest layer's `shouldImportInPlace` does a path-prefix match
-    // against `settings.externalLibraryFolders`). Register here so the
-    // bookkeeping survives across launches and so subsequent imports
-    // from the same folder don't have to re-trigger the toggle.
-    if (result.readInPlace) {
-      await registerExternalLibraryFolder(result.directory);
+    if (!validatePickedDirectory(result.directory)) throw new Error('Invalid import directory');
+    const destination = dropDestination ?? getGroupName(getImportTargetGroupId()) ?? '';
+    const root = droppedFolderPath(
+      getFilename(result.directory.replace(/[\\/]+$/, '')),
+      destination,
+    );
+    options.signal?.throwIfAborted();
+    const files =
+      result.files ??
+      (await scanImportDirectory(result.directory, options.signal ?? new AbortController().signal));
+    options.signal?.throwIfAborted();
+    const liveSettings = useSettingsStore.getState().settings;
+    const readInPlace = getFolderImportReadInPlace(liveSettings);
+    if (readInPlace) await registerExternalLibraryFolder(result.directory);
+    options.signal?.throwIfAborted();
+    // Existing watched folders stay watched even when the defaults change.
+    if (
+      isAutoImportFolder(result.directory) ||
+      (readInPlace && liveSettings.folderImportAutoImport)
+    ) {
+      await setAutoImportFolder(result.directory, true, result.flatten, root);
     }
-    // Opt this folder into (or out of) auto-import per the dialog's per-folder
-    // checkbox. `result.autoImport` already implies `readInPlace` (the dialog
-    // gates it), so registration above has run; unchecking removes the folder
-    // from the watched set while leaving it registered as read-in-place.
-    await setAutoImportFolder(result.directory, result.autoImport, result.flatten);
-
-    // Re-grant scopes for the directory before scanning. This matters
-    // when `result.directory` came from somewhere the dialog plugin
-    // didn't authorise — typically the persisted "last import folder"
-    // restored from localStorage when the user just hit OK without
-    // re-picking. Without this, `RemoteFile` reads through the asset
-    // protocol later in `importBook` would fail with
-    // "asset protocol not configured to allow the path".
-    await appService.allowPathsInScopes?.([result.directory], true);
-    const exts = result.extensions.map((e) => e.toLowerCase());
-    const minSizeBytes = Math.max(0, Math.floor(result.minSizeKB)) * 1024;
-    let files;
-    try {
-      files = await appService.readDirectory(result.directory, 'None', exts);
-    } catch (e) {
-      // readDirectory can reject for a few related reasons:
-      //   - iOS handed us a virtual / file-provider path that the OS
-      //     sandbox refuses to enumerate (the validator above catches
-      //     the common shapes, but not every file-provider variant);
-      //   - the path is outside Tauri's `fs_scope` and scope
-      //     extension didn't stick (e.g. an iCloud Drive entry whose
-      //     security-scoped resource the system declined to grant);
-      //   - the directory was deleted / permissions revoked between
-      //     pick and scan.
-      // Swallow the rejection (otherwise it bubbles up as an
-      // unhandledRejection through Next.js) and surface a friendly
-      // message that nudges the user to re-pick.
-      const detail = e instanceof Error ? e.message : String(e);
-      console.error('Folder import: readDirectory failed', detail);
-      const isIOS = !!appService.isIOSApp;
-      eventDispatcher.dispatch('toast', {
-        type: 'error',
-        timeout: 6000,
-        message: isIOS
-          ? _(
-              'Couldn\'t read this folder. Some iOS locations (like the "On My iPhone" root or iCloud Drive top-level) can\'t be scanned — please pick a specific subfolder and try again.',
-            )
-          : _(
-              "Couldn't read this folder. Please pick the folder again, or choose a different location.",
-            ),
-      });
-      return;
-    }
-    // Re-filter by extension because the JS fallback of readDirectory ignores
-    // the extensions argument (only the native Rust walk filters in-scan).
-    const filtered = files.filter((file) => {
-      const ext = file.path.split('.').pop()?.toLowerCase() || '';
-      if (!exts.includes(ext)) return false;
-      if (minSizeBytes > 0 && file.size < minSizeBytes) return false;
-      return true;
-    });
+    options.signal?.throwIfAborted();
+    const filtered = files.filter((file) =>
+      SUPPORTED_BOOK_EXTS.includes(file.path.split('.').pop()?.toLowerCase() ?? ''),
+    );
     const entries = filtered.map((file) => ({
       fullPath: joinScannedPath(result.directory, file.path),
       size: file.size,
@@ -1639,37 +1514,17 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       result.directory,
       entries,
       result.flatten,
+      root,
     );
-    if (dropDestination !== undefined) {
-      try {
-        const root = droppedFolderPath(
-          getFilename(result.directory.replace(/[\\/]+$/, '')),
-          dropDestination,
-        );
-        for (const file of toImportFiles) {
-          file.groupName = droppedFolderPath(
-            getFolderImportGroupName(file.path!, result.directory),
-            dropDestination,
-          );
-        }
-        if (!(await folders.ensure([root, ...toImportFiles.map((file) => file.groupName!)]))) {
-          eventDispatcher.dispatch('toast', {
-            type: 'error',
-            message: _('Unable to save folders. Please try again.'),
-          });
-          return;
-        }
-      } catch (error) {
-        eventDispatcher.dispatch('toast', {
-          type: 'error',
-          message: _(
-            error instanceof Error && error.message === 'Folders support two levels'
-              ? 'Folders support two levels'
-              : 'Invalid folder name',
-          ),
-        });
-        return;
-      }
+    for (const file of toImportFiles) {
+      file.groupName = droppedFolderPath(file.groupName!, '');
+    }
+    if (!(await folders.ensure([root, ...toImportFiles.map((file) => file.groupName!)]))) {
+      eventDispatcher.dispatch('toast', {
+        type: 'error',
+        message: _('Unable to save folders. Please try again.'),
+      });
+      throw new Error('Unable to save folders. Please try again.');
     }
     if (toImportFiles.length === 0) {
       eventDispatcher.dispatch('toast', {
@@ -1678,12 +1533,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       });
       return;
     }
-    // When flattening, route the books into whichever group the user
-    // is currently viewing (empty string == library root). When
-    // preserving structure we leave groupId undefined so importBooks
-    // derives nested groupNames from each file's basePath.
-    const targetGroupId = result.flatten ? searchParams?.get('group') || '' : undefined;
-    await importBooks(toImportFiles, targetGroupId);
+    options.signal?.throwIfAborted();
+    await importBooks(toImportFiles, undefined, options);
   };
 
   const handleSetSelectMode = (selectMode: boolean) => {
@@ -1816,6 +1667,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           onToggleSidebar={() => setIsLibrarySidebarVisible((visible) => !visible)}
           isSelectMode={isSelectMode}
           isSelectAll={isSelectAll}
+          onImportBooks={setImportMenuAnchor}
           onPullLibrary={pullLibrary}
           onToggleSelectMode={() => handleSetSelectMode(!isSelectMode)}
           onSelectAll={handleSelectAll}
@@ -1848,7 +1700,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           max='100'
         />
       </div>
-      {(loading || isSyncing) && (
+      {((loading && !importFromFolderState) || isSyncing) && (
         <div className='fixed inset-0 z-50 flex items-center justify-center'>
           <Spinner loading />
         </div>
@@ -1888,47 +1740,11 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
                 </button>
               </div>
             )}
-          {currentGroupPath && (
-            <div
-              className={`transition-all duration-300 ease-in-out ${
-                currentGroupPath ? 'opacity-100' : 'max-h-0 opacity-0'
-              }`}
-            >
-              <div className='flex flex-wrap items-center gap-y-1 px-4 text-base'>
-                <button
-                  onClick={() => handleNavigateToPath(undefined)}
-                  className='hover:bg-base-300 text-base-content/85 rounded px-2 py-1'
-                >
-                  {_('All')}
-                </button>
-                {getBreadcrumbs(currentGroupPath).map((crumb, index, array) => {
-                  const isLast = index === array.length - 1;
-                  return (
-                    <React.Fragment key={index}>
-                      <ChevronRight
-                        size={iconSize}
-                        className='text-neutral-content rtl:rotate-180'
-                      />
-                      {isLast ? (
-                        <span className='truncate rounded px-2 py-1'>{crumb.name}</span>
-                      ) : (
-                        <button
-                          onClick={() => handleNavigateToPath(crumb.path)}
-                          className='hover:bg-base-300 text-base-content/85 truncate rounded px-2 py-1'
-                        >
-                          {crumb.name}
-                        </button>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </div>
-            </div>
-          )}
           {currentVirtualGroup && (
             <GroupHeader
               groupBy={currentVirtualGroup.groupBy}
               groupName={currentVirtualGroup.groupName}
+              groupId={searchParams?.get('group')}
             />
           )}
           {showBookshelf &&
@@ -1954,6 +1770,49 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
                     isSelectAll={isSelectAll}
                     isSelectNone={isSelectNone}
                     onScrollerRef={handleScrollerRef}
+                    renderGroupNavigation={
+                      currentGroupPath
+                        ? (openMenu) => (
+                            <div className='glossa-shelf-breadcrumbs'>
+                              <button
+                                onClick={() => handleNavigateToPath(undefined)}
+                                className='hover:bg-base-300 text-base-content/85 rounded px-2 py-1'
+                              >
+                                {_('All')}
+                              </button>
+                              {getBreadcrumbs(currentGroupPath).map((crumb, index, array) => {
+                                const isLast = index === array.length - 1;
+                                return (
+                                  <React.Fragment key={index}>
+                                    <ChevronRight
+                                      size={iconSize}
+                                      className='text-neutral-content rtl:rotate-180'
+                                    />
+                                    {isLast ? (
+                                      <button
+                                        type='button'
+                                        className='glossa-folder-heading-action truncate rounded px-2 py-1'
+                                        aria-haspopup='menu'
+                                        aria-current='location'
+                                        onClick={(event) => openMenu(event.currentTarget)}
+                                      >
+                                        {crumb.name}
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleNavigateToPath(crumb.path)}
+                                        className='hover:bg-base-300 text-base-content/85 truncate rounded px-2 py-1'
+                                      >
+                                        {crumb.name}
+                                      </button>
+                                    )}
+                                  </React.Fragment>
+                                );
+                              })}
+                            </div>
+                          )
+                        : undefined
+                    }
                     handleImportBooks={setImportMenuAnchor}
                     handleBookUpload={handleBookUpload}
                     handleBookDownload={handleBookDownload}
@@ -2039,48 +1898,20 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         <ImportFromFolderDialog
           initialDirectory={importFromFolderState.initialDirectory}
           initialFolderMode={importFromFolderState.initialFolderMode}
-          initialSelectedGroupIds={importFromFolderState.initialSelectedGroupIds}
-          initialMinSizeKB={importFromFolderState.initialMinSizeKB}
-          initialReadInPlace={importFromFolderState.initialReadInPlace}
-          initialAutoImport={importFromFolderState.initialAutoImport}
-          isRegisteredExternalRoot={isRegisteredExternalRoot}
-          watchedFolders={watchedFolders}
-          onUnwatchFolder={(path) => void setAutoImportFolder(path, false, false)}
-          onSetWatchedFolderFlatten={(path, flatten) =>
-            void setAutoImportFolder(path, true, flatten)
-          }
           onPickDirectory={pickImportDirectory}
+          onScanDirectory={scanImportDirectory}
           onCancel={() => setImportFromFolderState(null)}
-          onConfirm={(result) => {
-            setImportFromFolderState(null);
-            // Remember the folder + filters for next time. Done here
-            // (rather than inside pickImportDirectory) so we only
-            // persist values the user actually committed to, not
-            // ones they cancelled out of.
-            if (typeof window !== 'undefined') {
-              if (result.directory) {
-                window.localStorage.setItem(LAST_IMPORT_FOLDER_KEY, result.directory);
-              }
+          onConfirm={async (result, signal, onProgress) => {
+            // Persist only confirmed choices; obsolete format/size filters are ignored.
+            window.localStorage.setItem(LAST_IMPORT_FOLDER_KEY, result.directory);
+            // A flat folder offers no grouping choice; don't overwrite the last explicit one.
+            if (result.files?.some((file) => /[\\/]/.test(file.path))) {
               window.localStorage.setItem(
                 LAST_IMPORT_FOLDER_MODE_KEY,
                 result.flatten ? 'flatten' : 'keep',
               );
-              if (result.selectedGroupIds.length > 0) {
-                window.localStorage.setItem(
-                  LAST_IMPORT_FOLDER_FORMATS_KEY,
-                  result.selectedGroupIds.join(','),
-                );
-              }
-              window.localStorage.setItem(
-                LAST_IMPORT_FOLDER_MIN_SIZE_KEY,
-                String(result.minSizeKB),
-              );
-              window.localStorage.setItem(
-                LAST_IMPORT_FOLDER_READ_IN_PLACE_KEY,
-                result.readInPlace ? '1' : '0',
-              );
             }
-            void runFolderImport(result);
+            await runFolderImport(result, undefined, { signal, onProgress });
           }}
         />
       )}

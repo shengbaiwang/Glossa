@@ -66,10 +66,13 @@ const BookItem: React.FC<BookItemProps> = ({
   const shouldShrinkWidth = fitCoverInGrid && coverAspect! < CELL_ASPECT_RATIO;
   const bookitemMainStyle = fitCoverInGrid
     ? {
+        width: '100%',
         aspectRatio: coverAspect!,
         ...(shouldShrinkWidth ? { width: `${(coverAspect! / CELL_ASPECT_RATIO) * 100}%` } : {}),
       }
-    : undefined;
+    : mode === 'grid'
+      ? { width: '100%' }
+      : undefined;
 
   const seriesText = formatSeries(book.metadata?.series, book.metadata?.seriesIndex);
 
@@ -78,49 +81,54 @@ const BookItem: React.FC<BookItemProps> = ({
       role='none'
       className={clsx(
         'book-item flex',
-        mode === 'grid' && 'h-full flex-col justify-end',
-        mode === 'list' && 'min-h-28 flex-row gap-4 overflow-hidden',
+        mode === 'grid' && 'h-full flex-col',
+        mode === 'list' && 'min-h-28 flex-row gap-4',
         mode === 'list' ? 'library-list-item' : 'library-grid-item',
         appService?.hasContextMenu ? 'cursor-pointer' : '',
       )}
       onClick={(e) => e.stopPropagation()}
     >
       <div
-        className={clsx(
-          'bookitem-main relative flex justify-center overflow-hidden rounded',
-          !fitCoverInGrid && 'aspect-[28/41]',
-          coverFit === 'crop' && 'glossa-cover-shadow',
-          mode === 'grid' && 'items-end',
-          mode === 'list' && 'min-w-20 items-center',
-        )}
-        style={bookitemMainStyle}
+        className={mode === 'grid' ? 'glossa-book-cover-stage aspect-[28/41] w-full' : 'contents'}
       >
-        <BookCover
-          mode={mode}
-          book={book}
-          coverFit={coverFit}
-          showSpine={settings.librarySkeuomorphicCovers}
-          imageClassName={clsx(
-            'glossa-cover-shadow',
-            settings.librarySkeuomorphicCovers ? 'rounded-none' : 'rounded',
+        <div
+          className={clsx(
+            'bookitem-main relative flex justify-center overflow-hidden rounded',
+            !fitCoverInGrid && 'aspect-[28/41]',
+            coverFit === 'crop' && 'glossa-cover-shadow',
+            mode === 'grid' && 'items-start',
+            mode === 'list' && 'min-w-20 items-center',
           )}
-          onAspectRatioChange={setCoverAspect}
-        />
-        {bookSelected && <div className='glossa-book-selection-overlay absolute inset-0'></div>}
-        {isSelectMode && (
-          <div
-            className={clsx(
-              'glossa-book-selection absolute bottom-2 end-2',
-              bookSelected && 'glossa-book-selection-checked',
+          style={bookitemMainStyle}
+        >
+          <BookCover
+            mode={mode}
+            book={book}
+            coverFit={coverFit}
+            showSpine={settings.librarySkeuomorphicCovers}
+            imageClassName={clsx(
+              'glossa-cover-shadow',
+              settings.librarySkeuomorphicCovers ? 'rounded-none' : 'rounded',
             )}
-          >
-            {bookSelected ? (
-              <Check size={16} aria-hidden='true' />
-            ) : (
-              <Circle size={18} aria-hidden='true' />
-            )}
-          </div>
-        )}
+            onImageError={() => setCoverAspect(null)}
+            onAspectRatioChange={setCoverAspect}
+          />
+          {bookSelected && <div className='glossa-book-selection-overlay absolute inset-0'></div>}
+          {isSelectMode && (
+            <div
+              className={clsx(
+                'glossa-book-selection absolute bottom-2 end-2',
+                bookSelected && 'glossa-book-selection-checked',
+              )}
+            >
+              {bookSelected ? (
+                <Check size={16} aria-hidden='true' />
+              ) : (
+                <Circle size={18} aria-hidden='true' />
+              )}
+            </div>
+          )}
+        </div>
       </div>
       <div
         className={clsx(
@@ -161,7 +169,6 @@ const BookItem: React.FC<BookItemProps> = ({
             'glossa-book-status flex items-center',
             book.progress || book.readingStatus ? 'justify-between' : 'justify-end',
           )}
-          style={mode === 'list' ? { height: iconSize15, minHeight: iconSize15 } : undefined}
         >
           {(book.progress || book.readingStatus) && (
             <ReadingProgress book={book} showTimeRemaining={showTimeRemaining} />

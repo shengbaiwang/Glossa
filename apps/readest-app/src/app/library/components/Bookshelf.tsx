@@ -26,8 +26,11 @@ import { useAutoFocus } from '@/hooks/useAutoFocus';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useLibraryFolders } from '../hooks/useLibraryFolders';
+import { useLibraryMarquee } from '../hooks/useLibraryMarquee';
 import FolderToolbar from './FolderToolbar';
-import { folderParent } from '../utils/libraryFolders';
+import FolderDeleteDialog from './FolderDeleteDialog';
+import BookContextMenuPopup from './BookContextMenuPopup';
+import { md5Fingerprint } from '@/utils/md5';
 import { useTranslation } from '@/hooks/useTranslation';
 import { navigateToLibrary, navigateToReader, showReaderWindow } from '@/utils/nav';
 import {
@@ -81,6 +84,7 @@ interface BookshelfProps {
   isSelectNone: boolean;
   onScrollerRef: (el: HTMLDivElement | null) => void;
   handleImportBooks: (anchor: HTMLElement) => void;
+  renderGroupNavigation?: (openMenu: (anchor: HTMLElement) => void) => React.ReactNode;
   handleBookDownload: (
     book: Book,
     options?: { redownload?: boolean; queued?: boolean; silent?: boolean },
@@ -114,9 +118,10 @@ type BookshelfListContext = {
    * identity stable and does not reset its scroller on every Bookshelf render.
    */
   recentShelfHeader: React.ReactNode;
-  collectionTitle: string;
+  collectionTitle: string | null;
   collectionCount: string;
   libraryTitle: string | null;
+  onGroupMenu?: (element: HTMLElement) => void;
   /**
    * Height (px) of the trailing Footer spacer. Defaults to the baseline
    * breathing room, but grows to clear the fixed select-mode action bar so the
@@ -131,9 +136,7 @@ const BookshelfFooter = ({ context }: { context?: BookshelfListContext }) => (
   <div style={{ height: context?.footerHeight ?? DEFAULT_FOOTER_HEIGHT }} />
 );
 
-const BOOKSHELF_GRID_CLASSES =
-  'bookshelf-items glossa-collection-grid transform-wrapper grid ' +
-  'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8';
+const BOOKSHELF_GRID_CLASSES = 'bookshelf-items glossa-collection-grid transform-wrapper grid';
 
 const BOOKSHELF_LIST_CLASSES =
   'bookshelf-items glossa-collection-list transform-wrapper flex flex-col';
@@ -186,10 +189,25 @@ const BookshelfHeader = ({ context }: { context?: BookshelfListContext }) => (
       </div>
     )}
     {context?.recentShelfHeader ?? null}
-    <div className='glossa-collection-heading'>
-      <h2>{context?.collectionTitle}</h2>
-      <span>{context?.collectionCount}</span>
-    </div>
+    {context?.collectionTitle && (
+      <div className='glossa-collection-heading'>
+        <h2>
+          {context?.onGroupMenu ? (
+            <button
+              type='button'
+              aria-haspopup='menu'
+              className='glossa-folder-heading-action'
+              onClick={(event) => context.onGroupMenu?.(event.currentTarget)}
+            >
+              {context.collectionTitle}
+            </button>
+          ) : (
+            context?.collectionTitle
+          )}
+        </h2>
+        <span>{context?.collectionCount}</span>
+      </div>
+    )}
   </div>
 );
 
@@ -211,6 +229,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   isSelectNone,
   onScrollerRef,
   handleImportBooks,
+  renderGroupNavigation,
   handleBookUpload,
   handleBookDownload,
   handleBookDelete,
@@ -273,25 +292,25 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const { selectedBooks: selectedBookSet } = useLibraryStore();
   const { getGroupName } = useLibraryStore();
   const folders = useLibraryFolders();
-  const focusFolder = (path: string) =>
-    requestAnimationFrame(() => {
-      const card = [
-        ...(autofocusRef.current?.querySelectorAll<HTMLElement>('[data-group-name]') ?? []),
-      ].find((element) => element.dataset['groupName'] === path);
-      (
-        card ??
-        autofocusRef.current?.querySelector<HTMLButtonElement>('.glossa-folder-toolbar button')
-      )?.focus();
-    });
+  const [creatingFolder, setCreatingFolder] = useState<string | null>(null);
+  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number } | null>(null);
+  const [deletingFolder, setDeletingFolder] = useState<string | null>(null);
+  const removeFolder = async (path: string) => {
+    if (
+      folders.paths.some((p) => p.startsWith(`${path}/`)) ||
+      useLibraryStore.getState().library.some((book) => !book.deletedAt && book.groupName === path)
+    ) {
+      setDeletingFolder(path);
+      return false;
+    }
+    return folders.remove(path);
+  };
   const createFolder = async (parent: string, name: string) => {
     const path = await folders.create(parent, name);
-    if (path) focusFolder(path);
     return path;
   };
   const renameFolder = async (path: string, name: string) => {
-    const saved = await folders.rename(path, name);
-    if (saved) focusFolder([folderParent(path), name.trim()].filter(Boolean).join('/'));
-    return saved;
+    return folders.rename(path, name);
   };
 
   const uiLanguage = localStorage?.getItem('i18nextLng') || '';
@@ -330,7 +349,12 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     return queryTerm ? libraryBooks.filter((book) => bookFilter(book)) : libraryBooks;
   }, [libraryBooks, queryTerm]);
 
-  const manualGroupName = groupBy === LibraryGroupByType.Group ? getGroupName(groupId) : undefined;
+  const remappedGroup =
+    groupBy === LibraryGroupByType.Group && !getGroupName(groupId)
+      ? folders.remappedGroup(groupId)
+      : undefined;
+  const manualGroupName =
+    groupBy === LibraryGroupByType.Group ? (getGroupName(groupId) ?? remappedGroup) : undefined;
   const currentShelfBooks = useMemo(
     () => resolveCurrentShelfBooks(libraryBooks, groupBy, groupId, manualGroupName),
     [libraryBooks, groupBy, groupId, manualGroupName],
@@ -355,7 +379,9 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   }, [filteredShelfBooks, groupBy, groupId, manualGroupName, queryTerm, folders.paths]);
 
   useEffect(() => {
-    if (
+    if (remappedGroup !== undefined) {
+      updateUrlParams({ group: remappedGroup ? md5Fingerprint(remappedGroup) : null });
+    } else if (
       groupId &&
       currentShelfBooks.length === 0 &&
       !(groupBy === LibraryGroupByType.Group && manualGroupName)
@@ -364,7 +390,15 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     } else {
       updateUrlParams({});
     }
-  }, [searchParams, groupId, groupBy, manualGroupName, currentShelfBooks.length, updateUrlParams]);
+  }, [
+    searchParams,
+    groupId,
+    groupBy,
+    manualGroupName,
+    remappedGroup,
+    currentShelfBooks.length,
+    updateUrlParams,
+  ]);
 
   const sortedBookshelfItems = useMemo(() => {
     const sortOrderMultiplier = sortOrder === 'asc' ? 1 : -1;
@@ -412,6 +446,11 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       ungroupedBooks.sort(withTimeRemainingLast<Book>(sortBy, bookSorter));
     }
 
+    if (groupBy === LibraryGroupByType.Group) {
+      const order = new Map(folders.paths.map((path, i) => [path, i]));
+      groups.sort((a, b) => (order.get(a.name) ?? 0) - (order.get(b.name) ?? 0));
+      return [...groups, ...ungroupedBooks];
+    }
     // Merge groups and ungrouped books, then sort them together
     const allItems: (Book | BooksGroup)[] = [...groups, ...ungroupedBooks];
     const groupSorter = createGroupSorter(sortBy, uiLanguage, groupBy);
@@ -455,6 +494,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     groupId,
     uiLanguage,
     currentBookshelfItems,
+    folders.paths,
   ]);
 
   useEffect(() => {
@@ -743,6 +783,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   // OverlayScrollbars + Virtuoso integration: Virtuoso manages its own
   // scroller; OverlayScrollbars wraps it for overlay scrollbar rendering.
   const osRootRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLElement | null>(null);
   const [scroller, setScroller] = useState<HTMLElement | null>(null);
   const [initialize, osInstance] = useOverlayScrollbars({
     defer: true,
@@ -768,6 +809,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const handleScrollerRef = useCallback(
     (el: HTMLElement | Window | null) => {
       const div = el instanceof HTMLElement ? el : null;
+      scrollRef.current = div;
       setScroller(div);
       onScrollerRef(div as HTMLDivElement | null);
     },
@@ -820,7 +862,6 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   // In grid mode the Import-Books "+" tile is rendered as an extra grid cell
   // after all books. We represent it to Virtuoso as an extra index past the
   // last book; list mode doesn't have an import tile.
-  const gridTotalCount = hasItems ? sortedBookshelfItems.length + 1 : 0;
 
   // Recently-read shelf: shares the availability-aware open path with per-item
   // taps so cloud-only synced books download before opening. `openBook` is
@@ -894,15 +935,33 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       fixedColumns: settings.libraryColumns,
       listScale: settings.libraryListScale ?? 100,
       recentShelfHeader,
-      collectionTitle: queryTerm ? _('Search Results') : groupId ? _('Books') : _('All books'),
-      collectionCount: _('{{count}} books', { count: currentShelfBooks.length }),
+      collectionTitle: queryTerm
+        ? _('Search Results')
+        : groupId
+          ? null
+          : groupBy === LibraryGroupByType.None || groupBy === LibraryGroupByType.Group
+            ? _('All books')
+            : _(getLibraryCategoryLabel(groupBy)),
+      collectionCount:
+        !groupId && groupBy !== LibraryGroupByType.None && groupBy !== LibraryGroupByType.Group
+          ? _('{{count}} groups', {
+              count: currentBookshelfItems.filter((item) => 'books' in item).length,
+            })
+          : _('{{count}} books', { count: filteredShelfBooks.length }),
       libraryTitle:
         !groupId && !queryTerm
           ? groupBy === LibraryGroupByType.None
             ? _('Your Library')
-            : _(getLibraryCategoryLabel(groupBy))
+            : null
           : null,
       footerHeight,
+      onGroupMenu:
+        groupBy === LibraryGroupByType.Group && !queryTerm
+          ? (element) => {
+              const rect = element.getBoundingClientRect();
+              setFolderMenu({ x: rect.left, y: rect.bottom });
+            }
+          : undefined,
     }),
     [
       settings.libraryAutoColumns,
@@ -912,7 +971,8 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       queryTerm,
       groupId,
       groupBy,
-      currentShelfBooks.length,
+      filteredShelfBooks.length,
+      currentBookshelfItems,
       _,
       footerHeight,
     ],
@@ -920,27 +980,6 @@ const Bookshelf: React.FC<BookshelfProps> = ({
 
   const renderBookshelfItem = useCallback(
     (index: number) => {
-      if (isGridMode && index === sortedBookshelfItems.length) {
-        return (
-          <div className='bookshelf-import-item'>
-            <button
-              aria-label={_('Import Books')}
-              aria-haspopup='menu'
-              className={clsx(
-                'bookitem-main glossa-import-tile eink-bordered',
-                'flex items-center justify-center',
-                'aspect-[28/41] w-full',
-              )}
-              onClick={(event) => handleImportBooks(event.currentTarget)}
-            >
-              <div className='flex flex-col items-center justify-center gap-3'>
-                <Plus className='size-6' aria-hidden='true' />
-                <span className='text-sm font-medium'>{_('Import Books')}</span>
-              </div>
-            </button>
-          </div>
-        );
-      }
       const item = sortedBookshelfItems[index];
       if (!item) return null;
       const itemSelected =
@@ -956,7 +995,12 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           toggleSelection={toggleSelection}
           handleGroupBooks={groupSelectedBooks}
           handleRenameFolder={groupBy === LibraryGroupByType.Group ? renameFolder : undefined}
-          handleRemoveFolder={groupBy === LibraryGroupByType.Group ? folders.remove : undefined}
+          handleRemoveFolder={groupBy === LibraryGroupByType.Group ? removeFolder : undefined}
+          handleCreateFolder={groupBy === LibraryGroupByType.Group ? setCreatingFolder : undefined}
+          handleUndoFolder={
+            groupBy === LibraryGroupByType.Group ? () => void folders.undo() : undefined
+          }
+          canUndoFolder={folders.canUndo}
           handleBookUpload={handleBookUpload}
           handleBookDownload={handleBookDownload}
           handleBookDelete={handleBookDelete}
@@ -975,12 +1019,10 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     [
       sortedBookshelfItems,
       selectedBooks,
-      isGridMode,
       viewMode,
       coverFit,
       isSelectMode,
       booksTransferProgress,
-      handleImportBooks,
       toggleSelection,
       handleBookUpload,
       handleBookDownload,
@@ -992,21 +1034,30 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       showTimeRemaining,
       groupBy,
       renameFolder,
+      folders.canUndo,
+      folders.revision,
       folders.remove,
     ],
   );
 
   const computeItemKey = useCallback(
     (index: number) => {
-      if (isGridMode && index === sortedBookshelfItems.length) {
-        return 'library-import-tile';
-      }
       const item = sortedBookshelfItems[index];
       if (!item) return `library-item-${index}`;
       return `library-item-${'hash' in item ? item.hash : item.id}`;
     },
-    [sortedBookshelfItems, isGridMode],
+    [sortedBookshelfItems],
   );
+
+  const marquee = useLibraryMarquee({
+    root: osRootRef,
+    scroller: scrollRef,
+    selected: selectedBooks,
+    selecting: isSelectMode,
+    enabled: !appService?.isMobile && !contentSearch?.query.trim() && !loading,
+    onSelect: setSelectedBooks,
+    onMode: handleSetSelectMode,
+  });
 
   return (
     <div
@@ -1015,9 +1066,115 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       role='main'
       aria-label={_('Bookshelf')}
       className='bookshelf glossa-bookshelf flex min-h-0 flex-grow flex-col focus:outline-none'
+      onContextMenu={(event) => {
+        if (
+          groupBy !== LibraryGroupByType.Group ||
+          queryTerm ||
+          (event.target as HTMLElement).closest(
+            '[data-group-name], [data-book-hash], button, input, form',
+          )
+        )
+          return;
+        event.preventDefault();
+        setFolderMenu({ x: event.clientX, y: event.clientY });
+      }}
+      onKeyDown={(event) => {
+        if ((event.target as HTMLElement).closest('input, textarea, [contenteditable="true"]'))
+          return;
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
+          event.preventDefault();
+          handleSetSelectMode(true);
+          setSelectedBooks(
+            currentBookshelfItems
+              .filter((item) => 'hash' in item)
+              .map((item) => (item as Book).hash),
+          );
+          return;
+        }
+        if (event.key === 'Escape' && isSelectMode) {
+          event.preventDefault();
+          event.stopPropagation();
+          handleSetSelectMode(false);
+          return;
+        }
+        if (
+          (event.metaKey || event.ctrlKey) &&
+          event.shiftKey &&
+          event.key.toLowerCase() === 'n' &&
+          groupBy === LibraryGroupByType.Group &&
+          !folders.busy
+        ) {
+          event.preventDefault();
+          folders.clearError();
+          setCreatingFolder('');
+          return;
+        }
+        if (
+          (event.ctrlKey || event.metaKey) &&
+          event.key.toLowerCase() === 'z' &&
+          !event.shiftKey &&
+          folders.canUndo
+        ) {
+          event.preventDefault();
+          void folders.undo();
+        } else if (
+          event.target === event.currentTarget &&
+          (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))
+        ) {
+          event.preventDefault();
+          const rect = event.currentTarget.getBoundingClientRect();
+          setFolderMenu({ x: rect.left + 24, y: rect.top + 24 });
+        }
+      }}
     >
+      {renderGroupNavigation?.((element) => {
+        const rect = element.getBoundingClientRect();
+        setFolderMenu({ x: rect.left, y: rect.bottom });
+      })}
       {groupBy === LibraryGroupByType.Group && !queryTerm && (
-        <FolderToolbar parent={manualGroupName || ''} {...folders} create={createFolder} />
+        <FolderToolbar
+          parent={creatingFolder ?? manualGroupName ?? ''}
+          {...folders}
+          create={createFolder}
+          active={creatingFolder !== null}
+          onClose={(restoreFocus) => {
+            setCreatingFolder(null);
+            if (restoreFocus)
+              requestAnimationFrame(() =>
+                autofocusRef.current
+                  ?.querySelector<HTMLButtonElement>('.glossa-folder-heading-action')
+                  ?.focus(),
+              );
+          }}
+        />
+      )}
+      {folderMenu && (
+        <BookContextMenuPopup
+          position={folderMenu}
+          onClose={() => setFolderMenu(null)}
+          items={[
+            {
+              text: _(manualGroupName ? 'New subgroup' : 'New group'),
+              disabled: folders.busy || (manualGroupName?.split('/').length ?? 0) >= 4,
+              action: () => {
+                folders.clearError();
+                setCreatingFolder(manualGroupName || '');
+              },
+            },
+            {
+              text: _('Undo'),
+              disabled: folders.busy || !folders.canUndo,
+              action: () => void folders.undo(),
+            },
+          ]}
+        />
+      )}
+      {deletingFolder !== null && (
+        <FolderDeleteDialog
+          path={deletingFolder}
+          onConfirm={() => folders.remove(deletingFolder)}
+          onClose={() => setDeletingFolder(null)}
+        />
       )}
       {!contentSearch?.query.trim() && queryTerm && (
         <div className='flex shrink-0 justify-center px-4 pb-2'>
@@ -1050,7 +1207,12 @@ const Bookshelf: React.FC<BookshelfProps> = ({
         // purpose: OS decorates this subtree with its own DOM, and letting
         // React swap children inside it caused NotFoundError crashes on
         // WebKit when a search was cleared.
-        <div ref={osRootRef} data-overlayscrollbars-initialize='' className='min-h-0 flex-1'>
+        <div
+          ref={osRootRef}
+          {...marquee.handlers}
+          data-overlayscrollbars-initialize=''
+          className='min-h-0 flex-1'
+        >
           {!hasItems && (
             <>
               <BookshelfHeader context={listContext} />
@@ -1079,7 +1241,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           {!contentSearch?.query.trim() && hasItems && isGridMode && (
             <VirtuosoGrid<unknown, BookshelfListContext>
               overscan={200}
-              totalCount={gridTotalCount}
+              totalCount={sortedBookshelfItems.length}
               components={GRID_VIRTUOSO_COMPONENTS}
               context={listContext}
               computeItemKey={computeItemKey}
@@ -1099,6 +1261,9 @@ const Bookshelf: React.FC<BookshelfProps> = ({
             />
           )}
         </div>
+      )}
+      {marquee.rect && (
+        <div className='glossa-library-marquee' aria-hidden='true' style={marquee.rect} />
       )}
       {loading && (
         <div className='fixed inset-0 z-50 flex items-center justify-center'>

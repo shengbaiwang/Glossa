@@ -6,9 +6,95 @@ import {
   moveOutlineBranch,
   changeOutlineLevel,
   removeOutlineEntry,
+  OCRContentsLines,
+  needsOCRRecovery,
+  type OCRPage,
 } from '@/services/pdfEnhancement';
 
 describe('local PDF enhancements', () => {
+  it('keeps observed text without character boxes recoverable rather than recording a blank page', () => {
+    const page = parseOCRPage(
+      {
+        index: 2,
+        native: false,
+        lines: [],
+        recognizer: 'vision-multiscale-1',
+        emptyReason: 'no_word_boxes',
+      },
+      2,
+    );
+    expect(needsOCRRecovery(page)).toBe(true);
+  });
+  it('retains a bounded recognizer version while accepting legacy OCR checkpoints', () => {
+    const legacy = { index: 2, native: false, lines: [] };
+    expect(parseOCRPage(legacy, 2)).toEqual(legacy);
+    const current = { ...legacy, recognizer: 'vision-multiscale-1' };
+    expect(parseOCRPage(current, 2)).toEqual(current);
+    expect(parseOCRPage({ ...legacy, recognizer: 'x'.repeat(81) }, 2)).toBeNull();
+  });
+  it('pairs separately recognized titles and page numbers by geometry without changing OCR reading order', () => {
+    const box = (text: string, x: number, y: number, width = 0.3, height = 0.02) => ({
+      text,
+      x,
+      y,
+      width,
+      height,
+      endLine: true,
+    });
+    const page: OCRPage = {
+      index: 0,
+      native: false,
+      lines: [
+        box('第一章 观察与记录', 0.1, 0.2),
+        box('第一节', 0.15, 0.25, 0.08),
+        box('核对材料的方法', 0.25, 0.25),
+        box('第二章 证据与结论', 0.1, 0.32),
+        box('３', 0.86, 0.203, 0.04, 0.015),
+        box('• 4', 0.84, 0.253, 0.06, 0.015),
+        box('。•。', 0.58, 0.21, 0.15, 0.006),
+        box('⋯⋯ 5', 0.78, 0.323, 0.12, 0.015),
+        box('只有标题没有页码', 0.1, 0.4),
+        box('9', 0.86, 0.46, 0.04),
+        box('正文里提到的数量为 3', 0.1, 0.5, 0.7),
+        box('正文里的数字', 0.1, 0.55, 0.3),
+        box('4', 0.405, 0.55, 0.03),
+      ],
+    };
+    const before = structuredClone(page);
+    const candidates = buildOutlineCandidates(
+      OCRContentsLines(page),
+      Array.from({ length: 12 }, (_, i) => String(i + 1)),
+      new Map(),
+    );
+    expect(candidates.map(({ title, pageIndex, level }) => [title, pageIndex, level])).toEqual([
+      ['第一章 观察与记录', 2, 0],
+      ['第一节 核对材料的方法', 3, 1],
+      ['第二章 证据与结论', 4, 0],
+    ]);
+    expect(page).toEqual(before);
+  });
+
+  it('does not use the contents page itself as evidence for a destination', () => {
+    const entries = buildOutlineCandidates(
+      ['Chapter One .... 1'],
+      ['1', '2'],
+      new Map([[0, 'Chapter One .... 1']]),
+      0,
+      new Set([0]),
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.verified).toBe(false);
+  });
+
+  it('normalizes full-width labels and scanned dot leaders, while rejecting number-only rows', () => {
+    expect(
+      buildOutlineCandidates(
+        ['第一章 观察 ⋯•。 ３', ' •318', '正文没有目录页码', 'Section 1.2'],
+        ['1', '2', '３'],
+        new Map(),
+      ).map((e) => [e.title, e.pageIndex]),
+    ).toEqual([['第一章 观察', 2]]);
+  });
   it('moves and indents complete branches and promotes children when deleting a heading', () => {
     const entries = [
       { title: 'A', pageIndex: 0, level: 0 },
@@ -86,4 +172,12 @@ describe('local PDF enhancements', () => {
     expect(toc[0]?.id).not.toBe(toc[0]?.subitems?.[0]?.id);
     expect(() => outlineToTOC([{ title: 'Bad', pageIndex: 6, level: 0 }], 6)).toThrow();
   });
+});
+
+it('calibrates mixed printed labels without assuming physical numbering and refuses ambiguous labels', async () => {
+  const { calibratePDFPageOffset } = await import('@/services/pdfEnhancement');
+  expect(calibratePDFPageOffset(['i', 'ii', '1', '2'], '1', 4)).toBe(1);
+  expect(calibratePDFPageOffset(['i', 'ii', '1', '2'], 'II', 2)).toBe(0);
+  expect(calibratePDFPageOffset(['1', '1', '2'], '1', 2)).toBeNull();
+  expect(calibratePDFPageOffset(['1', '2'], '1', 3)).toBeNull();
 });

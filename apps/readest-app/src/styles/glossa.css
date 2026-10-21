@@ -469,6 +469,26 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
   background: var(--glossa-group);
 }
 
+.glossa-group {
+  border-radius: inherit;
+}
+
+/* Rows own their insets so their background, focus ring and hit target reach
+   both card edges. Round only the outer corners; keep popovers unclipped. */
+.glossa-group > .glossa-settings-row {
+  border-radius: 0;
+}
+
+.glossa-group > .glossa-settings-row:first-child {
+  border-start-start-radius: inherit;
+  border-start-end-radius: inherit;
+}
+
+.glossa-group > .glossa-settings-row:last-child {
+  border-end-start-radius: inherit;
+  border-end-end-radius: inherit;
+}
+
 .glossa-group > :not(:first-child) {
   position: relative;
 }
@@ -477,7 +497,7 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
   content: '';
   position: absolute;
   inset-block-start: 0;
-  inset-inline-start: 0;
+  inset-inline-start: 16px;
   inset-inline-end: 16px;
   block-size: 1px;
   background: color-mix(in srgb, var(--glossa-ink) 9%, transparent);

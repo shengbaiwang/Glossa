@@ -29,6 +29,7 @@ const PageJumpInput: React.FC<PageJumpInputProps> = ({ bookKey, showFraction, cl
   const progress = getProgress(bookKey);
   const viewSettings = getViewSettings(bookKey);
   const progressStyle = viewSettings?.progressStyle || 'percentage';
+  const isPDF = bookData?.book?.format === 'PDF';
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -60,7 +61,7 @@ const PageJumpInput: React.FC<PageJumpInputProps> = ({ bookKey, showFraction, cl
 
   const progressFraction = (pageInfo.current + 1) / pageInfo.total;
   const referenceInfo =
-    progressStyle === 'reference'
+    !isPDF && progressStyle === 'reference'
       ? getReferencePageInfo({
           pageList: bookData?.bookDoc?.pageList,
           pageItem: progress?.pageItem,
@@ -76,6 +77,9 @@ const PageJumpInput: React.FC<PageJumpInputProps> = ({ bookKey, showFraction, cl
 
   const total = referenceInfo ? referenceInfo.total : pageInfo.total;
   const currentLabel = referenceInfo ? referenceInfo.current : String(pageInfo.current + 1);
+  const printed = isPDF ? bookData?.bookDoc?.pageList?.[pageInfo.current]?.label : null;
+  const printedText =
+    printed && printed !== currentLabel ? _('Printed page {{page}}', { page: printed }) : '';
 
   const jumpToPage = (page: number) => {
     if (!view) return;
@@ -105,47 +109,54 @@ const PageJumpInput: React.FC<PageJumpInputProps> = ({ bookKey, showFraction, cl
   const text = editing ? draft : displayText;
 
   return (
-    <div
-      className={clsx(
-        'glossa-reader-page-input relative flex items-center rounded-md text-nowrap transition-colors',
-        editing
-          ? 'eink-bordered bg-base-content/10'
-          : 'hover:bg-base-content/10 cursor-pointer bg-transparent',
-        className,
-      )}
-    >
-      {/* Invisible sizer: the box is always as wide as its text, so swapping
+    <label className='glossa-page-position'>
+      <span
+        dir='ltr'
+        data-editing={editing}
+        className={clsx(
+          'glossa-reader-page-input relative flex items-center rounded-md text-nowrap transition-colors',
+          editing ? 'eink-bordered' : 'cursor-pointer bg-transparent',
+          className,
+        )}
+      >
+        {/* Invisible sizer: the box is always as wide as its text, so swapping
           between label and edit modes never shifts the surrounding layout. */}
-      <span aria-hidden='true' className='invisible whitespace-pre px-1 py-0.5'>
-        {text}
+        <span aria-hidden='true' className='invisible whitespace-pre px-1 py-0.5'>
+          {text}
+        </span>
+        <input
+          ref={inputRef}
+          type='text'
+          inputMode='numeric'
+          enterKeyHint='go'
+          title={printedText || _('Go to Page')}
+          aria-label={_('Go to Page')}
+          value={text}
+          className='absolute inset-0 h-full w-full bg-transparent text-center focus:outline-none'
+          onFocus={() => {
+            // Keep the "current / total" text as-is (percentage style swaps to
+            // it) and pre-select the page portion for type-over editing.
+            setDraft(`${currentLabel} / ${total}`);
+            setSelectLength(currentLabel.length);
+            setEditing(true);
+          }}
+          onBlur={() => setEditing(false)}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDownCapture={(e) => {
+            // Keep keystrokes away from the reader's page-turn shortcuts and
+            // the footer bar's spatial navigation.
+            e.stopPropagation();
+            if (e.key === 'Enter') commitDraft();
+            else if (e.key === 'Escape') stopEditing();
+          }}
+        />
       </span>
-      <input
-        ref={inputRef}
-        type='text'
-        inputMode='numeric'
-        enterKeyHint='go'
-        title={_('Go to Page')}
-        aria-label={_('Go to Page')}
-        value={text}
-        className='absolute inset-0 h-full w-full bg-transparent text-center focus:outline-none'
-        onFocus={() => {
-          // Keep the "current / total" text as-is (percentage style swaps to
-          // it) and pre-select the page portion for type-over editing.
-          setDraft(`${currentLabel} / ${total}`);
-          setSelectLength(currentLabel.length);
-          setEditing(true);
-        }}
-        onBlur={() => setEditing(false)}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDownCapture={(e) => {
-          // Keep keystrokes away from the reader's page-turn shortcuts and
-          // the footer bar's spatial navigation.
-          e.stopPropagation();
-          if (e.key === 'Enter') commitDraft();
-          else if (e.key === 'Escape') stopEditing();
-        }}
-      />
-    </div>
+      {printedText && (
+        <span className='glossa-pdf-printed-page' title={printedText}>
+          {printedText}
+        </span>
+      )}
+    </label>
   );
 };
 

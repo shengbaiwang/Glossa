@@ -97,8 +97,17 @@ export type BookMetadata = {
 };
 
 export interface BookDoc {
+  getPDFAnnotationRects?(
+    cfi: string,
+  ): Promise<{ index: number; rects: { x: number; y: number; width: number; height: number }[] }>;
+  getPDFImage?(
+    index: number,
+    width: number,
+    region?: { x: number; y: number; width: number; height: number },
+  ): Promise<Blob>;
   pdfCache?: PDFCache;
   getPDFText?(index: number): Promise<string>;
+  getPDFContentsLines?(index: number, allRows?: boolean): Promise<string[]>;
   metadata: BookMetadata;
   rendition: {
     layout?: 'pre-paginated' | 'reflowable';
@@ -166,17 +175,21 @@ export interface DocumentLoaderOptions {
    */
   nativeFilePath?: string;
   pdfOCR?: (index: number) => Promise<OCRPage | null>;
+  /** Only an active reader may automatically recognize loaded scan pages. */
+  autoPDFOCR?: boolean;
 }
 
 export class DocumentLoader {
   private file: File;
   private nativeFilePath?: string;
   private pdfOCR?: (index: number) => Promise<OCRPage | null>;
+  private autoPDFOCR: boolean;
 
   constructor(file: File, options: DocumentLoaderOptions = {}) {
     this.file = file;
     this.nativeFilePath = options.nativeFilePath;
     this.pdfOCR = options.pdfOCR;
+    this.autoPDFOCR = options.autoPDFOCR ?? false;
   }
 
   private async isZip(): Promise<boolean> {
@@ -449,7 +462,7 @@ export class DocumentLoader {
         const pdf = await import('@/services/pdfEnhancement');
         const cache =
           this.nativeFilePath && pdf.supportsLocalPDF()
-            ? await pdf.openPDFCache(this.nativeFilePath).catch(() => null)
+            ? await pdf.openPDFCache(this.nativeFilePath, this.autoPDFOCR).catch(() => null)
             : null;
         const available = new Set(cache?.pages);
         const loaded = new Map<number, Promise<OCRPage | null>>();
@@ -462,17 +475,47 @@ export class DocumentLoader {
                   if (loaded.size >= 16) loaded.delete(loaded.keys().next().value!);
                   loaded.set(
                     index,
-                    pdf.readOCRPage(cache.id, index).catch(() => null),
+                    pdf
+                      .readOCRPage(cache.id, index)
+                      .then((page) => (this.autoPDFOCR && pdf.needsOCRRecovery(page) ? null : page))
+                      .catch(() => null),
                   );
                 }
                 return loaded.get(index)!;
               }
             : undefined);
-        book = await makePDF(this.file, { loadOCR });
+        const reading =
+          this.autoPDFOCR && cache && this.nativeFilePath
+            ? (await import('@/services/pdfReading')).createPDFReadingOCR(
+                this.nativeFilePath,
+                cache,
+              )
+            : undefined;
+        const { default: i18n } = await import('i18next');
+        book = await makePDF(this.file, {
+          loadOCR,
+          recognizeOCR: reading
+            ? async (index: number, current: () => boolean) => {
+                const page = await reading.recognize(index, current);
+                if (page) {
+                  available.add(index);
+                  loaded.delete(index);
+                }
+                return page;
+              }
+            : undefined,
+          disposeOCR: reading?.destroy,
+          ocrLabels: {
+            loading: i18n.t('Recognizing page text…'),
+            failed: i18n.t('Page text could not be recognized.'),
+          },
+        });
         const pdfBook = book as unknown as BookDoc;
         if (cache) {
           pdfBook.pdfCache = cache;
-          if (cache.outline?.every((entry) => entry.pageIndex < pdfBook.sections.length)) {
+          if (cache.generator === 'glossa-pages-1') {
+            pdfBook.toc = pdfBook.pageList;
+          } else if (cache.outline?.every((entry) => entry.pageIndex < pdfBook.sections.length)) {
             try {
               pdfBook.toc = pdf.outlineToTOC(cache.outline, pdfBook.sections.length);
             } catch {

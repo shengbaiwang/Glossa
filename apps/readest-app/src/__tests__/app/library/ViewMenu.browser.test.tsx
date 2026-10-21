@@ -34,6 +34,7 @@ vi.mock('@/store/settingsStore', async () => {
         libraryColumns: 6,
         libraryCoverFit: 'crop',
         libraryRecentShelfEnabled: true,
+        librarySkeuomorphicCovers: false,
         libraryGroupBy: 'none',
         librarySortBy: 'title',
         librarySortAscending: true,
@@ -72,7 +73,7 @@ function SizePreview() {
   const { settings } = useSettingsStore();
   return (
     <div style={{ padding: 12, maxWidth: 360 }}>
-      <ViewMenu onSelectBooks={vi.fn()} />
+      <ViewMenu />
       <div
         className='glossa-collection-list'
         style={
@@ -113,7 +114,7 @@ function SizePreview() {
   );
 }
 
-it('keeps both controls on their view rows in light, dark, narrow RTL and e-ink', async () => {
+it('keeps active sizing and cover choices aligned in light, dark, narrow RTL and e-ink', async () => {
   for (const [width, theme, dir, eink] of [
     [1100, 'default-light', 'ltr', false],
     [1100, 'default-dark', 'ltr', false],
@@ -126,42 +127,30 @@ it('keeps both controls on their view rows in light, dark, narrow RTL and e-ink'
     document.documentElement.dir = dir;
     document.documentElement.setAttribute('data-eink', String(eink));
     const { container } = render(<SizePreview />);
-    for (const name of ['List', 'Grid']) {
-      const row = screen.getByRole('group', { name });
-      const choice = within(row).getByRole('menuitemcheckbox', { name: new RegExp(`^${name} -`) });
-      const plus = within(row).getByRole('button', { name: 'Increase' });
-      const rowRect = row.getBoundingClientRect();
-      const choiceRect = choice.getBoundingClientRect();
-      const plusRect = plus.getBoundingClientRect();
-      expect(rowRect.height).toBeLessThanOrEqual(48);
-      if (matchMedia('(pointer: coarse)').matches) {
-        expect(plusRect.width).toBeGreaterThanOrEqual(44);
-        expect(plusRect.height).toBeGreaterThanOrEqual(44);
-      }
-      expect(
-        Math.abs(plusRect.top + plusRect.height / 2 - choiceRect.top - choiceRect.height / 2),
-      ).toBeLessThan(1);
-      expect(
-        dir === 'ltr' ? plusRect.left >= choiceRect.right : plusRect.right <= choiceRect.left,
-      ).toBe(true);
+    const row = screen.getByRole('group', { name: 'List Size' });
+    const plus = within(row).getByRole('button', { name: 'Increase' });
+    expect(row.getBoundingClientRect().height).toBeLessThanOrEqual(48);
+    const touch = matchMedia('(pointer: coarse)').matches;
+    if (touch) {
+      expect(plus.getBoundingClientRect().width).toBeGreaterThanOrEqual(44);
+      expect(plus.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
     }
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
     const menu = container.querySelector('.view-menu')!;
-    const touch = matchMedia('(pointer: coarse)').matches;
-    expect(menu.getBoundingClientRect().height).toBeLessThan(touch ? 440 : 400);
+    expect(menu.getBoundingClientRect().height).toBeLessThan(touch ? 470 : 430);
     const covers = screen.getByRole('group', { name: 'Book Covers' });
-    const crop = within(covers).getByRole('menuitemcheckbox', { name: 'Crop - ON' });
-    const fit = within(covers).getByRole('menuitemcheckbox', { name: 'Fit - OFF' });
+    const crop = within(covers).getByRole('button', { name: 'Crop', pressed: true });
+    const fit = within(covers).getByRole('button', { name: 'Fit', pressed: false });
     expect(crop.getBoundingClientRect().top).toBe(fit.getBoundingClientRect().top);
     expect(crop.getBoundingClientRect().height).toBeGreaterThanOrEqual(touch ? 44 : 36);
-    expect(screen.queryByRole('button', { name: 'Group by...' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Select Books' })).toBeNull();
     crop.focus();
     expect(getComputedStyle(crop).outlineStyle).toBe('none');
     expect(getComputedStyle(crop).textDecorationLine).toBe('underline');
     await page.screenshot({
       path: `../../../../../../.glossa-dev/qa/view-menu-${touch ? 'touch' : 'pointer'}-${width}-${theme}-${dir}.png`,
     });
-    expect(container.querySelectorAll('.glossa-library-view-row')).toHaveLength(2);
+    expect(container.querySelectorAll('.glossa-library-size-controls')).toHaveLength(1);
     cleanup();
   }
 });
@@ -173,7 +162,7 @@ it('sizes book and group covers immediately with the keyboard and retains size a
   const group = view.container.querySelector('.groupitem-main .library-list-item')!;
   const initial = cover.getBoundingClientRect().height;
   const initialGroup = group.getBoundingClientRect().height;
-  const plus = within(screen.getByRole('group', { name: 'List' })).getByRole('button', {
+  const plus = within(screen.getByRole('group', { name: 'List Size' })).getByRole('button', {
     name: 'Increase',
   });
   plus.focus();
@@ -191,14 +180,12 @@ it('opens sorting with the keyboard and bounds expanded content in a short windo
   document.documentElement.setAttribute('data-page', 'library');
   document.documentElement.setAttribute('data-theme', 'default-light');
   const { container } = render(<SizePreview />);
-  const sort = screen.getByRole('button', { name: 'Sort by...' });
+  const sort = screen.getByRole('button', { name: 'Sort by' });
   expect(sort.getAttribute('aria-expanded')).toBe('false');
   sort.focus();
   await userEvent.keyboard('{Enter}');
   await waitFor(() => expect(sort.getAttribute('aria-expanded')).toBe('true'));
-  expect(
-    within(sort.closest('details')!).getByRole('menuitemcheckbox', { name: 'Date Read - OFF' }),
-  ).toBeTruthy();
+  expect(within(sort.closest('details')!).getByRole('combobox', { name: 'Sort by' })).toBeTruthy();
   const menu = container.querySelector('.view-menu')!;
   expect(menu.getBoundingClientRect().bottom).toBeLessThanOrEqual(560);
   expect(menu.scrollHeight).toBeGreaterThan(menu.clientHeight);

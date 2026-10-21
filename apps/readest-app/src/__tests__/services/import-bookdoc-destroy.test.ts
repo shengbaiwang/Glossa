@@ -1,8 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Book } from '@/types/book';
+import type { SystemSettings } from '@/types/settings';
+import { useSettingsStore } from '@/store/settingsStore';
 
 const mockOpen = vi.hoisted(() => vi.fn());
 const mockPartialMD5 = vi.hoisted(() => vi.fn());
+const pdf = vi.hoisted(() => ({ prepare: vi.fn(), supported: false, openCache: vi.fn() }));
+vi.mock('@/services/pdfAutoContents', () => ({ preparePDFContents: pdf.prepare }));
+vi.mock('@/services/pdfEnhancement', () => ({
+  supportsLocalPDF: () => pdf.supported,
+  openPDFCache: pdf.openCache,
+}));
 
 vi.mock('@/utils/md5', async () => {
   const actual = await vi.importActual<typeof import('@/utils/md5')>('@/utils/md5');
@@ -116,6 +124,9 @@ describe('importBook BookDoc lifecycle', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    pdf.supported = false;
+    pdf.openCache.mockReset().mockResolvedValue(null);
+    pdf.prepare.mockReset().mockResolvedValue('preserved');
     service = new TestAppService();
     const fs = service.getFs();
     fs.exists.mockResolvedValue(false);
@@ -124,6 +135,134 @@ describe('importBook BookDoc lifecycle', () => {
     fs.removeDir.mockResolvedValue(undefined);
     fs.readFile.mockResolvedValue('{}');
     mockPartialMD5.mockResolvedValue('hash-abc');
+  });
+
+  it.each([
+    'ssreader',
+    ' SSReader 4.0 ',
+    'Untitled',
+    'PowerPoint Presentation',
+  ])('uses the original filename for a PDF with placeholder title %s', async (title) => {
+    const document = setupMockBookDoc();
+    document.metadata = { title, author: 'ssreader', language: 'zh', identifier: '' };
+    const originalMetadata = structuredClone(document.metadata);
+    const book = await service.importBook(new File(['pdf'], '马基雅维里主义.pdf'), []);
+
+    expect(book?.title).toBe('马基雅维里主义');
+    expect(book?.author).toBe('');
+    expect(book?.sourceTitle).toBe('马基雅维里主义');
+    expect(book?.metadata).toEqual(originalMetadata);
+  });
+
+  it('displays the original filename and keeps valid bibliographic metadata', async () => {
+    const document = setupMockBookDoc();
+    document.metadata = {
+      title: 'The ssreader Handbook',
+      author: 'A. Writer',
+      language: 'en',
+      identifier: '',
+    };
+    const book = await service.importBook(new File(['pdf'], 'download-123.pdf'), []);
+    expect(book?.title).toBe('download-123');
+    expect(book?.originalFilename).toBe('download-123.pdf');
+    expect(book?.metadata?.title).toBe('The ssreader Handbook');
+    expect(book?.author).toBe('A. Writer');
+  });
+
+  it('keeps differently named editions separate even if embedded metadata is identical', async () => {
+    const books: Book[] = [];
+    mockPartialMD5.mockResolvedValueOnce('edition-1').mockResolvedValueOnce('edition-2');
+    for (const name of ['原书（初版）.epub', '原书（修订版）.epub']) {
+      const doc = setupMockBookDoc();
+      mockOpen.mockResolvedValue({ book: doc, format: 'EPUB' });
+      await service.importBook(new File(['edition'], name), books);
+    }
+    expect(books.filter((book) => !book.deletedAt).map((book) => book.title)).toEqual([
+      '原书（初版）',
+      '原书（修订版）',
+    ]);
+    expect(service.getFs().removeDir).not.toHaveBeenCalled();
+  });
+
+  it('does not collapse distinct books that share invalid metadata', async () => {
+    const books: Book[] = [];
+    for (const [index, filename] of ['甲书.epub', '乙书.epub'].entries()) {
+      mockPartialMD5.mockResolvedValue(`different-${index}`);
+      mockOpen.mockResolvedValue({
+        book: {
+          metadata: { title: 'ssreader', author: 'ssreader', language: 'zh' },
+          getCover: vi.fn().mockResolvedValue(null),
+        },
+        format: 'EPUB',
+      });
+      await service.importBook(new File([filename], filename), books);
+    }
+    expect(books.map((book) => book.title)).toEqual(['甲书', '乙书']);
+  });
+
+  it('repairs a same-file reimport while retaining its stored filename and personal fields', async () => {
+    const document = setupMockBookDoc();
+    document.metadata = { title: 'ssreader', author: 'ssreader', language: 'zh', identifier: '' };
+    const existing: Book = {
+      hash: 'hash-abc',
+      format: 'PDF',
+      title: 'ssreader',
+      sourceTitle: 'ssreader',
+      author: 'ssreader',
+      metadata: { ...document.metadata },
+      createdAt: 1000,
+      updatedAt: 2000,
+      progress: [17, 200],
+      groupId: 'personal',
+    };
+    const book = await service.importBook(new File(['pdf'], '马基雅维里主义.pdf'), [existing]);
+    expect(book).toBe(existing);
+    expect(book?.title).toBe('马基雅维里主义');
+    expect(book?.author).toBe('');
+    expect(book?.sourceTitle).toBe('ssreader');
+    expect(book?.progress).toEqual([17, 200]);
+    expect(book?.groupId).toBe('personal');
+    expect(service.getFs().writeFile.mock.calls.map((call) => call[0])).not.toContain(
+      'hash-abc/马基雅维里主义.pdf',
+    );
+  });
+
+  it('does not repair a stored book from a transient preview filename', async () => {
+    const document = setupMockBookDoc();
+    document.metadata = { title: 'ssreader', author: 'ssreader', language: 'zh', identifier: '' };
+    service.getFs().openFile.mockResolvedValue(new File(['pdf'], '临时预览.pdf'));
+    const existing: Book = {
+      hash: 'hash-abc',
+      format: 'PDF',
+      title: 'ssreader',
+      sourceTitle: 'ssreader',
+      author: 'ssreader',
+      metadata: { ...document.metadata },
+      createdAt: 1000,
+      updatedAt: 2000,
+    };
+    await service.importBook('/临时预览.pdf', [existing], { transient: true });
+    expect(existing.title).toBe('ssreader');
+    expect(existing.author).toBe('ssreader');
+  });
+
+  it('preserves explicitly edited metadata on reimport, even when it resembles a placeholder', async () => {
+    const document = setupMockBookDoc();
+    document.metadata = { title: 'ssreader', author: 'ssreader', language: 'zh', identifier: '' };
+    const existing: Book = {
+      hash: 'hash-abc',
+      format: 'PDF',
+      title: 'ssreader',
+      sourceTitle: 'ssreader',
+      author: 'ssreader',
+      metadata: { ...document.metadata },
+      metadataUpdatedAt: 1500,
+      createdAt: 1000,
+      updatedAt: 2000,
+    };
+    const book = await service.importBook(new File(['pdf'], '原文件名.pdf'), [existing]);
+    expect(book?.title).toBe('ssreader');
+    expect(book?.author).toBe('ssreader');
   });
 
   it('destroys the loaded BookDoc after a successful import', async () => {
@@ -135,6 +274,163 @@ describe('importBook BookDoc lifecycle', () => {
 
     expect(result).not.toBeNull();
     expect(mockDestroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips the PDF plugin before opening files when disabled', async () => {
+    pdf.supported = true;
+    useSettingsStore.setState({
+      settings: { officialModules: { pdfAutoContents: false } } as SystemSettings,
+    });
+    const resolve = vi.spyOn(service, 'resolveNativeBookFilePath');
+    try {
+      await service.prepareBookContents({ format: 'PDF' } as Book);
+      expect(resolve).not.toHaveBeenCalled();
+      expect(pdf.prepare).not.toHaveBeenCalled();
+    } finally {
+      useSettingsStore.setState({ settings: {} as SystemSettings });
+    }
+  });
+
+  it('prepares the saved PDF automatically before releasing its parser and returning the import', async () => {
+    const document = setupMockBookDoc();
+    pdf.supported = true;
+    vi.spyOn(service, 'resolveNativeBookFilePath').mockResolvedValue('/managed/original.pdf');
+    pdf.prepare.mockImplementation(async () => {
+      expect(service.getFs().writeFile).toHaveBeenCalled();
+      expect(mockDestroy).not.toHaveBeenCalled();
+      return 'generated';
+    });
+    await service.importBook(new File(['pdf content'], 'test.pdf'), []);
+    expect(pdf.prepare).toHaveBeenCalledWith(
+      '/managed/original.pdf',
+      document,
+      expect.any(AbortSignal),
+      expect.any(Function),
+    );
+    expect(mockDestroy).toHaveBeenCalledOnce();
+  });
+
+  it('discards a late path lookup after disable and immediate re-enable', async () => {
+    pdf.supported = true;
+    let resolvePath!: (path: string) => void;
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    vi.spyOn(service, 'resolveNativeBookFilePath').mockImplementation(() => {
+      started();
+      return new Promise<string>((resolve) => {
+        resolvePath = resolve;
+      });
+    });
+    const task = service.prepareBookContents({ format: 'PDF' } as Book);
+    await ready;
+    useSettingsStore.setState({
+      settings: { officialModules: { pdfAutoContents: false } } as SystemSettings,
+    });
+    useSettingsStore.setState({ settings: {} as SystemSettings });
+    resolvePath('/managed/original.pdf');
+    await task;
+    expect(pdf.openCache).not.toHaveBeenCalled();
+    expect(mockOpen).not.toHaveBeenCalled();
+    expect(pdf.prepare).not.toHaveBeenCalled();
+  });
+
+  it('cancels active preparation on disable and never restarts it on enable', async () => {
+    setupMockBookDoc();
+    pdf.supported = true;
+    vi.spyOn(service, 'resolveNativeBookFilePath').mockResolvedValue('/managed/original.pdf');
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let signal!: AbortSignal;
+    pdf.prepare.mockImplementation(async (_source, _doc, value: AbortSignal) => {
+      signal = value;
+      started();
+      await new Promise<void>((resolve) =>
+        value.addEventListener('abort', () => resolve(), { once: true }),
+      );
+      throw new DOMException('Cancelled', 'AbortError');
+    });
+    const importing = service.importBook(new File(['pdf content'], 'test.pdf'), []);
+    await ready;
+    useSettingsStore.setState({
+      settings: { officialModules: { pdfAutoContents: false } } as SystemSettings,
+    });
+    useSettingsStore.setState({ settings: {} as SystemSettings });
+    expect(signal.aborted).toBe(true);
+    expect(await importing).not.toBeNull();
+    expect(pdf.prepare).toHaveBeenCalledOnce();
+    expect(mockDestroy).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the book and releases its parser if automatic contents preparation fails', async () => {
+    setupMockBookDoc();
+    pdf.supported = true;
+    vi.spyOn(service, 'resolveNativeBookFilePath').mockResolvedValue('/managed/original.pdf');
+    pdf.prepare.mockRejectedValue(new Error('pdf_processing_limit'));
+    expect(await service.importBook(new File(['pdf content'], 'test.pdf'), [])).not.toBeNull();
+    expect(mockDestroy).toHaveBeenCalledOnce();
+  });
+
+  it('retries an existing PDF without importing it again and releases its parser and file handle', async () => {
+    const document = setupMockBookDoc();
+    pdf.supported = true;
+    const close = vi.fn().mockResolvedValue(undefined);
+    const file = Object.assign(new File(['pdf'], 'existing.pdf'), { close });
+    const book = { hash: 'existing', format: 'PDF', title: 'Existing', author: '' } as Book;
+    vi.spyOn(service, 'resolveNativeBookFilePath').mockResolvedValue('/managed/existing.pdf');
+    vi.spyOn(service, 'loadBookContent').mockResolvedValue({ book, file });
+    pdf.prepare.mockRejectedValue(new Error('pdf_recognition_failed'));
+    await service.prepareBookContents(book);
+    expect(pdf.prepare).toHaveBeenCalledWith(
+      '/managed/existing.pdf',
+      document,
+      expect.any(AbortSignal),
+      expect.any(Function),
+    );
+    expect(mockDestroy).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+    expect(service.getFs().writeFile).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { outline: [], revision: 1 },
+    { outline: null, revision: 1 },
+    { outline: [{ title: 'My chapter', pageIndex: 2, level: 0 }], revision: 0 },
+    {
+      outline: [{ title: 'Verified chapter', pageIndex: 2, level: 0 }],
+      revision: 1,
+      generator: 'glossa-contents-3',
+    },
+  ])('preserves a saved personal or verified outline on explicit re-import: %j', async (cache) => {
+    pdf.supported = true;
+    pdf.openCache.mockResolvedValue(cache);
+    vi.spyOn(service, 'resolveNativeBookFilePath').mockResolvedValue('/managed/existing.pdf');
+    const load = vi.spyOn(service, 'loadBookContent');
+    await service.prepareBookContents({ format: 'PDF' } as Book);
+    expect(load).not.toHaveBeenCalled();
+    expect(mockOpen).not.toHaveBeenCalled();
+    expect(pdf.prepare).not.toHaveBeenCalled();
+  });
+
+  it('keeps the imported book if resolving its optional native preparation path fails', async () => {
+    setupMockBookDoc();
+    pdf.supported = true;
+    vi.spyOn(service, 'resolveNativeBookFilePath').mockRejectedValue(new Error('unavailable'));
+    expect(await service.importBook(new File(['pdf content'], 'test.pdf'), [])).not.toBeNull();
+    expect(pdf.prepare).not.toHaveBeenCalled();
+    expect(mockDestroy).toHaveBeenCalledOnce();
+  });
+
+  it('does not run preparation for a transient preview', async () => {
+    setupMockBookDoc();
+    pdf.supported = true;
+    service.getFs().openFile.mockResolvedValue(new File(['pdf content'], 'test.pdf'));
+    await service.importBook('/original.pdf', [], { transient: true });
+    expect(pdf.prepare).not.toHaveBeenCalled();
+    expect(mockDestroy).toHaveBeenCalledOnce();
   });
 
   it('destroys the loaded BookDoc when the import fails after opening', async () => {

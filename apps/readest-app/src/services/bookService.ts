@@ -24,7 +24,7 @@ import {
 } from '@/utils/book';
 import type { BookNav } from '@/services/nav';
 import { partialMD5, md5 } from '@/utils/md5';
-import { getBaseFilename, getFilename } from '@/utils/path';
+import { getBaseFilename, getFilename, getFolderImportGroupName } from '@/utils/path';
 import { BookDoc, DocumentLoader } from '@/libs/document';
 
 import { tryNativeParseEpub } from '@/utils/tauriEpubBridge';
@@ -37,6 +37,7 @@ import { ClosableFile } from '@/utils/file';
 import { TxtToEpubConverter } from '@/utils/txt';
 import { svg2png } from '@/utils/svg';
 import { normalizeMetadataIsbn } from '@/utils/isbn';
+import { repairImportedMetadata, resolveImportedMetadata } from '@/utils/importMetadata';
 import { BookFileNotFoundError } from './errors';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import {
@@ -133,17 +134,26 @@ export function selectNewImportableFiles(
  * file carries the watched folder as `basePath` — that hint is what makes
  * `importBooks` derive a group from the subfolder the file lives in. Without it
  * auto-imported books piled up in the library root while the same folder's
- * initial import stayed grouped (issue #5423). Flattened folders ("Import all
- * into library") omit the hint so their books keep landing in the root.
+ * initial import stayed grouped (issue #5423). Flattening removes only the
+ * subfolder hierarchy: the chosen folder's own name remains the destination.
  */
 export function toWatchedFolderImports(
   folder: string,
   entries: ScannedFileEntry[],
   flatten: boolean,
-): Array<{ path: string; basePath?: string }> {
-  return entries.map(({ fullPath }) =>
-    flatten ? { path: fullPath } : { path: fullPath, basePath: folder },
-  );
+  groupPath?: string,
+): Array<{ path: string; basePath?: string; groupName?: string }> {
+  const root = getFilename(folder.replace(/[\\/]+$/, ''));
+  return entries.map(({ fullPath }) => {
+    if (flatten) return { path: fullPath, groupName: groupPath ?? root };
+    if (groupPath !== undefined) {
+      const relative = getFolderImportGroupName(fullPath, folder)
+        .slice(root.length)
+        .replace(/^\//, '');
+      return { path: fullPath, groupName: [groupPath, relative].filter(Boolean).join('/') };
+    }
+    return { path: fullPath, basePath: folder };
+  });
 }
 
 /**
@@ -306,16 +316,23 @@ export async function mergeBooks(
   books: Book[],
   book: Book,
   lookupIndex?: BookLookupIndex,
+  originalFilename?: string,
 ): Promise<string | undefined> {
   if (!book.metaHash) return undefined;
 
   const metaKey = `${book.metaHash}:${book.format}`;
-  const duplicates = lookupIndex
+  const matches = lookupIndex
     ? (lookupIndex.byMetaKey.get(metaKey) ?? []).filter((b) => !b.deletedAt && b !== book)
     : books.filter(
         (b) =>
           b.metaHash === book.metaHash && b.format === book.format && !b.deletedAt && b !== book,
       );
+  const duplicates = matches.filter(
+    (candidate) =>
+      !originalFilename ||
+      !candidate.originalFilename ||
+      getBaseFilename(candidate.originalFilename) === getBaseFilename(originalFilename),
+  );
   if (duplicates.length === 0) return undefined;
 
   const allCandidates = [book, ...duplicates];
@@ -375,6 +392,7 @@ export async function mergeBooks(
 export interface ImportBookInternalOptions extends ImportBookOptions {
   saveBookConfig: (book: Book, config: BookConfig) => Promise<void>;
   generateCoverImageUrl: (book: Book) => Promise<string>;
+  preparePDF?: (book: Book, document: BookDoc) => Promise<void>;
   /**
    * Used by the in-place fast path to normalize the source path the same way
    * `buildBookLookupIndex` does. Optional: when omitted the fast path falls
@@ -490,10 +508,6 @@ export async function importBook(
         throw new Error('Unsupported or corrupted book file');
       }
       normalizeMetadataIsbn(loadedBook.metadata);
-      const metadataTitle = formatTitle(loadedBook.metadata.title);
-      if (!metadataTitle || !metadataTitle.trim() || metadataTitle === filename) {
-        loadedBook.metadata.title = getBaseFilename(filename);
-      }
     } catch (error) {
       throw new Error(`Failed to open the book file: ${(error as Error).message || error}`);
     }
@@ -508,8 +522,21 @@ export async function importBook(
     // is titled "PowerPoint Presentation" by the same author), so metadata
     // alone wrongly collapses distinct files into one book (issue #5411).
     // Salt the hash with the original filename so only same-named PDFs dedupe.
-    const metaHash = getMetadataHash(
+    const importedMetadata = resolveImportedMetadata(
       loadedBook.metadata,
+      isPseStream ? '' : filename,
+      format,
+    );
+    const identityMetadata = {
+      ...loadedBook.metadata,
+      ...(importedMetadata.usesFilename ? { title: importedMetadata.title } : {}),
+      ...(importedMetadata.author !==
+      formatAuthors(loadedBook.metadata.author, getPrimaryLanguage(loadedBook.metadata.language))
+        ? { author: importedMetadata.author }
+        : {}),
+    };
+    const metaHash = getMetadataHash(
+      identityMetadata,
       format === 'PDF' ? getBaseFilename(filename) : undefined,
     );
     let existingBook = lookupIndex
@@ -527,12 +554,26 @@ export async function importBook(
 
     // Aggregate all books with same metaHash and format, deduplicating into one entry
     let bestConfigData: string | undefined;
-    if (!transient && metaHash) {
+    // A filename fallback cannot establish EPUB identity. Keep PDF's existing
+    // filename-salted dedup contract; never merge generic EPUB placeholders.
+    if (!transient && metaHash && (!importedMetadata.usesFilename || format === 'PDF')) {
       if (!existingBook) {
         const metaKey = `${metaHash}:${format}`;
         const firstMatch = lookupIndex
-          ? (lookupIndex.byMetaKey.get(metaKey) ?? []).find((b) => !b.deletedAt)
-          : books.find((b) => b.metaHash === metaHash && b.format === format && !b.deletedAt);
+          ? (lookupIndex.byMetaKey.get(metaKey) ?? []).find(
+              (b) =>
+                !b.deletedAt &&
+                (!b.originalFilename ||
+                  getBaseFilename(b.originalFilename) === getBaseFilename(filename)),
+            )
+          : books.find(
+              (b) =>
+                b.metaHash === metaHash &&
+                b.format === format &&
+                !b.deletedAt &&
+                (!b.originalFilename ||
+                  getBaseFilename(b.originalFilename) === getBaseFilename(filename)),
+            );
         if (firstMatch) {
           oldBookDir = getDir(firstMatch);
           existingBook = firstMatch;
@@ -542,19 +583,30 @@ export async function importBook(
         }
       }
       if (existingBook) {
-        bestConfigData = await mergeBooks(fs, books, existingBook, lookupIndex);
+        bestConfigData = await mergeBooks(
+          fs,
+          books,
+          existingBook,
+          lookupIndex,
+          existingBook.originalFilename ?? filename,
+        );
       }
     }
 
+    const storedSourceTitle = existingBook?.sourceTitle || existingBook?.title;
+    if (existingBook && !metaHashMatch && !transient) {
+      repairImportedMetadata(existingBook, filename);
+    }
     const primaryLanguage = getPrimaryLanguage(loadedBook.metadata.language);
     const book: Book = {
       hash,
       format,
       metaHash,
-      title: formatTitle(loadedBook.metadata.title),
-      sourceTitle: formatTitle(loadedBook.metadata.title),
+      title: importedMetadata.title,
+      originalFilename: isPseStream ? undefined : getFilename(filename),
+      sourceTitle: existingBook && !metaHashMatch ? storedSourceTitle : importedMetadata.title,
       primaryLanguage,
-      author: formatAuthors(loadedBook.metadata.author, primaryLanguage),
+      author: importedMetadata.author,
       // Cached here because the library list never opens the book: it is a
       // property of the file, so it is re-derived on every (re)import rather
       // than synced as user data.
@@ -586,11 +638,12 @@ export async function importBook(
       existingBook.hash = hash;
       existingBook.format = book.format;
       existingBook.metaHash = metaHash;
-      existingBook.title = book.title;
+      if (!existingBook.metadataUpdatedAt) existingBook.title = book.title;
       existingBook.sourceTitle = book.sourceTitle;
-      existingBook.author = book.author;
+      if (!existingBook.metadataUpdatedAt) existingBook.author = book.author;
       existingBook.primaryLanguage = book.primaryLanguage;
       existingBook.metadata = book.metadata;
+      existingBook.originalFilename = book.originalFilename;
       existingBook.uploadedAt = null;
       existingBook.downloadedAt = Date.now();
     } else if (existingBook) {
@@ -602,6 +655,7 @@ export async function importBook(
       existingBook.author = existingBook.author ?? book.author;
       existingBook.primaryLanguage = existingBook.primaryLanguage ?? book.primaryLanguage;
       existingBook.metadata = book.metadata;
+      if (!transient) existingBook.originalFilename ||= book.originalFilename;
       existingBook.downloadedAt = Date.now();
     }
 
@@ -738,6 +792,12 @@ export async function importBook(
       }
     }
     book.coverImageUrl = await generateCoverImageUrlFn(book);
+
+    if (format === 'PDF' && !transient && (saveBook || inPlace)) {
+      // The managed copy/filePath now exists. Finish local preparation before
+      // releasing the parser, so the first reading view sees its checked TOC.
+      await options.preparePDF?.(existingBook || book, loadedBook);
+    }
 
     return existingBook || book;
   } catch (error) {

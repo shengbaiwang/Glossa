@@ -18,6 +18,7 @@ import { FILE_REVEAL_LABELS, FILE_REVEAL_PLATFORMS } from '@/utils/os';
 import { Book, BooksGroup, ReadingStatus } from '@/types/book';
 import {
   getBookContextMenuItemIds,
+  MISSING_AUTHOR_GROUP_ID,
   type BookContextMenuItemId,
 } from '@/app/library/utils/libraryUtils';
 import { md5Fingerprint } from '@/utils/md5';
@@ -27,6 +28,7 @@ import BookItem from './BookItem';
 import GroupItem from './GroupItem';
 import BookContextMenuPopup, { type BookContextMenuItem } from './BookContextMenuPopup';
 import { useOpenBook } from '../hooks/useOpenBook';
+import { resolveFolderPath } from '../hooks/useLibraryFolders';
 
 export const generateBookshelfItems = (
   books: Book[],
@@ -141,6 +143,9 @@ interface BookshelfItemProps {
   handleGroupBooks: () => void;
   handleRenameFolder?: (path: string, name: string) => Promise<boolean>;
   handleRemoveFolder?: (path: string) => Promise<boolean>;
+  handleCreateFolder?: (parent: string) => void;
+  handleUndoFolder?: () => void;
+  canUndoFolder?: boolean;
   handleBookDownload: (
     book: Book,
     options?: { redownload?: boolean; queued?: boolean },
@@ -166,6 +171,9 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   handleGroupBooks,
   handleRenameFolder,
   handleRemoveFolder,
+  handleCreateFolder,
+  handleUndoFolder,
+  canUndoFolder,
   handleBookUpload,
   handleBookDownload,
   handleSetSelectMode,
@@ -304,8 +312,15 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
     // Single Menu.new({ items }) call keeps the order deterministic — see the
     // note in bookContextMenuHandler about the Menu.append() IPC race (#4389).
     return [
-      ...(handleRenameFolder
-        ? [{ text: _('Rename Folder'), action: () => setRenaming(true) }]
+      ...(handleRenameFolder ? [{ text: _('Rename group'), action: () => setRenaming(true) }] : []),
+      ...(handleCreateFolder && group.name.split('/').length < 4
+        ? [
+            {
+              text: _('New subgroup'),
+              disabled: group.name.split('/').length >= 4,
+              action: () => handleCreateFolder(group.name),
+            },
+          ]
         : []),
       {
         text: itemSelected ? _('Deselect Group') : _('Select Group'),
@@ -315,7 +330,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
         },
       },
       {
-        text: _('Group Books'),
+        text: handleRenameFolder ? _('Move to…') : _('Group Books'),
         action: async () => {
           if (!isSelectMode) handleSetSelectMode(true);
           if (!itemSelected) {
@@ -325,7 +340,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
         },
       },
       {
-        text: handleRemoveFolder ? _('Delete Empty Folder') : _('Delete'),
+        text: handleRemoveFolder ? _('Delete group') : _('Delete'),
         action: async () => {
           if (handleRemoveFolder) {
             await handleRemoveFolder(group.name);
@@ -339,6 +354,9 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
           eventDispatcher.dispatch('delete-books', { ids });
         },
       },
+      ...(handleUndoFolder && canUndoFolder
+        ? [{ text: _('Undo'), disabled: !canUndoFolder, action: handleUndoFolder }]
+        : []),
     ];
   };
 
@@ -416,11 +434,11 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleContextMenu = useCallback(
     throttle(async (position: { x: number; y: number }) => {
-      if (!appService?.hasContextMenu) return;
-      if (appService.isLinuxApp) {
+      if (('books' in item && handleRenameFolder) || appService?.isLinuxApp) {
         setInAppMenuPosition(position);
         return;
       }
+      if (!appService?.hasContextMenu) return;
       const menu = await ensureMenu();
       // Pop up at an explicit position so keyboard invocation (ContextMenu /
       // Shift+F10) anchors the menu to the item instead of wherever the mouse
@@ -435,13 +453,16 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   const { pressing, handlers } = useLongPress(
     {
       onLongPress: () => {
-        handleSelectItem();
+        if ('books' in item && handleRenameFolder) {
+          const rect = cardRef.current?.getBoundingClientRect();
+          if (rect) handleContextMenu({ x: rect.left, y: rect.bottom });
+        } else handleSelectItem();
       },
       onTap: () => {
         handleOpenItem();
       },
       onContextMenu: (e) => {
-        if (appService?.hasContextMenu) {
+        if (appService?.hasContextMenu || ('books' in item && handleRenameFolder)) {
           handleContextMenu({ x: e.clientX, y: e.clientY });
         } else if (appService?.isAndroidApp) {
           handleSelectItem();
@@ -491,14 +512,41 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
         )}
         role='button'
         tabIndex={0}
-        aria-label={'format' in item ? item.title : item.name}
+        aria-label={
+          'format' in item
+            ? item.title
+            : item.id === MISSING_AUTHOR_GROUP_ID
+              ? _('Author not set')
+              : item.name
+        }
         aria-pressed={isSelectMode ? itemSelected : undefined}
         onKeyDown={handleKeyDown}
         onPointerEnter={() => {
-          if (appService?.hasContextMenu && !appService.isLinuxApp) void ensureMenu();
+          if ('format' in item && appService?.hasContextMenu && !appService.isLinuxApp)
+            void ensureMenu();
         }}
         {...itemDataAttrs}
         {...handlers}
+        onPointerDown={(event) => {
+          if (
+            event.pointerType === 'mouse' &&
+            event.button === 0 &&
+            (event.metaKey || event.ctrlKey || event.shiftKey) &&
+            !(event.target as HTMLElement).closest('button, input, form')
+          ) {
+            event.preventDefault();
+            if (!isSelectMode) handleSetSelectMode(true);
+            toggleSelection('format' in item ? item.hash : item.id);
+            return;
+          }
+          handlers.onPointerDown(event);
+        }}
+        onClickCapture={(event) => {
+          if (event.metaKey || event.ctrlKey || event.shiftKey) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }}
         draggable={!renaming && !appService?.isMobile && ('format' in item || !!handleRenameFolder)}
         onDragStart={(event) => {
           if ((event.target as HTMLElement).closest('input, button, form')) {
@@ -533,9 +581,15 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
               groupSelected={itemSelected}
               renaming={renaming}
               onStartRename={handleRenameFolder ? () => setRenaming(true) : undefined}
-              onCancelRename={() => {
+              onCancelRename={(restoreFocus = true) => {
                 setRenaming(false);
-                cardRef.current?.focus();
+                if (restoreFocus)
+                  requestAnimationFrame(() => {
+                    const path = resolveFolderPath(item.name);
+                    [...document.querySelectorAll<HTMLElement>('[data-group-name]')]
+                      .find((el) => el.dataset['groupName'] === path)
+                      ?.focus();
+                  });
               }}
               onRename={
                 handleRenameFolder ? (name) => handleRenameFolder(item.name, name) : undefined

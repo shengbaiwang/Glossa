@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, X } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 
 export default function FolderNameEditor({
@@ -9,12 +8,29 @@ export default function FolderNameEditor({
 }: {
   initialName?: string;
   onSave: (name: string) => Promise<boolean>;
-  onCancel: () => void;
+  onCancel: (restoreFocus?: boolean) => void;
 }) {
   const _ = useTranslation();
   const [name, setName] = useState(initialName);
   const [saving, setSaving] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const pending = useRef(false);
+  const finished = useRef(false);
+  const composing = useRef(false);
+  const commit = async (restoreFocus: boolean, value = name) => {
+    if (pending.current || finished.current || composing.current) return;
+    pending.current = true;
+    setSaving(true);
+    try {
+      if (await onSave(value)) {
+        finished.current = true;
+        onCancel(restoreFocus);
+      } else if (restoreFocus) input.current?.focus();
+    } finally {
+      pending.current = false;
+      setSaving(false);
+    }
+  };
   useEffect(() => {
     input.current?.focus();
     input.current?.select();
@@ -25,53 +41,47 @@ export default function FolderNameEditor({
       onPointerDown={(event) => event.stopPropagation()}
       onPointerUp={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
-      onSubmit={async (event) => {
+      onSubmit={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        if (saving || !name.trim()) return;
-        setSaving(true);
-        const saved = await onSave(name);
-        setSaving(false);
-        if (saved) onCancel();
-        else input.current?.focus();
+        void commit(true);
       }}
       onKeyDown={(event) => {
         event.stopPropagation();
+        if (composing.current || event.nativeEvent.isComposing || event.keyCode === 229) return;
         if (event.key === 'Escape' && !saving) {
           event.preventDefault();
-          onCancel();
+          finished.current = true;
+          onCancel(true);
         }
       }}
     >
       <input
         ref={input}
-        aria-label={_('Folder name')}
-        placeholder={_('Folder name')}
+        aria-label={_('Group name')}
+        placeholder={_('Untitled')}
         value={name}
         maxLength={120}
-        disabled={saving}
+        readOnly={saving}
+        aria-busy={saving}
+        onBlur={() => void commit(false)}
+        onCompositionStart={() => {
+          composing.current = true;
+        }}
+        onCompositionEnd={(event) => {
+          composing.current = false;
+          if (document.activeElement !== input.current)
+            void commit(false, event.currentTarget.value);
+        }}
         onChange={(event) => setName(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === 'Enter' && event.nativeEvent.isComposing) event.preventDefault();
+          if (
+            event.key === 'Enter' &&
+            (composing.current || event.nativeEvent.isComposing || event.keyCode === 229)
+          )
+            event.preventDefault();
         }}
       />
-      <button
-        type='submit'
-        className='glossa-icon-button'
-        aria-label={_('Save')}
-        disabled={saving || !name.trim()}
-      >
-        <Check size={16} />
-      </button>
-      <button
-        type='button'
-        className='glossa-icon-button'
-        aria-label={_('Cancel')}
-        disabled={saving}
-        onClick={onCancel}
-      >
-        <X size={16} />
-      </button>
     </form>
   );
 }

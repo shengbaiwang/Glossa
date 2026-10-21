@@ -6,6 +6,8 @@ import {
   createFolderPath,
   renameFolder,
   moveToFolder,
+  placeFolder,
+  removeFolder,
 } from '@/app/library/utils/libraryFolders';
 
 const book = (hash: string, groupName = ''): Book => ({
@@ -19,7 +21,33 @@ const book = (hash: string, groupName = ''): Book => ({
   updatedAt: 1,
 });
 
-describe('two-level library folders', () => {
+describe('library group branches', () => {
+  it('supports four levels and rejects a fifth without splitting a branch', () => {
+    const paths = ['A', 'A/B', 'A/B/C', 'A/B/C/D', 'Target'];
+    expect(createFolderPath(paths, 'A/B', 'Third')).toBe('A/B/Third');
+    expect(createFolderPath(paths, 'A/B/C', 'Fourth')).toBe('A/B/C/Fourth');
+    expect(() => createFolderPath(paths, 'A/B/C/D', 'Fifth')).toThrow('Up to 4 levels');
+    expect(moveToFolder([], paths, [md5Fingerprint('A/B')], 'Target').paths).toContain(
+      'Target/B/C/D',
+    );
+    expect(() => moveToFolder([], paths, [md5Fingerprint('A')], 'Target')).toThrow(
+      'Up to 4 levels',
+    );
+  });
+
+  it('creates unnamed groups and numbers collisions without merging', () => {
+    expect(createFolderPath([], '', '')).toBe('Untitled');
+    expect(createFolderPath(['Untitled', 'Untitled 2'], '', '  ')).toBe('Untitled 3');
+    expect(createFolderPath(['History'], '', 'History')).toBe('History 2');
+    const moved = moveToFolder(
+      [],
+      ['A', 'A/Child', 'Target', 'Target/A'],
+      [md5Fingerprint('A')],
+      'Target',
+    );
+    expect(moved.paths).toContain('Target/A 2/Child');
+    expect(moved.paths).toContain('Target/A');
+  });
   it('keeps empty folders and derives legacy parents without including deleted books', () => {
     expect(
       collectFolderPaths(
@@ -29,21 +57,17 @@ describe('two-level library folders', () => {
     ).toEqual(['研究', '研究/历史', '文学', '文学/俄国', '文学/俄国/诗歌']);
   });
 
-  it('creates named children only within an existing first-level folder', () => {
+  it('creates children within existing groups', () => {
     expect(createFolderPath(['文学'], '文学', '  俄国文学  ')).toBe('文学/俄国文学');
-    expect(() => createFolderPath(['文学', '文学/俄国'], '文学/俄国', '诗歌')).toThrow(
-      'Folders support two levels',
-    );
+    expect(createFolderPath(['文学', '文学/俄国'], '文学/俄国', '诗歌')).toBe('文学/俄国/诗歌');
     expect(() => createFolderPath([], '不存在', '历史')).toThrow('Folder not found');
   });
 
-  it('rejects blank, reserved, slash-containing and duplicate names', () => {
-    for (const name of ['', '  ', '.', '..', 'a/b', 'a\\b']) {
+  it('rejects reserved and slash-containing names, numbering duplicate creates', () => {
+    for (const name of ['.', '..', 'a/b', 'a\\b']) {
       expect(() => createFolderPath([], '', name)).toThrow('Invalid folder name');
     }
-    expect(() => createFolderPath(['文学'], '', '文学')).toThrow(
-      'A folder with this name already exists',
-    );
+    expect(createFolderPath(['文学'], '', '文学')).toBe('文学 2');
     expect(createFolderPath(['文学', '历史'], '文学', '历史')).toBe('文学/历史');
   });
 
@@ -90,8 +114,8 @@ describe('two-level library folders', () => {
     expect(result.paths).toContain('研究/俄国');
     expect(result.paths).not.toContain('文学/俄国');
     expect(result.books.map((b) => b.groupName)).toEqual(['研究/俄国', '文学/日本', '文学史']);
-    expect(() => moveToFolder(books, paths, [md5Fingerprint('文学')], '研究')).toThrow(
-      'Folders support two levels',
+    expect(moveToFolder(books, paths, [md5Fingerprint('文学')], '研究').paths).toContain(
+      '研究/文学/俄国',
     );
     expect(() => moveToFolder(books, paths, [md5Fingerprint('文学')], '文学/俄国')).toThrow(
       'Cannot move a folder into itself',
@@ -104,4 +128,32 @@ describe('two-level library folders', () => {
     const result = moveToFolder(books, paths, [md5Fingerprint('文学'), 'a'], '');
     expect(result.books[0]?.groupName).toBe('文学/俄国');
   });
+});
+
+it('orders whole branches at sibling edges and moves branches to root end', () => {
+  const paths = ['A', 'A/Child', 'B', 'C'];
+  expect(placeFolder([], paths, 'A', 'B', 'after').paths).toEqual(['B', 'A', 'A/Child', 'C']);
+  expect(moveToFolder([], paths, [md5Fingerprint('A')], '').paths).toEqual([
+    'B',
+    'C',
+    'A',
+    'A/Child',
+  ]);
+  expect(placeFolder([], paths, 'C', 'A/Child', 'before').paths).toEqual([
+    'A',
+    'A/C',
+    'A/Child',
+    'B',
+  ]);
+  expect(() => placeFolder([], paths, 'A', 'A/Child', 'after')).toThrow(
+    'Cannot move a folder into itself',
+  );
+});
+it('preserves legacy deep structures during rename and promotes deletion at any level', () => {
+  const paths = ['A', 'A/B', 'A/B/C', 'A/B/C/D', 'A/B/C/D/E'];
+  expect(renameFolder([], paths, 'A', 'Legacy').paths).toContain('Legacy/B/C/D/E');
+  const books = [book('one', 'A/B'), book('two', 'A/B/C/D/E')];
+  const removed = removeFolder(books, paths, 'A/B');
+  expect(removed.books.map((b) => b.groupName)).toEqual(['A', 'A/C/D/E']);
+  expect(removed.paths).toEqual(['A', 'A/C', 'A/C/D', 'A/C/D/E']);
 });

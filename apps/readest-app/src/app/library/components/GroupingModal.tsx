@@ -1,10 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronRight, Folder, FolderPlus, X } from '@/components/GlossaIcons';
+import { Check, ChevronDown, ChevronRight, BookCollection, X } from '@/components/GlossaIcons';
 import { Book } from '@/types/book';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useLibraryFolders } from '../hooks/useLibraryFolders';
-import { folderLabel, folderParent } from '../utils/libraryFolders';
+import {
+  folderLabel,
+  folderParent,
+  folderDepth,
+  orderedFolderPaths,
+  moveToFolder,
+  MAX_FOLDER_DEPTH,
+} from '../utils/libraryFolders';
+import { useLibraryStore } from '@/store/libraryStore';
 import FolderNameEditor from './FolderNameEditor';
+import BookContextMenuPopup from './BookContextMenuPopup';
 
 interface GroupingModalProps {
   libraryBooks: Book[];
@@ -23,15 +32,17 @@ export default function GroupingModal({
   const _ = useTranslation();
   const folders = useLibraryFolders();
   const [target, setTarget] = useState(parentGroupName);
+  const chosenTarget = useRef(parentGroupName);
   const [creating, setCreating] = useState(false);
   const [collapsed, setCollapsed] = useState(new Set<string>());
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const dialog = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     dialog.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus();
     return () => previous?.focus();
   }, []);
-  const paths = [...folders.paths].sort((a, b) => a.localeCompare(b));
+  const paths = orderedFolderPaths(folders.paths);
   const visiblePaths = paths.filter(
     (path) => !paths.some((parent) => path.startsWith(`${parent}/`) && collapsed.has(parent)),
   );
@@ -39,6 +50,7 @@ export default function GroupingModal({
     if (!folders.busy) onCancel();
   };
   const choose = (path: string) => {
+    chosenTarget.current = path;
     setTarget(path);
     setCreating(false);
     folders.clearError();
@@ -49,7 +61,7 @@ export default function GroupingModal({
       className='modal modal-open'
       role='dialog'
       aria-modal='true'
-      aria-label={_('Move to Folder')}
+      aria-label={_('Move to group')}
       onKeyDown={(event) => {
         if (event.key === 'Escape' && !creating) {
           event.preventDefault();
@@ -76,7 +88,19 @@ export default function GroupingModal({
     >
       <div className='modal-box glossa-folder-picker'>
         <header>
-          <h2>{_('Move to Folder')}</h2>
+          <h2>
+            <button
+              type='button'
+              className='glossa-folder-heading-action'
+              aria-haspopup='menu'
+              onClick={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                setMenu({ x: rect.left, y: rect.bottom });
+              }}
+            >
+              {_('Move to group')}
+            </button>
+          </h2>
           <button
             type='button'
             className='glossa-icon-button'
@@ -87,10 +111,16 @@ export default function GroupingModal({
             <X size={18} />
           </button>
         </header>
-        <div className='glossa-folder-tree' aria-label={_('Folders')}>
+        <div className='glossa-folder-tree' aria-label={_('Groups')}>
           {['', ...visiblePaths].map((path) => {
             const children = paths.some((p) => folderParent(p) === path);
             const depth = path ? path.split('/').length : 0;
+            let unavailable = false;
+            try {
+              moveToFolder(useLibraryStore.getState().library, paths, selectedBooks, path);
+            } catch {
+              unavailable = true;
+            }
             return (
               <div key={path}>
                 <div
@@ -101,7 +131,7 @@ export default function GroupingModal({
                     <button
                       type='button'
                       className='glossa-icon-button'
-                      aria-label={_(collapsed.has(path) ? 'Expand folder' : 'Collapse folder')}
+                      aria-label={_(collapsed.has(path) ? 'Expand group' : 'Collapse group')}
                       onClick={() =>
                         setCollapsed((previous) => {
                           const next = new Set(previous);
@@ -124,10 +154,10 @@ export default function GroupingModal({
                     type='button'
                     className='glossa-folder-destination'
                     aria-pressed={target === path}
-                    disabled={folders.busy}
+                    disabled={unavailable}
                     onClick={() => choose(path)}
                   >
-                    <Folder size={18} aria-hidden='true' />
+                    <BookCollection size={18} aria-hidden='true' />
                     <span>{path ? folderLabel(path) : _('All Books')}</span>
                     {target === path && <Check size={16} aria-hidden='true' />}
                   </button>
@@ -150,7 +180,10 @@ export default function GroupingModal({
                           next.delete(target);
                           return next;
                         });
-                        setTarget(created);
+                        if (chosenTarget.current === target) {
+                          chosenTarget.current = created;
+                          setTarget(created);
+                        }
                         setCreating(false);
                         return true;
                       }}
@@ -167,18 +200,6 @@ export default function GroupingModal({
           </p>
         )}
         <footer>
-          <button
-            type='button'
-            className='glossa-folder-action'
-            disabled={folders.busy || target.includes('/') || creating}
-            onClick={() => {
-              folders.clearError();
-              setCreating(true);
-            }}
-          >
-            <FolderPlus size={18} aria-hidden='true' />
-            {_('New Folder')}
-          </button>
           <div>
             <button
               type='button'
@@ -201,6 +222,22 @@ export default function GroupingModal({
           </div>
         </footer>
       </div>
+      {menu && (
+        <BookContextMenuPopup
+          position={menu}
+          onClose={() => setMenu(null)}
+          items={[
+            {
+              text: _(target ? 'New subgroup' : 'New group'),
+              disabled: folders.busy || folderDepth(target) >= MAX_FOLDER_DEPTH || creating,
+              action: () => {
+                folders.clearError();
+                setCreating(true);
+              },
+            },
+          ]}
+        />
+      )}
       <div className='modal-backdrop' onClick={cancel} />
     </div>
   );

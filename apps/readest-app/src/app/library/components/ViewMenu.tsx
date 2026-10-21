@@ -1,5 +1,16 @@
 import React from 'react';
-import { CheckSquare2, Minus, Plus } from '@/components/GlossaIcons';
+import {
+  ArrowDown,
+  ArrowUp,
+  BookClosed,
+  BookOpen,
+  LayoutGrid,
+  LayoutList,
+  ListOrdered,
+  Minus,
+  Palette,
+  Plus,
+} from '@/components/GlossaIcons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -15,19 +26,19 @@ import { saveSysSettings } from '@/helpers/settings';
 import { navigateToLibrary } from '@/utils/nav';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';
+import { SettingsSelect } from '@/components/settings/primitives';
 import { ensureLibraryGroupByType } from '../utils/libraryUtils';
 
 interface ViewMenuProps {
-  onSelectBooks: () => void;
   setIsDropdownOpen?: (isOpen: boolean) => void;
 }
 
-const ViewMenu: React.FC<ViewMenuProps> = ({ onSelectBooks, setIsDropdownOpen }) => {
+const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
   const _ = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { envConfig } = useEnv();
-  const { settings } = useSettingsStore();
+  const { settings, openSettingsDialog } = useSettingsStore();
 
   const viewMode = searchParams?.get('view') || settings.libraryViewMode;
   const coverFit = settings.libraryCoverFit;
@@ -77,8 +88,8 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ onSelectBooks, setIsDropdownOpen })
   const isThenAscending = settings.libraryThenSortAscending ?? true;
 
   const viewOptions = [
-    { label: _('List'), value: 'list' as const },
-    { label: _('Grid'), value: 'grid' as const },
+    { label: _('Grid'), value: 'grid' as const, Icon: LayoutGrid },
+    { label: _('List'), value: 'list' as const, Icon: LayoutList },
   ];
 
   const coverFitOptions = [
@@ -101,11 +112,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ onSelectBooks, setIsDropdownOpen })
   const thenSortByOptions: { label: string; value: LibrarySecondarySortByType }[] = [
     { label: _('None'), value: 'none' },
     ...sortByOptions,
-  ];
-
-  const sortingOptions = [
-    { label: _('Ascending'), value: true },
-    { label: _('Descending'), value: false },
   ];
 
   const handleSetViewMode = async (value: LibraryViewModeType) => {
@@ -195,159 +201,167 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ onSelectBooks, setIsDropdownOpen })
     navigateToLibrary(router, `${params.toString()}`);
   };
 
+  const sizeLabel = viewMode === 'list' ? _('List Size') : _('Cover Size');
+
   return (
     <Menu
       className='view-menu glossa-menu-surface dropdown-content no-triangle z-20 mt-2'
       onCancel={() => setIsDropdownOpen?.(false)}
     >
-      <MenuItem
-        label={_('Select Books')}
-        Icon={<CheckSquare2 size={16} aria-hidden='true' />}
-        onClick={onSelectBooks}
-        setIsDropdownOpen={setIsDropdownOpen}
-        transient
-      />
-      <hr aria-hidden='true' className='border-base-200 my-1' />
-      {/* View Mode */}
-      {viewOptions.map((option) => (
-        <div
-          key={option.value}
-          role='group'
-          aria-label={option.label}
-          className='glossa-library-view-row'
-        >
-          <MenuItem
-            label={option.label}
-            buttonClass='glossa-library-view-choice'
-            toggled={viewMode === option.value}
-            onClick={() => handleSetViewMode(option.value)}
-            siblings={
-              <div className='glossa-library-view-size'>
-                {option.value === 'grid' ? (
-                  <button
-                    type='button'
-                    role='menuitemcheckbox'
-                    aria-label={`${option.label} / ${_('Auto')}`}
-                    aria-checked={autoColumns}
-                    title={_('Auto')}
-                    className='glossa-menu-item glossa-library-size-value'
-                    onClick={handleToggleAutoColumns}
-                  >
-                    {autoColumns ? _('Auto') : columns}
-                  </button>
-                ) : (
-                  <span className='glossa-library-size-value'>{listScale}%</span>
-                )}
-                <button
-                  type='button'
-                  aria-label={_('Decrease')}
-                  className='glossa-icon-button glossa-tool-icon'
-                  disabled={option.value === 'list' ? listScale <= 80 : gridColumns >= maxColumns}
-                  onClick={() => handleSetViewSize(option.value, -1)}
-                >
-                  <Minus size={16} aria-hidden='true' />
-                </button>
-                <button
-                  type='button'
-                  aria-label={_('Increase')}
-                  className='glossa-icon-button glossa-tool-icon'
-                  disabled={option.value === 'list' ? listScale >= 140 : gridColumns <= minColumns}
-                  onClick={() => handleSetViewSize(option.value, 1)}
-                >
-                  <Plus size={16} aria-hidden='true' />
-                </button>
-              </div>
-            }
-          />
-        </div>
-      ))}
-
-      {/* Book Covers */}
-      <hr aria-hidden='true' className='border-base-200 my-1' />
-      <div role='group' aria-label={_('Book Covers')}>
-        <div className='glossa-library-menu-heading'>{_('Book Covers')}</div>
-        <div className='glossa-library-cover-options'>
-          {coverFitOptions.map((option) => (
-            <MenuItem
-              key={option.value}
-              label={option.label}
-              toggled={coverFit === option.value}
-              onClick={() => handleToggleCropCovers(option.value as LibraryCoverFitType)}
-            />
-          ))}
+      <div className='glossa-library-display-title'>{_('Library Display')}</div>
+      <div role='group' aria-label={_('Layout')} className='glossa-library-display-options'>
+        {viewOptions.map(({ label, value, Icon }) => (
+          <button
+            key={value}
+            type='button'
+            className='glossa-menu-item glossa-library-display-option'
+            aria-pressed={viewMode === value}
+            onClick={() => handleSetViewMode(value)}
+          >
+            <Icon size={17} />
+            <span>{label}</span>
+          </button>
+        ))}
+      </div>
+      <div role='group' aria-label={sizeLabel} className='glossa-library-size-row'>
+        <span>{sizeLabel}</span>
+        <div className='glossa-library-size-controls'>
+          <button
+            type='button'
+            aria-label={_('Decrease')}
+            title={_('Decrease')}
+            className='glossa-icon-button'
+            disabled={viewMode === 'list' ? listScale <= 80 : gridColumns >= maxColumns}
+            onClick={() => handleSetViewSize(viewMode as LibraryViewModeType, -1)}
+          >
+            <Minus size={16} />
+          </button>
+          {viewMode === 'grid' ? (
+            <button
+              type='button'
+              aria-label={_('Auto')}
+              aria-pressed={autoColumns}
+              title={_('Auto')}
+              className='glossa-menu-item glossa-library-size-value'
+              onClick={handleToggleAutoColumns}
+            >
+              {autoColumns ? _('Auto') : _('{{count}} columns', { count: columns })}
+            </button>
+          ) : (
+            <span className='glossa-library-size-value'>{listScale}%</span>
+          )}
+          <button
+            type='button'
+            aria-label={_('Increase')}
+            title={_('Increase')}
+            className='glossa-icon-button'
+            disabled={viewMode === 'list' ? listScale >= 140 : gridColumns <= minColumns}
+            onClick={() => handleSetViewSize(viewMode as LibraryViewModeType, 1)}
+          >
+            <Plus size={16} />
+          </button>
         </div>
       </div>
 
-      {/* Recently read shelf */}
       <hr aria-hidden='true' className='border-base-200 my-1' />
+      <div role='group' aria-label={_('Book Covers')}>
+        <div className='glossa-library-menu-heading'>{_('Book Covers')}</div>
+        <div className='glossa-library-display-options'>
+          {coverFitOptions.map((option) => (
+            <button
+              key={option.value}
+              type='button'
+              className='glossa-menu-item glossa-library-display-option'
+              aria-pressed={coverFit === option.value}
+              onClick={() => handleToggleCropCovers(option.value as LibraryCoverFitType)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <MenuItem
+          label={_('Skeuomorphic Book Covers')}
+          Icon={<BookClosed size={16} />}
+          toggled={settings.librarySkeuomorphicCovers}
+          onClick={() =>
+            saveSysSettings(
+              envConfig,
+              'librarySkeuomorphicCovers',
+              !settings.librarySkeuomorphicCovers,
+            )
+          }
+        />
+      </div>
       <MenuItem
         label={_('Continue reading')}
+        Icon={<BookOpen size={16} />}
         toggled={settings.libraryRecentShelfEnabled}
         onClick={handleToggleRecentShelf}
-        transient
       />
-
-      {/* Sort By - Collapsible */}
       <hr aria-hidden='true' className='border-base-200 my-1' />
-      <MenuItem label={_('Sort by...')} detailsOpen={false}>
-        <ul className='ms-0 flex flex-col ps-0 before:hidden'>
-          {sortByOptions.map((option) => {
-            const isImplicit = primaryIsImplicit && option.value === primaryEffective;
-            const toggled = isImplicit || (!primaryIsImplicit && sortBy === option.value);
-            return (
-              <MenuItem
-                key={option.value}
-                label={isImplicit ? `${option.label} (${_('Auto')})` : option.label}
-                toggled={toggled}
-                onClick={() => handleSetSortBy(option.value as LibrarySortByType)}
-                transient
-              />
-            );
-          })}
-          <hr aria-hidden='true' className='border-base-200 my-1' />
-          {sortingOptions.map((option) => (
-            <MenuItem
-              key={option.value.toString()}
-              label={option.label}
-              toggled={isAscending === option.value}
-              onClick={() => handleSetSortAscending(option.value)}
-              transient
+      <MenuItem label={_('Sort by')} Icon={<ListOrdered size={16} />} detailsOpen={false}>
+        <div className='glossa-library-sort-options'>
+          <div role='group' aria-label={_('Sort by')} className='glossa-library-sort-row'>
+            <span className='glossa-library-sort-label'>{_('Sort by')}</span>
+            <SettingsSelect
+              ariaLabel={_('Sort by')}
+              value={primaryEffective}
+              options={sortByOptions.map((option) => ({
+                ...option,
+                label:
+                  primaryIsImplicit && option.value === primaryEffective
+                    ? `${option.label} (${_('Auto')})`
+                    : option.label,
+              }))}
+              onChange={(event) => handleSetSortBy(event.target.value as LibrarySortByType)}
             />
-          ))}
-        </ul>
+            <button
+              type='button'
+              className='glossa-menu-item glossa-library-sort-direction'
+              aria-label={`${_('Sort by')} / ${isAscending ? _('Ascending') : _('Descending')}`}
+              onClick={() => handleSetSortAscending(!isAscending)}
+            >
+              {isAscending ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
+              <span>{isAscending ? _('Ascending') : _('Descending')}</span>
+            </button>
+          </div>
+          <div role='group' aria-label={_('Then by...')} className='glossa-library-sort-row'>
+            <span className='glossa-library-sort-label'>{_('Then by...')}</span>
+            <SettingsSelect
+              ariaLabel={_('Then by...')}
+              value={secondaryEffective}
+              options={thenSortByOptions.map((option) => ({
+                ...option,
+                label:
+                  secondaryIsImplicit && option.value === secondaryEffective
+                    ? `${option.label} (${_('Auto')})`
+                    : option.label,
+              }))}
+              onChange={(event) =>
+                handleSetThenSortBy(event.target.value as LibrarySecondarySortByType)
+              }
+            />
+            <button
+              type='button'
+              className='glossa-menu-item glossa-library-sort-direction'
+              aria-label={`${_('Then by...')} / ${isThenAscending ? _('Ascending') : _('Descending')}`}
+              disabled={secondaryEffective === 'none'}
+              onClick={() => handleSetThenSortAscending(!isThenAscending)}
+            >
+              {isThenAscending ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
+              <span>{isThenAscending ? _('Ascending') : _('Descending')}</span>
+            </button>
+          </div>
+        </div>
       </MenuItem>
-
-      {/* Then by - secondary sort, collapsible */}
-      <MenuItem label={_('Then by...')} detailsOpen={false}>
-        <ul className='ms-0 flex flex-col ps-0 before:hidden'>
-          {thenSortByOptions.map((option) => {
-            const isImplicit = secondaryIsImplicit && option.value === secondaryEffective;
-            return (
-              <MenuItem
-                key={option.value}
-                label={isImplicit ? `${option.label} (${_('Auto')})` : option.label}
-                toggled={secondaryEffective === option.value}
-                onClick={() => handleSetThenSortBy(option.value)}
-                transient
-              />
-            );
-          })}
-          {secondaryEffective !== 'none' && (
-            <>
-              <hr aria-hidden='true' className='border-base-200 my-1' />
-              {sortingOptions.map((option) => (
-                <MenuItem
-                  key={option.value.toString()}
-                  label={option.label}
-                  toggled={isThenAscending === option.value}
-                  onClick={() => handleSetThenSortAscending(option.value)}
-                  transient
-                />
-              ))}
-            </>
-          )}
-        </ul>
-      </MenuItem>
+      <MenuItem
+        label={_('Theme & Background')}
+        Icon={<Palette size={16} />}
+        onClick={() => {
+          setIsDropdownOpen?.(false);
+          openSettingsDialog('application', '', 'Theme');
+        }}
+      />
     </Menu>
   );
 };

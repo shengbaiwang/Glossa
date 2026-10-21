@@ -4,18 +4,20 @@ import { ArrowLeft } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { navigateToLibrary } from '@/utils/nav';
+import { MISSING_AUTHOR_GROUP_ID } from '../utils/libraryUtils';
 import { LibraryGroupByType } from '@/types/settings';
 
 interface GroupHeaderProps {
   groupBy: LibraryGroupByType;
   groupName: string;
+  groupId?: string | null;
 }
 
 /**
  * Header component displayed when viewing books inside a virtual group.
  * Shows the group type, group name, and a back button to return to the main bookshelf.
  */
-const GroupHeader: React.FC<GroupHeaderProps> = ({ groupBy, groupName }) => {
+const GroupHeader: React.FC<GroupHeaderProps> = ({ groupBy, groupName, groupId }) => {
   const _ = useTranslation();
   const router = useRouter();
   const iconSize = useResponsiveSize(20);
@@ -62,7 +64,11 @@ const GroupHeader: React.FC<GroupHeaderProps> = ({ groupBy, groupName }) => {
       </button>
       <div className='flex items-center gap-2 overflow-hidden'>
         <span className='text-neutral-content text-sm'>{getGroupTypeLabel()}:</span>
-        <span className='truncate text-base font-medium'>{groupName}</span>
+        <span className='truncate text-base font-medium'>
+          {groupBy === LibraryGroupByType.Author && groupId === MISSING_AUTHOR_GROUP_ID
+            ? _('Author not set')
+            : groupName}
+        </span>
       </div>
     </div>
   );

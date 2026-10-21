@@ -83,7 +83,6 @@ vi.mock('@/components/settings/theme/BackgroundTextureSelector', () => ({ defaul
 vi.mock('@/components/settings/theme/HighlightColorsEditor', () => ({ default: () => null }));
 vi.mock('@/components/settings/theme/CodeHighlightingSettings', () => ({ default: () => null }));
 vi.mock('@/components/settings/theme/ReadingRulerSettings', () => ({ default: () => null }));
-vi.mock('@/components/settings/theme/LibrarySettings', () => ({ default: () => null }));
 vi.mock('@/components/settings/theme/ThemeEditor', () => ({
   default: (props: EditorProps) => {
     editorProps = props;

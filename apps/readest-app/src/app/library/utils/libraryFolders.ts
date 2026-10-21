@@ -4,6 +4,14 @@ import { md5Fingerprint } from '@/utils/md5';
 export const folderParent = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf('/')));
 export const folderLabel = (path: string) => path.slice(path.lastIndexOf('/') + 1);
 const contains = (parent: string, path: string) => path === parent || path.startsWith(`${parent}/`);
+export const MAX_FOLDER_DEPTH = 4;
+export const folderDepth = (path: string) => (path ? path.split('/').length : 0);
+
+export function orderedFolderPaths(paths: string[]): string[] {
+  const visit = (parent: string): string[] =>
+    paths.filter((p) => folderParent(p) === parent).flatMap((p) => [p, ...visit(p)]);
+  return visit('');
+}
 
 /** Empty folders are explicit; book paths also supply implicit and legacy parents. */
 export function collectFolderPaths(books: Book[], saved: readonly string[] = []): string[] {
@@ -26,24 +34,31 @@ function validLabel(label: string): string {
     name === '.' ||
     name === '..' ||
     /[/\\]/.test(name) ||
+    name.length > 120 ||
     [...name].some((char) => char.charCodeAt(0) < 32)
   )
     throw new Error('Invalid folder name');
   return name;
 }
 
-export function createFolderPath(paths: string[], parent: string, label: string): string {
-  const name = validLabel(label);
-  if (parent && !paths.includes(parent)) throw new Error('Folder not found');
-  if (parent.includes('/')) throw new Error('Folders support two levels');
-  const path = parent ? `${parent}/${name}` : name;
-  if (paths.includes(path)) throw new Error('A folder with this name already exists');
+function uniquePath(paths: string[], parent: string, label: string): string {
+  const base = parent ? `${parent}/${label}` : label;
+  let path = base;
+  for (let suffix = 2; paths.includes(path); suffix++) path = `${base} ${suffix}`;
   return path;
+}
+
+export function createFolderPath(paths: string[], parent: string, label: string): string {
+  const name = validLabel(label.trim() || 'Untitled');
+  if (parent && !paths.includes(parent)) throw new Error('Folder not found');
+  if (folderDepth(parent) >= MAX_FOLDER_DEPTH) throw new Error('Up to 4 levels');
+  return uniquePath(paths, parent, name);
 }
 
 export interface FolderChange {
   paths: string[];
   books: Book[];
+  replacements?: Map<string, string>;
 }
 
 function replaceFolders(
@@ -57,6 +72,7 @@ function replaceFolders(
     throw new Error('A folder with this name already exists');
   return {
     paths: transformed,
+    replacements,
     books: books.map((book) => {
       const path = !book.deletedAt && book.groupName ? replacements.get(book.groupName) : undefined;
       return path !== undefined && path !== book.groupName
@@ -75,7 +91,7 @@ export function renameFolder(
 ): FolderChange {
   if (!paths.includes(path)) throw new Error('Folder not found');
   const parent = folderParent(path);
-  const name = validLabel(label);
+  const name = validLabel(label.trim() || folderLabel(path));
   const next = parent ? `${parent}/${name}` : name;
   const replacements = new Map(
     paths.filter((p) => contains(path, p)).map((p) => [p, next + p.slice(path.length)]),
@@ -101,11 +117,15 @@ export function moveToFolder(
   for (const root of roots) {
     if (destination && contains(root, destination))
       throw new Error('Cannot move a folder into itself');
-    const next = destination ? `${destination}/${folderLabel(root)}` : folderLabel(root);
+    const next = uniquePath(
+      [...paths.filter((p) => !roots.some((r) => contains(r, p))), ...replacements.values()],
+      destination,
+      folderLabel(root),
+    );
     for (const path of paths.filter((p) => contains(root, p))) {
       const target = next + path.slice(root.length);
-      if (target !== path && target.split('/').length > 2)
-        throw new Error('Folders support two levels');
+      if (target !== path && folderDepth(target) > MAX_FOLDER_DEPTH)
+        throw new Error('Up to 4 levels');
       replacements.set(path, target);
     }
   }
@@ -122,5 +142,60 @@ export function moveToFolder(
         }
       : book,
   );
+  const moved = new Set(replacements.values());
+  result.paths = orderedFolderPaths([
+    ...result.paths.filter((p) => !moved.has(p)),
+    ...result.paths.filter((p) => moved.has(p)),
+  ]);
   return result;
+}
+
+/** Remove only the container. Promote each child branch without merging names. */
+export function removeFolder(
+  books: Book[],
+  paths: string[],
+  path: string,
+  now = Date.now(),
+): FolderChange {
+  if (!paths.includes(path)) throw new Error('Folder not found');
+  const parent = folderParent(path);
+  const replacements = new Map<string, string>([[path, parent]]);
+  const occupied = paths.filter((p) => !contains(path, p));
+  for (const child of paths.filter((p) => folderParent(p) === path)) {
+    const next = uniquePath(occupied, parent, folderLabel(child));
+    for (const descendant of paths.filter((p) => contains(child, p))) {
+      const target = next + descendant.slice(child.length);
+      replacements.set(descendant, target);
+      occupied.push(target);
+    }
+  }
+  const result = replaceFolders(
+    books,
+    paths.filter((p) => p !== path),
+    replacements,
+    now,
+  );
+  return { ...result, paths: orderedFolderPaths(result.paths) };
+}
+
+/** Move a whole branch and place it before/after an existing sibling. */
+export function placeFolder(
+  books: Book[],
+  paths: string[],
+  path: string,
+  anchor: string,
+  edge: 'before' | 'after',
+): FolderChange {
+  if (path === anchor || contains(path, anchor))
+    throw new Error('Cannot move a folder into itself');
+  if (!paths.includes(anchor)) throw new Error('Folder not found');
+  const result = moveToFolder(books, paths, [md5Fingerprint(path)], folderParent(anchor));
+  const next = result.replacements?.get(path) ?? path;
+  const ordered = orderedFolderPaths(result.paths);
+  const branch = ordered.filter((p) => contains(next, p));
+  const rest = ordered.filter((p) => !contains(next, p));
+  const index =
+    edge === 'before' ? rest.indexOf(anchor) : rest.findLastIndex((p) => contains(anchor, p)) + 1;
+  rest.splice(index, 0, ...branch);
+  return { ...result, paths: rest };
 }

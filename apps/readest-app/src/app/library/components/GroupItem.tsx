@@ -1,12 +1,13 @@
 import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
-import { Check, Circle, ChevronRight, ChevronLeft, Folder, Pencil } from '@/components/GlossaIcons';
+import { Check, Circle, ChevronRight, ChevronLeft, BookCollection } from '@/components/GlossaIcons';
 import FolderNameEditor from './FolderNameEditor';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { BooksGroup } from '@/types/book';
 import { LibraryViewModeType } from '@/types/settings';
 import BookCover from '@/components/BookCover';
+import { MISSING_AUTHOR_GROUP_ID } from '../utils/libraryUtils';
 import { useSettingsStore } from '@/store/settingsStore';
 
 interface GroupItemProps {
@@ -16,7 +17,7 @@ interface GroupItemProps {
   groupSelected: boolean;
   renaming?: boolean;
   onStartRename?: () => void;
-  onCancelRename?: () => void;
+  onCancelRename?: (restoreFocus?: boolean) => void;
   onRename?: (name: string) => Promise<boolean>;
 }
 
@@ -36,38 +37,33 @@ const GroupItem: React.FC<GroupItemProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
+  const displayName =
+    group.id === MISSING_AUTHOR_GROUP_ID ? _('Author not set') : group.displayName;
   const name =
     renaming && onRename && onCancelRename ? (
-      <FolderNameEditor
-        initialName={group.displayName}
-        onSave={onRename}
-        onCancel={onCancelRename}
-      />
+      <FolderNameEditor initialName={displayName} onSave={onRename} onCancel={onCancelRename} />
     ) : (
       <span
         className='glossa-folder-label'
         onPointerDown={
-          onStartRename && !isSelectMode ? (event) => event.stopPropagation() : undefined
+          onStartRename && !isSelectMode
+            ? (event) => {
+                if (event.pointerType === 'mouse') event.stopPropagation();
+              }
+            : undefined
         }
         onPointerUp={
-          onStartRename && !isSelectMode ? (event) => event.stopPropagation() : undefined
+          onStartRename && !isSelectMode
+            ? (event) => {
+                if (event.pointerType === 'mouse') event.stopPropagation();
+              }
+            : undefined
         }
         onDoubleClick={!isSelectMode ? onStartRename : undefined}
       >
-        <span>{group.displayName}</span>
-        {onStartRename && !isSelectMode && (
-          <button
-            type='button'
-            className='glossa-icon-button glossa-folder-rename'
-            aria-label={_('Rename Folder')}
-            onClick={(event) => {
-              event.stopPropagation();
-              onStartRename();
-            }}
-          >
-            <Pencil size={14} />
-          </button>
-        )}
+        <span className='line-clamp-2' title={displayName}>
+          {displayName}
+        </span>
       </span>
     );
 
@@ -157,12 +153,12 @@ const GroupItem: React.FC<GroupItemProps> = ({
       >
         {group.books.length === 0 && (
           <div className='glossa-empty-folder-cover'>
-            <Folder size={48} strokeWidth={1.3} aria-hidden='true' />
+            <BookCollection size={48} strokeWidth={1.3} aria-hidden='true' />
           </div>
         )}
         <div
           className={clsx(
-            mode === 'grid' && 'flex h-full w-full p-2',
+            mode === 'grid' && 'flex h-full w-full',
             group.books.length === 0 && 'hidden',
             mode === 'list' && 'relative min-w-0 max-w-[85%]',
           )}
@@ -170,7 +166,7 @@ const GroupItem: React.FC<GroupItemProps> = ({
           <div
             ref={mode === 'list' ? scrollContainerRef : undefined}
             className={clsx(
-              mode === 'grid' && 'grid w-full grid-cols-2 grid-rows-2 gap-1 overflow-hidden',
+              mode === 'grid' && 'glossa-group-stack relative h-full w-full',
               mode === 'list' && 'flex h-28 gap-2 overflow-x-auto overflow-y-hidden',
               mode === 'list' ? 'library-list-item' : 'library-grid-item',
             )}
@@ -187,12 +183,21 @@ const GroupItem: React.FC<GroupItemProps> = ({
             }
             onScroll={mode === 'list' ? handleScroll : undefined}
           >
-            {group.books.slice(0, mode === 'grid' ? 4 : undefined).map((book) => (
+            {group.books.slice(0, mode === 'grid' ? 3 : undefined).map((book, index) => (
               <div
                 key={book.hash}
+                style={
+                  mode === 'grid'
+                    ? ({
+                        '--cover-offset': `${index * 6}px`,
+                        '--stack-inset': `${(Math.min(group.books.length, 3) - 1) * 6}px`,
+                        zIndex: 3 - index,
+                      } as React.CSSProperties)
+                    : undefined
+                }
                 className={clsx(
                   'relative aspect-[28/41] h-full',
-                  mode === 'grid' && 'w-full',
+                  mode === 'grid' && 'glossa-group-stack-cover',
                   mode === 'list' && 'flex-shrink-0',
                 )}
               >
@@ -277,7 +282,6 @@ const GroupItem: React.FC<GroupItemProps> = ({
           <p className='glossa-book-author'>
             {_('{{count}} books', { count: group.books.length })}
           </p>
-          <div className='h-6' aria-hidden='true' />
         </div>
       )}
     </div>

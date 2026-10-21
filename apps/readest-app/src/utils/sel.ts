@@ -29,6 +29,7 @@ export interface TextSelection {
   range: Range;
   index: number;
   cfi?: string;
+  pdfRanges?: string[];
   href?: string;
   annotated?: boolean;
   rect?: Rect;

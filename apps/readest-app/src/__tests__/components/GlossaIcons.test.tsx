@@ -10,6 +10,9 @@ import {
   Lock,
   Palette,
   Settings,
+  LayoutGrid,
+  LayoutList,
+  BookClosed,
 } from '@/components/GlossaIcons';
 
 afterEach(cleanup);
@@ -25,6 +28,9 @@ it('keeps navigation, editing, settings and sync glyphs on the same accessible d
     Lock,
     Palette,
     Settings,
+    LayoutGrid,
+    LayoutList,
+    BookClosed,
   })) {
     const { container, unmount } = render(
       <Glyph size={18} className='role-fixture' aria-hidden={false} aria-label={name} />,

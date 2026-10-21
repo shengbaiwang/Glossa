@@ -66,6 +66,67 @@ export default defineConfig({
       if (type === 'stdout') return false;
     },
     browser: {
+      commands: {
+        async dragPDFHandle({ page, frame }, from: { x: number; y: number }, to: { x: number; y: number }, cancel = false, secondFinger = false) {
+          const testFrame = await frame();
+          const bounds = await testFrame.frameElement().then(element => element.boundingBox());
+          if (!bounds) throw new Error('Missing test frame');
+          const scale = bounds.width / await testFrame.evaluate(() => window.innerWidth);
+          const client = await page.context().newCDPSession(page);
+          const touch = (point: { x: number; y: number }) => [{ x: bounds.x + point.x * scale, y: bounds.y + point.y * scale, id: 1, radiusX: 4, radiusY: 4, force: 1 }];
+          const secondary = { ...touch(from)[0]!, x: touch(from)[0]!.x + 3, id: 2 };
+          try {
+            await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touch(from) });
+            if (secondFinger) await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [...touch(from), secondary] });
+            for (let i = 1; i <= 16; i++) {
+              const primary = touch({ x: from.x + (to.x - from.x) * i / 16, y: from.y + (to.y - from.y) * i / 16 });
+              await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: secondFinger && i <= 8 ? [...primary, secondary] : primary });
+              if (secondFinger && i === 8) await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [secondary] });
+            }
+            await client.send('Input.dispatchTouchEvent', { type: cancel ? 'touchCancel' : 'touchEnd', touchPoints: [] });
+          } finally { await client.detach(); }
+        },
+        async pressPDFSelectionKey({ page }, key: string) {
+          await page.keyboard.press(key);
+        },
+        async clickPDFText({ page, frame }, point: { x: number; y: number }, shift = false) {
+          const testFrame = await frame();
+          const bounds = await testFrame.frameElement().then((element) => element.boundingBox());
+          if (!bounds) throw new Error('Missing test frame');
+          const width = await testFrame.evaluate(() => window.innerWidth);
+          const scale = bounds.width / width;
+          if (shift) await page.keyboard.down('Shift');
+          try {
+            await page.mouse.click(bounds.x + point.x * scale, bounds.y + point.y * scale);
+          } finally {
+            if (shift) await page.keyboard.up('Shift');
+          }
+        },
+        async doubleClickPDFText({ page, frame }, point: { x: number; y: number }) {
+          const testFrame = await frame();
+          const bounds = await testFrame.frameElement().then((element) => element.boundingBox());
+          if (!bounds) throw new Error('Missing test frame');
+          const width = await testFrame.evaluate(() => window.innerWidth);
+          const scale = bounds.width / width;
+          await page.mouse.dblclick(bounds.x + point.x * scale, bounds.y + point.y * scale);
+        },
+        async dragPDFText({ page, frame }, from: { x: number; y: number }, to: { x: number; y: number }, pauseAtEndMs = 0, via?: { x: number; y: number }) {
+          const testFrame = await frame();
+          const bounds = await testFrame.frameElement().then((element) => element.boundingBox());
+          if (!bounds) throw new Error('Missing test frame');
+          const width = await testFrame.evaluate(() => window.innerWidth);
+          const scale = bounds.width / width;
+          await page.mouse.move(bounds.x + from.x * scale, bounds.y + from.y * scale);
+          await page.mouse.down();
+          try {
+            if (via) await page.mouse.move(bounds.x + via.x * scale, bounds.y + via.y * scale, { steps: 16 });
+            await page.mouse.move(bounds.x + to.x * scale, bounds.y + to.y * scale, { steps: 16 });
+            if (pauseAtEndMs) await new Promise((resolve) => setTimeout(resolve, pauseAtEndMs));
+          } finally {
+            await page.mouse.up();
+          }
+        },
+      },
       enabled: true,
       headless: true,
       screenshotFailures: false,

@@ -55,7 +55,7 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ bookKey, active, onSave, onEdit
 
   const handleSaveNote = () => {
     const currentValue = editorRef.current?.getValue();
-    if (active && currentValue?.trim()) {
+    if (active && currentValue !== undefined && (currentValue.trim() || notebookEditAnnotation)) {
       let saved = false;
       if (notebookNewAnnotation) {
         saved = onSave(notebookNewAnnotation, currentValue);
@@ -82,7 +82,7 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ bookKey, active, onSave, onEdit
     {
       onSaveNote: () => {
         const currentValue = editorRef.current?.getValue();
-        if (currentValue) {
+        if (currentValue !== undefined && (currentValue.trim() || notebookEditAnnotation)) {
           handleSaveNote();
         }
       },
@@ -91,7 +91,7 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ bookKey, active, onSave, onEdit
     [active, draftKey, notebookNewAnnotation, notebookEditAnnotation],
   );
 
-  const canSave = Boolean(note.trim());
+  const canSave = Boolean(note.trim() || notebookEditAnnotation);
 
   return (
     <div className='content booknote-item note-editor-container glossa-reader-note-editor eink-bordered bg-base-100 mt-2 rounded-xl border p-3'>

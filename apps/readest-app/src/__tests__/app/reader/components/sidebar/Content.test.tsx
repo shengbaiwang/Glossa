@@ -58,6 +58,18 @@ afterEach(() => {
 });
 
 describe('Reader sidebar content', () => {
+  it('opens PDF contents directly without the manual processing panel', () => {
+    render(
+      <SidebarContent
+        bookDoc={{ ...bookDoc, getPDFText: async () => '' }}
+        sideBarBookKey='book-0'
+      />,
+    );
+    expect(screen.getByText('Chapter list')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Repair contents' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Recognize text' })).toBeNull();
+    expect(screen.queryByRole('spinbutton')).toBeNull();
+  });
   it('keeps chapter learning notes out of the left navigation and restores old study tabs to contents', () => {
     mocks.config.viewSettings.sideBarTab = 'study';
     render(<SidebarContent bookDoc={bookDoc} sideBarBookKey='book-0' />);

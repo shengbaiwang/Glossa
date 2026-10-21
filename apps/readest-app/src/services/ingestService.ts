@@ -5,6 +5,7 @@ import { transferManager } from '@/services/transferManager';
 import { isReadestCloudStorageActive } from '@/services/sync/cloudSyncProvider';
 import { normalizeFilePathForIndex } from '@/services/bookService';
 import { isContentURI, isValidURL } from '@/utils/misc';
+import { repairImportedMetadata } from '@/utils/importMetadata';
 import { isPseStreamFileName } from '@/services/opds/pseStream';
 
 export interface IngestFileDeps {
@@ -45,6 +46,8 @@ export interface IngestFileOptions {
    * the file into Books/<hash>/. Defaults to false.
    */
   forceCopy?: boolean;
+  /** Explicit re-imports may resume PDF contents; background folder scans opt out. */
+  retryPDFContents?: boolean;
 }
 
 /**
@@ -168,11 +171,11 @@ export async function ingestFile(
   // In-place re-import fast path. When the source file lives under one of
   // the user's registered external library folders and the byFilePath index
   // already knows about it, skip importBook entirely and return the existing
-  // library entry verbatim. No fs.openFile, no native parser, no partialMD5,
-  // no timestamp / cover / config writes — and crucially no downstream group
+  // library entry. No timestamp / cover / config writes or downstream group
   // / tag / upload logic, so a re-scan can't silently rewrite library sort
   // order or clobber a manual GroupingModal assignment via a path-derived
-  // group string.
+  // group string. Explicit PDF re-import may prepare missing contents with
+  // its own parser; silent background scans pass retryPDFContents: false.
   //
   // This is intentionally separate from importBook's byHash / byMetaKey
   // dedup: a byHash hit means a *different* source path resolves to a known
@@ -198,6 +201,9 @@ export async function ingestFile(
     const key = normalizeFilePathForIndex(opts.file, appService.osPlatform);
     const existing = key ? opts.lookupIndex.byFilePath.get(key) : undefined;
     if (existing) {
+      repairImportedMetadata(existing, opts.file);
+      if (existing.format === 'PDF' && opts.retryPDFContents !== false)
+        await appService.prepareBookContents?.(existing);
       return existing;
     }
   }

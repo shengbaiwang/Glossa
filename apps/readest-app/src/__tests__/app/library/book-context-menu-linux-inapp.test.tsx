@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 import type { Book } from '@/types/book';
 
@@ -137,6 +137,36 @@ describe('library context menu on Linux desktop (issue #5360)', () => {
 
     expect(menuNew).not.toHaveBeenCalled();
     expect(popupSpy).not.toHaveBeenCalled();
+  });
+
+  it('enters batch selection by holding a book after removing selection from display options', async () => {
+    vi.useFakeTimers();
+    try {
+      const { props } = renderItem();
+      const card = screen.getByRole('button', { name: 'Test Book' });
+      fireEvent.pointerDown(card, { pointerType: 'touch', pointerId: 1, clientX: 20, clientY: 20 });
+      await act(async () => {
+        vi.advanceTimersByTime(550);
+      });
+      expect(props.handleSetSelectMode).toHaveBeenCalledWith(true);
+      expect(props.toggleSelection).toHaveBeenCalledExactlyOnceWith(book.hash);
+      fireEvent.pointerUp(card, { pointerId: 1, clientX: 20, clientY: 20 });
+      expect(props.toggleSelection).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('enters batch selection from the book context menu with the keyboard', async () => {
+    const { props } = renderItem();
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Test Book' }), {
+      key: 'F10',
+      shiftKey: true,
+    });
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Select Book' }));
+    expect(props.handleSetSelectMode).toHaveBeenCalledWith(true);
+    expect(props.toggleSelection).toHaveBeenCalledWith(book.hash);
+    expect(screen.queryByRole('menuitem')).toBeNull();
   });
 
   it('runs the action and closes the menu when an item is clicked', async () => {

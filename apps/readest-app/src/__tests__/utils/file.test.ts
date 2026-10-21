@@ -7,7 +7,7 @@ import { RemoteFile } from '@/utils/file';
 // header's offset to intercepted bodies and corrupts non-zero-start reads.
 describe('RemoteFile.fromNativePath (rangefile query-range scheme)', () => {
   const path = '/data/user/0/com.bilingify.readest/cache/堂吉诃德（译文名著典藏）.mobi';
-  const TOTAL = 10371956;
+  const TOTAL = 8192;
   let calls: Array<{ url: string; init?: RequestInit }>;
   let data: Uint8Array;
 
@@ -81,5 +81,193 @@ describe('RemoteFile.fromNativePath (rangefile query-range scheme)', () => {
     expect(buf.byteLength).toBe(10);
     expect(new Uint8Array(buf)[0]).toBe(2000 & 0xff);
     expect(noRangeHeader()).toBe(true);
+  });
+});
+
+describe('RemoteFile byte range integrity', () => {
+  const data = Uint8Array.from({ length: 400_000 }, (_, i) => i % 251);
+  let bodyReads: number;
+  let fail: 'short' | 'offset' | 'network' | undefined;
+
+  beforeEach(() => {
+    bodyReads = 0;
+    fail = undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_input: unknown, init?: RequestInit) => {
+        if (init?.method === 'HEAD') {
+          return new Response(null, { headers: { 'Content-Length': String(data.length) } });
+        }
+        bodyReads++;
+        if (fail === 'network') throw new TypeError('private URL must not escape');
+        const range = new Headers(init?.headers).get('Range')!;
+        const [, from, to] = /^bytes=(\d+)-(\d+)$/.exec(range)!;
+        const start = Number(from),
+          end = Math.min(Number(to), data.length - 1);
+        const body = data.slice(start, end + (fail === 'short' ? 0 : 1));
+        return new Response(body, {
+          status: 206,
+          headers: {
+            'Content-Range': `bytes ${start + (fail === 'offset' ? 1 : 0)}-${end}/${data.length}`,
+          },
+        });
+      }),
+    );
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('fetches the last requested byte when a range crosses the cached inclusive end', async () => {
+    const file = await new RemoteFile('https://example.invalid/book.pdf').open();
+    await file.fetchRange(0, 100);
+    const result = await file.fetchRange(130_040, 130_048);
+    expect(new Uint8Array(result)).toEqual(data.slice(130_040, 130_049));
+    expect(bodyReads).toBe(2);
+  });
+
+  it.each([
+    ['short', 'pdf_range_truncated'],
+    ['offset', 'pdf_range_mismatch'],
+    ['network', 'pdf_range_read_failed'],
+  ] as const)('rejects repeated %s responses with a safe code and does not cache them', async (kind, code) => {
+    const file = await new RemoteFile('https://example.invalid/private-book.pdf').open();
+    fail = kind;
+    await expect(file.slice(2000, 2010).arrayBuffer()).rejects.toThrow(code);
+    expect(bodyReads).toBe(2);
+    fail = undefined;
+    expect(new Uint8Array(await file.slice(2000, 2010).arrayBuffer())).toEqual(
+      data.slice(2000, 2010),
+    );
+    expect(bodyReads).toBe(3);
+  });
+
+  it('recovers one transient range read without changing the requested bytes', async () => {
+    const normal = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockImplementationOnce(normal)
+        .mockRejectedValueOnce(new TypeError('network'))
+        .mockImplementation(normal),
+    );
+    const file = await new RemoteFile('https://example.invalid/book.pdf').open();
+    expect(new Uint8Array(await file.slice(2000, 2010).arrayBuffer())).toEqual(
+      data.slice(2000, 2010),
+    );
+    expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('slices a complete HTTP 200 response when the server ignores Range', async () => {
+    const normal = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementationOnce(normal).mockResolvedValue(new Response(data)),
+    );
+    const file = await new RemoteFile('https://example.invalid/book.pdf').open();
+    expect(new Uint8Array(await file.slice(2000, 2010).arrayBuffer())).toEqual(
+      data.slice(2000, 2010),
+    );
+  });
+
+  it('returns an empty range without fetching or populating the cache', async () => {
+    const file = await new RemoteFile('https://example.invalid/book.pdf').open();
+    expect((await file.slice(2000, 2000).arrayBuffer()).byteLength).toBe(0);
+    expect(bodyReads).toBe(0);
+  });
+
+  it('aborts an active range and prevents retry after close', async () => {
+    const normal = globalThis.fetch;
+    let rejectRead!: (error: Error) => void;
+    let signal: AbortSignal | null | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockImplementationOnce(normal)
+        .mockImplementationOnce((_input: unknown, init?: RequestInit) => {
+          signal = init?.signal;
+          return new Promise((_resolve, reject) => {
+            rejectRead = reject;
+          });
+        })
+        .mockImplementation(normal),
+    );
+    const file = await new RemoteFile('https://example.invalid/book.pdf').open();
+    const pending = file.slice(2000, 2010).arrayBuffer();
+    await file.close();
+    rejectRead(new TypeError('network failure after cancellation'));
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(signal?.aborted).toBe(true);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('cancels a large read across close and immediate reopen between its chunks', async () => {
+    const total = 2_048_000;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_input: unknown, init?: RequestInit) => {
+        if (init?.method === 'HEAD') {
+          return new Response(null, { headers: { 'Content-Length': String(total) } });
+        }
+        bodyReads++;
+        const range = new Headers(init?.headers).get('Range')!;
+        const [, from, to] = /^bytes=(\d+)-(\d+)$/.exec(range)!;
+        const start = Number(from),
+          end = Number(to);
+        return new Response(new Uint8Array(end - start + 1), {
+          status: 206,
+          headers: { 'Content-Range': `bytes ${start}-${end}/${total}` },
+        });
+      }),
+    );
+    const file = await new RemoteFile('https://example.invalid/book.pdf').open();
+    const readPart = file.fetchRangePart.bind(file);
+    const firstPart = vi
+      .spyOn(file, 'fetchRangePart')
+      .mockImplementationOnce(async (start, end) => {
+        const result = await readPart(start, end);
+        await file.close();
+        await file.open();
+        return result;
+      });
+    try {
+      await expect(file.fetchRange(0, total - 1)).rejects.toMatchObject({ name: 'AbortError' });
+      expect(bodyReads).toBe(1);
+      expect((await file.fetchRange(0, 7)).byteLength).toBe(8);
+      expect(bodyReads).toBe(2);
+    } finally {
+      firstPart.mockRestore();
+    }
+  });
+
+  it('rejects a late body after close without repopulating the cache', async () => {
+    const normal = globalThis.fetch;
+    let finishRead!: () => void;
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockImplementationOnce(normal)
+        .mockImplementationOnce(
+          (input: unknown, init?: RequestInit) =>
+            new Promise((resolve) => {
+              finishRead = () => {
+                void normal(input as RequestInfo, init).then(resolve);
+              };
+            }),
+        )
+        .mockImplementation(normal),
+    );
+    const file = await new RemoteFile('https://example.invalid/book.pdf').open();
+    const pending = file.slice(2000, 2010).arrayBuffer();
+    await file.close();
+    finishRead();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    await file.open();
+    expect(new Uint8Array(await file.slice(2000, 2010).arrayBuffer())).toEqual(
+      data.slice(2000, 2010),
+    );
+    expect(bodyReads).toBe(2);
   });
 });

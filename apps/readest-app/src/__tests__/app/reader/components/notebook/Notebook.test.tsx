@@ -12,7 +12,12 @@ const mocks = vi.hoisted(() => ({
   language: 'en',
   rtl: false,
   format: 'EPUB',
+  officialModules: {} as { conversation?: boolean; mindmap?: boolean },
+  mindmapUnmount: vi.fn(),
   conversationUnmount: vi.fn(),
+  saveConfig: vi.fn(),
+  updateBooknotes: vi.fn((_: string, notes: BookNote[]) => ({ booknotes: notes })),
+  bubbleTransition: vi.fn(),
   notes: [] as BookNote[],
 }));
 
@@ -24,7 +29,10 @@ vi.mock('@/context/EnvContext', () => ({
 }));
 vi.mock('@/store/settingsStore', () => ({
   useSettingsStore: () => ({
-    settings: { globalReadSettings: { notebookWidth: '30%' } },
+    settings: {
+      globalReadSettings: { notebookWidth: '30%' },
+      officialModules: mocks.officialModules,
+    },
   }),
 }));
 vi.mock('@/store/themeStore', () => ({
@@ -37,8 +45,8 @@ vi.mock('@/store/bookDataStore', () => ({
       bookDoc: { metadata: { language: [mocks.language] }, toc: [] },
     }),
     getConfig: () => ({ booknotes: mocks.notes }),
-    saveConfig: vi.fn(),
-    updateBooknotes: vi.fn(),
+    saveConfig: mocks.saveConfig,
+    updateBooknotes: mocks.updateBooknotes,
   }),
 }));
 vi.mock('@/store/readerStore', () => ({
@@ -52,7 +60,10 @@ vi.mock('@/store/readerStore', () => ({
 vi.mock('@/utils/book', () => ({ getBookDirFromLanguage: () => (mocks.rtl ? 'rtl' : 'ltr') }));
 vi.mock('@/utils/misc', () => ({ uniqueId: () => 'new-note' }));
 vi.mock('@/app/reader/utils/annotatorUtil', () => ({
-  findAnnotationAtCfi: vi.fn(),
+  applyNoteBubbleTransition: mocks.bubbleTransition,
+  decideNoteBubbleTransition: vi.fn(() => 'remove'),
+  findAnnotationAtCfi: (notes: BookNote[], cfi: string) =>
+    notes.findIndex((note) => note.cfi === cfi && !note.deletedAt),
   removeBookNoteOverlays: vi.fn(),
   removeEmptyAnnotationPlaceholder: vi.fn(),
   filterBooknotes: () => [],
@@ -72,9 +83,25 @@ vi.mock('@/glossa/ui/ConversationPanel', () => ({
   },
 }));
 vi.mock('@/app/reader/components/sidebar/BooknoteView', () => ({
-  default: ({ bookKey }: { bookKey: string }) => <div>Annotations for {bookKey}</div>,
+  default: ({
+    bookKey,
+    noteEditor,
+  }: {
+    bookKey: string;
+    noteEditor?: { id: string; content: React.ReactNode };
+  }) => (
+    <div>
+      Annotations for {bookKey}
+      {noteEditor?.content}
+    </div>
+  ),
 }));
-vi.mock('@/glossa/ui/MindmapPanel', () => ({ default: () => <div>Mind map panel</div> }));
+vi.mock('@/glossa/ui/MindmapPanel', () => ({
+  default: ({ onAsk }: { onAsk?: () => void }) => {
+    useEffect(() => () => mocks.mindmapUnmount(), []);
+    return <div>Mind map panel{onAsk && <button onClick={onAsk}>Ask about idea</button>}</div>;
+  },
+}));
 
 const editNote: BookNote = {
   id: 'note-1',
@@ -89,6 +116,7 @@ const editNote: BookNote = {
 beforeEach(() => {
   mocks.rtl = false;
   mocks.format = 'EPUB';
+  mocks.officialModules = {};
   mocks.notes = [];
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
   useNotebookStore.setState(useNotebookStore.getInitialState());
@@ -309,5 +337,107 @@ describe('Notebook reading assistant integration', () => {
     act(() => useNotebookStore.getState().setNotebookVisible(true));
     expect(screen.queryByRole('tab', { name: 'Conversation' })).toBeNull();
     expect(screen.getByText('No Notes')).toBeTruthy();
+  });
+});
+
+it('keeps annotations visible while editing and preserves the original page when clearing a note', async () => {
+  mocks.notes = [{ ...editNote, page: 42, style: 'highlight' }];
+  await openNotebook();
+  act(() => useNotebookStore.getState().setNotebookEditAnnotation({ ...mocks.notes[0]! }));
+  expect(screen.getByText('Annotations for first-0')).toBeTruthy();
+  expect(screen.getByText('Original excerpt')).toBeTruthy();
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: '' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(mocks.notes[0]).toMatchObject({ page: 42, note: '', style: 'highlight' });
+  expect(mocks.updateBooknotes).toHaveBeenCalled();
+  expect(mocks.saveConfig).toHaveBeenCalled();
+  expect(mocks.bubbleTransition).toHaveBeenCalled();
+  expect(useNotebookStore.getState().notebookEditAnnotation).toBeNull();
+  expect(screen.getByText('Annotations for first-0')).toBeTruthy();
+});
+
+it('saves one cross-page note with the first anchor and both fragments, even after its frames leave', async () => {
+  await openNotebook();
+  const first = 'epubcfi(/6/2!/4/2,/1:0,/1:5)';
+  const second = 'epubcfi(/6/4!/4/2,/1:0,/1:4)';
+  mocks.notes = [{ ...editNote, cfi: first, pdfRanges: [first, second], text: 'Alpha\nBeta' }];
+  act(() =>
+    useNotebookStore.getState().setNotebookNewAnnotation({
+      key: 'first-0',
+      cfi: first,
+      pdfRanges: [first, second],
+      text: 'Alpha\nBeta',
+      page: 1,
+      index: 1,
+      range: document.createRange(),
+    }),
+  );
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Both pages matter' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(mocks.updateBooknotes).toHaveBeenCalledWith('first-0', [
+    expect.objectContaining({
+      cfi: first,
+      pdfRanges: [first, second],
+      text: 'Alpha\nBeta',
+      note: 'Both pages matter',
+    }),
+  ]);
+});
+
+describe('official reading modules', () => {
+  it('unmounts a disabled active module and keeps keyboard navigation on available tabs', async () => {
+    const panel = render(
+      <DropdownProvider>
+        <Notebook />
+      </DropdownProvider>,
+    );
+    act(() => useNotebookStore.getState().setNotebookVisible(true));
+    await screen.findByText('Conversation panel');
+    mocks.officialModules = { conversation: false };
+    panel.rerender(
+      <DropdownProvider>
+        <Notebook />
+      </DropdownProvider>,
+    );
+    await screen.findByText('Mind map panel');
+    expect(mocks.conversationUnmount).toHaveBeenCalledWith('first-0');
+    expect(screen.queryByRole('tab', { name: 'Conversation' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ask about idea' })).toBeNull();
+    expect(useNotebookStore.getState().notebookActiveTab).toBe('mindmap');
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Mind map' }), { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: 'Notes' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('retains notes when both modules are disabled and can reopen a reenabled module', async () => {
+    mocks.notes = [editNote];
+    const panel = render(
+      <DropdownProvider>
+        <Notebook />
+      </DropdownProvider>,
+    );
+    act(() => useNotebookStore.getState().setNotebookVisible(true));
+    await screen.findByText('Conversation panel');
+    fireEvent.click(screen.getByRole('tab', { name: 'Mind map' }));
+    await screen.findByText('Mind map panel');
+    mocks.officialModules = { conversation: false, mindmap: false };
+    panel.rerender(
+      <DropdownProvider>
+        <Notebook />
+      </DropdownProvider>,
+    );
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.getByText('Annotations for first-0')).toBeTruthy();
+    expect(mocks.mindmapUnmount).toHaveBeenCalledOnce();
+    expect(useNotebookStore.getState().notebookActiveTab).toBe('notes');
+    mocks.officialModules = { conversation: true, mindmap: false };
+    panel.rerender(
+      <DropdownProvider>
+        <Notebook />
+      </DropdownProvider>,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Conversation' }));
+    await screen.findByText('Conversation for first-0');
+    expect(screen.queryByRole('tab', { name: 'Mind map' })).toBeNull();
+    expect(mocks.notes).toEqual([editNote]);
   });
 });
