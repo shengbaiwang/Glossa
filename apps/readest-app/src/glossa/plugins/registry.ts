@@ -1,34 +1,38 @@
 import type { SystemSettings } from '@/types/settings';
+import { defineBundledPlugin } from './manifest';
 
 /** Bundled, trusted plugins. Metadata never imports feature code or user data. */
 export const PLUGINS = [
-  {
+  defineBundledPlugin({
     id: 'conversation',
-    labelKey: 'Conversation',
+    author: 'Glossa',
+    name: 'Conversation',
     version: '1.0.0',
     apiVersion: 1,
     activation: 'reader-panel',
     format: 'EPUB',
     capabilities: ['reading-harness', 'model-provider'],
-  },
-  {
+  }),
+  defineBundledPlugin({
     id: 'mindmap',
-    labelKey: 'Mind map',
+    author: 'Glossa',
+    name: 'Mind map',
     version: '1.0.0',
     apiVersion: 1,
     activation: 'reader-panel',
     format: 'EPUB',
     capabilities: ['verified-sources', 'model-provider'],
-  },
-  {
+  }),
+  defineBundledPlugin({
     id: 'pdfAutoContents',
-    labelKey: 'PDF automatic contents',
+    author: 'Glossa',
+    name: 'PDF automatic contents',
     version: '1.0.0',
     apiVersion: 1,
-    activation: 'persistent-import',
+    activation: ['reader-panel', 'persistent-import'],
     format: 'PDF',
     capabilities: ['local-pdf-contents'],
-  },
+  }),
 ] as const;
 export type PluginId = (typeof PLUGINS)[number]['id'];
 export type PluginPreferences = Partial<Record<PluginId, boolean>>;
@@ -37,4 +41,8 @@ export const isPluginEnabled = (
   settings: Pick<SystemSettings, 'officialModules'> | undefined,
   id: PluginId,
 ): boolean => settings?.officialModules?.[id] !== false;
-export const PANEL_PLUGINS = PLUGINS.filter((plugin) => plugin.activation === 'reader-panel');
+export const PANEL_PLUGINS = PLUGINS.filter((plugin) =>
+  typeof plugin.activation === 'string'
+    ? plugin.activation === 'reader-panel'
+    : plugin.activation.includes('reader-panel'),
+);

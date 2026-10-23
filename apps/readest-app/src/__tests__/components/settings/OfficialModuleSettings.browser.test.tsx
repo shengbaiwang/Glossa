@@ -39,7 +39,7 @@ it.each(
   const view = render(
     <main className='settings-content bg-base-200 text-base-content min-h-screen space-y-6 p-6'>
       <button type='button'>设置</button>
-      <OfficialModuleSettings />
+      <OfficialModuleSettings onOpenSettings={vi.fn()} />
     </main>,
   );
   const conversation = screen.getByRole('checkbox', { name: '对话' }) as HTMLInputElement;
@@ -47,6 +47,8 @@ it.each(
   expect(conversation.checked).toBe(true);
   expect(mindmap.checked).toBe(true);
   await userEvent.click(screen.getByRole('button', { name: '设置' }));
+  await userEvent.tab();
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: '对话 - 设置' }));
   await userEvent.tab();
   expect(document.activeElement).toBe(conversation);
   await userEvent.keyboard(' ');
@@ -79,7 +81,7 @@ it('restores a failed preference save and permits a fresh click to retry', async
   f.save.mockRejectedValueOnce(new Error('Isolated write failure'));
   render(
     <main className='settings-content bg-base-200 text-base-content min-h-screen space-y-6 p-6'>
-      <OfficialModuleSettings />
+      <OfficialModuleSettings onOpenSettings={vi.fn()} />
     </main>,
   );
   await userEvent.click(screen.getByRole('checkbox', { name: '对话' }));

@@ -2,15 +2,21 @@ import { useRef, useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
+import { Ellipsis, ListTree, MessageSquare, Share2 } from '@/components/GlossaIcons';
+import { Toggle } from '@/components/primitives/toggle';
 import { broadcastGlobalSettings } from '@/utils/settingsSync';
 import {
   OFFICIAL_MODULES,
   isOfficialModuleEnabled,
   type OfficialModuleId,
 } from '@/glossa/modules/registry';
-import { BoxedList, SettingsSwitchRow } from './primitives';
+import { SectionTitle } from './primitives';
 
-export default function OfficialModuleSettings() {
+export default function OfficialModuleSettings({
+  onOpenSettings,
+}: {
+  onOpenSettings: (id: OfficialModuleId) => void;
+}) {
   const _ = useTranslation();
   const { envConfig } = useEnv();
   const { settings } = useSettingsStore();
@@ -51,18 +57,54 @@ export default function OfficialModuleSettings() {
   };
   return (
     <>
-      <BoxedList title={_('Plugins')}>
-        {OFFICIAL_MODULES.map((module) => (
-          <SettingsSwitchRow
-            key={module.id}
-            label={_(module.labelKey)}
-            checked={isOfficialModuleEnabled(settings, module.id)}
-            disabled={saving}
-            onChange={() => void save(module.id)}
-            data-setting-id={`settings.general.module.${module.id}`}
-          />
-        ))}
-      </BoxedList>
+      <section aria-label={_('Built-in plugins')}>
+        <SectionTitle className='mb-2'>{_('Built-in plugins')}</SectionTitle>
+        <div className='glossa-plugin-grid'>
+          {OFFICIAL_MODULES.map((module) => {
+            const enabled = isOfficialModuleEnabled(settings, module.id);
+            const Icon =
+              module.id === 'conversation'
+                ? MessageSquare
+                : module.id === 'mindmap'
+                  ? Share2
+                  : ListTree;
+            return (
+              <article
+                key={module.id}
+                className='glossa-plugin-card glossa-group-card eink-bordered'
+                data-setting-id={`settings.plugins.${module.id}`}
+                aria-label={_(module.labelKey)}
+              >
+                <div className='glossa-plugin-card-heading'>
+                  <Icon aria-hidden='true' size={22} />
+                  <button
+                    type='button'
+                    className='glossa-icon-button glossa-plugin-settings-button'
+                    aria-label={`${_(module.labelKey)} - ${_('Settings')}`}
+                    title={_('Settings')}
+                    data-plugin-settings={module.id}
+                    onClick={() => onOpenSettings(module.id)}
+                  >
+                    <Ellipsis aria-hidden='true' size={18} />
+                  </button>
+                </div>
+                <h4 className='glossa-plugin-name'>{_(module.labelKey)}</h4>
+                <label className='glossa-plugin-toggle'>
+                  <span className='glossa-supporting-text'>
+                    {_(enabled ? 'Enabled' : 'Disabled')}
+                  </span>
+                  <Toggle
+                    aria-label={_(module.labelKey)}
+                    checked={enabled}
+                    disabled={saving}
+                    onChange={() => void save(module.id)}
+                  />
+                </label>
+              </article>
+            );
+          })}
+        </div>
+      </section>
       {error && (
         <p role='alert' className='glossa-supporting-text'>
           {_('Couldn’t save module settings. Please try again.')}

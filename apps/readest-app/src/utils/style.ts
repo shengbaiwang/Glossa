@@ -325,6 +325,8 @@ const getPageLayoutStyles = (
     --margin-right: ${marginRight}px;
     --margin-bottom: ${marginBottom}px;
     --margin-left: ${marginLeft}px;
+    --glossa-page-width: calc(var(--available-width) * 1px);
+    --glossa-page-height: calc(var(--available-height) * 1px);
   }
   html, body {
     ${writingMode === 'auto' ? '' : `writing-mode: ${writingMode} !important;`}
@@ -350,6 +352,17 @@ const getPageLayoutStyles = (
   }
   svg:where(:not([height])), img:where(:not([height])) {
     height: auto;
+  }
+  /* Image-only pages share the reader's live page bounds, including after a
+     sidebar resize or a flow change. Fit both axes before centering the page;
+     object-fit alone preserves pixels but leaves an oversized layout box. */
+  .glossa-image-page {
+    display: block !important;
+    width: min(100%, calc(var(--available-width) * 1px), calc(var(--available-height) * var(--glossa-image-ratio) * 1px)) !important;
+    height: auto !important;
+    aspect-ratio: var(--glossa-image-ratio) !important;
+    margin: 0 auto !important;
+    object-fit: contain !important;
   }
   figure > div:has(img) {
     height: auto !important;
@@ -623,8 +636,22 @@ export const getFootnoteStyles = () => `
   }
 
   body {
+    box-sizing: border-box;
+    min-inline-size: 0 !important;
+    inline-size: 100% !important;
     padding: 1em !important;
-    overflow-wrap: break-word;
+    overflow-wrap: anywhere !important;
+  }
+
+  p, li, blockquote, dd, div, a, span, pre, code {
+    min-inline-size: 0 !important;
+    max-inline-size: 100% !important;
+    overflow-wrap: anywhere !important;
+    white-space: normal !important;
+  }
+
+  pre, code {
+    white-space: pre-wrap !important;
   }
 
   a:any-link {
@@ -1166,7 +1193,7 @@ export const applyScrollbarStyle = (document: Document, hideScrollbar: boolean) 
   }
 };
 
-export const applyImageStyle = (document: Document) => {
+export const applyImageStyle = (document: Document, isFixedLayout = false) => {
   const win = document.defaultView ?? window;
   // Two-phase (read then write): reading getComputedStyle after a class/style
   // write forces a style recalc, so gather every decision first and apply the
@@ -1209,11 +1236,15 @@ export const applyImageStyle = (document: Document) => {
 
   for (const { img, percentWidth, percentHeight, inlineWithText, keepBaseline } of plans) {
     if (!isNaN(percentWidth)) {
-      img.style.width = `${(percentWidth / 100) * window.innerWidth}px`;
+      img.style.width = img.getAttribute('width')!.endsWith('vw')
+        ? `calc(${percentWidth / 100} * var(--glossa-page-width, 100vw))`
+        : img.getAttribute('width')!;
       img.removeAttribute('width');
     }
     if (!isNaN(percentHeight)) {
-      img.style.height = `${(percentHeight / 100) * window.innerHeight}px`;
+      img.style.height = img.getAttribute('height')!.endsWith('vh')
+        ? `calc(${percentHeight / 100} * var(--glossa-page-height, 100vh))`
+        : img.getAttribute('height')!;
       img.removeAttribute('height');
     }
     if (inlineWithText) {
@@ -1227,6 +1258,47 @@ export const applyImageStyle = (document: Document) => {
       hr.classList.add('background-img');
     }
   });
+
+  // Repair standalone image pages only. Text illustrations, vector diagrams
+  // and fixed-layout artwork retain the author's geometry. Calibre covers
+  // often wrap one full-canvas raster in an SVG with preserveAspectRatio=none.
+  if (isFixedLayout || !document.body) return;
+  const media = document.body.querySelectorAll('img, svg, video, canvas, object, iframe');
+  if (media.length !== 1) return;
+  const image = media[0] as HTMLImageElement | SVGSVGElement;
+  if (image.localName !== 'img' && image.localName !== 'svg') return;
+  const text = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  while (text.nextNode()) {
+    if (
+      text.currentNode.textContent?.trim() &&
+      !text.currentNode.parentElement?.closest('svg, style, script')
+    )
+      return;
+  }
+  let width: number;
+  let height: number;
+  if (image.localName === 'svg') {
+    if (
+      image.querySelectorAll('image').length !== 1 ||
+      Array.from(image.children).some(
+        (child) => !['image', 'title', 'desc', 'metadata'].includes(child.localName),
+      )
+    )
+      return;
+    const viewBox = image
+      .getAttribute('viewBox')
+      ?.trim()
+      .split(/[\s,]+/)
+      .map(Number);
+    if (!viewBox || viewBox.length !== 4 || !viewBox.every(Number.isFinite)) return;
+    [, , width, height] = viewBox as [number, number, number, number];
+  } else {
+    ({ naturalWidth: width, naturalHeight: height } = image as HTMLImageElement);
+  }
+  if (!(width > 0 && height > 0)) return;
+  if (image.localName === 'svg') image.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  image.style.setProperty('--glossa-image-ratio', String(width / height));
+  image.classList.add('glossa-image-page');
 };
 
 export const keepTextAlignment = (document: Document) => {

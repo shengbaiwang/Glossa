@@ -1,4 +1,5 @@
 import { cleanup, render } from '@testing-library/react';
+import { useLayoutEffect } from 'react';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/hooks/useResponsiveSize', () => ({
@@ -44,5 +45,28 @@ describe('Popup capture state', () => {
 
     expect(popup.getAttribute('aria-hidden')).toBe('false');
     expect(popup.getAttribute('data-capture-blocking-overlay')).toBe('true');
+  });
+
+  it('anchors an explicitly sized popup before painting, including when its height changes', () => {
+    const paintedTops: string[] = [];
+    const ReadPosition = () => {
+      useLayoutEffect(() => {
+        paintedTops.push(document.querySelector<HTMLElement>('#popup-container')!.style.top);
+      });
+      return <span>Footnote</span>;
+    };
+    const content = (height: number) => (
+      <Popup
+        width={360}
+        height={height}
+        position={{ dir: 'up', point: { x: 100, y: 200 } }}
+        trianglePosition={{ dir: 'up', point: { x: 200, y: 560 } }}
+      >
+        <ReadPosition />
+      </Popup>
+    );
+    const { rerender } = render(content(180));
+    rerender(content(320));
+    expect(paintedTops).toEqual(['380px', '240px']);
   });
 });

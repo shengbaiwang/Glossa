@@ -69,18 +69,15 @@ function createMockOptions(
 }
 
 describe('buildCommandRegistry', () => {
-  it('finds official module switches and opens their existing General settings rows', () => {
+  it('finds plugin switches and opens their dedicated settings menu', () => {
     const options = createMockOptions();
     const items = buildCommandRegistry(options);
     const found = searchCommands('模块', items);
-    for (const id of ['conversation', 'mindmap']) {
-      const item = found.find(({ item }) => item.id === `settings.general.module.${id}`)?.item;
+    for (const id of ['conversation', 'mindmap', 'pdfAutoContents']) {
+      const item = found.find(({ item }) => item.id === `settings.plugins.${id}`)?.item;
       expect(item).toBeDefined();
       item!.action();
-      expect(options.openSettingsPanel).toHaveBeenCalledWith(
-        'General',
-        `settings.general.module.${id}`,
-      );
+      expect(options.openSettingsPanel).toHaveBeenCalledWith('Plugins', `settings.plugins.${id}`);
     }
   });
 

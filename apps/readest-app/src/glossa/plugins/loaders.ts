@@ -4,3 +4,8 @@ export const pluginLoaders = {
   mindmap: () => import('@/glossa/ui/MindmapPanel'),
   pdfAutoContents: () => import('./pdfAutoContents'),
 };
+export const pluginPanelLoaders = {
+  conversation: pluginLoaders.conversation,
+  mindmap: pluginLoaders.mindmap,
+  pdfAutoContents: () => import('./PDFContentsPanel'),
+};

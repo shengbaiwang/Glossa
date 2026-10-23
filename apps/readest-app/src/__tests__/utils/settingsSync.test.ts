@@ -227,6 +227,21 @@ describe('broadcastGlobalSettings: readestCloud in the emitted payload', () => {
 });
 
 describe('official module window synchronization', () => {
+  test('syncs only explicit automatic import preferences, including false', async () => {
+    const settings = { ...local, pdfContentsOnImport: true };
+    await broadcastGlobalSettings(settings);
+    expect(vi.mocked(emit).mock.calls.at(-1)?.[1]).not.toHaveProperty('pdfContentsOnImport');
+    await broadcastGlobalSettings(settings, { pdfContentsOnImport: false });
+    const payload = vi.mocked(emit).mock.calls.at(-1)?.[1] as SettingsSyncPayload;
+    expect(mergeSyncedGlobalSettings(settings, payload).pdfContentsOnImport).toBe(false);
+    expect(mergeSyncedGlobalSettings(settings, globals).pdfContentsOnImport).toBe(true);
+    expect(
+      mergeSyncedGlobalSettings(settings, {
+        ...globals,
+        pdfContentsOnImport: 'true',
+      } as unknown as SettingsSyncPayload).pdfContentsOnImport,
+    ).toBe(true);
+  });
   test('only broadcasts explicit module changes and merges them without losing other flags', async () => {
     const settings = { ...local, officialModules: { conversation: false, mindmap: true } };
     await broadcastGlobalSettings(settings);

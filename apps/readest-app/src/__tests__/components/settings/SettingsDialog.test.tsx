@@ -43,6 +43,11 @@ vi.mock('@/components/settings/FontPanel', () => ({
   ),
 }));
 vi.mock('@/components/settings/ApplicationPanel', () => ({ default: () => null }));
+vi.mock('@/components/settings/PluginsPanel', () => ({
+  default: ({ initialSettings }: { initialSettings?: string }) => (
+    <p>Plugin controls {initialSettings}</p>
+  ),
+}));
 vi.mock('@/components/settings/SettingsScopeControl', () => ({ default: () => null }));
 vi.mock('@/components/settings/ReadingDisplayControls', () => ({ default: () => null }));
 vi.mock('@/components/settings/LayoutPanel', () => ({
@@ -73,8 +78,6 @@ const panels = [
   'Reading Controls',
   'Language',
   'Cloud Sync',
-  'Model Services',
-  'Conversation',
   'Custom Styles',
   'General',
   'Library Data',
@@ -128,9 +131,7 @@ it('opens restored and requested panels as application settings', () => {
   view.unmount();
   fixture.requestedPanel = 'Models';
   render(<SettingsDialog bookKey='synthetic-book' />);
-  expect(screen.getByRole('button', { name: 'Model Services' }).getAttribute('aria-pressed')).toBe(
-    'true',
-  );
+  expect(screen.getByRole('button', { name: 'Plugins' }).getAttribute('aria-pressed')).toBe('true');
   expect(screen.getByRole('dialog').classList.contains('glossa-application-settings')).toBe(true);
 });
 
@@ -149,6 +150,7 @@ it('limits Aa to reading appearance even when a global panel was previously sele
     expect(screen.getByRole('button', { name })).toBeTruthy();
   }
   for (const name of [
+    'Plugins',
     'Cloud Sync',
     'Model Services',
     'Conversation',
@@ -190,29 +192,47 @@ it('opens collapsed ancestors before revealing a searched reading control', asyn
   }
 });
 
-it('hides disabled feature settings and recovers an active or stale requested panel', async () => {
+it('routes old plugin settings shortcuts into Plugins even while disabled', () => {
   fixture.requestedPanel = 'Conversation';
+  fixture.settings.officialModules = { conversation: false, mindmap: false };
   const view = render(<SettingsDialog bookKey='' />);
-  expect(screen.getByRole('button', { name: 'Conversation' }).getAttribute('aria-pressed')).toBe(
-    'true',
-  );
-  fixture.requestedPanel = null;
-  fixture.settings.officialModules = { conversation: false };
-  view.rerender(<SettingsDialog bookKey='' />);
+  expect(screen.getByRole('button', { name: 'Plugins' }).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByText('Plugin controls conversation')).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Conversation' })).toBeNull();
-  expect(screen.getByRole('button', { name: 'Model Services' })).toBeTruthy();
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'General' }).getAttribute('aria-pressed')).toBe(
-      'true',
-    ),
-  );
-  fixture.settings.officialModules.mindmap = false;
+  expect(screen.queryByRole('button', { name: 'Model Services' })).toBeNull();
   fixture.requestedPanel = 'Models';
   view.rerender(<SettingsDialog bookKey='' />);
-  expect(screen.queryByRole('button', { name: 'Model Services' })).toBeNull();
-  expect(screen.getByRole('button', { name: 'General' }).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByText('Plugin controls models')).toBeTruthy();
   view.unmount();
+  fixture.requestedPanel = null;
   localStorage.setItem('lastApplicationSettingsPanel', 'Models');
   render(<SettingsDialog bookKey='' />);
-  expect(screen.getByRole('button', { name: 'General' }).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByRole('button', { name: 'Plugins' }).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByText('Plugin controls models')).toBeTruthy();
+});
+
+it('reveals nested PDF import settings when searched', () => {
+  fixture.activeSettingsItemId = 'settings.plugins.pdfContentsOnImport';
+  render(<SettingsDialog bookKey='' />);
+  expect(screen.getByRole('button', { name: 'Plugins' }).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByText('Plugin controls pdfAutoContents')).toBeTruthy();
+});
+
+it('provides a dedicated Plugins menu and restores it on the next open', () => {
+  const view = render(<SettingsDialog bookKey='' />);
+  fireEvent.click(screen.getByRole('button', { name: 'Plugins' }));
+  expect(screen.getByText('Plugin controls')).toBeTruthy();
+  expect(localStorage.getItem('lastApplicationSettingsPanel')).toBe('Plugins');
+  view.unmount();
+  render(<SettingsDialog bookKey='' />);
+  expect(screen.getByRole('button', { name: 'Plugins' }).getAttribute('aria-pressed')).toBe('true');
+});
+it.each([
+  'settings.plugins.pdfAutoContents',
+  'settings.general.module.pdfAutoContents',
+])('routes plugin search targets to the dedicated menu: %s', (id) => {
+  fixture.activeSettingsItemId = id;
+  render(<SettingsDialog bookKey='' />);
+  expect(screen.getByRole('button', { name: 'Plugins' }).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByText('Plugin controls')).toBeTruthy();
 });

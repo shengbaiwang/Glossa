@@ -154,7 +154,11 @@ const ModelSettingsPanel: React.FC = () => {
   };
 
   return (
-    <div className='my-4 w-full space-y-5' onKeyDown={(event) => event.stopPropagation()}>
+    <div
+      className='my-4 w-full space-y-5'
+      data-setting-id='settings.plugins.models'
+      onKeyDown={(event) => event.stopPropagation()}
+    >
       <div>
         <SectionTitle>{_('Model Service')}</SectionTitle>
         <p className='text-base-content/65 mt-2 text-sm leading-relaxed'>

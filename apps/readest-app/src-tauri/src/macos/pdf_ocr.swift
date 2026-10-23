@@ -19,14 +19,17 @@ struct PageText: Codable {
     let lines: [Word]
     let recognizer: String?
     let emptyReason: String?
-    init(index: Int, native: Bool, lines: [Word], recognizer: String? = nil, emptyReason: String? = nil) {
+    let alternatives: [[Word]]?
+    init(index: Int, native: Bool, lines: [Word], recognizer: String? = nil, emptyReason: String? = nil, alternatives: [[Word]]? = nil) {
         self.index = index; self.native = native; self.lines = lines
         self.recognizer = recognizer; self.emptyReason = emptyReason
+        self.alternatives = alternatives
     }
 }
 struct Progress: Codable { let completed: Int; let total: Int }
 let preciseRecognizer = "vision-multiscale-1"
 let contentsRecognizer = "vision-contents-1"
+let headingRecognizer = "vision-heading-1"
 
 struct RecognitionPass {
     let words: [Word]
@@ -60,11 +63,11 @@ struct RecognitionCheckpoint: Decodable {
     }
 }
 
-func needsRecognition(_ saved: RecognitionCheckpoint?, index: Int, detect: Bool, contents: Bool = false) -> Bool {
+func needsRecognition(_ saved: RecognitionCheckpoint?, index: Int, detect: Bool, contents: Bool = false, heading: Bool = false) -> Bool {
     guard let saved, saved.index == index else { return true }
     // Nonempty and native layers own durable text offsets. Never replace them.
     // A legacy empty layer has no text offsets and gets one versioned recovery.
-    return !detect && !saved.native && !saved.hasText && (saved.recognizer != (contents ? contentsRecognizer : preciseRecognizer) || saved.emptyReason == "no_word_boxes")
+    return !detect && !saved.native && !saved.hasText && (saved.recognizer != (heading ? headingRecognizer : contents ? contentsRecognizer : preciseRecognizer) || saved.emptyReason == "no_word_boxes")
 }
 
 func recognizeWithRecovery(index: Int, detect: Bool, maximumDimension: Double, contents: Bool = false,
@@ -101,7 +104,7 @@ func write<T: Encodable>(_ value: T, to url: URL) throws {
     try data.write(to: url, options: .atomic)
 }
 
-func recognize(_ page: PDFPage, index: Int, detect: Bool = false, contents: Bool = false) throws -> PageText {
+func recognize(_ page: PDFPage, index: Int, detect: Bool = false, contents: Bool = false, heading: Bool = false) throws -> PageText {
     // Preserve the native text layer, including its original CFI text offsets.
     if !(page.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         return PageText(index: index, native: true, lines: [])
@@ -109,25 +112,44 @@ func recognize(_ page: PDFPage, index: Int, detect: Bool = false, contents: Bool
     var bounds = page.bounds(for: .cropBox).size
     if abs(page.rotation) % 180 == 90 { bounds = NSSize(width: bounds.height, height: bounds.width) }
     guard bounds.width > 0, bounds.height > 0 else { throw NSError(domain: "page", code: 1) }
+    if heading {
+        // Upper interior excludes running heads and footers. Both precise scales
+        // remain independent; a successful first reading never hides the second.
+        let region = CGRect(x: 0.04, y: 0.10, width: 0.92, height: 0.65)
+        var passes: [[Word]] = []
+        for edge in [1600.0, 2400.0] {
+            passes.append(try recognizeAtScale(page, bounds: bounds, detect: false, longestEdge: edge, region: region).words)
+        }
+        return PageText(index: index, native: false, lines: passes[0], recognizer: headingRecognizer,
+                        emptyReason: passes.allSatisfy({ $0.isEmpty }) ? "no_observations" : nil,
+                        alternatives: Array(passes.dropFirst()))
+    }
     return try recognizeWithRecovery(index: index, detect: detect, maximumDimension: max(bounds.width, bounds.height), contents: contents) {
         try recognizeAtScale(page, bounds: bounds, detect: detect, longestEdge: $0)
     }
 }
 
-func recognizeAtScale(_ page: PDFPage, bounds: NSSize, detect: Bool, longestEdge: Double) throws -> RecognitionPass {
+func recognizeAtScale(_ page: PDFPage, bounds: NSSize, detect: Bool, longestEdge: Double, region: CGRect? = nil) throws -> RecognitionPass {
     let scale = min(3, longestEdge / max(bounds.width, bounds.height))
     let image = page.thumbnail(of: NSSize(width: bounds.width * scale, height: bounds.height * scale), for: .cropBox)
     var rect = NSRect(origin: .zero, size: image.size)
     guard let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else {
         throw NSError(domain: "render", code: 1)
     }
+    let crop = region ?? CGRect(x: 0, y: 0, width: 1, height: 1)
+    let pixels = CGRect(x: crop.minX * Double(cgImage.width), y: crop.minY * Double(cgImage.height),
+                        width: crop.width * Double(cgImage.width), height: crop.height * Double(cgImage.height)).integral
+    guard let input = region == nil ? cgImage : cgImage.cropping(to: pixels) else { throw NSError(domain: "crop", code: 1) }
+    // Use actual integral pixel bounds when mapping boxes back to the PDF.
+    let mapped = CGRect(x: pixels.minX / Double(cgImage.width), y: pixels.minY / Double(cgImage.height),
+                        width: pixels.width / Double(cgImage.width), height: pixels.height / Double(cgImage.height))
     let request = VNRecognizeTextRequest()
     request.recognitionLevel = .accurate
     request.usesLanguageCorrection = false
     let supported = try request.supportedRecognitionLanguages()
     request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US"].filter { supported.contains($0) }
     if #available(macOS 13, *) { request.automaticallyDetectsLanguage = true }
-    try VNImageRequestHandler(cgImage: cgImage, options: [:]).perform([request])
+    try VNImageRequestHandler(cgImage: input, options: [:]).perform([request])
     var words: [Word] = []
     // Vision supplies reading order; retain it across rendering, search and reopen.
     for observation in request.results ?? [] {
@@ -157,7 +179,8 @@ func recognizeAtScale(_ page: PDFPage, bounds: NSSize, detect: Bool, longestEdge
             guard width > 0, height > 0 else { continue }
             var value = String(text[begin..<cursor])
             if cursor < text.endIndex && text[cursor].isWhitespace { value += " " }
-            words.append(Word(text: value, x: x, y: y, width: width, height: height, endLine: false))
+            words.append(Word(text: value, x: mapped.minX + x * mapped.width, y: mapped.minY + y * mapped.height,
+                              width: width * mapped.width, height: height * mapped.height, endLine: false))
             guard words.count <= 10000 else { throw NSError(domain: "limit", code: 1) }
         }
         if words.count > start { words[words.count - 1].endLine = true }
@@ -318,7 +341,7 @@ func portablePDF(_ source: URL, cache: URL, request: URL, output: URL) throws {
 // Discovery reads every scanned page when relocation needs a unique heading.
 // Two isolated PDFKit documents keep that bounded scan inside the import budget;
 // reading/contents jobs remain serial and retain exactly the same recognizer.
-func recognizePages(source: URL, output: URL, indices: [Int], detect: Bool, contents: Bool) throws {
+func recognizePages(source: URL, output: URL, indices: [Int], detect: Bool, contents: Bool, heading: Bool = false) throws {
     let lock = NSLock()
     var cursor = 0
     var completed = 0
@@ -336,9 +359,9 @@ func recognizePages(source: URL, output: URL, indices: [Int], detect: Bool, cont
                 try autoreleasepool {
                     let target = output.appendingPathComponent("page-\(index).json")
                     let saved = (try? Data(contentsOf: target)).flatMap { try? JSONDecoder().decode(RecognitionCheckpoint.self, from: $0) }
-                    if needsRecognition(saved, index: index, detect: detect, contents: contents) {
+                    if needsRecognition(saved, index: index, detect: detect, contents: contents, heading: heading) {
                         guard let page = document.page(at: index) else { throw NSError(domain: "page", code: 1) }
-                        try write(recognize(page, index: index, detect: detect, contents: contents), to: target)
+                        try write(recognize(page, index: index, detect: detect, contents: contents, heading: heading), to: target)
                     }
                 }
                 lock.lock()
@@ -365,7 +388,8 @@ do {
     var args = CommandLine.arguments
     let detect = args.count > 1 && args[1] == "--detect"
     let contents = args.count > 1 && args[1] == "--contents"
-    if detect || contents { args.remove(at: 1) }
+    let heading = args.count > 1 && args[1] == "--heading"
+    if detect || contents || heading { args.remove(at: 1) }
     if args.count == 6 && args[1] == "--export" {
         try portablePDF(URL(fileURLWithPath: args[2]), cache: URL(fileURLWithPath: args[3]), request: URL(fileURLWithPath: args[4]), output: URL(fileURLWithPath: args[5]))
         exit(0)
@@ -377,7 +401,7 @@ do {
     guard !indices.isEmpty, indices.count <= 5000,
           Set(indices).count == indices.count,
           indices.allSatisfy({ $0 >= 0 && $0 < document.pageCount }) else { exit(2) }
-    try recognizePages(source: URL(fileURLWithPath: args[1]), output: output, indices: indices, detect: detect, contents: contents)
+    try recognizePages(source: URL(fileURLWithPath: args[1]), output: output, indices: indices, detect: detect, contents: contents, heading: heading)
 } catch {
     // Neither source text nor arbitrary native errors leave this worker.
     exit(1)

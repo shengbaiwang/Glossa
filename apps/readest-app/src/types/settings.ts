@@ -358,6 +358,8 @@ export interface HardwarePageTurnerSettings {
 export interface SystemSettings {
   /** Bundled feature availability. Missing flags keep the existing experience enabled. */
   officialModules?: import('@/glossa/plugins/registry').PluginPreferences;
+  /** Optional plugin behavior; missing values preserve automatic import preparation. */
+  pdfContentsOnImport?: boolean;
   version: number;
   migrationVersion: number;
   localBooksDir: string;

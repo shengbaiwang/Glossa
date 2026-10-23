@@ -1,6 +1,5 @@
 import clsx from 'clsx';
-import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { isOfficialModuleEnabled } from '@/glossa/modules/registry';
+import React, { useEffect, useRef, useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore, type SettingsDialogScope } from '@/store/settingsStore';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
@@ -20,8 +19,7 @@ import {
   Braces,
   X,
   Search,
-  Server,
-  MessageSquare,
+  Puzzle,
 } from '@/components/GlossaIcons';
 import { getDirFromUILanguage } from '@/utils/rtl';
 import { getCommandPaletteShortcut } from '@/services/environment';
@@ -36,14 +34,21 @@ import ControlPanel from './ControlPanel';
 import LangPanel from './LangPanel';
 import MiscPanel from './MiscPanel';
 import ApplicationPanel from './ApplicationPanel';
+import PluginsPanel, { type PluginSettingsTarget } from './PluginsPanel';
 import SettingsScopeControl from './SettingsScopeControl';
 import ReadingDisplayControls from './ReadingDisplayControls';
-const ModelSettingsPanel = lazy(() => import('@/glossa/ui/ModelSettingsPanel'));
-const PromptSettingsPanel = lazy(() => import('@/glossa/ui/PromptSettingsPanel'));
+
+// Preserve existing reader shortcuts and remembered categories after consolidation.
+const pluginTarget = (panel: string | null): PluginSettingsTarget | null => {
+  if (panel?.toLowerCase() === 'models') return 'models';
+  if (panel?.toLowerCase() === 'conversation') return 'conversation';
+  return null;
+};
 
 export type SettingsPanelType =
   | 'General'
   | 'Data'
+  | 'Plugins'
   | 'Font'
   | 'Layout'
   | 'Theme'
@@ -78,7 +83,6 @@ const SettingsDialog: React.FC<{
   const panelRef = useRef<HTMLDivElement | null>(null);
   const displayReset = useRef<(() => void) | null>(null);
   const {
-    settings,
     setFontPanelView,
     setSettingsDialogOpen,
     activeSettingsItemId,
@@ -97,11 +101,18 @@ const SettingsDialog: React.FC<{
   const scope = explicitScope ?? settingsDialogScope ?? 'application';
   const reading = scope === 'reading';
   const panelBookKey = reading ? bookKey : '';
-  const conversationEnabled = isOfficialModuleEnabled(settings, 'conversation');
-  const modelsEnabled = conversationEnabled || isOfficialModuleEnabled(settings, 'mindmap');
+  const [pluginSettingsTarget, setPluginSettingsTarget] = useState<PluginSettingsTarget | null>(
+    () =>
+      pluginTarget(
+        requestedPanel ??
+          localStorage.getItem('lastApplicationSettingsPanel') ??
+          localStorage.getItem('lastConfigPanel'),
+      ),
+  );
   const tabConfig: TabConfig[] = [
     { tab: 'General', icon: Settings2, label: _('General') },
     { tab: 'Data', icon: Database, label: _('Library Data') },
+    { tab: 'Plugins', icon: Puzzle, label: _('Plugins') },
     {
       tab: 'Font',
       icon: Type,
@@ -133,24 +144,12 @@ const SettingsDialog: React.FC<{
       label: _('Cloud Sync'),
     },
     {
-      tab: 'Models',
-      icon: Server,
-      label: _('Model Services'),
-    },
-    {
-      tab: 'Conversation',
-      icon: MessageSquare,
-      label: _('Conversation'),
-    },
-    {
       tab: 'Custom',
       icon: Braces,
       label: _('Custom Styles'),
     },
   ].filter((tab) => {
     if (reading) return ['Font', 'Layout', 'Theme'].includes(tab.tab);
-    if (tab.tab === 'Conversation') return conversationEnabled;
-    if (tab.tab === 'Models') return modelsEnabled;
     return true;
   }) as TabConfig[];
 
@@ -159,7 +158,7 @@ const SettingsDialog: React.FC<{
     : [
         {
           label: _('Application'),
-          tabs: ['General', 'Theme', 'Language', 'Integrations', 'Models', 'Conversation', 'Data'],
+          tabs: ['General', 'Theme', 'Language', 'Integrations', 'Plugins', 'Data'],
         },
         { label: _('Reading Defaults'), tabs: ['Font', 'Layout', 'Control', 'Custom'] },
       ];
@@ -170,13 +169,16 @@ const SettingsDialog: React.FC<{
     // a useEffect below so we never call a zustand setter during render
     // (would warn "Cannot update a component while rendering another").
     const requested = tabConfig.find(
-      (tab) => tab.tab.toLowerCase() === requestedPanel?.toLowerCase(),
+      (tab) =>
+        tab.tab.toLowerCase() ===
+        (pluginTarget(requestedPanel) ? 'plugins' : requestedPanel?.toLowerCase()),
     );
     if (requested) return requested.tab;
     const lastPanel =
       localStorage.getItem(
         reading ? 'lastReadingAppearancePanel' : 'lastApplicationSettingsPanel',
       ) ?? localStorage.getItem('lastConfigPanel');
+    if (!reading && pluginTarget(lastPanel)) return 'Plugins';
     if (lastPanel && tabConfig.some((tab) => tab.tab === lastPanel)) {
       return lastPanel as SettingsPanelType;
     }
@@ -187,9 +189,9 @@ const SettingsDialog: React.FC<{
     if (!tabConfig.some((tab) => tab.tab === activePanel)) {
       setActivePanel(reading ? 'Font' : 'General');
     }
-    // Available panels depend only on scope and the two feature flags.
+    // Available panels depend on the settings scope.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePanel, reading, conversationEnabled, modelsEnabled]);
+  }, [activePanel, reading]);
 
   // Clear the deep-link request after the initial render has consumed it,
   // so the next dialog open doesn't stick on the same panel. Effect runs
@@ -198,14 +200,20 @@ const SettingsDialog: React.FC<{
   useEffect(() => {
     if (!requestedPanel) return;
     const requested = tabConfig.find(
-      (tab) => tab.tab.toLowerCase() === requestedPanel.toLowerCase(),
+      (tab) =>
+        tab.tab.toLowerCase() ===
+        (pluginTarget(requestedPanel) ? 'plugins' : requestedPanel.toLowerCase()),
     );
-    if (requested) setActivePanel(requested.tab);
+    if (requested) {
+      setPluginSettingsTarget(pluginTarget(requestedPanel));
+      setActivePanel(requested.tab);
+    }
     setRequestedPanel(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedPanel, reading, setRequestedPanel]);
 
   const handleSetActivePanel = (tab: SettingsPanelType) => {
+    setPluginSettingsTarget(null);
     setActivePanel(tab);
     setFontPanelView('main-fonts');
     localStorage.setItem(
@@ -231,6 +239,7 @@ const SettingsDialog: React.FC<{
     Record<SettingsPanelType, (() => void) | null>
   >({
     General: null,
+    Plugins: null,
     Data: null,
     Font: null,
     Layout: null,
@@ -264,7 +273,9 @@ const SettingsDialog: React.FC<{
     if (!activeSettingsItemId) return;
 
     // parse panel from item id (format: settings.panel.itemName)
-    const parts = activeSettingsItemId.split('.');
+    // Existing saved search targets keep reaching the relocated plugin switch.
+    const settingId = activeSettingsItemId.replace('settings.general.module.', 'settings.plugins.');
+    const parts = settingId.split('.');
     if (parts.length >= 2) {
       const panelMap: Record<string, SettingsPanelType> = {
         font: 'Font',
@@ -272,15 +283,27 @@ const SettingsDialog: React.FC<{
         theme: 'Theme',
         color: 'Theme',
         general: 'General',
+        plugins: 'Plugins',
         data: 'Data',
-        models: 'Models',
+        models: 'Plugins',
         control: 'Control',
         language: 'Language',
         integrations: 'Integrations',
-        conversation: 'Conversation',
+        conversation: 'Plugins',
         custom: 'Custom',
       };
       const panelKey = parts[1]?.toLowerCase();
+      if (!reading) {
+        setPluginSettingsTarget(
+          settingId === 'settings.plugins.pdfContentsOnImport'
+            ? 'pdfAutoContents'
+            : panelKey === 'models' || settingId === 'settings.plugins.models'
+              ? 'models'
+              : panelKey === 'conversation' || settingId === 'settings.plugins.prompts'
+                ? 'conversation'
+                : null,
+        );
+      }
       const targetPanel = [
         'settings.control.checkUpdates',
         'settings.control.nightlyChannel',
@@ -299,9 +322,7 @@ const SettingsDialog: React.FC<{
 
     // scroll to item after panel renders
     const timeoutId = setTimeout(() => {
-      const element = panelRef.current?.querySelector(
-        `[data-setting-id="${activeSettingsItemId}"]`,
-      );
+      const element = panelRef.current?.querySelector(`[data-setting-id="${settingId}"]`);
       if (element) {
         let ancestor = element.parentElement;
         while (ancestor && ancestor !== panelRef.current) {
@@ -497,6 +518,12 @@ const SettingsDialog: React.FC<{
           {(activePanel === 'General' || activePanel === 'Data') && (
             <ApplicationPanel section={activePanel} />
           )}
+          {activePanel === 'Plugins' && (
+            <PluginsPanel
+              key={pluginSettingsTarget ?? 'grid'}
+              initialSettings={pluginSettingsTarget}
+            />
+          )}
           {activePanel === 'Font' && (
             <FontPanel
               key={panelBookKey}
@@ -547,16 +574,6 @@ const SettingsDialog: React.FC<{
           )}
 
           {activePanel === 'Integrations' && <IntegrationsPanel onSyncLibrary={onSyncLibrary} />}
-          {activePanel === 'Models' && (
-            <Suspense fallback={null}>
-              <ModelSettingsPanel />
-            </Suspense>
-          )}
-          {activePanel === 'Conversation' && (
-            <Suspense fallback={null}>
-              <PromptSettingsPanel />
-            </Suspense>
-          )}
           {activePanel === 'Custom' && (
             <MiscPanel
               key={panelBookKey}

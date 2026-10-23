@@ -2,7 +2,7 @@ import { BookFormat } from '@/types/book';
 import { Collection, Contributor, Identifier, LanguageMap } from '@/utils/book';
 import { configureZip } from '@/utils/zip';
 import * as epubcfi from 'foliate-js/epubcfi.js';
-import type { OCRPage, PDFCache } from '@/services/pdfEnhancement';
+import type { OCRPage, PDFCache, PDFOutlineEntry } from '@/services/pdfEnhancement';
 
 export const CFI = epubcfi;
 
@@ -96,6 +96,14 @@ export type BookMetadata = {
   feedUrl?: string;
 };
 
+export interface PDFContentsLine {
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface BookDoc {
   getPDFAnnotationRects?(
     cfi: string,
@@ -108,6 +116,8 @@ export interface BookDoc {
   pdfCache?: PDFCache;
   getPDFText?(index: number): Promise<string>;
   getPDFContentsLines?(index: number, allRows?: boolean): Promise<string[]>;
+  getPDFContentsLayout?(index: number): Promise<PDFContentsLine[]>;
+  getPDFContentsLinks?(index: number): Promise<PDFOutlineEntry[] | null>;
   metadata: BookMetadata;
   rendition: {
     layout?: 'pre-paginated' | 'reflowable';

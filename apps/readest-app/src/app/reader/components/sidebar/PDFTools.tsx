@@ -5,7 +5,10 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { Download, Type } from '@/components/GlossaIcons';
+import { Download, Type, ListTree } from '@/components/GlossaIcons';
+import { useNotebookStore } from '@/store/notebookStore';
+import { useSidebarStore } from '@/store/sidebarStore';
+import { isPluginEnabled } from '@/glossa/plugins/registry';
 import MenuItem from '@/components/MenuItem';
 import {
   cancelPDFExport,
@@ -20,6 +23,7 @@ import { preparePDFAnnotations } from '@/services/pdfWorkspace';
 export default function PDFTools({ bookKey, bookDoc }: { bookKey: string; bookDoc: BookDoc }) {
   const _ = useTranslation();
   const { appService, envConfig } = useEnv();
+  const { settings } = useSettingsStore();
   const [working, setWorking] = useState<'ocr' | 'export' | null>(null);
   const [status, setStatus] = useState<PDFOCRStatus | null>(null);
   const [error, setError] = useState('');
@@ -116,6 +120,18 @@ export default function PDFTools({ bookKey, bookDoc }: { bookKey: string; bookDo
   };
   return (
     <>
+      {isPluginEnabled(settings, 'pdfAutoContents') && (
+        <MenuItem
+          label={_('Contents generator')}
+          Icon={<ListTree size={16} />}
+          onClick={() => {
+            useSidebarStore.getState().setSideBarBookKey(bookKey);
+            const notebook = useNotebookStore.getState();
+            notebook.setNotebookActiveTab('pdfAutoContents');
+            notebook.setNotebookVisible(true);
+          }}
+        />
+      )}
       <MenuItem
         label={_('Recognize text')}
         Icon={<Type size={16} />}

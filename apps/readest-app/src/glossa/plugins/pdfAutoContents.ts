@@ -12,39 +12,48 @@ export async function prepareContents(
   book: Book,
   document: BookDoc | undefined,
   signal: AbortSignal,
-): Promise<void> {
-  if (book.format !== 'PDF' || signal.aborted) return;
+  options: {
+    regenerate?: boolean;
+    notify?: boolean;
+    onReport?: (report: PDFContentsReport) => void;
+  } = {},
+): Promise<{ result: string; report?: PDFContentsReport }> {
+  if (book.format !== 'PDF' || signal.aborted) return { result: 'cancelled' };
   const { supportsLocalPDF, openPDFCache } = await import('@/services/pdfEnhancement');
-  if (signal.aborted || !supportsLocalPDF()) return;
+  if (signal.aborted || !supportsLocalPDF()) return { result: 'unavailable' };
   let owned: BookDoc | undefined;
   let file: ClosableFile | undefined;
   let report: PDFContentsReport | undefined;
   let result = 'unavailable';
   try {
     const source = await host.resolveNativeBookFilePath(book);
-    if (signal.aborted || !source) return;
+    if (signal.aborted || !source) return { result: signal.aborted ? 'cancelled' : 'unavailable' };
     if (!document) {
       const cache = await openPDFCache(source);
-      if (signal.aborted) return;
+      if (signal.aborted) return { result: 'cancelled' };
       if (
         cache &&
         ((!cache.generator && (cache.outline !== null || cache.revision > 0)) ||
-          (cache.generator === 'glossa-contents-3' && cache.outline?.length))
+          (!options.regenerate && cache.generator === 'glossa-contents-3' && cache.outline?.length))
       )
-        return;
+        return { result: 'preserved' };
       file = (await host.loadBookContent(book)).file as ClosableFile;
-      if (signal.aborted) return;
+      if (signal.aborted) return { result: 'cancelled' };
       const { DocumentLoader } = await import('@/libs/document');
-      if (signal.aborted) return;
+      if (signal.aborted) return { result: 'cancelled' };
       owned = (await new DocumentLoader(file).open()).book;
       document = owned;
     }
-    if (signal.aborted || !document) return;
+    if (signal.aborted || !document) return { result: 'cancelled' };
     const { preparePDFContents } = await import('@/services/pdfAutoContents');
-    if (signal.aborted) return;
-    result = await preparePDFContents(source, document, signal, (value) => {
+    if (signal.aborted) return { result: 'cancelled' };
+    const receive = (value: PDFContentsReport) => {
       report = value;
-    });
+      options.onReport?.(value);
+    };
+    result = options.regenerate
+      ? await preparePDFContents(source, document, signal, receive, { regenerate: true })
+      : await preparePDFContents(source, document, signal, receive);
   } catch {
     // The preparation report holds only safe phase/error codes. Preserve the
     // imported book and all native checkpoints for the next explicit retry.
@@ -56,9 +65,9 @@ export async function prepareContents(
       await file?.close?.();
     } catch {}
   }
-  if (!signal.aborted && result === 'unavailable') {
+  if (options.notify !== false && !signal.aborted && result === 'unavailable') {
     const { default: i18n } = await import('i18next');
-    if (signal.aborted) return;
+    if (signal.aborted) return { result: 'cancelled', report };
     const code = report?.code;
     const message =
       code === 'pdf_contents_timeout' || code === 'pdf_contents_ocr_limit'
@@ -75,4 +84,5 @@ export async function prepareContents(
       message: `${book.title}: ${i18n.t(message, { defaultValue: message })}`,
     });
   }
+  return { result: signal.aborted ? 'cancelled' : result, report };
 }

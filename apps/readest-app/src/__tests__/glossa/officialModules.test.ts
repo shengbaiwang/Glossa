@@ -25,4 +25,11 @@ describe('bundled official modules', () => {
     expect(resolveNotebookTab(none, 'notes')).toBe('notes');
     expect(isOfficialModuleEnabled(none, 'mindmap')).toBe(false);
   });
+  it('resolves plugin panels for the current format without selecting an incompatible panel', () => {
+    expect(resolveNotebookTab({}, 'conversation', 'PDF')).toBe('pdfAutoContents');
+    expect(resolveNotebookTab({}, 'pdfAutoContents', 'EPUB')).toBe('conversation');
+    expect(
+      resolveNotebookTab({ officialModules: { pdfAutoContents: false } }, 'pdfAutoContents', 'PDF'),
+    ).toBe('notes');
+  });
 });

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { SystemSettings } from '@/types/settings';
 import { useSettingsStore } from '@/store/settingsStore';
 import OfficialModuleSettings from '@/components/settings/OfficialModuleSettings';
+import PDFContentsSettings from '@/components/settings/PDFContentsSettings';
 import { broadcastGlobalSettings } from '@/utils/settingsSync';
 
 const f = vi.hoisted(() => ({ save: vi.fn() }));
@@ -22,7 +23,7 @@ afterEach(() => {
 });
 
 it('defaults to enabled and saves a module switch without modifying unrelated preferences', async () => {
-  render(<OfficialModuleSettings />);
+  render(<OfficialModuleSettings onOpenSettings={vi.fn()} />);
   expect((screen.getByRole('checkbox', { name: 'Conversation' }) as HTMLInputElement).checked).toBe(
     true,
   );
@@ -50,7 +51,7 @@ it('restores a failed switch, preserves concurrent edits and allows retry', asyn
         reject = fail;
       }),
   );
-  render(<OfficialModuleSettings />);
+  render(<OfficialModuleSettings onOpenSettings={vi.fn()} />);
   fireEvent.click(screen.getByRole('checkbox', { name: 'Conversation' }));
   expect((screen.getByRole('checkbox', { name: 'Mind map' }) as HTMLInputElement).disabled).toBe(
     true,
@@ -77,8 +78,31 @@ it('restores a failed switch, preserves concurrent edits and allows retry', asyn
 });
 
 it('offers PDF automatic contents as an independent bundled plugin', async () => {
-  render(<OfficialModuleSettings />);
+  render(<OfficialModuleSettings onOpenSettings={vi.fn()} />);
   fireEvent.click(screen.getByRole('checkbox', { name: 'PDF automatic contents' }));
   await waitFor(() => expect(f.save).toHaveBeenCalledOnce());
   expect(useSettingsStore.getState().settings.officialModules).toEqual({ pdfAutoContents: false });
+});
+
+it('makes automatic import preparation optional without disabling the manual plugin', async () => {
+  render(<PDFContentsSettings />);
+  const control = screen.getByRole('checkbox', {
+    name: 'Generate contents on import',
+  }) as HTMLInputElement;
+  expect(control.checked).toBe(true);
+  fireEvent.click(control);
+  await waitFor(() => expect(f.save).toHaveBeenCalledOnce());
+  expect(useSettingsStore.getState().settings.pdfContentsOnImport).toBe(false);
+  expect(useSettingsStore.getState().settings.officialModules).toBeUndefined();
+  expect(broadcastGlobalSettings).toHaveBeenCalledWith(expect.anything(), {
+    pdfContentsOnImport: false,
+  });
+});
+it('restores the automatic import preference on save failure', async () => {
+  f.save.mockRejectedValueOnce(new Error('disk full'));
+  render(<PDFContentsSettings />);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Generate contents on import' }));
+  await screen.findByRole('alert');
+  expect(useSettingsStore.getState().settings.pdfContentsOnImport).toBeUndefined();
+  expect(broadcastGlobalSettings).not.toHaveBeenCalled();
 });

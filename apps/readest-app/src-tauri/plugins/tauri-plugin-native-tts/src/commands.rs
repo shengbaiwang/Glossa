@@ -101,6 +101,8 @@ pub(crate) async fn playout_control<R: Runtime>(
 }
 
 #[command]
-pub(crate) async fn playout_position<R: Runtime>(app: AppHandle<R>) -> Result<PlayoutPositionResponse> {
+pub(crate) async fn playout_position<R: Runtime>(
+    app: AppHandle<R>,
+) -> Result<PlayoutPositionResponse> {
     app.native_tts().playout_position()
 }

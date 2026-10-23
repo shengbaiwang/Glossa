@@ -73,7 +73,6 @@ const Popup = ({
   onDismiss?: () => void;
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [adjustedPosition, setAdjustedPosition] = useState(position);
   const [childrenHeight, setChildrenHeight] = useState(height || minHeight || 0);
 
   useKeyDownActions({ onCancel: onDismiss, elementRef: containerRef, enabled: isOpen });
@@ -112,28 +111,24 @@ const Popup = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (!containerRef.current) return;
-    if (!position || !trianglePosition || position.dir !== 'up') {
-      setAdjustedPosition(position);
-      return;
-    }
-    const containerHeight = childrenHeight || containerRef.current.offsetHeight;
-    const newPosition = {
-      ...position,
-      point: {
-        ...position.point,
-        y: Math.max(popupPadding, trianglePosition.point.y - containerHeight),
-      },
-    };
-    setAdjustedPosition(newPosition);
-  }, [position, trianglePosition, popupPadding, childrenHeight]);
+  // Explicit sizes and coordinates must land in the same paint. An effect
+  // briefly anchored resized footnotes using the previous note's height.
+  const popupHeight = height ?? childrenHeight;
+  const adjustedPosition =
+    position && trianglePosition && position.dir === 'up'
+      ? {
+          ...position,
+          point: {
+            ...position.point,
+            y: Math.max(popupPadding, trianglePosition.point.y - popupHeight),
+          },
+        }
+      : position;
 
   const triangleSize = 7;
   const outerTriangleStyles = getTriangleStyles(trianglePosition, triangleSize, 0);
   const innerTriangleStyles = getTriangleStyles(trianglePosition, triangleSize, -1);
 
-  const popupHeight = height ?? childrenHeight;
   const triangleHidden = !!(
     adjustedPosition &&
     trianglePosition &&

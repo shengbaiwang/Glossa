@@ -358,7 +358,7 @@ const FoliateViewer: React.FC<{
         applyFixedlayoutStyles(detail.doc, viewSettings, themeCode);
       }
 
-      applyImageStyle(detail.doc);
+      applyImageStyle(detail.doc, !!bookData.isFixedLayout);
       if (bookData.book?.format === 'EPUB' && !bookData.isFixedLayout) {
         adaptInlineGlyphImages(detail.doc);
       }

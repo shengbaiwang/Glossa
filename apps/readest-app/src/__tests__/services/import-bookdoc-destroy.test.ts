@@ -291,6 +291,19 @@ describe('importBook BookDoc lifecycle', () => {
     }
   });
 
+  it('skips import preparation when the plugin import setting is off', async () => {
+    pdf.supported = true;
+    useSettingsStore.setState({ settings: { pdfContentsOnImport: false } as SystemSettings });
+    const resolve = vi.spyOn(service, 'resolveNativeBookFilePath');
+    try {
+      await service.prepareBookContents({ format: 'PDF' } as Book);
+      expect(resolve).not.toHaveBeenCalled();
+      expect(pdf.prepare).not.toHaveBeenCalled();
+    } finally {
+      useSettingsStore.setState({ settings: {} as SystemSettings });
+    }
+  });
+
   it('prepares the saved PDF automatically before releasing its parser and returning the import', async () => {
     const document = setupMockBookDoc();
     pdf.supported = true;

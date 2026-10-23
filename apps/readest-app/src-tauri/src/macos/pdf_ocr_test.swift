@@ -67,6 +67,9 @@ let contentsBlank = try recognizeWithRecovery(index: 4, detect: false, maximumDi
 assert(contentsCalls == [1200, 3200] && contentsBlank.recognizer == contentsRecognizer)
 assert(!needsRecognition(RecognitionCheckpoint(contentsBlank), index: 4, detect: false, contents: true))
 assert(needsRecognition(RecognitionCheckpoint(blank), index: 4, detect: false, contents: true))
+let headingBlank = PageText(index: 4, native: false, lines: [], recognizer: headingRecognizer, emptyReason: "no_observations", alternatives: [[]])
+assert(!needsRecognition(RecognitionCheckpoint(headingBlank), index: 4, detect: false, heading: true))
+assert(needsRecognition(RecognitionCheckpoint(blank), index: 4, detect: false, heading: true))
 enum TestError: Error { case stopped }
 var failedCalls = 0
 do {

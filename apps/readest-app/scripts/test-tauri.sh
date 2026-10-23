@@ -38,7 +38,7 @@ choose_dev_port() {
 stop_process_tree() {
   local pid="$1"
   local child
-  [[ -n "$pid" ]] || return
+  [[ -n "$pid" ]] || return 0
   for child in $(pgrep -P "$pid" 2>/dev/null || true); do
     stop_process_tree "$child"
   done
@@ -52,6 +52,7 @@ cleanup() {
   [[ -n "$DEV_PID" ]] && wait "$DEV_PID" 2>/dev/null || true
   [[ -n "$DEV_LOG" ]] && rm -f "$DEV_LOG"
   [[ -n "$TAURI_LOG" ]] && rm -f "$TAURI_LOG"
+  return 0
 }
 
 show_log() {
@@ -104,8 +105,16 @@ if port_in_use "$WEBDRIVER_PORT"; then
   exit 1
 fi
 
-DEV_PORT=$(choose_dev_port)
-DEV_URL="http://127.0.0.1:${DEV_PORT}"
+DEV_URL="${GLOSSA_TAURI_TEST_DEV_URL:-}"
+if [[ -n "$DEV_URL" ]]; then
+  if [[ ! "$DEV_URL" =~ ^http://(127\.0\.0\.1|localhost):[0-9]+/?$ ]]; then
+    echo 'ERROR: GLOSSA_TAURI_TEST_DEV_URL must name a local HTTP server.' >&2
+    exit 1
+  fi
+else
+  DEV_PORT=$(choose_dev_port)
+  DEV_URL="http://127.0.0.1:${DEV_PORT}"
+fi
 DEV_LOG=$(mktemp -t readest-tauri-next.XXXXXX.log)
 TAURI_LOG=$(mktemp -t readest-tauri-app.XXXXXX.log)
 
@@ -114,10 +123,15 @@ if [[ ! -x "$DOTENV" || ! -x "$NEXT" || ! -x "$TAURI" ]]; then
   exit 1
 fi
 
-echo "Starting Next.js dev server at ${DEV_URL}..."
-"$DOTENV" -e .env.tauri -- "$NEXT" dev --hostname 127.0.0.1 --port "$DEV_PORT" >"$DEV_LOG" 2>&1 &
-DEV_PID=$!
-wait_for_http_response "$DEV_URL" "$DEV_PID" 'Next.js dev server' "$DEV_LOG"
+if [[ -n "${GLOSSA_TAURI_TEST_DEV_URL:-}" ]]; then
+  echo "Using existing local frontend at ${DEV_URL}; its process is not owned by this test."
+  curl --silent --show-error --max-time 10 --output /dev/null "$DEV_URL"
+else
+  echo "Starting Next.js dev server at ${DEV_URL}..."
+  "$DOTENV" -e .env.tauri -- "$NEXT" dev --hostname 127.0.0.1 --port "$DEV_PORT" >"$DEV_LOG" 2>&1 &
+  DEV_PID=$!
+  wait_for_http_response "$DEV_URL" "$DEV_PID" 'Next.js dev server' "$DEV_LOG"
+fi
 
 echo 'Starting Tauri app with WebDriver (no duplicate dev server)...'
 TAURI_CONFIG=$(printf '{"identifier":"com.bilingify.readest.webdriver-test","build":{"beforeDevCommand":"","devUrl":"%s"},"app":{"security":{"capabilities":["default","desktop-capability","webdriver-remote"]}}}' "$DEV_URL")

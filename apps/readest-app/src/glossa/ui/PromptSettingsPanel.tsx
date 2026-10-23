@@ -77,7 +77,11 @@ const PromptSettingsPanel: React.FC = () => {
   };
 
   return (
-    <div className='my-4 w-full space-y-5' onKeyDown={(event) => event.stopPropagation()}>
+    <div
+      className='my-4 w-full space-y-5'
+      data-setting-id='settings.plugins.prompts'
+      onKeyDown={(event) => event.stopPropagation()}
+    >
       <SectionTitle>{_('Prompts')}</SectionTitle>
 
       {state.prompts.length > 0 && (

@@ -33,7 +33,6 @@ import { setCacheManagerDialogVisible } from '@/app/library/components/CacheMana
 import { setMigrateDataDirDialogVisible } from '@/app/library/components/MigrateDataWindow';
 import { BoxedList, NavigationRow, SettingsSwitchRow } from './primitives';
 import FolderImportSettings from './FolderImportSettings';
-import OfficialModuleSettings from './OfficialModuleSettings';
 
 const ApplicationPanel: React.FC<{ section: 'General' | 'Data' }> = ({ section }) => {
   const _ = useTranslation();
@@ -152,7 +151,6 @@ const ApplicationPanel: React.FC<{ section: 'General' | 'Data' }> = ({ section }
           }}
         />
       </BoxedList>
-      <OfficialModuleSettings />
       {isTauriAppPlatform() && (
         <BoxedList title={_('Startup')}>
           <SettingsSwitchRow

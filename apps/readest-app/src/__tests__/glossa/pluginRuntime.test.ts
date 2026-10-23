@@ -66,3 +66,26 @@ it('releases failed activations and permits a later explicit retry', async () =>
   await runPluginTask('pdfAutoContents', retry);
   expect(retry).toHaveBeenCalledOnce();
 });
+it('links panel cancellation and ignores a previously cancelled activation', async () => {
+  setEnabled(true);
+  const controller = new AbortController();
+  let finish!: () => void;
+  let signal!: AbortSignal;
+  const run = runPluginTask(
+    'pdfAutoContents',
+    async (value) => {
+      signal = value;
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+    },
+    controller.signal,
+  );
+  controller.abort();
+  expect(signal.aborted).toBe(true);
+  finish();
+  await run;
+  const task = vi.fn();
+  await runPluginTask('pdfAutoContents', task, controller.signal);
+  expect(task).not.toHaveBeenCalled();
+});

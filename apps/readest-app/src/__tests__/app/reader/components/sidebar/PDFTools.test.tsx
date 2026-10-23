@@ -2,6 +2,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import PDFTools from '@/app/reader/components/sidebar/PDFTools';
 import type { BookDoc } from '@/libs/document';
+import { useNotebookStore } from '@/store/notebookStore';
+import { useSidebarStore } from '@/store/sidebarStore';
 
 const mocks = vi.hoisted(() => ({
   cache: { id: 'a'.repeat(32), pages: [] as number[], outline: null, revision: 0 },
@@ -16,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   recreate: vi.fn(),
   setConfig: vi.fn(),
   saveConfig: vi.fn(),
+  settings: { officialModules: { pdfAutoContents: true } },
   appService: { resolveNativeBookFilePath: vi.fn(async () => '/original.pdf') },
 }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ save: mocks.destination }));
@@ -42,7 +45,9 @@ vi.mock('@/store/readerStore', () => ({
   },
 }));
 vi.mock('@/store/settingsStore', () => ({
-  useSettingsStore: { getState: () => ({ settings: {} }) },
+  useSettingsStore: Object.assign(() => ({ settings: mocks.settings }), {
+    getState: () => ({ settings: mocks.settings }),
+  }),
 }));
 vi.mock('@/services/pdfEnhancement', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/pdfEnhancement')>()),
@@ -68,6 +73,7 @@ const doc = {
 } as unknown as BookDoc;
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.settings.officialModules.pdfAutoContents = true;
   mocks.exportCopy.mockReset().mockResolvedValue(undefined);
   mocks.destination.mockReset().mockResolvedValue('/reading-copy.pdf');
   mocks.read.mockReset().mockResolvedValue(null);
@@ -207,4 +213,25 @@ it('offers optional actions without a repair form, saved-pages panel or apply st
   expect(screen.queryByRole('spinbutton')).toBeNull();
   expect(screen.queryByText('Saved pages')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Apply recognized text' })).toBeNull();
+});
+
+it('opens the enabled contents plugin in the existing right sidebar without starting work', async () => {
+  useNotebookStore.setState({ isNotebookVisible: false, notebookActiveTab: 'notes' });
+  await mount();
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Contents generator' }));
+  expect(useNotebookStore.getState()).toMatchObject({
+    isNotebookVisible: true,
+    notebookActiveTab: 'pdfAutoContents',
+  });
+  expect(useSidebarStore.getState().sideBarBookKey).toBe('a-view');
+  expect(mocks.start).not.toHaveBeenCalled();
+  expect(mocks.save).not.toHaveBeenCalled();
+});
+
+it('hides the contents plugin command when disabled while retaining core PDF actions', async () => {
+  mocks.settings.officialModules.pdfAutoContents = false;
+  await mount();
+  expect(screen.queryByRole('menuitem', { name: 'Contents generator' })).toBeNull();
+  expect(screen.getByRole('menuitem', { name: 'Recognize text' })).toBeTruthy();
+  expect(screen.getByRole('menuitem', { name: 'Export reading copy' })).toBeTruthy();
 });

@@ -12,6 +12,39 @@ import {
 } from '@/services/pdfEnhancement';
 
 describe('local PDF enhancements', () => {
+  it.each([
+    0.0197, 0.020000000000000018,
+  ])('tolerates contents size boundary %s, without admitting genuinely tiny text', (height) => {
+    const page: OCRPage = {
+      index: 0,
+      native: false,
+      lines: [
+        { text: '辑六 隋唐系列', x: 0.1, y: 0.15, width: 0.6, height, endLine: true },
+        {
+          text: '樱子 .... 223',
+          x: 0.1,
+          y: 0.3,
+          width: 0.6,
+          height: 0.025000000000000022,
+          endLine: true,
+        },
+        {
+          text: '南阳关前 .... 225',
+          x: 0.1,
+          y: 0.4,
+          width: 0.6,
+          height: 0.025000000000000022,
+          endLine: true,
+        },
+        { text: 'Tiny footer', x: 0.1, y: 0.9, width: 0.6, height: 0.006, endLine: true },
+      ],
+    };
+    expect(OCRContentsLines(page, true)).toEqual([
+      '辑六 隋唐系列',
+      '樱子 .... 223',
+      '南阳关前 .... 225',
+    ]);
+  });
   it('keeps observed text without character boxes recoverable rather than recording a blank page', () => {
     const page = parseOCRPage(
       {

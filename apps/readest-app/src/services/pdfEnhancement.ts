@@ -18,10 +18,14 @@ const pageSchema = z
     index: z.number().int().min(0).max(4999),
     native: z.boolean(),
     lines: z.array(lineSchema).max(10000),
+    alternatives: z.array(z.array(lineSchema).max(10000)).max(2).optional(),
     recognizer: z.string().max(80).optional(),
     emptyReason: z.enum(['no_observations', 'no_word_boxes']).optional(),
   })
-  .refine((p) => p.lines.reduce((n, l) => n + l.text.length, 0) <= 100000);
+  .refine(
+    (p) =>
+      [p.lines, ...(p.alternatives ?? [])].flat().reduce((n, l) => n + l.text.length, 0) <= 100000,
+  );
 export type OCRPage = z.infer<typeof pageSchema>;
 // Empty legacy results own no text offsets. Nonempty/native layers are durable,
 // and a current empty checkpoint proves its bounded recovery already finished.
@@ -78,6 +82,7 @@ export const readOCRPage = async (
   index: number,
   detect = false,
   contents = false,
+  heading = false,
 ) =>
   parseOCRPage(
     await call('pdf_read_ocr_page', {
@@ -85,6 +90,7 @@ export const readOCRPage = async (
       index,
       ...(detect ? { detect } : {}),
       ...(contents ? { contents } : {}),
+      ...(heading ? { heading } : {}),
     }),
     index,
   );
@@ -94,6 +100,7 @@ export const startPDFOCR = async (
   pages: number[],
   detect = false,
   contents = false,
+  heading = false,
 ) =>
   statusSchema.parse(
     await call('pdf_start_ocr', {
@@ -102,6 +109,7 @@ export const startPDFOCR = async (
       pages,
       ...(detect ? { detect } : {}),
       ...(contents ? { contents } : {}),
+      ...(heading ? { heading } : {}),
     }),
   );
 export const getPDFOCRStatus = async (cacheId: string): Promise<PDFOCRStatus | null> => {
@@ -138,8 +146,12 @@ export const waitForPDFOCR = async (
 export const OCRPageText = (page: OCRPage | null) =>
   page?.lines.map((line) => line.text + (line.endLine ? '\n' : '')).join('') ?? '';
 
+/** Tolerate normalized box measurement and native JSON rounding differences. */
+export const isPDFSizeAtLeast = (size: number, minimum: number) =>
+  size + Math.max(0.000001, Math.abs(minimum) * 0.02) >= minimum;
+
 /** Reconstruct horizontal TOC rows without changing the persisted reading/CFI order. */
-export function OCRContentsLines(page: OCRPage, allRows = false): string[] {
+export function OCRContentsLines(page: OCRPage, allRows: boolean | 'unfiltered' = false): string[] {
   type Fragment = {
     text: string;
     x: number;
@@ -230,8 +242,14 @@ export function OCRContentsLines(page: OCRPage, allRows = false): string[] {
     .map((row) => row.height)
     .sort((a, b) => a - b);
   const minimum = (sizes[Math.floor(sizes.length / 2)] ?? 0) * 0.8;
+  // Normalized boxes cross Swift/Rust/JS JSON boundaries. Allow 2% of the
+  // threshold for measurement/rounding, while still excluding tiny decoration.
   return prepared
-    .filter((row) => (allRows ? row.height >= minimum : row.contents))
+    .filter(
+      (row) =>
+        allRows === 'unfiltered' ||
+        (allRows ? row.contents || isPDFSizeAtLeast(row.height, minimum) : row.contents),
+    )
     .map((row) => row.text);
 }
 

@@ -30,6 +30,7 @@ import type { SelectedFile } from '@/hooks/useFileSelector';
 import type { BookDoc } from '@/libs/document';
 import { pluginLoaders } from '@/glossa/plugins/loaders';
 import { runPluginTask } from '@/glossa/plugins/runtime';
+import { useSettingsStore } from '@/store/settingsStore';
 
 import * as BookSvc from './bookService';
 import * as CloudSvc from './cloudService';
@@ -338,7 +339,8 @@ export abstract class BaseAppService implements AppService {
   }
 
   async prepareBookContents(book: Book, document?: BookDoc): Promise<void> {
-    if (book.format !== 'PDF') return;
+    if (book.format !== 'PDF' || useSettingsStore.getState().settings.pdfContentsOnImport === false)
+      return;
     // A failed optional plugin must not fail a successful book import.
     try {
       await runPluginTask('pdfAutoContents', async (signal) => {

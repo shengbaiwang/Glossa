@@ -20,6 +20,7 @@ export function recognizePDFPages(
   onStatus: (status: PDFOCRStatus) => void = () => {},
   detect = false,
   contents = false,
+  heading = false,
 ) {
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -45,11 +46,13 @@ export function recognizePDFPages(
         check();
         try {
           // Do not detach a late start: establish its ownership before cancellation.
-          owned = contents
-            ? await startPDFOCR(source, cacheId, pages, false, true)
-            : detect
-              ? await startPDFOCR(source, cacheId, pages, true)
-              : await startPDFOCR(source, cacheId, pages);
+          owned = heading
+            ? await startPDFOCR(source, cacheId, pages, false, false, true)
+            : contents
+              ? await startPDFOCR(source, cacheId, pages, false, true)
+              : detect
+                ? await startPDFOCR(source, cacheId, pages, true)
+                : await startPDFOCR(source, cacheId, pages);
           break;
         } catch (error) {
           if ((error instanceof Error ? error.message : String(error)) !== 'pdf_ocr_busy')

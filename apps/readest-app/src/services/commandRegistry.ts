@@ -4,6 +4,7 @@ import { SettingsPanelType } from '@/components/settings/SettingsDialog';
 import {
   Type as RiFontSize,
   Settings2,
+  Puzzle,
   Database,
   PanelsTopLeft as RiDashboardLine,
   Languages as RiTranslate,
@@ -157,6 +158,7 @@ export const groupResultsByCategory = (
 // settings panel icon map
 const panelIcons: Record<SettingsPanelType, IconType> = {
   General: Settings2,
+  Plugins: Puzzle,
   Data: Database,
   Font: RiFontSize,
   Layout: RiDashboardLine,
@@ -594,7 +596,7 @@ export const buildCommandRegistry = (options: CommandRegistryOptions): CommandIt
     items.push(
       createSettingsItem(
         {
-          id: `settings.general.module.${module.id}`,
+          id: `settings.plugins.${module.id}`,
           labelKey: module.labelKey,
           keywords: [
             'plugin',
@@ -607,14 +609,43 @@ export const buildCommandRegistry = (options: CommandRegistryOptions): CommandIt
             '启用',
             '停用',
           ],
-          section: _('Plugins'),
+          section: _('Built-in plugins'),
         },
-        'General',
+        'Plugins',
       ),
     );
   }
 
+  items.push(
+    createSettingsItem(
+      {
+        id: 'settings.plugins.pdfContentsOnImport',
+        labelKey: 'Generate contents on import',
+        keywords: ['PDF', 'contents', 'import', '目录', '导入', '自动'],
+        section: _('PDF automatic contents'),
+      },
+      'Plugins',
+    ),
+  );
+
   // add font panel items
+  for (const [id, labelKey, keywords] of [
+    ['models', 'Model Services', ['model', 'API', '模型', '密钥']],
+    ['prompts', 'Prompts', ['conversation', 'prompt', '对话', '提示词']],
+  ] as const) {
+    items.push(
+      createSettingsItem(
+        {
+          id: `settings.plugins.${id}`,
+          labelKey,
+          keywords: [...keywords],
+          section: _('Built-in plugins'),
+        },
+        'Plugins',
+      ),
+    );
+  }
+
   for (const def of fontPanelItems) {
     items.push(createSettingsItem(def, 'Font'));
   }

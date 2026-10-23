@@ -1,0 +1,10 @@
+{
+  "id": "org.example.outline",
+  "name": "Outline example",
+  "author": "Example developer",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "activation": "reader-panel",
+  "format": "EPUB",
+  "capabilities": ["verified-sources"]
+}

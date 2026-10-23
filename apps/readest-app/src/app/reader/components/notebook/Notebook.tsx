@@ -1,7 +1,14 @@
 import ReaderPaneTabs from '../ReaderPaneTabs';
 import clsx from 'clsx';
 import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
-import { NotebookPen, Search, MessageCircle, GitBranch, Highlight } from '@/components/GlossaIcons';
+import {
+  NotebookPen,
+  Search,
+  MessageCircle,
+  GitBranch,
+  Highlight,
+  ListTree,
+} from '@/components/GlossaIcons';
 
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
@@ -56,13 +63,17 @@ const Notebook: React.FC = ({}) => {
   const { sideBarBookKey } = useSidebarStore();
   const { notebookWidth, isNotebookVisible } = useNotebookStore();
   const { notebookActiveTab, setNotebookActiveTab } = useNotebookStore();
+  const { getBookData, getConfig, saveConfig, updateBooknotes } = useBookDataStore();
   const conversationEnabled = isOfficialModuleEnabled(settings, 'conversation');
-  const availableTab = resolveNotebookTab(settings, notebookActiveTab);
+  const availableTab = resolveNotebookTab(
+    settings,
+    notebookActiveTab,
+    getBookData(sideBarBookKey ?? '')?.book?.format,
+  );
   useEffect(() => {
     if (availableTab !== notebookActiveTab) setNotebookActiveTab(availableTab);
   }, [availableTab, notebookActiveTab, setNotebookActiveTab]);
   const { notebookNewAnnotation, notebookEditAnnotation } = useNotebookStore();
-  const { getBookData, getConfig, saveConfig, updateBooknotes } = useBookDataStore();
   const { getView, getViewsById, getViewSettings } = useReaderStore();
   const { getNotebookWidth, setNotebookWidth, setNotebookVisible } = useNotebookStore();
   const { setNotebookNewAnnotation, setNotebookNewHighlightId } = useNotebookStore();
@@ -349,19 +360,24 @@ const Notebook: React.FC = ({}) => {
   const { book, bookDoc } = bookData;
   const languageDir = getBookDirFromLanguage(bookDoc.metadata.language);
   const supportsReadingAssistant = book.format === 'EPUB';
-  const activeTab = supportsReadingAssistant ? availableTab : 'notes';
+  const activeTab = availableTab;
   const tabs = [
-    ...PANEL_MODULES.filter((module) => isOfficialModuleEnabled(settings, module.id)).map(
-      (module) => ({
-        id: module.id,
-        label: _(module.labelKey),
-        Icon: module.id === 'conversation' ? MessageCircle : GitBranch,
-      }),
-    ),
+    ...PANEL_MODULES.filter(
+      (module) => module.format === book.format && isOfficialModuleEnabled(settings, module.id),
+    ).map((module) => ({
+      id: module.id,
+      label: _(module.id === 'pdfAutoContents' ? 'Contents generator' : module.labelKey),
+      Icon:
+        module.id === 'conversation'
+          ? MessageCircle
+          : module.id === 'mindmap'
+            ? GitBranch
+            : ListTree,
+    })),
     { id: 'notes' as const, label: _('Notes'), Icon: Highlight },
   ];
 
-  const hasAssistantTabs = supportsReadingAssistant && tabs.length > 1;
+  const hasAssistantTabs = tabs.length > 1;
 
   const hasAnnotations = allNotes.some((note) => note.type === 'annotation' && !note.deletedAt);
   const hasSearchResults =
@@ -531,6 +547,21 @@ const Notebook: React.FC = ({}) => {
                     }
                   : undefined
               }
+            />
+          </div>
+        )}
+        {activeTab === 'pdfAutoContents' && book.format === 'PDF' && (
+          <div
+            className='glossa-notebook-content min-h-0 flex-1 overflow-hidden'
+            role='tabpanel'
+            id={`${tabId}-panel-pdfAutoContents`}
+            aria-labelledby={`${tabId}-tab-pdfAutoContents`}
+          >
+            <OfficialModulePanel
+              moduleId='pdfAutoContents'
+              book={book}
+              bookDoc={bookDoc}
+              bookKey={sideBarBookKey}
             />
           </div>
         )}

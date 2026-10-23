@@ -14,7 +14,11 @@ export {
 export const resolveNotebookTab = (
   settings: Pick<SystemSettings, 'officialModules'>,
   tab: NotebookTab,
+  format = 'EPUB',
 ): NotebookTab => {
-  if (tab === 'notes' || isPluginEnabled(settings, tab)) return tab;
-  return PANEL_PLUGINS.find((plugin) => isPluginEnabled(settings, plugin.id))?.id ?? 'notes';
+  const available = PANEL_PLUGINS.filter(
+    (plugin) => plugin.format === format && isPluginEnabled(settings, plugin.id),
+  );
+  if (tab === 'notes' || available.some((plugin) => plugin.id === tab)) return tab;
+  return available[0]?.id ?? 'notes';
 };

@@ -1,0 +1,79 @@
+/* Keep one scroll viewport inside the popup's border box. */
+.footnote-popup .footnote-content {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.footnote-popup .footnote-text {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+.footnote-popup .footnote-content[data-vertical='false'] foliate-view::part(container) {
+  overflow-x: hidden;
+}
+
+.footnote-popup .footnote-content[data-vertical='true'] .footnote-text {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.footnote-popup .footnote-text:focus-visible,
+.footnote-popup foliate-view::part(container):focus-visible {
+  outline: 1px solid color-mix(in srgb, currentColor 45%, transparent);
+  outline-offset: -2px;
+}
+
+.footnote-popup .footnote-text,
+.footnote-popup foliate-view::part(container) {
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  --footnote-scroll-thumb: transparent;
+}
+
+.footnote-popup .footnote-content:hover .footnote-text,
+.footnote-popup .footnote-content:hover foliate-view::part(container),
+.footnote-popup[data-scrolling] .footnote-text,
+.footnote-popup[data-scrolling] foliate-view::part(container),
+.footnote-popup .footnote-text:focus-visible,
+.footnote-popup foliate-view::part(container):focus-visible {
+  --footnote-scroll-thumb: color-mix(in srgb, currentColor 24%, transparent);
+  scrollbar-color: var(--footnote-scroll-thumb) transparent;
+}
+
+/* Older system WebViews use the native WebKit scrollbar API. */
+.footnote-popup .footnote-text::-webkit-scrollbar,
+.footnote-popup foliate-view::part(container)::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.footnote-popup .footnote-text::-webkit-scrollbar-thumb,
+.footnote-popup foliate-view::part(container)::-webkit-scrollbar-thumb {
+  background: var(--footnote-scroll-thumb);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.footnote-popup .footnote-text::-webkit-scrollbar-track,
+.footnote-popup foliate-view::part(container)::-webkit-scrollbar-track,
+.footnote-popup foliate-view::part(container)::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* E-ink keeps a static, legible position cue without repeated repainting. */
+[data-eink='true'] .footnote-popup .footnote-content .footnote-text,
+[data-eink='true'] .footnote-popup .footnote-content foliate-view::part(container) {
+  --footnote-scroll-thumb: currentColor;
+  scrollbar-color: currentColor transparent;
+  outline-color: currentColor;
+}

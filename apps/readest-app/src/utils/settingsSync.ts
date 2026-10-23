@@ -68,6 +68,7 @@ export interface SettingsSyncPayload {
   cloudSyncProviders?: CloudSyncProviderFlags;
   /** Explicit module edits only; contains no book data or credentials. */
   officialModules?: OfficialModulePreferences;
+  pdfContentsOnImport?: boolean;
   /** Only included after an explicit folder mutation; routine stale saves never broadcast it. */
   libraryFolders?: string[];
   /** Same-device import destinations follow explicit group edits, never routine saves. */
@@ -86,6 +87,7 @@ export const mergeSyncedGlobalSettings = (
     | 'globalReadSettings'
     | 'cloudSyncProviders'
     | 'officialModules'
+    | 'pdfContentsOnImport'
     | 'libraryFolders'
     | 'autoImportFolderGroups'
   >,
@@ -102,6 +104,8 @@ export const mergeSyncedGlobalSettings = (
       if (typeof enabled === 'boolean') merged.officialModules[id] = enabled;
     }
   }
+  if (typeof payload.pdfContentsOnImport === 'boolean')
+    merged.pdfContentsOnImport = payload.pdfContentsOnImport;
   if (payload.libraryFolders) merged.libraryFolders = payload.libraryFolders;
   if (payload.autoImportFolderGroups)
     merged.autoImportFolderGroups = payload.autoImportFolderGroups;
@@ -137,6 +141,7 @@ export const broadcastGlobalSettings = async (
     includeCloudSyncProviders?: boolean;
     includeLibraryFolders?: boolean;
     officialModules?: OfficialModulePreferences;
+    pdfContentsOnImport?: boolean;
   } = {},
 ): Promise<void> => {
   if (!isTauriAppPlatform()) return;
@@ -148,6 +153,8 @@ export const broadcastGlobalSettings = async (
       globalReadSettings: settings.globalReadSettings,
     };
     if (opts.officialModules) payload.officialModules = opts.officialModules;
+    if (typeof opts.pdfContentsOnImport === 'boolean')
+      payload.pdfContentsOnImport = opts.pdfContentsOnImport;
     if (opts.includeLibraryFolders) {
       payload.libraryFolders = settings.libraryFolders ?? [];
       payload.autoImportFolderGroups = settings.autoImportFolderGroups ?? {};

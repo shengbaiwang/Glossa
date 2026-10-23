@@ -711,6 +711,49 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
   font-weight: 600;
   margin-block: 12px;
 }
+.glossa-plugin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: 12px;
+}
+.glossa-plugin-card {
+  min-width: 0;
+  padding: 12px 16px 8px;
+  border-radius: 12px;
+}
+.glossa-plugin-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+}
+.glossa-plugin-settings-button {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+}
+.glossa-plugin-card-heading .glossa-plugin-settings-button {
+  margin-inline-end: -8px;
+}
+.glossa-plugin-name {
+  margin-block: 8px 12px;
+  font-size: var(--glossa-text-body);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.glossa-plugin-toggle {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+}
+.glossa-plugin-toggle:has(:disabled) {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
 .glossa-settings-scope {
   padding-block: 12px;
   border-bottom: 1px solid var(--glossa-border);

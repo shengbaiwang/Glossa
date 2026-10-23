@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   language: 'en',
   rtl: false,
   format: 'EPUB',
-  officialModules: {} as { conversation?: boolean; mindmap?: boolean },
+  officialModules: {} as { conversation?: boolean; mindmap?: boolean; pdfAutoContents?: boolean },
   mindmapUnmount: vi.fn(),
   conversationUnmount: vi.fn(),
   saveConfig: vi.fn(),
@@ -101,6 +101,9 @@ vi.mock('@/glossa/ui/MindmapPanel', () => ({
     useEffect(() => () => mocks.mindmapUnmount(), []);
     return <div>Mind map panel{onAsk && <button onClick={onAsk}>Ask about idea</button>}</div>;
   },
+}));
+vi.mock('@/glossa/plugins/PDFContentsPanel', () => ({
+  default: () => <button type='button'>Generate contents</button>,
 }));
 
 const editNote: BookNote = {
@@ -332,7 +335,7 @@ describe('Notebook reading assistant integration', () => {
   });
 
   it('retains the original notebook for unsupported formats', () => {
-    mocks.format = 'PDF';
+    mocks.format = 'MOBI';
     render(<Notebook />);
     act(() => useNotebookStore.getState().setNotebookVisible(true));
     expect(screen.queryByRole('tab', { name: 'Conversation' })).toBeNull();
@@ -385,6 +388,27 @@ it('saves one cross-page note with the first anchor and both fragments, even aft
 });
 
 describe('official reading modules', () => {
+  it('offers the PDF generator on the right, removes it on disable and retains notes', async () => {
+    mocks.format = 'PDF';
+    const panel = render(
+      <DropdownProvider>
+        <Notebook />
+      </DropdownProvider>,
+    );
+    act(() => useNotebookStore.getState().setNotebookVisible(true));
+    fireEvent.click(screen.getByRole('tab', { name: 'Contents generator' }));
+    await screen.findByRole('button', { name: 'Generate contents' });
+    expect(screen.queryByRole('tab', { name: 'Conversation' })).toBeNull();
+    mocks.officialModules = { pdfAutoContents: false };
+    panel.rerender(
+      <DropdownProvider>
+        <Notebook />
+      </DropdownProvider>,
+    );
+    expect(screen.queryByRole('button', { name: 'Generate contents' })).toBeNull();
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(useNotebookStore.getState().notebookActiveTab).toBe('notes');
+  });
   it('unmounts a disabled active module and keeps keyboard navigation on available tabs', async () => {
     const panel = render(
       <DropdownProvider>

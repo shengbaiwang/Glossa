@@ -3,8 +3,8 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import type { MapQuestionDraft } from '@/glossa/mindmap/export';
 import type { ReadingPanelProps } from '@/glossa/ui/ReadingPassagePanel';
-import { pluginLoaders } from '../plugins/loaders';
-import { isOfficialModuleEnabled } from './registry';
+import { pluginPanelLoaders } from '../plugins/loaders';
+import { OFFICIAL_MODULES, isOfficialModuleEnabled } from './registry';
 
 type Props = ReadingPanelProps &
   (
@@ -14,6 +14,7 @@ type Props = ReadingPanelProps &
         onIdeaDraftConsumed?: () => void;
       }
     | { moduleId: 'mindmap'; onAsk?: (draft: MapQuestionDraft) => void }
+    | { moduleId: 'pdfAutoContents' }
   );
 
 class ModuleBoundary extends Component<
@@ -39,12 +40,16 @@ export default function OfficialModulePanel(props: Props) {
   // Recreate rejected lazy loaders on explicit retry, without starting an import here.
   const panels = useMemo(
     () => ({
-      conversation: lazy(pluginLoaders.conversation),
-      mindmap: lazy(pluginLoaders.mindmap),
+      conversation: lazy(pluginPanelLoaders.conversation),
+      mindmap: lazy(pluginPanelLoaders.mindmap),
+      pdfAutoContents: lazy(pluginPanelLoaders.pdfAutoContents),
     }),
     [attempt],
   );
-  if (props.book.format !== 'EPUB' || !isOfficialModuleEnabled(settings, props.moduleId))
+  if (
+    props.book.format !== OFFICIAL_MODULES.find((module) => module.id === props.moduleId)?.format ||
+    !isOfficialModuleEnabled(settings, props.moduleId)
+  )
     return null;
   return (
     <ModuleBoundary
@@ -71,8 +76,10 @@ export default function OfficialModulePanel(props: Props) {
       >
         {props.moduleId === 'conversation' ? (
           <panels.conversation {...props} />
-        ) : (
+        ) : props.moduleId === 'mindmap' ? (
           <panels.mindmap {...props} />
+        ) : (
+          <panels.pdfAutoContents {...props} />
         )}
       </Suspense>
     </ModuleBoundary>

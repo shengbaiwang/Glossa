@@ -188,3 +188,51 @@ it('shows readable global categories and switches to a grouped selector on narro
   boundsOK(sheet);
   await page.screenshot({ path: '../../../../../../.glossa-dev/qa/menu-application-narrow.png' });
 });
+
+it('gives plugins a dedicated category in wide, narrow, dark and RTL/e-ink settings', async () => {
+  await page.viewport(1440, 900);
+  document.documentElement.setAttribute('data-theme', 'default-light');
+  const view = render(<SettingsDialog bookKey='synthetic-book' scope='application' />);
+  const sheet = view.container.querySelector('.modal-box')!;
+  expect(screen.queryByRole('checkbox', { name: t('Mind map') })).toBeNull();
+  const plugins = screen.getByRole('button', { name: t('Plugins') });
+  fireEvent.click(plugins);
+  expect(plugins.getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByText(t('Built-in plugins'))).toBeTruthy();
+  expect(screen.getByText(t('Third-party plugins'))).toBeTruthy();
+  expect(screen.getByText(t('Installation is not available yet.'))).toBeTruthy();
+  const builtInCard = screen
+    .getByRole('checkbox', { name: t('Mind map') })
+    .closest('.glossa-plugin-grid')!;
+  expect(
+    screen.getByText(t('Third-party plugins')).getBoundingClientRect().top -
+      builtInCard.getBoundingClientRect().bottom,
+  ).toBeGreaterThanOrEqual(24);
+  for (const label of ['Conversation', 'Mind map', 'PDF automatic contents']) {
+    expect((screen.getByRole('checkbox', { name: t(label) }) as HTMLInputElement).checked).toBe(
+      true,
+    );
+  }
+  boundsOK(sheet);
+  await page.screenshot({ path: '../../../../../../.glossa-dev/qa/plugin-menu-light.png' });
+  fireEvent.keyDown(plugins, { key: 'ArrowDown' });
+  expect(screen.queryByText(t('Built-in plugins'))).toBeNull();
+  fireEvent.keyDown(screen.getByRole('button', { name: t('Library Data') }), { key: 'ArrowUp' });
+  expect(screen.getByText(t('Built-in plugins'))).toBeTruthy();
+  document.documentElement.setAttribute('data-theme', 'default-dark');
+  await page.screenshot({ path: '../../../../../../.glossa-dev/qa/plugin-menu-dark.png' });
+  await page.viewport(390, 844);
+  const category = screen.getByRole('combobox', { name: t('Settings Panels') });
+  expect((category as HTMLSelectElement).value).toBe('Plugins');
+  fireEvent.change(category, { target: { value: 'General' } });
+  expect(screen.queryByRole('checkbox', { name: t('Mind map') })).toBeNull();
+  fireEvent.change(category, { target: { value: 'Plugins' } });
+  boundsOK(sheet);
+  await page.screenshot({ path: '../../../../../../.glossa-dev/qa/plugin-menu-narrow-dark.png' });
+  document.documentElement.dir = 'rtl';
+  document.documentElement.setAttribute('data-eink', 'true');
+  boundsOK(sheet);
+  await page.screenshot({
+    path: '../../../../../../.glossa-dev/qa/plugin-menu-narrow-rtl-eink.png',
+  });
+});

@@ -1,4 +1,6 @@
+import { resolve } from 'node:path';
 import tsconfigPaths from 'vite-tsconfig-paths';
+import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 import { webdriverio } from '@vitest/browser-webdriverio';
 import { loadEnvFile } from './vitest.env.mts';
@@ -14,12 +16,13 @@ const env = {
 };
 
 export default defineConfig({
-  plugins: [tsconfigPaths()],
+  plugins: [tsconfigPaths(), react()],
   define: {
     'process.env': JSON.stringify(env),
   },
   resolve: {
     conditions: ['development'],
+    alias: { '@pdfjs': resolve(__dirname, 'public/vendor/pdfjs') },
   },
   optimizeDeps: {
     include: [

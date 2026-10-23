@@ -21,6 +21,7 @@ use tauri::{AppHandle, Manager};
 const VERSION: &str = "vision-pdf-1";
 const DETECTION_VERSION: &str = "vision-detect-1";
 const CONTENTS_VERSION: &str = "vision-contents-1";
+const HEADING_VERSION: &str = "vision-heading-1";
 const PAGE_LIMIT: u64 = 4 * 1024 * 1024;
 #[cfg(target_os = "macos")]
 const CACHE_LIMIT: u64 = 512 * 1024 * 1024;
@@ -138,8 +139,26 @@ fn valid_page(value: &serde_json::Value, index: usize) -> bool {
     if lines.len() > 10000 {
         return false;
     }
+    let mut passes = vec![lines];
+    if let Some(alternatives) = value.get("alternatives") {
+        let Some(alternatives) = alternatives.as_array() else {
+            return false;
+        };
+        if alternatives.len() > 2 {
+            return false;
+        }
+        for pass in alternatives {
+            let Some(pass) = pass.as_array() else {
+                return false;
+            };
+            if pass.len() > 10000 {
+                return false;
+            }
+            passes.push(pass);
+        }
+    }
     let mut chars = 0;
-    for line in lines {
+    for line in passes.into_iter().flatten() {
         let Some(text) = line["text"].as_str() else {
             return false;
         };
@@ -177,12 +196,13 @@ fn read_page_version(dir: &Path, index: usize, version: &str) -> Option<serde_js
     let value = read_json(&path, PAGE_LIMIT)?;
     valid_page(&value, index).then_some(value)
 }
-fn ocr_version(detect: bool, contents: bool) -> Result<&'static str, String> {
-    match (detect, contents) {
-        (true, true) => Err("invalid_pdf_ocr_mode".into()),
-        (true, false) => Ok(DETECTION_VERSION),
-        (false, true) => Ok(CONTENTS_VERSION),
-        (false, false) => Ok(VERSION),
+fn ocr_version(detect: bool, contents: bool, heading: bool) -> Result<&'static str, String> {
+    match (detect, contents, heading) {
+        (true, false, false) => Ok(DETECTION_VERSION),
+        (false, true, false) => Ok(CONTENTS_VERSION),
+        (false, false, true) => Ok(HEADING_VERSION),
+        (false, false, false) => Ok(VERSION),
+        _ => Err("invalid_pdf_ocr_mode".into()),
     }
 }
 fn info(dir: &Path, id: String) -> Result<CacheInfo, String> {
@@ -266,12 +286,17 @@ pub async fn pdf_read_ocr_page(
     index: usize,
     detect: Option<bool>,
     contents: Option<bool>,
+    heading: Option<bool>,
 ) -> Result<Option<serde_json::Value>, String> {
     if index >= 5000 {
         return Err("invalid_pdf_page".into());
     }
     tauri::async_runtime::spawn_blocking(move || {
-        let version = ocr_version(detect.unwrap_or(false), contents.unwrap_or(false))?;
+        let version = ocr_version(
+            detect.unwrap_or(false),
+            contents.unwrap_or(false),
+            heading.unwrap_or(false),
+        )?;
         Ok(read_page_version(
             &cache_dir(&app, &cache_id)?,
             index,
@@ -309,11 +334,12 @@ pub async fn pdf_start_ocr(
     pages: Vec<usize>,
     detect: Option<bool>,
     contents: Option<bool>,
+    heading: Option<bool>,
 ) -> Result<JobStatus, String> {
     tauri::async_runtime::spawn_blocking(move || {
         #[cfg(not(target_os = "macos"))]
         {
-            let _ = (app, source, cache_id, pages, detect, contents);
+            let _ = (app, source, cache_id, pages, detect, contents, heading);
             Err("pdf_ocr_unsupported".into())
         }
         #[cfg(target_os = "macos")]
@@ -321,7 +347,8 @@ pub async fn pdf_start_ocr(
             let mut pages = pages;
             let detect = detect.unwrap_or(false);
             let contents = contents.unwrap_or(false);
-            let version = ocr_version(detect, contents)?;
+            let heading = heading.unwrap_or(false);
+            let version = ocr_version(detect, contents, heading)?;
             let mut guard = jobs().lock().map_err(error)?;
             if guard.as_ref().is_some_and(|j| j.status.state == "running") {
                 return Err("pdf_ocr_busy".into());
@@ -351,6 +378,8 @@ pub async fn pdf_start_ocr(
                 command.arg("--detect");
             } else if contents {
                 command.arg("--contents");
+            } else if heading {
+                command.arg("--heading");
             }
             let child = command
                 .arg(&path)
@@ -582,10 +611,16 @@ mod tests {
     use super::*;
     #[test]
     fn contents_evidence_and_detection_are_separate_from_reading_text() {
-        assert_eq!(ocr_version(false, false).unwrap(), VERSION);
-        assert_eq!(ocr_version(true, false).unwrap(), DETECTION_VERSION);
-        assert_eq!(ocr_version(false, true).unwrap(), CONTENTS_VERSION);
-        assert_eq!(ocr_version(true, true).unwrap_err(), "invalid_pdf_ocr_mode");
+        assert_eq!(ocr_version(false, false, false).unwrap(), VERSION);
+        assert_eq!(ocr_version(true, false, false).unwrap(), DETECTION_VERSION);
+        assert_eq!(ocr_version(false, true, false).unwrap(), CONTENTS_VERSION);
+        assert_eq!(ocr_version(false, false, true).unwrap(), HEADING_VERSION);
+        assert!(ocr_version(false, true, true).is_err());
+        assert!(ocr_version(true, false, true).is_err());
+        assert_eq!(
+            ocr_version(true, true, false).unwrap_err(),
+            "invalid_pdf_ocr_mode"
+        );
     }
     #[cfg(target_os = "macos")]
     #[test]
@@ -932,6 +967,38 @@ mod tests {
             fs::metadata(&evidence_path).unwrap().modified().unwrap(),
             evidence_modified
         );
+        fs::create_dir_all(dir.join(HEADING_VERSION)).unwrap();
+        let headings = || {
+            Command::new(&executable)
+                .arg("--heading")
+                .arg(&source)
+                .arg(dir.join(HEADING_VERSION))
+                .arg("1")
+                .status()
+                .unwrap()
+        };
+        assert!(headings().success());
+        let cropped = read_page_version(&dir, 1, HEADING_VERSION).unwrap();
+        assert_eq!(cropped["recognizer"], HEADING_VERSION);
+        assert_eq!(cropped["alternatives"].as_array().unwrap().len(), 1);
+        let passes = [
+            cropped["lines"].as_array().unwrap(),
+            cropped["alternatives"][0].as_array().unwrap(),
+        ];
+        assert!(passes
+            .iter()
+            .flat_map(|pass| pass.iter())
+            .any(|word| word["text"].as_str().unwrap().contains("Copper")));
+        for word in passes.iter().flat_map(|pass| pass.iter()) {
+            assert!(word["x"].as_f64().unwrap() >= 0.039);
+            assert!(word["y"].as_f64().unwrap() >= 0.099);
+            assert!(word["y"].as_f64().unwrap() + word["height"].as_f64().unwrap() <= 0.752);
+        }
+        let heading_path = dir.join(HEADING_VERSION).join("page-1.json");
+        let heading_bytes = fs::read(&heading_path).unwrap();
+        assert!(headings().success());
+        assert_eq!(fs::read(heading_path).unwrap(), heading_bytes);
+        assert_eq!(fs::read(&evidence_path).unwrap(), evidence_bytes);
         assert_eq!(
             info(&dir, "local-test".into()).unwrap().pages,
             vec![0, 1, 2, 3]

@@ -620,3 +620,11 @@ export function Pages(props: GlossaIconProps) {
     </Icon>
   );
 }
+
+export function Puzzle(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <path d='M4 4h5a2.5 2.5 0 1 1 5 0h5v5a2.5 2.5 0 1 1 0 5v5h-5a2.5 2.5 0 1 0-5 0H4v-5a2.5 2.5 0 1 0 0-5V4Z' />
+    </Icon>
+  );
+}

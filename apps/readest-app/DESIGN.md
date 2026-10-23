@@ -1,5 +1,24 @@
 ## Glossa Design Language
 
+### Footnote reading — 2026-10-22
+
+Measure the actual note with its reading fonts before revealing it. Commit the
+final size and anchor together; never show a two-line preview that then expands.
+Use a comfortable reading width, widening up to 720px when needed to fit more
+content, within the reading pane and 80% of its height. Only overflow scrolls;
+scrolling must not resize or move the popup. Plain-text notes follow the same
+measurement and reading type. Nested navigation keeps the original anchor;
+dismissal invalidates pending loads and measurements. Font failure uses fallback.
+
+Fit footnote content inside the popup border, with one native scrolling viewport.
+Horizontal prose, long links and plain-text notes wrap to the available width;
+retain the primary scroll axis of vertical reading. Keep the scrollbar thin,
+trackless and transparent while idle. Reveal a quiet theme-ink thumb only over
+the note content, while scrolling, or on keyboard focus. The full-screen dismiss
+overlay must not count as a hover target. Use a theme-ink inset focus outline;
+Page Up/Down, Home/End and Escape retain native behavior. E-ink keeps a static,
+crisp position cue without animation. Preserve selection, note links and history.
+
 ### PDF reading controls — 2026-10-18
 
 Keep one file-page entry in the existing footer; show differing printed labels
