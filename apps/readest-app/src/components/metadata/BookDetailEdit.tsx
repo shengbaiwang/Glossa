@@ -11,7 +11,7 @@ import { Book } from '@/types/book';
 import { BookMetadata } from '@/libs/document';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
-import { flattenContributors, formatAuthors, formatPublisher, formatTitle } from '@/utils/book';
+import { formatAuthors, formatPublisher, formatTitle } from '@/utils/book';
 import { useFileSelector } from '@/hooks/useFileSelector';
 import { FormField } from './FormField';
 import BookCover from '@/components/BookCover';
@@ -143,12 +143,6 @@ const BookDetailEdit: React.FC<BookDetailEditProps> = ({
     },
   ];
   const metadataFullwidthFields = [
-    {
-      field: 'subject',
-      label: _('Subjects'),
-      value: flattenContributors(metadata.subject || []),
-      placeholder: _('Fiction, Science, History'),
-    },
     {
       field: 'tags',
       label: _('Tags'),

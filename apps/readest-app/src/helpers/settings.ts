@@ -80,14 +80,22 @@ export const saveViewSettings = async <K extends keyof ViewSettings>(
     useReaderStore.getState();
   const { getConfig, saveConfig } = useBookDataStore.getState();
 
+  const effectiveSettingsIsGlobal = !bookKey;
   const applyViewSettings = async (bookKey: string, effectiveSettings = settings) => {
     const viewSettings = getViewSettings(bookKey);
     const viewState = getViewState(bookKey);
     if (bookKey && viewSettings && (viewSettings[key] !== value || forceSave)) {
-      if (viewSettings[key] !== value) {
+      const changed = viewSettings[key] !== value;
+      const detach =
+        !!bookKey &&
+        !effectiveSettingsIsGlobal &&
+        key !== 'isGlobal' &&
+        viewSettings.isGlobal !== false;
+      if (changed || detach) {
+        if (detach) viewSettings.isGlobal = false;
         viewSettings[key] = value;
         setViewSettings(bookKey, viewSettings);
-        if (applyStyles) {
+        if (applyStyles && changed) {
           const view = getView(bookKey);
           view?.renderer.setStyles?.(getStyles(viewSettings));
         }
@@ -101,7 +109,7 @@ export const saveViewSettings = async <K extends keyof ViewSettings>(
     }
   };
 
-  const isSettingsGlobal = getViewSettings(bookKey)?.isGlobal ?? true;
+  const isSettingsGlobal = !bookKey;
   if (isSettingsGlobal && !skipGlobal) {
     // Build a NEW settings object (and a NEW globalViewSettings) so the
     // settingsStore subscriber that gates replica push fires — it compares
@@ -125,6 +133,123 @@ export const saveViewSettings = async <K extends keyof ViewSettings>(
   } else if (bookKey) {
     await applyViewSettings(bookKey);
   }
+};
+
+/** Only presentation preferences become defaults; book locations and private text never do. */
+const READING_DEFAULT_KEYS = [
+  'serifFont',
+  'sansSerifFont',
+  'monospaceFont',
+  'defaultFont',
+  'defaultCJKFont',
+  'defaultFontSize',
+  'fontWeight',
+  'overrideFont',
+  'overrideLayout',
+  'useBookLayout',
+  'paragraphMargin',
+  'lineHeight',
+  'wordSpacing',
+  'letterSpacing',
+  'textIndent',
+  'fullJustification',
+  'hyphenation',
+  'marginTopPx',
+  'marginBottomPx',
+  'marginLeftPx',
+  'marginRightPx',
+  'compactMarginTopPx',
+  'compactMarginBottomPx',
+  'compactMarginLeftPx',
+  'compactMarginRightPx',
+  'gapPercent',
+  'maxColumnCount',
+  'maxInlineSize',
+  'maxBlockSize',
+  'writingMode',
+  'scrolled',
+  'scrolledDirection',
+  'scrollingOverlap',
+  'hideScrollbar',
+  'noContinuousScroll',
+  'overrideColor',
+  'invertImgColorInDark',
+  'applyThemeToPDF',
+  'backgroundTextureId',
+  'backgroundTransparency',
+  'backgroundSize',
+  'highlightTransparency',
+  'codeHighlighting',
+  'codeLanguage',
+  'userStylesheet',
+  'userUIStylesheet',
+  'disableClick',
+  'disableSwipe',
+  'fullscreenClickArea',
+  'swapClickArea',
+  'disableDoubleClick',
+  'volumeKeysToFlip',
+  'animated',
+  'pageTurnStyle',
+  'showHeader',
+  'showFooter',
+  'showRemainingTime',
+  'showRemainingPages',
+  'showProgressInfo',
+  'showStickyProgressBar',
+  'showCurrentTime',
+  'use24HourClock',
+  'showCurrentBatteryStatus',
+  'showBatteryPercentage',
+  'showPaginationButtons',
+  'progressStyle',
+  'readingRulerEnabled',
+  'readingRulerLines',
+  'readingRulerTransparency',
+  'readingRulerColor',
+  'zoomLevel',
+  'zoomMode',
+  'spreadMode',
+  'keepCoverSpread',
+  'contrast',
+  'webtoonMode',
+  'autoScrollSpeed',
+  'replaceQuotationMarks',
+  'convertChineseVariant',
+  'doubleBorder',
+  'borderColor',
+  'paragraphMode',
+  'ttsRate',
+  'ttsSentenceGap',
+  'ttsParagraphGap',
+  'ttsVoice',
+  'ttsHighlightOptions',
+  'ttsHighlightGranularity',
+  'ttsMediaMetadata',
+  'ttsPlayerStyle',
+  'enableAnnotationQuickActions',
+  'annotationQuickAction',
+  'annotationToolbarItems',
+] as const satisfies readonly (keyof ViewSettings)[];
+
+export const saveReadingDefaults = async (envConfig: EnvConfigType, bookKey: string) => {
+  const view = useReaderStore.getState().getViewSettings(bookKey);
+  if (!view) throw new Error('Reading settings unavailable');
+  const { settings, setSettings, saveSettings } = useSettingsStore.getState();
+  const copied = Object.fromEntries(
+    READING_DEFAULT_KEYS.filter((key) => view[key] !== undefined).map((key) => [
+      key,
+      structuredClone(view[key]),
+    ]),
+  );
+  const nextSettings = {
+    ...settings,
+    globalViewSettings: { ...settings.globalViewSettings, ...copied },
+  };
+  await saveSettings(envConfig, nextSettings);
+  // Retain unrelated changes that arrived while the disk write was in progress.
+  const latest = useSettingsStore.getState().settings;
+  setSettings({ ...latest, globalViewSettings: { ...latest.globalViewSettings, ...copied } });
 };
 
 export const saveSysSettings = async <K extends keyof SystemSettings>(

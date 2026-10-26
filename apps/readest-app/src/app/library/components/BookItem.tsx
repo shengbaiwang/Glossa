@@ -9,7 +9,9 @@ import {
   Info,
 } from '@/components/GlossaIcons';
 
-import { Book } from '@/types/book';
+import InlineTextEditor from '@/components/InlineTextEditor';
+import BookContextMenuPopup from './BookContextMenuPopup';
+import { Book, ReadingStatus } from '@/types/book';
 import { useEnv } from '@/context/EnvContext';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -18,7 +20,10 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { LibraryCoverFitType, LibraryViewModeType } from '@/types/settings';
 import { navigateToLogin } from '@/utils/nav';
-import { isReadestCloudStorageActive } from '@/services/sync/cloudSyncProvider';
+import {
+  getActiveFileSyncBackends,
+  isReadestCloudStorageActive,
+} from '@/services/sync/cloudSyncProvider';
 import { isFeedBook } from '@/services/rss/feedBookUrl';
 import { formatAuthors, formatDescription, formatSeries } from '@/utils/book';
 import ReadingProgress from './ReadingProgress';
@@ -35,6 +40,8 @@ interface BookItemProps {
   handleBookDownload: (book: Book, options?: { redownload?: boolean; queued?: boolean }) => void;
   showBookDetailsModal: (book: Book) => void;
   showTimeRemaining: boolean;
+  onRename?: (book: Book, title: string) => Promise<boolean>;
+  onUpdateStatus?: (book: Book, status: ReadingStatus | undefined) => void;
 }
 
 const BookItem: React.FC<BookItemProps> = ({
@@ -48,14 +55,18 @@ const BookItem: React.FC<BookItemProps> = ({
   handleBookDownload,
   showBookDetailsModal,
   showTimeRemaining,
+  onRename,
+  onUpdateStatus,
 }) => {
   const _ = useTranslation();
   const router = useRouter();
   const { user } = useAuth();
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
+  const hasFileProvider = getActiveFileSyncBackends(settings).length > 0;
   const iconSize15 = useResponsiveSize(15);
 
+  const [statusPosition, setStatusPosition] = useState<{ x: number; y: number } | null>(null);
   const [coverAspect, setCoverAspect] = useState<number | null>(null);
   useEffect(() => {
     setCoverAspect(null);
@@ -79,6 +90,7 @@ const BookItem: React.FC<BookItemProps> = ({
   return (
     <div
       role='none'
+      data-selecting={isSelectMode || undefined}
       className={clsx(
         'book-item flex',
         mode === 'grid' && 'h-full flex-col',
@@ -93,9 +105,8 @@ const BookItem: React.FC<BookItemProps> = ({
       >
         <div
           className={clsx(
-            'bookitem-main relative flex justify-center overflow-hidden rounded',
+            'bookitem-main glossa-book-cover-shell relative flex justify-center',
             !fitCoverInGrid && 'aspect-[28/41]',
-            coverFit === 'crop' && 'glossa-cover-shadow',
             mode === 'grid' && 'items-start',
             mode === 'list' && 'min-w-20 items-center',
           )}
@@ -106,10 +117,6 @@ const BookItem: React.FC<BookItemProps> = ({
             book={book}
             coverFit={coverFit}
             showSpine={settings.librarySkeuomorphicCovers}
-            imageClassName={clsx(
-              'glossa-cover-shadow',
-              settings.librarySkeuomorphicCovers ? 'rounded-none' : 'rounded',
-            )}
             onImageError={() => setCoverAspect(null)}
             onAspectRatioChange={setCoverAspect}
           />
@@ -150,11 +157,21 @@ const BookItem: React.FC<BookItemProps> = ({
               mode === 'list' && 'line-clamp-2 text-base',
             )}
           >
-            {book.title}
+            {onRename && !isSelectMode ? (
+              <InlineTextEditor
+                value={book.title}
+                label={_('Title')}
+                onSave={(title) => onRename(book, title)}
+              />
+            ) : (
+              book.title
+            )}
           </h4>
-          <p className='glossa-book-author line-clamp-1'>
-            {formatAuthors(book.author, book.primaryLanguage) || '\u00a0'}
-          </p>
+          {settings.libraryShowAuthor !== false && (
+            <p className='glossa-book-author line-clamp-1'>
+              {formatAuthors(book.author, book.primaryLanguage) || '\u00a0'}
+            </p>
+          )}
         </div>
         {mode === 'list' && seriesText && (
           <p className='text-neutral-content line-clamp-1 text-sm'>{seriesText}</p>
@@ -167,14 +184,60 @@ const BookItem: React.FC<BookItemProps> = ({
         <div
           className={clsx(
             'glossa-book-status flex items-center',
-            book.progress || book.readingStatus ? 'justify-between' : 'justify-end',
+            onUpdateStatus || book.progress || book.readingStatus
+              ? 'justify-between'
+              : 'justify-end',
           )}
         >
-          {(book.progress || book.readingStatus) && (
-            <ReadingProgress book={book} showTimeRemaining={showTimeRemaining} />
+          {onUpdateStatus ? (
+            <button
+              type='button'
+              className='glossa-reading-status-button'
+              aria-label={_('Reading Status')}
+              aria-haspopup='menu'
+              onPointerDown={(e) => e.stopPropagation()}
+              onPointerUp={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                const r = e.currentTarget.getBoundingClientRect();
+                setStatusPosition({ x: r.left, y: r.bottom });
+              }}
+            >
+              {book.progress || book.readingStatus ? (
+                <ReadingProgress
+                  book={book}
+                  showTimeRemaining={showTimeRemaining}
+                  showProgress={settings.libraryShowProgress !== false}
+                />
+              ) : (
+                <span>{_('Unread')}</span>
+              )}
+            </button>
+          ) : (
+            (book.progress || book.readingStatus) && (
+              <ReadingProgress
+                book={book}
+                showTimeRemaining={showTimeRemaining}
+                showProgress={settings.libraryShowProgress !== false}
+              />
+            )
+          )}
+          {statusPosition && (
+            <BookContextMenuPopup
+              position={statusPosition}
+              onClose={() => setStatusPosition(null)}
+              items={[
+                { text: _('Mark as Unread'), action: () => onUpdateStatus?.(book, 'unread') },
+                { text: _('Mark as Finished'), action: () => onUpdateStatus?.(book, 'finished') },
+                { text: _('Mark as On hold'), action: () => onUpdateStatus?.(book, 'abandoned') },
+                ...(book.readingStatus
+                  ? [{ text: _('Clear Status'), action: () => onUpdateStatus?.(book, undefined) }]
+                  : []),
+              ]}
+            />
           )}
           <div className='glossa-book-actions flex shrink-0 items-center justify-center gap-x-3'>
-            {(mode === 'grid' || !appService?.isMobile) && (
+            {
               <button
                 type='button'
                 aria-label={_('Show Book Details')}
@@ -188,7 +251,7 @@ const BookItem: React.FC<BookItemProps> = ({
                   <Info size={iconSize15} />
                 </div>
               </button>
-            )}
+            }
             {book.hasNarration && (
               <div
                 className='pt-[2px] sm:pt-[1px]'
@@ -216,7 +279,7 @@ const BookItem: React.FC<BookItemProps> = ({
               // A feed book has no file to move either way, so it never gets a
               // cloud badge — it would only queue a transfer that fails (#5307).
               !isFeedBook(book) &&
-              ((!book.uploadedAt && isReadestCloudStorageActive(settings)) ||
+              ((!book.uploadedAt && (isReadestCloudStorageActive(settings) || hasFileProvider)) ||
                 (book.uploadedAt && !book.downloadedAt)) && (
                 <button
                   type='button'
@@ -224,7 +287,7 @@ const BookItem: React.FC<BookItemProps> = ({
                   className='show-cloud-button glossa-book-cloud-button'
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => {
-                    if (!user) {
+                    if (!user && !hasFileProvider) {
                       navigateToLogin(router);
                       return;
                     }
@@ -235,9 +298,10 @@ const BookItem: React.FC<BookItemProps> = ({
                     }
                   }}
                 >
-                  {!book.uploadedAt && isReadestCloudStorageActive(settings) && (
-                    <CloudUpload size={iconSize15} />
-                  )}
+                  {!book.uploadedAt &&
+                    (isReadestCloudStorageActive(settings) || hasFileProvider) && (
+                      <CloudUpload size={iconSize15} />
+                    )}
                   {book.uploadedAt && !book.downloadedAt && <CloudDownload size={iconSize15} />}
                 </button>
               )

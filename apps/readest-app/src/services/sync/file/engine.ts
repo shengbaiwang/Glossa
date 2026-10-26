@@ -1,4 +1,11 @@
+import {
+  bookRemovalSchema,
+  removalClock,
+  peerRemovalPatch,
+  compareBookRemoval,
+} from '@/services/bookRemovalState';
 import { Book, BookConfig, BookNote } from '@/types/book';
+import { readRemovalJournal, writeRemovalJournal } from './removalJournal';
 import { FileHead, FileSyncError, FileSyncProvider } from './provider';
 import { LocalStore } from './localStore';
 import {
@@ -9,9 +16,8 @@ import {
   buildBookDirPath,
   buildBookFilePath,
   buildLibraryPath,
+  findRemoteBookFile,
   SYNC_BOOKS_DIR,
-  SYNC_BOOK_CONFIG_FILE,
-  SYNC_BOOK_COVER_FILE,
 } from './layout';
 import {
   buildRemotePayload,
@@ -54,7 +60,7 @@ export interface SyncFailureEntry {
   title: string;
   reason: string;
   /** Which phase of the per-book pipeline failed; helps users self-triage. */
-  phase: 'download' | 'upload-config' | 'upload-file' | 'upload-cover';
+  phase: 'download' | 'upload-config' | 'upload-file' | 'upload-cover' | 'delete' | 'library-index';
 }
 
 /**
@@ -82,6 +88,8 @@ export interface SyncLibraryResult {
 
 export interface SyncLibraryOptions {
   syncBooks: boolean;
+  /** Backend whose receipt is saved separately from local completion. */
+  removalBackend?: string;
   strategy?: SyncStrategy;
   /** Stable per-device id; written into every config envelope. */
   deviceId: string;
@@ -433,15 +441,18 @@ export class FileSyncEngine {
   async downloadBookFile(book: Book): Promise<boolean> {
     const dirPath = buildBookDirPath(this.provider.rootPath, book.hash);
     const entries = await this.provider.list(dirPath);
-    const fileEntry = entries.find(
-      (e) => !e.isDirectory && e.name !== SYNC_BOOK_CONFIG_FILE && e.name !== SYNC_BOOK_COVER_FILE,
-    );
+    const fileEntry = findRemoteBookFile(entries, dirPath, book.format);
     if (!fileEntry) return false;
 
     let written = false;
     if (this.provider.downloadStream) {
-      const dst = await this.store.prepareLocalBookPath(book);
-      written = await this.provider.downloadStream(fileEntry.path, dst);
+      const write = async () => {
+        const dst = await this.store.prepareLocalBookPath(book);
+        return this.provider.downloadStream!(fileEntry.path, dst);
+      };
+      written = this.store.withBookFileWrite
+        ? await this.store.withBookFileWrite(book, write)
+        : await write();
     } else {
       const bytes = await this.provider.readBinary(fileEntry.path);
       if (bytes) {
@@ -469,10 +480,13 @@ export class FileSyncEngine {
     return true;
   }
 
-  /** GET + parse the shared library.json index, or null when absent/malformed. */
+  /** An absent index starts a new library; an unverifiable index must never be overwritten. */
   async pullLibraryIndex(): Promise<RemoteLibraryIndex | null> {
     const path = buildLibraryPath(this.provider.rootPath);
-    return parseRemoteLibraryIndex(await this.provider.readText(path));
+    const raw = await this.provider.readText(path);
+    const index = parseRemoteLibraryIndex(raw);
+    if (raw !== null && !index) throw new Error('The remote library index could not be verified.');
+    return index;
   }
 
   /** PUT the shared library.json index, creating its parent dirs. */
@@ -527,7 +541,7 @@ export class FileSyncEngine {
     // so an unchanged index means no remote-side news — the run can skip the
     // index download AND the discovery scan.
     let remoteIndexUnchanged = false;
-    if (canPull) {
+    {
       // Cheap change probe: one metadata stat. `etag` is Drive's md5 / the
       // WebDAV ETag; a provider without one always re-pulls. An AUTH failure
       // aborts exactly like the pull below; any other probe failure falls
@@ -560,6 +574,33 @@ export class FileSyncEngine {
           });
         }
       }
+    }
+
+    // Lifecycle safety is shared even when progress is configured send-only.
+    // A separate immutable journal prevents a stale whole-index write from reviving books.
+    const indexBeforeJournal = remoteIndex;
+    const journal = await readRemovalJournal(this.provider);
+    if (journal.length) {
+      const merged = new Map((remoteIndex?.books ?? []).map((book) => [book.hash, book]));
+      for (const record of journal) {
+        const existing = merged.get(record.hash);
+        if (!existing || compareBookRemoval(record, existing) > 0) {
+          merged.set(
+            record.hash,
+            existing
+              ? {
+                  ...mergeBookMetadata(existing, record),
+                  deletedAt: record.deletedAt,
+                  removal: record.removal,
+                }
+              : record,
+          );
+        }
+      }
+      remoteIndex = {
+        ...(remoteIndex ?? { schemaVersion: 1 as const, updatedAt: 0 }),
+        books: [...merged.values()],
+      };
     }
 
     // Terminal-failure latch: once any remote call fails with AUTH_FAILED the
@@ -662,6 +703,120 @@ export class FileSyncEngine {
     // resolve the path by listing the hash dir.
     const explicitRemotePaths = new Map<string, string>();
 
+    // A peer's explicit lifecycle travels independently of page-turn timestamps.
+    // Failed local cleanup stays durable and is retried without broadening its targets.
+    if (remoteIndex?.books) {
+      for (const remote of remoteIndex.books) {
+        const snapshot = allBooksMap.get(remote.hash);
+        const local = (await this.store.getCurrentBook?.(remote.hash)) ?? snapshot;
+        // A peer may still be writing with an older lifecycle (including an older
+        // client). Keep those personal edits behind a durable conflict before any GC.
+        if (
+          local?.deletedAt &&
+          local.removal &&
+          compareBookRemoval(local, remote) >= 0 &&
+          remote.updatedAt > local.removal.requestedAt &&
+          (remote.updatedAt > local.updatedAt || local.removal.conflict)
+        ) {
+          const hasNewMetadata = remote.updatedAt > local.updatedAt;
+          const conflict: Book = hasNewMetadata
+            ? {
+                ...mergeBookMetadata(local, remote),
+                deletedAt: local.deletedAt,
+                removal: {
+                  ...local.removal,
+                  conflict: true,
+                  local: local.removal.mode === 'purge' ? 'pending' : local.removal.local,
+                  revision: Math.max(Date.now(), local.removal.revision + 1),
+                },
+              }
+            : local;
+          try {
+            if (hasNewMetadata) await this.store.updateBookMetadata(conflict);
+            allBooksMap.set(
+              remote.hash,
+              (await this.store.getCurrentBook?.(remote.hash)) ?? conflict,
+            );
+            const config = (await this.store.loadConfig(conflict)) ?? {
+              updatedAt: 0,
+              booknotes: [],
+            };
+            const pull = await this.pullBookConfig(conflict, config);
+            if (pull.applied && pull.mergedConfig) {
+              await this.store.saveBookConfig(conflict, pull.mergedConfig);
+              result.configsDownloaded += 1;
+            }
+            if (hasNewMetadata) result.metadataUpdated += 1;
+            syncedHashes.add(remote.hash);
+          } catch (e) {
+            noteAbort(e);
+            result.failures += 1;
+            result.failedBooks.push({
+              hash: remote.hash,
+              title: remote.title || remote.hash,
+              phase: 'delete',
+              reason: formatFailureReason(e),
+            });
+          }
+          continue;
+        }
+        const intent = bookRemovalSchema.safeParse(remote.removal);
+        if (
+          !intent.success ||
+          intent.data.mode === 'local' ||
+          (intent.data.local !== 'complete' && !intent.data.conflict)
+        )
+          continue;
+        if (local && compareBookRemoval(local, remote) > 0) {
+          allBooksMap.set(local.hash, local);
+          continue;
+        }
+        if (local && compareBookRemoval(local, remote) === 0 && local.removal?.local === 'complete')
+          continue;
+        const base = local ?? {
+          ...stripDeviceLocalFields(remote),
+          removal: undefined,
+          updatedAt: 0,
+        };
+        let merged: Book = {
+          ...mergeBookMetadata(base, remote),
+          ...peerRemovalPatch(base, remote),
+        };
+        try {
+          if (merged.removal?.mode === 'restore' || merged.removal?.conflict) {
+            await this.store.updateBookMetadata(merged);
+            merged = (await this.store.getCurrentBook?.(remote.hash)) ?? merged;
+            result.metadataUpdated += 1;
+          } else {
+            merged = (await this.store.deleteBookLocally(merged)) ?? {
+              ...merged,
+              removal: { ...merged.removal!, local: 'complete' },
+            };
+            if (merged.removal?.local !== 'complete')
+              throw new Error('Local removal is unfinished');
+            result.booksDeleted += 1;
+          }
+          allBooksMap.set(remote.hash, merged);
+          syncedHashes.add(remote.hash);
+        } catch (e) {
+          const latest = await this.store.getCurrentBook?.(remote.hash);
+          if (latest) allBooksMap.set(remote.hash, latest);
+          result.failures += 1;
+          result.failedBooks.push({
+            hash: remote.hash,
+            title: remote.title || remote.hash,
+            phase: 'delete',
+            reason: formatFailureReason(e),
+          });
+        }
+      }
+      // Even a never-materialised tombstone owns its retained directory.
+      for (const remote of remoteIndex.books) {
+        if (remote.deletedAt && !allBooksMap.has(remote.hash))
+          allBooksMap.set(remote.hash, stripDeviceLocalFields(remote));
+      }
+    }
+
     // Metadata reconciliation for books present BOTH locally and in the shared
     // library.json (#4756). Last-writer-wins on `book.updatedAt`: when a peer's
     // indexed copy is strictly newer, pull its title / author / tags / cover
@@ -681,7 +836,14 @@ export class FileSyncEngine {
         concurrency,
         async (rb) => {
           const local = allBooksMap.get(rb.hash)!;
-          const merged = mergeBookMetadata(local, rb);
+          const metadata = mergeBookMetadata(local, rb);
+          // An old peer's live row cannot clear a newer local lifecycle.
+          const merged: Book = {
+            ...metadata,
+            deletedAt: local.deletedAt,
+            removal: local.removal,
+            localRemoval: local.localRemoval,
+          };
           // Re-pull the cover so a changed cover travels with the metadata. The
           // subsequent push-side pushBookCover HEAD/size short-circuit then
           // matches (local now equals remote), so we never bounce it back up.
@@ -734,7 +896,7 @@ export class FileSyncEngine {
     // on the next push).
     if (canPull && remoteIndex && remoteIndex.books) {
       const remoteDeletions = remoteIndex.books.filter((rb) => {
-        if (!rb.deletedAt) return false;
+        if (!rb.deletedAt || rb.removal) return false;
         const local = allBooksMap.get(rb.hash);
         return !!local && !local.deletedAt && (rb.deletedAt ?? 0) > (local.updatedAt ?? 0);
       });
@@ -801,7 +963,10 @@ export class FileSyncEngine {
         for (const entry of dirEntries) {
           if (!entry.isDirectory) continue;
           remoteHashDirs.add(entry.name);
-          if (!allBooksMap.has(entry.name)) {
+          if (
+            !allBooksMap.has(entry.name) &&
+            !remoteIndex?.books.some((b) => b.hash === entry.name && b.deletedAt)
+          ) {
             candidateHashes.add(entry.name);
           }
         }
@@ -822,10 +987,7 @@ export class FileSyncEngine {
         try {
           const hashDirPath = `${buildBasePath(this.provider.rootPath)}/${SYNC_BOOKS_DIR}/${hash}`;
           const hashDirEntries = await this.provider.list(hashDirPath);
-          const fileEntry = hashDirEntries.find(
-            (e) =>
-              !e.isDirectory && e.name !== SYNC_BOOK_CONFIG_FILE && e.name !== SYNC_BOOK_COVER_FILE,
-          );
+          const fileEntry = findRemoteBookFile(hashDirEntries, hashDirPath);
           if (!fileEntry) {
             emptyDirs.add(hash);
             continue;
@@ -895,8 +1057,13 @@ export class FileSyncEngine {
             // bridge as a single Uint8Array crashes the renderer.
             let written = false;
             if (this.provider.downloadStream && explicitPath) {
-              const dst = await this.store.prepareLocalBookPath(rb);
-              written = await this.provider.downloadStream(explicitPath, dst);
+              const write = async () => {
+                const dst = await this.store.prepareLocalBookPath(rb);
+                return this.provider.downloadStream!(explicitPath, dst);
+              };
+              written = this.store.withBookFileWrite
+                ? await this.store.withBookFileWrite(rb, write)
+                : await write();
             } else {
               const remotePath = explicitPath ?? buildBookFilePath(this.provider.rootPath, rb);
               const fileBytes = await this.provider.readBinary(remotePath);
@@ -919,7 +1086,10 @@ export class FileSyncEngine {
                 const emptyLocal: BookConfig = { updatedAt: 0, booknotes: [] };
                 const pullResult = await this.pullBookConfig(rb, emptyLocal);
                 if (pullResult.applied && pullResult.mergedConfig) {
-                  await this.store.saveBookConfig(rb, pullResult.mergedConfig);
+                  await (this.store.saveDownloadedConfig ?? this.store.saveBookConfig)(
+                    rb,
+                    pullResult.mergedConfig,
+                  );
                   result.configsDownloaded += 1;
                 }
               } catch (e) {
@@ -928,7 +1098,8 @@ export class FileSyncEngine {
               // We just pulled its bytes, so the file is on the remote: the row is
               // cloud-backed (#5084) and addBookToLibrary persists the stamp.
               rb.uploadedAt = Date.now();
-              await this.store.addBookToLibrary(rb);
+              const registered = await this.store.addBookToLibrary(rb);
+              if (registered) allBooksMap.set(rb.hash, registered);
               result.booksDownloaded += 1;
               syncedHashes.add(rb.hash);
               // Record it so a later push-side sync doesn't HEAD-probe it back.
@@ -974,8 +1145,11 @@ export class FileSyncEngine {
     // tombstoned in this same run is now deletedAt in allBooksMap even though
     // the caller's array copy isn't — pushing it would re-upload a book we are
     // about to GC (#4860).
-    const isEffectivelyDeleted = (b: Book): boolean => !!(allBooksMap.get(b.hash) ?? b).deletedAt;
-    const booksToPush = books.filter(
+    const isEffectivelyDeleted = (b: Book): boolean => {
+      const row = allBooksMap.get(b.hash) ?? b;
+      return !!(row.deletedAt || row.duplicateOf);
+    };
+    const booksToPush = Array.from(allBooksMap.values()).filter(
       (b) =>
         !isEffectivelyDeleted(b) &&
         !downloadedHashes.has(b.hash) &&
@@ -1090,21 +1264,96 @@ export class FileSyncEngine {
         }
       }
 
-      // GC the remote per-hash directory of every tombstoned book whose files
-      // still linger on the server (#4860). Scoped to dirs the discovery scan
-      // actually saw, so a dir removed on a previous sync is never re-DELETEd
-      // and 'send' mode (which never lists) is a safe no-op. This is what makes
-      // a deletion reclaim server space instead of leaving orphaned book files.
-      const dirsToGc = Array.from(remoteHashDirs).filter(
-        (hash) => indexByHash.get(hash)?.deletedAt,
-      );
-      await runPool(dirsToGc, concurrency, async (hash) => {
+      // Re-read this device before destructive remote work: a stale sync snapshot
+      // cannot erase files after another window restored or edited the book.
+      for (const [hash, snapshot] of indexByHash) {
+        if (!snapshot.removal) continue;
+        const latest = await this.store.getCurrentBook?.(hash);
+        if (latest) indexByHash.set(hash, latest);
+      }
+      const removalFailures = new Set<string>();
+      for (const book of indexByHash.values()) {
+        if (
+          !book.removal ||
+          book.removal.mode === 'local' ||
+          (book.removal.local !== 'complete' && !book.removal.conflict)
+        )
+          continue;
         try {
-          await deleteRemoteBookDir(this.provider, hash);
+          await writeRemovalJournal(this.provider, book);
+        } catch (error) {
+          noteAbort(error);
+          removalFailures.add(book.hash);
+          result.failures += 1;
+          result.failedBooks.push({
+            hash: book.hash,
+            title: book.title || book.hash,
+            phase: 'delete',
+            reason: formatFailureReason(error),
+          });
+        }
+      }
+      if (abort) throw abort;
+      const dirsToGc = Array.from(indexByHash.values()).filter(
+        (book) =>
+          book.deletedAt &&
+          !removalFailures.has(book.hash) &&
+          (!book.removal
+            ? remoteHashDirs.has(book.hash)
+            : book.removal.mode === 'purge' &&
+              book.removal.local === 'complete' &&
+              !book.removal.conflict),
+      );
+      await runPool(dirsToGc, concurrency, async (book) => {
+        try {
+          let newerPeer: Book | undefined;
+          const erase = async () => {
+            if (book.removal) {
+              const peer = (await readRemovalJournal(this.provider)).find(
+                (row) => row.hash === book.hash,
+              );
+              if (peer && compareBookRemoval(peer, book) > 0) {
+                newerPeer = peer;
+                return;
+              }
+            }
+            const outcome = await deleteRemoteBookDir(this.provider, book.hash);
+            if (!outcome.ok) throw new Error(outcome.reason || 'Remote deletion failed');
+          };
+          let performed = true;
+          if (book.removal && this.store.withCurrentRemoval)
+            performed = await this.store.withCurrentRemoval(book, erase);
+          else await erase();
+          if (newerPeer) {
+            // Adopt outside withCurrentRemoval's lock; a peer restore must not be
+            // overwritten by this run's older index or acknowledged as a purge.
+            const merged = {
+              ...mergeBookMetadata(book, newerPeer),
+              ...peerRemovalPatch(book, newerPeer),
+            };
+            await this.store.updateBookMetadata(merged);
+            indexByHash.set(book.hash, (await this.store.getCurrentBook?.(book.hash)) ?? merged);
+            removalFailures.add(book.hash);
+          } else if (!performed) {
+            const latest = await this.store.getCurrentBook?.(book.hash);
+            if (latest) indexByHash.set(book.hash, latest);
+            removalFailures.add(book.hash);
+          } else uploadedHashes.delete(book.hash);
         } catch (e) {
-          console.warn('file sync: failed to GC deleted book dir', hash, e);
+          noteAbort(e);
+          removalFailures.add(book.hash);
+          result.failures += 1;
+          result.failedBooks.push({
+            hash: book.hash,
+            title: book.title || book.hash,
+            phase: 'delete',
+            reason: formatFailureReason(e),
+          });
+          if (options.removalBackend && book.removal)
+            await this.store.acknowledgeRemoval?.(book, options.removalBackend, 'failed');
         }
       });
+      if (abort) throw abort;
 
       // Prune the empty-dir record to dirs that still exist — but only against
       // a listing that actually ran, so a discovery-skipped run can't wipe it.
@@ -1119,7 +1368,7 @@ export class FileSyncEngine {
       // book so the set can't grow unbounded with tombstoned / evicted books.
       const nextUploadedHashes = Array.from(uploadedHashes).filter((hash) => {
         const b = indexByHash.get(hash);
-        return !!b && !b.deletedAt;
+        return !!b && (!b.deletedAt || b.removal?.mode === 'trash' || !!b.removal?.conflict);
       });
       const nextEmptyDirs = Array.from(emptyDirs);
 
@@ -1128,20 +1377,32 @@ export class FileSyncEngine {
       // invalidates every other device's etag-based change detection. The
       // check is deliberately conservative — any per-book activity, failure,
       // record change, or local row the remote lacks (or trails) pushes.
-      const remoteAllByHash = new Map((remoteIndex?.books ?? []).map((b) => [b.hash, b] as const));
+      const remoteAllByHash = new Map(
+        (indexBeforeJournal?.books ?? []).map((b) => [b.hash, b] as const),
+      );
       const indexDirty =
-        remoteIndex === null ||
+        indexBeforeJournal === null ||
         syncedHashes.size > 0 ||
         result.failures > 0 ||
-        !sameStringSet(nextUploadedHashes, remoteIndex.uploadedHashes ?? []) ||
-        !sameStringSet(nextEmptyDirs, remoteIndex.emptyDirs ?? []) ||
-        books.some((b) => {
+        !sameStringSet(nextUploadedHashes, remoteIndex?.uploadedHashes ?? []) ||
+        !sameStringSet(nextEmptyDirs, remoteIndex?.emptyDirs ?? []) ||
+        Array.from(indexByHash.values()).some((b) => {
           const r = remoteAllByHash.get(b.hash);
           if (!r) return true;
-          if (!!r.deletedAt !== !!b.deletedAt) return true;
-          return (b.updatedAt ?? 0) > (r.updatedAt ?? 0);
+          if (
+            !!r.deletedAt !== !!b.deletedAt ||
+            removalClock(r) !== removalClock(b) ||
+            r.removal?.local !== b.removal?.local ||
+            !!r.removal?.conflict !== !!b.removal?.conflict
+          )
+            return true;
+          return (
+            (b.updatedAt ?? 0) > (r.updatedAt ?? 0) ||
+            (b.duplicateUpdatedAt ?? 0) > (r.duplicateUpdatedAt ?? 0)
+          );
         });
 
+      let indexSaved = !indexDirty;
       if (indexDirty) {
         try {
           const newIndex: RemoteLibraryIndex = {
@@ -1152,13 +1413,35 @@ export class FileSyncEngine {
             emptyDirs: nextEmptyDirs,
           };
           await this.pushLibraryIndex(newIndex);
+          indexSaved = true;
           // Our own push changed the remote etag; drop the cached snapshot so
           // the next run re-pulls (and re-discovers) once, then goes quiet.
           remoteIndexCache.delete(this.provider);
         } catch (e) {
-          console.warn('file sync: failed to push index', e);
+          noteAbort(e);
+          result.failures += 1;
+          result.failedBooks.push({
+            hash: '',
+            title: 'Library',
+            phase: 'library-index',
+            reason: formatFailureReason(e),
+          });
         }
       }
+      if (options.removalBackend) {
+        for (const book of indexByHash.values()) {
+          if (
+            !book.removal ||
+            book.removal.mode === 'local' ||
+            book.removal.local !== 'complete' ||
+            book.removal.conflict
+          )
+            continue;
+          const status = indexSaved && !removalFailures.has(book.hash) ? 'complete' : 'failed';
+          await this.store.acknowledgeRemoval?.(book, options.removalBackend, status);
+        }
+      }
+      if (abort) throw abort;
     }
 
     // Persist the cloud-copy stamps in one library write. They must survive a

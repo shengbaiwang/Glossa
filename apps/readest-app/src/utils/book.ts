@@ -1,3 +1,4 @@
+import { removeBookSubjectMetadata } from './bookMetadata';
 import { BookMetadata, CalibreCustomColumn, EXTS } from '@/libs/document';
 import {
   Book,
@@ -210,7 +211,7 @@ export const getBookWithUpdatedMetadata = (
   const now = Date.now();
   const updatedBook: Book = {
     ...book,
-    metadata,
+    metadata: removeBookSubjectMetadata(metadata),
     ...(tags ? { tags: [...tags] } : {}),
     title: formatTitle(metadata.title),
     author: formatAuthors(metadata.author),
@@ -308,6 +309,28 @@ export const getCurrentPage = (book: Book, progress: BookProgress) => {
  * of which pass. Shared by the library's recently-read shelf and the
  * home-screen reading widget so the two surfaces stay in sync.
  */
+/** Archived duplicates keep their anchors; missing keepers and cycles cannot hide every copy. */
+export function getVisibleBooks(books: Book[]): Book[] {
+  const byHash = new Map(books.map((book) => [book.hash, book]));
+  const visible = (book: Book): boolean => {
+    if (book.deletedAt) return false;
+    const visited: string[] = [];
+    let current = book;
+    while (current.duplicateOf && byHash.has(current.duplicateOf)) {
+      visited.push(current.hash);
+      const next = byHash.get(current.duplicateOf)!;
+      if (next.deletedAt) return false;
+      const cycleStart = visited.indexOf(next.hash);
+      if (cycleStart !== -1) {
+        return book.hash === visited.slice(cycleStart).sort()[0];
+      }
+      current = next;
+    }
+    return current.hash === book.hash;
+  };
+  return books.filter(visible);
+}
+
 export const isCurrentlyReadingBook = (book: Book): boolean =>
   !book.deletedAt &&
   book.progress != null &&

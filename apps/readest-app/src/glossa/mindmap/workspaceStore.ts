@@ -1,8 +1,10 @@
 import { mapWorkspaceSchema, type MapWorkspace } from './workspace';
+import { withBookDataWrite } from '@/services/bookDataLifecycle';
+import type { BookDataEdit } from '@/services/bookDataConflicts';
 
 export class MapStorageConflict extends Error {}
 
-async function validateOrigins(workspace: MapWorkspace): Promise<void> {
+export async function validateOrigins(workspace: MapWorkspace): Promise<void> {
   const origins = workspace.maps.flatMap((map) => [
     ...(map.origin ? [map.origin] : []),
     ...(map.extensions ?? []),
@@ -50,38 +52,49 @@ export async function loadMapWorkspace(bookId: string): Promise<MapWorkspace> {
 }
 
 /** Revision comparison and replacement share one transaction, including across windows. */
-export async function saveMapWorkspace(workspace: MapWorkspace): Promise<void> {
+export async function saveMapWorkspace(
+  workspace: MapWorkspace,
+  revision = 0,
+  edit?: BookDataEdit,
+): Promise<void> {
   const valid = mapWorkspaceSchema.parse(workspace);
   await validateOrigins(valid);
-  const db = await open();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction('workspaces', 'readwrite');
-      const store = tx.objectStore('workspaces');
-      const request = store.get(valid.bookId);
-      let reason: Error | undefined;
-      request.onsuccess = () => {
-        const raw: unknown = request.result;
-        const previous = raw === undefined ? null : mapWorkspaceSchema.safeParse(raw);
-        if (
-          (previous && !previous.success) ||
-          (previous?.success ? previous.data.revision : 0) !== valid.revision
-        ) {
-          reason = new MapStorageConflict('Map changed in another window');
-          tx.abort();
-          return;
-        }
-        try {
-          store.put({ ...valid, revision: valid.revision + 1 });
-        } catch {
-          reason = new Error('Map save failed');
-          tx.abort();
-        }
-      };
-      tx.oncomplete = () => resolve();
-      tx.onerror = tx.onabort = () => reject(reason ?? new Error('Map save failed'));
-    });
-  } finally {
-    db.close();
-  }
+  await withBookDataWrite(
+    valid.bookId,
+    revision,
+    async () => {
+      const db = await open();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction('workspaces', 'readwrite');
+          const store = tx.objectStore('workspaces');
+          const request = store.get(valid.bookId);
+          let reason: Error | undefined;
+          request.onsuccess = () => {
+            const raw: unknown = request.result;
+            const previous = raw === undefined ? null : mapWorkspaceSchema.safeParse(raw);
+            if (
+              (previous && !previous.success) ||
+              (previous?.success ? previous.data.revision : 0) !== valid.revision
+            ) {
+              reason = new MapStorageConflict('Map changed in another window');
+              tx.abort();
+              return;
+            }
+            try {
+              store.put({ ...valid, revision: valid.revision + 1 });
+            } catch {
+              reason = new Error('Map save failed');
+              tx.abort();
+            }
+          };
+          tx.oncomplete = () => resolve();
+          tx.onerror = tx.onabort = () => reject(reason ?? new Error('Map save failed'));
+        });
+      } finally {
+        db.close();
+      }
+    },
+    edit ? { ...edit, kind: 'mindmaps', data: valid } : undefined,
+  );
 }

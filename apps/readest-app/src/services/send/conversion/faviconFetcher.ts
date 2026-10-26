@@ -105,15 +105,17 @@ export function extractIconCandidates(doc: Document, pageUrl: string): IconCandi
 export async function fetchAuthorImage(
   url: string,
   referer: string | null,
+  signal?: AbortSignal,
 ): Promise<{ bytes: ArrayBuffer; mime: string } | null> {
-  return fetchImage(url, referer, MAX_AUTHOR_IMAGE_BYTES);
+  return fetchImage(url, referer, MAX_AUTHOR_IMAGE_BYTES, signal);
 }
 
 async function fetchFavicon(
   url: string,
   referer: string | null,
+  signal?: AbortSignal,
 ): Promise<{ bytes: ArrayBuffer; mime: string } | null> {
-  return fetchImage(url, referer, MAX_FAVICON_BYTES);
+  return fetchImage(url, referer, MAX_FAVICON_BYTES, signal);
 }
 
 const MAX_AUTHOR_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -122,8 +124,12 @@ async function fetchImage(
   url: string,
   referer: string | null,
   maxBytes: number,
+  signal?: AbortSignal,
 ): Promise<{ bytes: ArrayBuffer; mime: string } | null> {
+  signal?.throwIfAborted();
   const ac = new AbortController();
+  const abort = () => ac.abort();
+  signal?.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
   try {
     const res = await httpFetch(url, referer, { signal: ac.signal, redirect: 'follow' });
@@ -147,6 +153,7 @@ async function fetchImage(
     return null;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
   }
 }
 
@@ -163,6 +170,7 @@ async function fetchImage(
 export async function fetchBestFavicon(
   doc: Document,
   pageUrl: string,
+  signal?: AbortSignal,
 ): Promise<{ bytes: ArrayBuffer; mime: string } | null> {
   const candidates = extractIconCandidates(doc, pageUrl);
 
@@ -195,7 +203,8 @@ export async function fetchBestFavicon(
   });
 
   for (const candidate of ordered) {
-    const result = await fetchFavicon(candidate.url, pageUrl);
+    signal?.throwIfAborted();
+    const result = await fetchFavicon(candidate.url, pageUrl, signal);
     if (result) return result;
   }
   return null;

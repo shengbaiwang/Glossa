@@ -32,6 +32,26 @@
     "allow-clip-url",
     "allow-spawn-fresh-browser",
     "allow-verify-update-signature",
-    "allow-install-nightly-update"
+    "allow-install-nightly-update",
+    "core:default",
+    "fs:default",
+    "fs:read-all",
+    "fs:write-all",
+    "fs:allow-mkdir",
+    "fs:allow-remove",
+    "fs:allow-read",
+    "fs:allow-write",
+    "fs:allow-stat",
+    "allow-pdf-open-cache",
+    "allow-pdf-read-ocr-page",
+    "allow-pdf-start-ocr",
+    "allow-pdf-ocr-status",
+    "allow-pdf-cancel-ocr",
+    "allow-pdf-save-outline",
+    "allow-pdf-export-copy",
+    "allow-pdf-cancel-export",
+    "allow-pdf-purge-book",
+    "allow-pdf-legacy-caches",
+    "allow-pdf-clear-legacy-caches"
   ]
 }

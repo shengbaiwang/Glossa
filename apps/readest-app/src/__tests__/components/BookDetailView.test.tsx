@@ -75,35 +75,29 @@ const renderView = (extra?: Partial<React.ComponentProps<typeof BookDetailView>>
         metadata={null}
         fileSize={1024}
         onDelete={vi.fn()}
-        onDeleteCloudBackup={vi.fn()}
         onDeleteLocalCopy={vi.fn()}
         {...extra}
       />
     </DropdownProvider>,
   );
 
-describe('BookDetailView delete dropdown layout', () => {
-  it('places dropdown-center on the parent dropdown so the menu stays in flow', () => {
-    const { container } = renderView();
-    const toggle = container.querySelector('button[aria-label="Delete Book Options"]');
-    expect(toggle).toBeTruthy();
-    fireEvent.click(toggle!);
-
-    // The parent <details> should center its absolutely positioned content.
-    const details = container.querySelector('details.dropdown');
-    expect(details).toBeTruthy();
-    expect(details!.className).toContain('dropdown-center');
-
-    // The inner menu must NOT carry dropdown-center (which would force
-    // position: absolute on it and detach the menu from its anchor — the bug
-    // reported in https://github.com/readest/readest/issues/3940 where the
-    // menu shifted to the right when items were clicked).
-    const menu = container.querySelector('.delete-menu');
-    expect(menu).toBeTruthy();
-    expect(menu!.className).not.toContain('dropdown-center');
-    // It should keep position: relative via the !relative override so it
-    // anchors against the centered parent.
-    expect(menu!.className).toContain('!relative');
+describe('BookDetailView direct deletion', () => {
+  it('opens deletion directly and keeps download clearing in More', () => {
+    const onDelete = vi.fn(),
+      onDeleteLocalCopy = vi.fn();
+    const { container, getByRole, getByText } = renderView({
+      book: makeBook({ uploadedAt: null }),
+      onDelete,
+      onDeleteLocalCopy,
+    });
+    fireEvent.click(getByRole('button', { name: 'Delete book' }));
+    expect(onDelete).toHaveBeenCalledOnce();
+    expect(container.querySelector('.delete-menu')).toBeNull();
+    fireEvent.click(getByRole('button', { name: 'More Actions' }));
+    const action = getByText('Clear local download').closest('button')!;
+    expect(action.disabled).toBe(false);
+    fireEvent.click(action);
+    expect(onDeleteLocalCopy).toHaveBeenCalledOnce();
   });
 });
 
@@ -119,7 +113,7 @@ describe('BookDetailView More menu (Goodreads + Share)', () => {
     // Goodreads is no longer a standalone icon button outside the menu.
     expect(container.querySelector('button[aria-label="More Actions"]')).toBeTruthy();
     openMore(container);
-    expect(getByText('Search on Goodreads')).toBeTruthy();
+    expect(container.textContent).not.toContain('Search on Goodreads');
     expect(getByText('Share Book')).toBeTruthy();
   });
 
@@ -166,17 +160,14 @@ describe('BookDetailView More menu (Goodreads + Share)', () => {
   });
 });
 
-describe('BookDetailView delete dropdown (purge folded into the confirm alert)', () => {
-  it('no longer offers a Purge Data action and keeps the three remove options', () => {
-    const { container, queryByText } = renderView();
-    const toggle = container.querySelector('button[aria-label="Delete Book Options"]');
-    fireEvent.click(toggle!);
-    // Purge is now an opt-in toggle on the delete confirmation alert, not a
-    // standalone menu item.
+describe('BookDetailView deletion scope', () => {
+  it('does not expose permanent deletion or the disabled legacy cloud-only action', () => {
+    const { getByRole, queryByText } = renderView();
+    expect(getByRole('button', { name: 'Delete book' })).toBeTruthy();
+    fireEvent.click(getByRole('button', { name: 'More Actions' }));
     expect(queryByText('Purge Data')).toBeNull();
-    expect(queryByText('Remove from Cloud & Device')).toBeTruthy();
-    expect(queryByText('Remove from Cloud Only')).toBeTruthy();
-    expect(queryByText('Remove from Device Only')).toBeTruthy();
+    expect(queryByText('Remove from Cloud Only')).toBeNull();
+    expect(queryByText('Clear local download')).toBeTruthy();
   });
 });
 
@@ -220,22 +211,22 @@ describe('BookDetailView page count', () => {
   });
 });
 
-describe('BookDetailView tags and subjects', () => {
-  it('normalizes clicked tag and subject values before shelf navigation', () => {
+describe('BookDetailView tags', () => {
+  it('keeps tag navigation and omits retired subject metadata', () => {
     const onMetadataValueClick = vi.fn();
-    const { getByText } = renderView({
+    const { getByText, queryByText } = renderView({
       book: makeBook({ tags: [' Favorite '] }),
       metadata: {
         title: 'Test Book',
         author: 'Test Author',
         language: 'en',
-        subject: ['History'],
+        ...{ subject: ['History'] },
       },
       onMetadataValueClick,
     });
 
-    fireEvent.click(getByText('History'));
-    expect(onMetadataValueClick).toHaveBeenCalledWith('subject', 'History');
+    expect(queryByText('History')).toBeNull();
+    expect(queryByText('Subjects')).toBeNull();
     fireEvent.click(getByText('Favorite'));
     expect(onMetadataValueClick).toHaveBeenCalledWith('tag', 'Favorite');
   });

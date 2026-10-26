@@ -60,14 +60,14 @@ const SourceSelector: React.FC<SourceSelectorProps> = ({ sources, isOpen, onSele
               className='hover:bg-base-300/75 bg-base-200 border-base-200 w-full cursor-pointer rounded-md border p-3 transition-colors'
             >
               <div className='flex items-start gap-4'>
-                <div className='aspect-[28/41] h-full w-[40%] max-w-32 shadow-md'>
+                <div className='aspect-[28/41] h-full w-[40%] max-w-32'>
                   <BookCover
                     mode='list'
                     book={
                       {
                         title: formatTitle(source.data.title),
                         author: formatAuthors(source.data.author),
-                        coverImageUrl: (source.data as Metadata)['coverImageUrl'] || '_blank',
+                        coverImageUrl: (source.data as Metadata)['coverImageUrl'],
                       } as Book
                     }
                   />

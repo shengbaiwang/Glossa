@@ -1,5 +1,40 @@
 ## Glossa Design Language
 
+### Matte paper covers — 2026-10-24
+
+Use the existing 3D-cover preference for a quiet printed-book material: a narrow
+binding groove, a thin warm-grey page edge, small corners and soft shadows from
+one upper light source. Keep artwork colors clean and the front face readable.
+An opaque theme-paper face keeps page-edge lines behind transparent artwork.
+Tuck the rounded page heel beneath the binding foot, soften the groove at its
+end and keep the page keyline inside the paper. Avoid a square offset tab at the
+lower binding corner; scale its curve with depth and mirror it in RTL.
+The shared cover owns the face, binding, paper and shadow geometry, including
+Full cover, wide and narrow artwork, list/recent cards, group previews and details.
+Missing, loading or failed artwork shows a composed theme-paper cover with serif
+title and author; editing either updates that cover immediately.
+
+Lift only the book by 2px on fine-pointer hover or card keyboard focus, with a
+240ms eased return and a 90ms press response. Keep labels, status and hit targets
+stationary. Selection and group previews stay still; child controls do not inherit
+the keyboard lift. Touch needs no hover. Reduced motion disables displacement and
+transitions. Dark themes use darker page edges and black shadows; RTL mirrors the
+binding. E-ink removes depth, gradients, shadows and motion, leaving one crisp face
+border. Use CSS interaction states without per-book timers or pointer tracking.
+
+### Library display menu — 2026-10-24
+
+Keep layout, active-view size, cover presentation, book information / recent
+reading, and sorting in that order. Omit the repeated title and global appearance
+shortcut. Use a Small–Large slider; grid size becomes a preferred track width
+that adapts to the library container, preserving legacy columns until changed.
+Auto restores the original responsive sizing. Show Fill / Full cover and 3D
+covers only in grid mode. Use quiet labelled switches without row-wide selected
+fills. Author and numeric progress live inside one collapsed disclosure and
+apply equally to grid, list and recent cards. Hiding numbers must retain direct
+reading-status editing. Keep 44px touch rows, visible keyboard focus, logical
+RTL spacing, crisp e-ink controls and scrolling inside short menus.
+
 ### Footnote reading — 2026-10-22
 
 Measure the actual note with its reading fonts before revealing it. Commit the
@@ -367,7 +402,8 @@ filesystem settings retain the ordinary folder glyph.
 
 | Role | Desktop glyph | Control / rounding |
 | --- | --- | --- |
-| Library toolbar and category navigation | 20px | 32px desktop icon button / 12px; category row keeps its own full-width target |
+| Library toolbar and reader chrome | 18px | 32px desktop icon button / 11px; 2px peer gap, 44px touch target |
+| Library category navigation | 18px | Full-width row; leading expansion target, icon, label, reserved scrollbar gutter |
 | Reader header, selection and page navigation | 18px | 32px / 11px; 2px peer gap |
 | Left/right pane destinations and collapse | 18px | 32 × 32px target; 28 × 28px selected backplate / 10px; 2px group gap |
 | Workspace tools, settings actions, menus, history navigation | 16px | 28px / 9px for pure local actions; menu rows retain their text target |
@@ -615,6 +651,18 @@ In the expanded desktop library sidebar, pin a labelled Settings gear below the
 scrollable category list. Hide the duplicate toolbar gear only while that sidebar
 is visible; restore it for normal browsing when collapsed or below 900px.
 Use the same application settings dialog and shortcut as the reader.
+
+Deletion and recovery (2026-10-26): use one compact paper confirmation with the
+book name, short consequence and explicit action. Ordinary deletion is reversible
+and uses neutral ink; only permanent deletion uses the destructive color. Details
+opens deletion directly, while clearing a download belongs in More. Recently
+Deleted is a book list with Restore and Delete permanently on each row; selected
+rows expose batch actions in place. Unfinished operations and preserved drafts
+expand on demand. Legacy shared-data cleanup belongs in Settings / Library Data.
+Keep meaningful failure feedback, real stop signals, 44px targets and keyboard
+focus, without scaling button animations or zero-valued status counters. Deleting
+a group dissolves its membership and preserves books, superseding the older
+empty-folder restriction above.
 
 Grid book cards keep the complete title (up to two lines) and place the author
 directly below its actual height. Reserve the second line's unused space below the
@@ -1795,12 +1843,12 @@ Click a sourced node to verify and navigate to local text, shown in a restrained
 Use logical spacing for RTL, visible keyboard focus, compact controls matching Conversation, touch targets on coarse pointers, and explicit e-ink borders. Keep canvas scrolling inside the workspace and source text selectable. Success saving status is announced accessibly; actionable errors remain visible. See `../../docs/design/mindmap.md` and `src/styles/glossa-mindmap.css`.
 
 
-### 15. Glossa menu scopes — 2026-10-13
+### 15. Glossa menu scopes — updated 2026-10-24
 
-Group commands by their target. The library view control uses horizontal sliders and contains shelf presentation plus Select Books as its first command. Keep the selection check in that menu rather than as a separate normal toolbar button; selection mode retains Select All / Deselect / Done. A shared Settings gear opens application preferences from the library and reader, with a silhouette distinct from the view sliders. The expanded desktop library uses a labelled Settings row at the sidebar bottom; collapsed and narrow layouts use the toolbar gear. Aa opens only Font / Layout / Color; book menus operate on the current book. Application settings group Application and Reading Defaults in a labelled sidebar, with a grouped native selector on narrow screens. Keep global language, cloud, models and conversation setup out of Aa.
+Use direct content interactions for renaming, status changes, selection and moving. The library Display control manages shelf presentation, size and sorting; it does not repeat selection or application settings. Keep navigation at the leading side and local actions at the trailing side. Library and reader chrome share 18px glyphs, 32px controls, 11px corners and 2px peer gaps; coarse pointers use 20px glyphs and 44px touch targets. The reader retains its local Aa shortcut and one low-frequency application-settings entry in Book Actions. Remove duplicate selection and manual sync/diagnostic commands from that menu. The library settings row stays fixed below the scrolling sidebar; the toolbar fallback appears when the sidebar is unavailable.
 
-List and Grid each occupy one row, with their size controls at the trailing edge. Minus makes items smaller and Plus makes them larger in both modes. List scales covers, text and row spacing together (80–140%, 10% steps); Grid retains column settings and a compact Auto toggle on its own row, starting manual changes from the visible automatic column count. Keep the menu open while sizing, activate the adjusted view and preserve each mode's saved preference. Do not add a separate Columns heading or control row. Old settings keep the original list size; group-cover previews follow list sizing while Continue reading retains its own card size.
+Application settings have exactly five destinations: General, Reading, Library & Sync, Plugins, About. Related sections switch inside the selected destination, with a native category selector on narrow screens. General holds startup/window, interface language and application appearance. Reading holds font, layout, colors/annotations, controls, dictionaries, speech and advanced styles. Library & Sync holds import/storage/backup and account/sync. Plugins own their existing internal settings. About reuses the same version, help and license content as the system About command and owns update preferences. Preserve legacy shortcuts, search IDs and remembered leaf panels; reveal collapsed targets before scrolling.
 
-The view menu does not repeat Group by from the library navigation. Use a 280px viewport-bounded paper/ink surface, shared menu typography and spacing, with the selected view wash spanning its entire row. Book Covers is a quiet group heading with Crop / Fit side by side; Continue reading remains a direct switch and primary/secondary sorting stays collapsed until requested. Only the effective sort key is checked, including grouping-based defaults. Use the shared borderless row states and underline keyboard focus, logical alignment for RTL, crisp e-ink boundaries and at least 44px touch targets.
+Aa exposes only Font / Layout / Theme and always edits the current book. A real book adjustment detaches that book from inherited defaults. Replace the ambiguous scope toggle with the quiet This Book Only label and an explicit Set as Reading Defaults action. Copy presentation preferences through a whitelist; never copy locations, private excerpts, proofreading records or application state. Persist before publishing the copied defaults; failure leaves the prior defaults and draft available for retry. Application reading sections edit the existing shared defaults, retaining explicit book overrides. Embedded panels do not repeat scope/reset controls.
 
-Use one visible This Book Only / All Books Default scope selector above reading controls and one reset action in the dialog header. Embedded panels must not repeat those controls. Global defaults preserve explicit per-book settings; serialize overrides against the updated defaults. Use shared ink/paper tokens, icon buttons, spacing, focus and selected states. Sidebar and scope controls support arrow-key navigation before the modal's event boundary; narrow screens, RTL and e-ink keep the same meanings. Saving failures remain actionable with retry.
+The sidebar row reads expansion arrow, icon, name; reserve a stable scrollbar gutter, keep expansion ahead of the icon in RTL, and use indentation for hierarchy. Books and groups share a fixed cover stage, centered artwork, two-line title start and metadata spacing. Default to complete original covers and retain saved Crop/Fit choices. Group stacks stay within the first cover's footprint with a small offset; the count distinguishes a group. List groups use the book row cover dimensions with no nested horizontal shelf. Keyboard focus, touch, dark themes and crisp e-ink states retain the same meanings.

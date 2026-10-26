@@ -1,7 +1,9 @@
 import { FileSystem, BaseDir } from '@/types/system';
 
+export type JSONFileSystem = Pick<FileSystem, 'readFile' | 'writeFile'>;
+
 async function loadJSONFile(
-  fs: FileSystem,
+  fs: JSONFileSystem,
   path: string,
   base: BaseDir,
 ): Promise<{ success: boolean; data?: unknown; error?: unknown }> {
@@ -26,7 +28,7 @@ async function loadJSONFile(
  * If the main file is corrupted, attempts to load from backup.
  */
 export async function safeLoadJSON<T>(
-  fs: FileSystem,
+  fs: JSONFileSystem,
   filename: string,
   base: BaseDir,
   defaultValue: T,
@@ -58,7 +60,7 @@ export async function safeLoadJSON<T>(
  * This ensures at least one valid copy exists at all times.
  */
 export async function safeSaveJSON(
-  fs: FileSystem,
+  fs: JSONFileSystem,
   filename: string,
   base: BaseDir,
   data: unknown,

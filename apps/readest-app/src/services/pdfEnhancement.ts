@@ -69,8 +69,17 @@ const call = async (name: string, args: Record<string, unknown>) => {
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<unknown>(name, args);
 };
-export const openPDFCache = async (source: string, create = false): Promise<PDFCache | null> => {
-  const value = await call('pdf_open_cache', { source, create });
+export type PDFCacheOwner = { bookId: string; revision: number };
+export const pdfCacheOwner = (book: {
+  hash: string;
+  removal?: { revision: number };
+}): PDFCacheOwner => ({ bookId: book.hash, revision: book.removal?.revision ?? 0 });
+export const openPDFCache = async (
+  source: string,
+  create = false,
+  owner?: PDFCacheOwner,
+): Promise<PDFCache | null> => {
+  const value = await call('pdf_open_cache', { source, create, ...(owner ? { owner } : {}) });
   return value === null ? null : cacheSchema.parse(value);
 };
 export const parseOCRPage = (value: unknown, index: number): OCRPage | null => {
@@ -420,3 +429,14 @@ export function calibratePDFPageOffset(
     ? actual - 1 - matches[0]!
     : null;
 }
+
+export const purgePDFBook = (bookId: string, revision: number) =>
+  call('pdf_purge_book', { bookId, revision });
+const legacyCacheSchema = z
+  .object({ id: z.string().regex(/^[a-f0-9]{32}$/), stamp: z.string().regex(/^[a-f0-9]{32}$/) })
+  .strict();
+export type LegacyPDFCache = z.infer<typeof legacyCacheSchema>;
+export const inspectLegacyPDFCaches = async () =>
+  z.array(legacyCacheSchema).parse(await call('pdf_legacy_caches', {}));
+export const clearLegacyPDFCaches = (targets: LegacyPDFCache[]) =>
+  call('pdf_clear_legacy_caches', { targets });

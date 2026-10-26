@@ -115,9 +115,6 @@ const pick = (fields: FrontmatterFields, ...keys: string[]): string | string[] |
 const one = (value: string | string[] | undefined): string | undefined =>
   Array.isArray(value) ? value[0] : value;
 
-const many = (value: string | string[] | undefined): string[] | undefined =>
-  value === undefined ? undefined : Array.isArray(value) ? value : [value];
-
 const DATA_URI_RE = /^data:([^,]*),([\s\S]*)$/i;
 
 // Decode a `data:` URI into a Blob. Returns null for anything malformed so a
@@ -170,7 +167,6 @@ export const frontmatterToMetadata = (
   set('publisher', one(pick(fields, 'publisher')));
   set('published', one(pick(fields, 'published', 'date', 'pubdate')));
   set('description', one(pick(fields, 'description', 'summary')));
-  set('subject', many(pick(fields, 'subject', 'tags', 'keywords')));
   set('series', one(pick(fields, 'series')));
 
   const seriesIndex = parseFloat(one(pick(fields, 'seriesindex')) ?? '');

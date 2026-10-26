@@ -635,7 +635,7 @@ describe('FileSyncEngine.syncLibrary — remote change detection', () => {
     return { captured, readText, head, list, provider, store };
   };
 
-  test('an unchanged remote index short-circuits: no pull, no discovery, no push', async () => {
+  test('an unchanged remote index skips book discovery and push, but checks the removal journal', async () => {
     const h = makeChangeProbeHarness(() => 'E1');
     await new FileSyncEngine(h.provider, h.store).syncLibrary(
       [makeBook('h1', { updatedAt: 100 })],
@@ -652,7 +652,7 @@ describe('FileSyncEngine.syncLibrary — remote change detection', () => {
       opts,
     );
     expect(h.readText).not.toHaveBeenCalled();
-    expect(h.list).not.toHaveBeenCalled();
+    expect(h.list).toHaveBeenCalledExactlyOnceWith('/Readest/removals');
     expect(indexWrites(h.captured)).toHaveLength(0); // clean on both runs
   });
 

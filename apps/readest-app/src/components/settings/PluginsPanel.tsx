@@ -74,7 +74,11 @@ export default function PluginsPanel({
             </div>
           )}
           <Suspense fallback={<p role='status'>{_('Loading...')}</p>}>
-            {selected === 'pdfAutoContents' ? null : selected === 'conversation' &&
+            {selected === 'webImport' ? (
+              <BoxedList>
+                <SettingsRow label={_('Save web articles to your library for offline reading.')} />
+              </BoxedList>
+            ) : selected === 'pdfAutoContents' ? null : selected === 'conversation' &&
               section === 'prompts' ? (
               <PromptSettingsPanel />
             ) : (

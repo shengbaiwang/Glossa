@@ -143,7 +143,8 @@ describe('makeMarkdownBook', () => {
     const doc = await book.sections[0]!.createDocument();
     expect(doc.querySelector('parsererror')).toBeNull();
     expect(doc.querySelector('br')).toBeTruthy();
-    expect(doc.querySelector('img')?.getAttribute('src')).toBe('https://e.com/i.png');
+    expect(doc.querySelector('img')).toBeNull();
+    expect(doc.querySelector('.md-missing-image')).toBeTruthy();
   });
 
   it('resolves TOC links, internal anchors, and rejects unknown/external', async () => {
@@ -163,7 +164,7 @@ describe('makeMarkdownBook', () => {
     );
     const doc = await book.sections[0]!.createDocument();
     expect(doc.querySelector('script')).toBeNull();
-    expect(doc.querySelector('img')?.getAttribute('onerror')).toBeNull();
+    expect(doc.querySelector('[onerror]')).toBeNull();
     expect(doc.querySelector('code')?.getAttribute('class')).toContain('language-ts');
     expect(doc.querySelector('h1')?.getAttribute('id')).toBeTruthy();
   });
@@ -195,10 +196,10 @@ describe('makeMarkdownBook', () => {
     expect(cover!.size).toBe(42);
   });
 
-  it('carries an http cover URL from frontmatter without fetching it', async () => {
+  it('does not expose a remote frontmatter cover for automatic library fetching', async () => {
     const url = 'https://m.media-amazon.com/images/I/71JB5kFNJ5L._SL1500_.jpg';
     const book = await make(`---\ncover: ${url}\nISBN: 979-8985322538\n---\n\n# YAML MD Test\n`);
-    expect(book.metadata.coverImageUrl).toBe(url);
+    expect(book.metadata.coverImageUrl).toBeUndefined();
     expect(await book.getCover()).toBeNull();
   });
 
@@ -232,7 +233,6 @@ describe('makeMarkdownBook', () => {
       publisher: 'Harper',
       published: '1851-10-18',
       description: 'A whale of a book',
-      subject: ['fiction', 'classics'],
       series: 'Sea Tales',
       seriesIndex: 2,
       identifier: 'urn:uuid:abcd',

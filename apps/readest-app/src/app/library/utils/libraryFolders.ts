@@ -199,3 +199,18 @@ export function placeFolder(
   rest.splice(index, 0, ...branch);
   return { ...result, paths: rest };
 }
+
+/** Resolve deepest containers first, composing one branch change for one safe undo. */
+export function removeFolders(books: Book[], paths: string[], selection: string[]): FolderChange {
+  let result: FolderChange = { books, paths, replacements: new Map() };
+  for (const path of [...new Set(selection)].sort((a, b) => folderDepth(b) - folderDepth(a))) {
+    const next = removeFolder(result.books, result.paths, path);
+    const replacements = new Map(result.replacements);
+    for (const [before, after] of replacements)
+      replacements.set(before, next.replacements?.get(after) ?? after);
+    for (const [before, after] of next.replacements ?? [])
+      if (!replacements.has(before)) replacements.set(before, after);
+    result = { ...next, replacements };
+  }
+  return result;
+}

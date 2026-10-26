@@ -19,6 +19,8 @@ import {
 import ConversationPanel from '@/glossa/ui/ConversationPanel';
 import OfficialModulePanel from '@/glossa/modules/OfficialModulePanel';
 import ConversationUsage from '@/glossa/ui/ConversationUsage';
+import { withPurgedBookData } from '@/services/bookDataLifecycle';
+import { loadBookDataConflicts, discardBookDataConflict } from '@/services/bookDataConflicts';
 import '@/styles/globals.css';
 import '@/styles/glossa.css';
 const f = vi.hoisted(() => ({
@@ -718,5 +720,82 @@ it('stops a real streaming conversation on module disable and restores its saved
   expect(
     screen.getByText('Original module question', { selector: '.glossa-chat-question' }),
   ).toBeTruthy();
+  expect(chatCalls()).toHaveLength(1);
+});
+
+it('preserves a newly submitted question after permanent deletion and does not request a model reply', async () => {
+  const data = await setup();
+  await withPurgedBookData(data.book.hash, Date.now(), async () => {});
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await ask('A new question after deletion');
+  await waitFor(async () => expect(await loadBookDataConflicts()).toHaveLength(1));
+  const drafts = await loadBookDataConflicts();
+  expect(drafts).toHaveLength(1);
+  expect(drafts[0]).toMatchObject({
+    bookId: data.book.hash,
+    kind: 'question',
+    data: { question: 'A new question after deletion' },
+  });
+  expect(f.complete).not.toHaveBeenCalled();
+  expect(
+    await screen.findByText(
+      'New edits are preserved in Recently Deleted. Review the conflicting draft.',
+    ),
+  ).toBeTruthy();
+  await discardBookDataConflict(drafts[0]!.id);
+  // This test deletes only its original synthetic book; release the barrier for later fixture tests.
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.deleteDatabase('glossa-book-data-lifecycle');
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+});
+
+it('reopens an imported question for editing and sends only after explicit submission', async () => {
+  const data = await fixture();
+  await saveConversations({
+    version: 1,
+    bookId: data.book.hash,
+    activeId: 'recovered-question',
+    sessions: [
+      { id: 'recovered-question', turns: [], citationsEnabled: false, draft: 'Recovered question' },
+    ],
+  });
+  let panel = render(
+    <ConversationPanel book={data.book} bookDoc={data.doc} bookKey={data.book.hash} />,
+  );
+  const input = await screen.findByRole('textbox', { name: 'Message' });
+  await waitFor(() => expect((input as HTMLTextAreaElement).value).toBe('Recovered question'));
+  expect(f.complete).not.toHaveBeenCalled();
+  await userEvent.fill(input, 'Edited recovered question');
+  await waitFor(async () =>
+    expect((await loadConversations(data.book.hash))?.sessions[0]?.draft).toBe(
+      'Edited recovered question',
+    ),
+  );
+  panel.unmount();
+  panel = render(
+    <ConversationPanel book={data.book} bookDoc={data.doc} bookKey={data.book.hash} />,
+  );
+  await waitFor(() =>
+    expect((screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).value).toBe(
+      'Edited recovered question',
+    ),
+  );
+  expect(f.complete).not.toHaveBeenCalled();
+  f.complete.mockImplementation(answer);
+  await userEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await waitFor(() => expect(chatCalls()).toHaveLength(1));
+  await waitFor(async () =>
+    expect((await loadConversations(data.book.hash))?.sessions[0]?.turns).toHaveLength(1),
+  );
+  expect((await loadConversations(data.book.hash))?.sessions[0]?.draft).toBe('');
+  panel.unmount();
+  render(<ConversationPanel book={data.book} bookDoc={data.doc} bookKey={data.book.hash} />);
+  await waitFor(() =>
+    expect((screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).value).toBe(
+      '',
+    ),
+  );
   expect(chatCalls()).toHaveLength(1);
 });

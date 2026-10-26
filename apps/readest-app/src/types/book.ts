@@ -1,3 +1,4 @@
+import type { BookRemoval } from '@/services/bookRemovalState';
 import { BookMetadata } from '@/libs/document';
 import { TTSHighlightOptions } from '@/services/tts/types';
 import { TTSHighlightGranularity } from '@/services/tts/types';
@@ -47,12 +48,7 @@ export const FIXED_LAYOUT_FORMATS: Set<BookFormat> = new Set(['PDF', 'CBZ']);
 export interface BookLookupIndex {
   byHash: Map<string, Book>;
   byMetaKey: Map<string, Book[]>; // key = `${metaHash}:${format}`
-  // Maps normalized absolute source path -> Book for in-place imports.
-  // Lets the importer recognize "I already have this exact file" without
-  // having to open, parse, and hash it again. Only books with a non-empty
-  // `filePath` and `!deletedAt` are indexed. The key is produced by
-  // `normalizeFilePathForIndex` so callers must use the same helper to
-  // probe; importBook handles that internally.
+  // Local path hint only; actual bytes must still be verified on import.
   byFilePath: Map<string, Book>;
 }
 
@@ -62,6 +58,15 @@ export interface BookLookupIndex {
  * that are bound by the AppService instance.
  */
 export interface ImportBookOptions {
+  /** Explicitly selected folder allowed for Markdown image snapshots. */
+  markdownResourceRoot?: string;
+  /** Report the durable result without adding transient flags to Book records. */
+  onResult?: (status: 'added' | 'existing') => void;
+  signal?: AbortSignal;
+  retryPDFContents?: boolean;
+  /** Applied atomically only when creating a new persistent record. */
+  initialGroup?: { id: string; name?: string };
+  initialTags?: string[];
   /** Whether to copy the file into the Books directory. Defaults to true. */
   saveBook?: boolean;
   /** Whether to extract and save a cover image. Defaults to true. */
@@ -94,9 +99,17 @@ export interface Book {
   // the auto-import scan doesn't treat a known duplicate as a new file on every
   // pass. Device-local like `filePath`: never published to peers.
   altFilePaths?: string[];
-  // Partial md5 hash of the book file, used as the unique identifier
+  // Stable storage identifier. Legacy identifiers are preserved on verified re-import.
   hash: string;
-  // Metadata md5 hash, used to aggregate different versions of the same book
+  // SHA-256 of complete imported bytes (Markdown resource snapshots include the
+  // exact original source plus images). Names and paths do not affect identity.
+  contentFingerprint?: string;
+  // Converted formats may have different stored bytes (e.g. TXT -> EPUB).
+  storedContentFingerprint?: string;
+  // Reversible duplicate archive. All original metadata and sidecars stay under hash.
+  duplicateOf?: string;
+  duplicateUpdatedAt?: number;
+  // Metadata lookup hint only; never authorizes automatic merging.
   metaHash?: string;
   format: BookFormat;
   title: string; // editable title, initially the original filename without its extension
@@ -116,6 +129,12 @@ export interface Book {
   createdAt: number;
   updatedAt: number;
   deletedAt?: number | null;
+  /** Durable, independently versioned removal intent and execution result. */
+  removal?: BookRemoval;
+  /** Device-only download eviction; never replaces or syncs the book lifecycle. */
+  localRemoval?: BookRemoval;
+  /** Device-local receipts keep an earlier operation's counts stable after restore/retry. */
+  removalHistory?: Pick<BookRemoval, 'id' | 'local'>[];
 
   uploadedAt?: number | null;
   downloadedAt?: number | null;

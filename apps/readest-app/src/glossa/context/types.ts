@@ -23,7 +23,7 @@ export interface SourceAnchor {
 export interface ChapterSource {
   sourceId: string;
   text: string;
-  kind: 'heading' | 'paragraph' | 'list' | 'table' | 'quote';
+  kind: 'heading' | 'paragraph' | 'list' | 'table' | 'quote' | 'code';
   anchor: SourceAnchor;
 }
 

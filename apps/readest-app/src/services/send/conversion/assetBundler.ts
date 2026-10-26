@@ -222,8 +222,15 @@ interface FetchedAsset {
   mime: string;
 }
 
-async function fetchAsset(url: string, referer: string | null): Promise<FetchedAsset | null> {
+async function fetchAsset(
+  url: string,
+  referer: string | null,
+  signal?: AbortSignal,
+): Promise<FetchedAsset | null> {
+  signal?.throwIfAborted();
   const ac = new AbortController();
+  const abort = () => ac.abort();
+  signal?.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
   try {
     const res = await httpFetch(url, referer, { signal: ac.signal, redirect: 'follow' });
@@ -239,6 +246,7 @@ async function fetchAsset(url: string, referer: string | null): Promise<FetchedA
     return { url, path, bytes, mime };
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
   }
 }
 
@@ -265,6 +273,7 @@ export interface BundleAssetsResult {
 export async function bundleAssets(
   contentHtml: string,
   pageUrl: string,
+  signal?: AbortSignal,
 ): Promise<BundleAssetsResult> {
   const doc = new DOMParser().parseFromString(`<div id="root">${contentHtml}</div>`, 'text/html');
   const root = doc.getElementById('root');
@@ -374,12 +383,14 @@ export async function bundleAssets(
   let cursor = 0;
   const worker = async () => {
     while (cursor < uniqueUrls.length) {
+      signal?.throwIfAborted();
       const i = cursor++;
       const url = uniqueUrls[i]!;
       if (isFetchableAssetUrl(url, pageUrl) && settledPrefixBytes() < MAX_TOTAL_ASSET_BYTES) {
         try {
-          settled[i] = await fetchAsset(url, pageUrl);
+          settled[i] = await fetchAsset(url, pageUrl, signal);
         } catch (err) {
+          signal?.throwIfAborted();
           console.warn('[clip/bundle] image fetch failed', {
             url,
             error: err instanceof Error ? err.message : String(err),
@@ -390,6 +401,7 @@ export async function bundleAssets(
     }
   };
   await Promise.all(Array.from({ length: MAX_CONCURRENCY }, worker));
+  signal?.throwIfAborted();
 
   // Apply the budget strictly in document order.
   for (let i = 0; i < uniqueUrls.length; i++) {

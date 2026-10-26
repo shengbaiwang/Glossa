@@ -28,6 +28,8 @@ vi.mock('@/app/library/components/BookItem', () => ({
   ),
 }));
 
+vi.mock('@/app/library/hooks/useOpenBook', () => ({ useOpenBook: () => ({ openBook: vi.fn() }) }));
+vi.mock('@/context/EnvContext', () => ({ useEnv: () => ({ appService: {} }) }));
 import RecentShelf from '@/app/library/components/RecentShelf';
 
 afterEach(() => {

@@ -148,8 +148,8 @@ describe('Calibre series metadata', () => {
         publisher: undefined,
         published: '2025-12',
         identifier: 'https://www.google.com/',
-        subject: ['Example Genre'],
       });
+      expect(result.book.metadata).not.toHaveProperty('subject');
       const series = getSeries(result.book);
       expect(series).toMatchObject({ name: 'Example Series', position: '1', total: '5' });
     });

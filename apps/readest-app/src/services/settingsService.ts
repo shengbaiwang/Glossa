@@ -1,5 +1,10 @@
 import { FileSystem } from '@/types/system';
-import { LibrarySecondarySortByType, ReadSettings, SystemSettings } from '@/types/settings';
+import {
+  LibraryGroupByType,
+  LibrarySecondarySortByType,
+  ReadSettings,
+  SystemSettings,
+} from '@/types/settings';
 import { DEFAULT_HIGHLIGHT_COLORS, UserHighlightColor, ViewSettings } from '@/types/book';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -161,6 +166,14 @@ export async function loadSettings(ctx: Context): Promise<SystemSettings> {
   settings.localBooksDir = await ctx.fs.getPrefix('Books');
 
   migrateLibraryThenSort(settings);
+  if (!Object.values(LibraryGroupByType).includes(settings.libraryGroupBy)) {
+    settings.libraryGroupBy = LibraryGroupByType.None;
+    try {
+      await saveSettings(ctx.fs, settings);
+    } catch {
+      console.warn('Could not persist retired library category cleanup.');
+    }
+  }
 
   if (!settings.replicaDeviceId) {
     settings.replicaDeviceId = uuidv4();

@@ -11,7 +11,7 @@
 //
 //   * foliate-js stays the single source of truth for MOBI metadata
 //     extraction (title / author / identifier=PalmDB UID /
-//     publisher / description / language / subjects / …). The
+//     publisher / description / language / …). The
 //     importer runs foliate-js's exported `readMobiMetadata` on the
 //     same File so `Book.metadata.identifier` is byte-stable against
 //     what the reader path produces (foliate `mobi.uid.toString()`).
@@ -34,6 +34,7 @@
 //
 // Avoids ferrying multi-MB MOBI/AZW3 blobs across the JS<->Rust IPC
 // boundary and is a no-op on the web platform.
+import { removeBookSubjectMetadata } from '@/utils/bookMetadata';
 import { invoke } from '@tauri-apps/api/core';
 import { isTauriAppPlatform } from '@/services/environment';
 import type { BookDoc, BookMetadata } from '@/libs/document';
@@ -105,7 +106,7 @@ const buildBookDocStub = (
   foliateGetCover: () => Promise<Blob | null | undefined>,
 ): BookDoc => {
   const stub = {
-    metadata,
+    metadata: removeBookSubjectMetadata(metadata),
     rendition: {},
     dir: 'ltr',
     toc: [],

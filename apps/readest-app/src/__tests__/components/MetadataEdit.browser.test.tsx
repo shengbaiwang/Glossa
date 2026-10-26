@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
+import { DropdownProvider } from '@/context/DropdownContext';
+import BookDetailView from '@/components/metadata/BookDetailView';
+import '@/styles/glossa-library.css';
 import BookDetailModal from '@/components/metadata/BookDetailModal';
 import type { Book } from '@/types/book';
 import '@/styles/globals.css';
@@ -9,6 +12,7 @@ import '@/styles/glossa.css';
 const state = vi.hoisted(() => ({
   translations: {} as Record<string, string>,
   close: vi.fn(),
+  othersCollapsed: true,
   save: vi.fn(),
 }));
 vi.mock('@/hooks/useTranslation', () => ({
@@ -25,7 +29,7 @@ vi.mock('@/store/themeStore', () => ({
   useThemeStore: () => ({ safeAreaInsets: { top: 0, bottom: 0, left: 0, right: 0 } }),
 }));
 vi.mock('@/store/settingsStore', () => ({
-  useSettingsStore: () => ({ settings: { metadataOthersCollapsed: true } }),
+  useSettingsStore: () => ({ settings: { metadataOthersCollapsed: state.othersCollapsed } }),
 }));
 vi.mock('@/hooks/useFileSelector', () => ({
   useFileSelector: () => ({ selectFiles: async () => ({ files: [] }) }),
@@ -60,7 +64,6 @@ const book: Book = {
     publisher: '纸页出版社',
     published: '2026-10',
     language: 'zh',
-    subject: ['随笔', '阅读'],
     description:
       '一组关于散步与阅读的原创随笔。从日常生活中拾起细小的片段，在纸页之间留下四季的声音。',
     coverImageUrl: 'original-cover',
@@ -74,6 +77,7 @@ beforeAll(async () => {
 afterEach(() => {
   cleanup();
   state.close.mockClear();
+  state.othersCollapsed = true;
   state.save.mockClear();
   document.documentElement.classList.remove('theme-changing');
   for (const attr of ['dir', 'data-theme', 'data-eink', 'data-page'])
@@ -222,4 +226,39 @@ it('keeps a corrected imported title through reset and save while preserving the
     ['待读'],
   );
   expect(corrected.metadata?.title).toBe('ssreader');
+});
+
+it('edits title, author and tags directly in narrow details without a separate form', async () => {
+  await page.viewport(390, 760);
+  document.documentElement.setAttribute('data-theme', 'default-dark');
+  const save = vi.fn(async () => true);
+  state.othersCollapsed = false;
+  render(
+    <DropdownProvider>
+      <div className='bg-base-100 text-base-content w-full p-6'>
+        <BookDetailView book={book} metadata={book.metadata!} fileSize={1024} onInlineEdit={save} />
+      </div>
+    </DropdownProvider>,
+  );
+  for (const [field, label, value] of [
+    ['title', '书名', '个人书名'],
+    ['author', '作者', '新的作者'],
+    ['tags', '标签', '待读, 研究'],
+  ] as const) {
+    const trigger = screen.getByRole('button', { name: label });
+    if (matchMedia('(pointer: coarse)').matches)
+      expect(trigger.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+    await userEvent.click(trigger);
+    const input = screen.getByRole('textbox', { name: label });
+    const bounds = input.getBoundingClientRect();
+    expect(bounds.left).toBeGreaterThanOrEqual(0);
+    expect(bounds.right).toBeLessThanOrEqual(390);
+    await userEvent.fill(input, value);
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => expect(save).toHaveBeenCalledWith(field, value));
+    expect(screen.queryByRole('textbox')).toBeNull();
+  }
+  await page.screenshot({
+    path: `../../../../../.glossa-dev/qa/library-detail-inline-${matchMedia('(pointer: coarse)').matches ? 'touch' : 'pointer'}.png`,
+  });
 });

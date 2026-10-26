@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useSettingsStore } from '@/store/settingsStore';
+import type { SystemSettings } from '@/types/settings';
 import ImportMenuPopup, { getMenuPosition } from '@/app/library/components/ImportMenuPopup';
 
 vi.mock('@/hooks/useTranslation', () => ({
@@ -28,6 +30,7 @@ const renderPopup = (props: Partial<React.ComponentProps<typeof ImportMenuPopup>
 };
 
 beforeEach(() => {
+  useSettingsStore.setState({ settings: {} as SystemSettings });
   useEnvMock.mockReturnValue({ appService: { isOnlineCatalogsAccessible: true } });
 });
 
@@ -41,11 +44,11 @@ describe('ImportMenuPopup', () => {
   it('shows the same always-available options as the library header menu', () => {
     renderPopup();
 
-    expect(screen.getByRole('menuitem', { name: 'From Local File' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Import files' })).toBeTruthy();
     expect(screen.queryByRole('menuitem', { name: 'From Feed URL' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Online Library' })).toBeNull();
-    expect(screen.queryByRole('menuitem', { name: 'From Directory' })).toBeNull();
-    expect(screen.queryByRole('menuitem', { name: 'From Web URL' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Import folder' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Import webpage' })).toBeNull();
   });
 
   it('adds the platform-dependent options when their callbacks are available', () => {
@@ -53,10 +56,10 @@ describe('ImportMenuPopup', () => {
     const onImportBookFromUrl = vi.fn();
     const { onClose } = renderPopup({ onImportBooksFromDirectory, onImportBookFromUrl });
 
-    fireEvent.click(screen.getByRole('menuitem', { name: 'From Directory' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Import folder' }));
     expect(onImportBooksFromDirectory).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('menuitem', { name: 'From Web URL' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Import webpage' }));
     expect(onImportBookFromUrl).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(2);
   });
@@ -72,7 +75,7 @@ describe('ImportMenuPopup', () => {
     const onImportBooksFromFiles = vi.fn();
     const { onClose } = renderPopup({ onImportBooksFromFiles });
 
-    fireEvent.click(screen.getByRole('menuitem', { name: 'From Local File' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Import files' }));
 
     expect(onImportBooksFromFiles).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -128,4 +131,14 @@ describe('getMenuPosition', () => {
 
     expect(getMenuPosition(anchorRect(0, 200), menu, insetBounds).left).toBe(52);
   });
+});
+
+it('hides webpage import immediately when its plugin is disabled', () => {
+  useSettingsStore.setState({
+    settings: { officialModules: { webImport: false } } as SystemSettings,
+  });
+  renderPopup({ onImportBookFromUrl: vi.fn(), onImportBooksFromDirectory: vi.fn() });
+  expect(screen.queryByRole('menuitem', { name: 'Import webpage' })).toBeNull();
+  expect(screen.getByRole('menuitem', { name: 'Import files' })).toBeTruthy();
+  expect(screen.getByRole('menuitem', { name: 'Import folder' })).toBeTruthy();
 });

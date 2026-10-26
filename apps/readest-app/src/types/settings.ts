@@ -41,7 +41,6 @@ export const LibraryGroupByType = {
   Series: 'series',
   Author: 'author',
   Tag: 'tag',
-  Subject: 'subject',
 } as const;
 
 export type LibraryGroupByType = (typeof LibraryGroupByType)[keyof typeof LibraryGroupByType];
@@ -439,6 +438,11 @@ export interface SystemSettings {
   libraryCoverFit: LibraryCoverFitType;
   libraryAutoColumns: boolean;
   libraryColumns: number;
+  /** Preferred grid track width; unset keeps the legacy fixed-column preference. */
+  libraryCoverWidth?: number;
+  /** Missing values retain the existing author and progress display. */
+  libraryShowAuthor?: boolean;
+  libraryShowProgress?: boolean;
   /** List cover, text and spacing scale in percent; old settings default to 100. */
   libraryListScale?: number;
   librarySkeuomorphicCovers: boolean;

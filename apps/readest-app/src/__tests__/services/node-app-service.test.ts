@@ -79,7 +79,56 @@ describe('NodeAppService', () => {
     expect(restored?.hash).toBe(imported?.hash);
     const reopened = await service.loadBookContent(restored!);
     expect(await reopened.file.arrayBuffer()).toEqual(await file.arrayBuffer());
+    // Two independent service instances start from stale snapshots, sharing
+    // only the actual filesystem and its identity transaction boundary.
+    const secondService = new NodeAppService(tmpDir);
+    await secondService.init();
+    const outcomes: string[] = [];
+    const copies = await Promise.all(
+      [service, secondService].map((instance, index) =>
+        instance.importBook(new File([pdf], `改名副本 ${index}.pdf`), [], {
+          saveCover: false,
+          onResult: (status) => outcomes.push(status),
+        }),
+      ),
+    );
+    expect(copies.map((book) => book?.hash)).toEqual([imported?.hash, imported?.hash]);
+    expect(outcomes).toEqual(['existing', 'existing']);
+    expect(await secondService.loadLibraryBooks()).toHaveLength(1);
   }, 30_000);
+
+  it('snapshots Markdown folder images, refuses symlinks and distinguishes resource editions', async () => {
+    const root = path.join(tmpDir, 'chosen');
+    await fsp.mkdir(path.join(root, 'figures'), { recursive: true });
+    const source = '# Original\n\n![plot](figures/plot.png)\n\n![escape](outside.png)';
+    const filename = path.join(root, 'Original.md');
+    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0]);
+    await fsp.writeFile(filename, source);
+    await fsp.writeFile(path.join(root, 'figures', 'plot.png'), png);
+    await fsp.writeFile(path.join(tmpDir, 'private.png'), png);
+    await fsp.symlink(path.join(tmpDir, 'private.png'), path.join(root, 'outside.png'));
+    const books: Book[] = [];
+    const options = { saveCover: false, markdownResourceRoot: root };
+    const first = (await service.importBook(filename, books, options))!;
+    const { DocumentLoader } = await import('@/libs/document');
+    const loaded = await service.loadBookContent(first);
+    const parsed = (await new DocumentLoader(loaded.file).open()).book;
+    const doc = await parsed.sections[0]!.createDocument();
+    expect(doc.querySelectorAll('img')).toHaveLength(1);
+    expect(doc.querySelector('.md-missing-image')?.textContent).toContain('escape');
+    await fsp.unlink(path.join(root, 'figures', 'plot.png'));
+    const reopened = (await new DocumentLoader((await service.loadBookContent(first)).file).open())
+      .book;
+    expect((await reopened.sections[0]!.createDocument()).querySelectorAll('img')).toHaveLength(1);
+    await fsp.writeFile(path.join(root, 'figures', 'plot.png'), png);
+    expect((await service.importBook(filename, books, options))?.hash).toBe(first.hash);
+    await fsp.writeFile(path.join(root, 'figures', 'plot.png'), new Uint8Array([...png, 1]));
+    expect((await service.importBook(filename, books, options))?.hash).not.toBe(first.hash);
+    expect(books).toHaveLength(2);
+    expect(await fsp.readFile(filename, 'utf8')).toBe(source);
+    await parsed.destroy?.();
+    await reopened.destroy?.();
+  });
 
   it('should copy files from absolute path', async () => {
     const srcPath = path.join(tmpDir, 'source.txt');

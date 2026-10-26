@@ -45,7 +45,8 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@/store/libraryStore', () => ({ useLibraryStore: () => ({ setLibrary: vi.fn() }) }));
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => t }));
 vi.mock('@/hooks/useResponsiveSize', () => ({ useResponsiveSize: (size: number) => size }));
-vi.mock('@/utils/rtl', () => ({
+vi.mock('@/utils/rtl', async (original) => ({
+  ...(await original<typeof import('@/utils/rtl')>()),
   getDirFromUILanguage: () => (document.documentElement.dir === 'rtl' ? 'rtl' : 'ltr'),
 }));
 vi.mock('@/services/environment', async (original) => ({
@@ -138,9 +139,8 @@ it('keeps Aa limited to three tabs with scope visible in light, dark, narrow and
   expect(sheet.getBoundingClientRect().right).toBe(1420);
   expect(sheet.getBoundingClientRect().top).toBe(64);
   expect(screen.queryByRole('button', { name: t('Cloud Sync') })).toBeNull();
-  expect(
-    screen.getByRole('radio', { name: t('This Book Only') }).getAttribute('aria-checked'),
-  ).toBe('true');
+  expect(screen.getByText(t('This Book Only'))).toBeTruthy();
+  expect(screen.getByRole('button', { name: t('Set as Reading Defaults') })).toBeTruthy();
   boundsOK(sheet);
   await page.screenshot({ path: '../../../../../../.glossa-dev/qa/menu-reading-light.png' });
   const font = screen.getByRole('button', { name: t('Font') });
@@ -172,14 +172,23 @@ it('shows readable global categories and switches to a grouped selector on narro
   expect(screen.getByRole('button', { name: t('General') }).getAttribute('aria-pressed')).toBe(
     'true',
   );
-  expect(screen.getByText(t('Application'))).toBeTruthy();
-  expect(screen.getByText(t('Reading Defaults'))).toBeTruthy();
+  expect(
+    screen
+      .getAllByRole('button')
+      .filter((button) => button.matches('.glossa-settings-navigation button'))
+      .map((button) => button.textContent),
+  ).toEqual(['General', 'Reading', 'Library & Sync', 'Plugins', 'About'].map(t));
   expect(screen.queryByRole('radiogroup')).toBeNull();
+  const startup = screen
+    .getByRole('button', { name: t('Startup & Window') })
+    .getBoundingClientRect();
+  const language = screen.getByRole('button', { name: t('Language') }).getBoundingClientRect();
+  expect(startup.right).toBeLessThanOrEqual(language.left);
   boundsOK(sheet);
   await page.screenshot({ path: '../../../../../../.glossa-dev/qa/menu-application-light.png' });
   document.documentElement.setAttribute('data-theme', 'default-dark');
   await page.screenshot({ path: '../../../../../../.glossa-dev/qa/menu-application-dark.png' });
-  fireEvent.click(screen.getByRole('button', { name: t('Font') }));
+  fireEvent.click(screen.getByRole('button', { name: t('Reading') }));
   await waitFor(() => expect(screen.getByText('微雨从东来，好风与之俱')).toBeTruthy());
   await page.viewport(390, 844);
   const category = screen.getByRole('combobox', { name: t('Settings Panels') });
@@ -217,7 +226,7 @@ it('gives plugins a dedicated category in wide, narrow, dark and RTL/e-ink setti
   await page.screenshot({ path: '../../../../../../.glossa-dev/qa/plugin-menu-light.png' });
   fireEvent.keyDown(plugins, { key: 'ArrowDown' });
   expect(screen.queryByText(t('Built-in plugins'))).toBeNull();
-  fireEvent.keyDown(screen.getByRole('button', { name: t('Library Data') }), { key: 'ArrowUp' });
+  fireEvent.keyDown(screen.getByRole('button', { name: t('About') }), { key: 'ArrowUp' });
   expect(screen.getByText(t('Built-in plugins'))).toBeTruthy();
   document.documentElement.setAttribute('data-theme', 'default-dark');
   await page.screenshot({ path: '../../../../../../.glossa-dev/qa/plugin-menu-dark.png' });

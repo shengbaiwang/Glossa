@@ -1,6 +1,7 @@
 import { Book } from '@/types/book';
 import { EXTS } from '@/libs/document';
 import { makeSafeFilename } from '@/utils/misc';
+import type { FileEntry } from './provider';
 
 /**
  * Layout convention for the "Readest" subtree under the user's configured
@@ -97,6 +98,25 @@ export const buildBookFileName = (book: Book): string => {
 /** Absolute path of the book file, including the friendly file name. */
 export const buildBookFilePath = (rootPath: string, book: Book): string =>
   join(buildBookDirPath(rootPath, book.hash), buildBookFileName(book));
+
+/** Clearing verification and later downloads must select the same, scoped file. */
+export function findRemoteBookFile(
+  entries: readonly FileEntry[],
+  directory: string,
+  format?: Book['format'],
+): FileEntry | undefined {
+  const extensions = format ? [EXTS[format]] : Object.values(EXTS);
+  return entries
+    .filter(
+      (entry) =>
+        !entry.isDirectory &&
+        entry.name &&
+        !/[\\/]/.test(entry.name) &&
+        entry.path === `${directory}/${entry.name}` &&
+        extensions.some((ext) => entry.name.toLowerCase().endsWith(`.${ext}`)),
+    )
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))[0];
+}
 
 /** Absolute path of the book cover image. */
 export const buildBookCoverPath = (rootPath: string, bookHash: string): string =>

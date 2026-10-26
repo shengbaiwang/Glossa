@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createMap } from '@/glossa/mindmap/workspace';
 import { useMapWorkspace } from '@/glossa/mindmap/workspaceSession';
 import { MapStorageConflict } from '@/glossa/mindmap/workspaceStore';
+import { BookDataConflictSaved } from '@/services/bookDataConflicts';
 const f = vi.hoisted(() => ({ load: vi.fn(), save: vi.fn() }));
 vi.mock('@/glossa/mindmap/workspaceStore', () => ({
   loadMapWorkspace: f.load,
@@ -82,4 +83,28 @@ it('coalesces in-flight edits in sequence and refuses to overwrite a conflicting
   act(() => hook.result.current.undo());
   await act(() => hook.result.current.retry());
   expect(f.save).toHaveBeenCalledTimes(count);
+});
+it('distinguishes manual edits from generated completion and reports durable deletion drafts', async () => {
+  const id = crypto.randomUUID();
+  const hook = renderHook(() => useMapWorkspace(id));
+  await waitFor(() => expect(hook.result.current.status).toBe('ready'));
+  const map = createMap('Manual idea');
+  act(() => hook.result.current.update((data) => ({ ...data, maps: [map], activeId: map.id })));
+  await waitFor(() => expect(hook.result.current.status).toBe('ready'));
+  expect(f.save.mock.calls[0]?.[2]).toMatchObject({
+    id: expect.any(String),
+    editedAt: expect.any(Number),
+  });
+  act(() =>
+    hook.result.current.update(
+      (data) => ({ ...data, maps: [...data.maps, createMap('Generated')] }),
+      true,
+      false,
+    ),
+  );
+  await waitFor(() => expect(hook.result.current.status).toBe('ready'));
+  expect(f.save.mock.calls[1]?.[2]).toBeUndefined();
+  f.save.mockRejectedValueOnce(new BookDataConflictSaved());
+  act(() => hook.result.current.update((data) => ({ ...data, activeId: data.maps[1]!.id })));
+  await waitFor(() => expect(hook.result.current.status).toBe('deleted'));
 });

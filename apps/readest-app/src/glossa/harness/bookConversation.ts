@@ -450,7 +450,12 @@ export async function generateBookConversation(
           const storageKey = await hashData({ version: INVENTORY_VERSION, key }).catch(() => null);
           let hit = cache.get(key);
           if (!hit && storageKey) {
-            const stored = await cached(() => inventoryStore.load(storageKey));
+            const stored = await cached(() =>
+              inventoryStore.load(storageKey, {
+                bookId: scope.documentHash,
+                revision: input.access.dataRevision ?? 0,
+              }),
+            );
             if (stored) {
               try {
                 hit = readInventory(
@@ -527,7 +532,10 @@ export async function generateBookConversation(
             rememberInventory(cache, key, inventory);
             if (storageKey)
               await cached((cacheSignal) =>
-                inventoryStore.save(storageKey, inventory.points, cacheSignal),
+                inventoryStore.save(storageKey, inventory.points, cacheSignal, {
+                  bookId: scope.documentHash,
+                  revision: input.access.dataRevision ?? 0,
+                }),
               );
             checkAborted(signal);
             points.push(...inventory.points);

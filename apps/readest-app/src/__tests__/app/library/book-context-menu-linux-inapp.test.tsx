@@ -1,3 +1,4 @@
+import { useLibraryStore } from '@/store/libraryStore';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
@@ -121,17 +122,7 @@ describe('library context menu on Linux desktop (issue #5360)', () => {
 
     // The downloaded, never-uploaded, statusless test book resolves to this
     // ordered id list via getBookContextMenuItemIds.
-    const labels = [
-      'Select Book',
-      'Group Books',
-      'Mark as Finished',
-      'Mark as On hold',
-      'Show Book Details',
-      'Reveal in Folder',
-      'Search on Goodreads',
-      'Upload Book',
-      'Delete',
-    ];
+    const labels = ['Move to…', 'Reveal in Folder', 'Delete'];
     const menuItems = await screen.findAllByRole('menuitem');
     expect(menuItems.map((el) => el.textContent)).toEqual(labels);
 
@@ -163,9 +154,10 @@ describe('library context menu on Linux desktop (issue #5360)', () => {
       key: 'F10',
       shiftKey: true,
     });
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Select Book' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Move to…' }));
     expect(props.handleSetSelectMode).toHaveBeenCalledWith(true);
-    expect(props.toggleSelection).toHaveBeenCalledWith(book.hash);
+    expect(useLibraryStore.getState().getSelectedBooks()).toEqual([book.hash]);
+    expect(props.handleGroupBooks).toHaveBeenCalled();
     expect(screen.queryByRole('menuitem')).toBeNull();
   });
 
@@ -174,9 +166,9 @@ describe('library context menu on Linux desktop (issue #5360)', () => {
 
     openContextMenu();
 
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Show Book Details' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Move to…' }));
 
-    expect(props.handleShowDetailsBook).toHaveBeenCalledWith(book);
+    expect(props.handleGroupBooks).toHaveBeenCalled();
     expect(screen.queryByRole('menuitem')).toBeNull();
   });
 

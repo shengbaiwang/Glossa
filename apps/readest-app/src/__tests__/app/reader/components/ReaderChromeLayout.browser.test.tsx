@@ -106,7 +106,6 @@ vi.mock('@/helpers/settings', () => ({ saveViewSettings: vi.fn() }));
 vi.mock('@/components/ModalPortal', () => ({ default: () => null }));
 vi.mock('@/components/WindowButtons', () => ({ default: () => null }));
 vi.mock('@/app/reader/components/ViewMenu', () => ({ default: () => null }));
-vi.mock('@/app/reader/components/SyncInfoDialog', () => ({ default: () => null }));
 vi.mock('@/app/reader/components/annotator/QuickActionMenu', () => ({ default: () => null }));
 
 const insets = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -236,6 +235,7 @@ it('fits PDF controls at the desktop boundary and on a narrow mobile sheet', asy
 });
 
 it('shows the unified chrome: quiet buttons, one selected emphasis, Glossa icons', async () => {
+  const coarse = matchMedia('(pointer: coarse)').matches;
   await page.viewport(1100, 96);
   document.documentElement.setAttribute('data-theme', 'default-light');
   renderChrome();
@@ -251,7 +251,7 @@ it('shows the unified chrome: quiet buttons, one selected emphasis, Glossa icons
   const end = within(bar.querySelector('.header-tools-end') as HTMLElement)
     .getAllByRole('button')
     .map((button) => button.getAttribute('aria-label'));
-  expect(end).toEqual(['Add Bookmark', 'Reading Appearance', 'Book Actions', 'Settings']);
+  expect(end).toEqual(['Add Bookmark', 'Reading Appearance', 'Book Actions']);
 
   const title = bar.querySelector('.glossa-reader-book-title')!;
   const titleRect = title.getBoundingClientRect();
@@ -267,7 +267,7 @@ it('shows the unified chrome: quiet buttons, one selected emphasis, Glossa icons
       .getByRole('tablist', { name: 'Notebook' })
       .closest('.notebook-header')!
       .getBoundingClientRect().height,
-  ).toBe(44);
+  ).toBe(matchMedia('(pointer: coarse)').matches ? 48 : 44);
 
   // Resting icon buttons draw no frame; the pressed toggle keeps a single wash.
   const bookmark = screen.getByRole('button', { name: 'Add Bookmark' });
@@ -289,26 +289,29 @@ it('shows the unified chrome: quiet buttons, one selected emphasis, Glossa icons
       const previous = destinations[index - 1]!.getBoundingClientRect();
       const current = destinations[index]!.getBoundingClientRect();
       expect(current.left - previous.right).toBe(2);
-      expect(current.left - previous.left).toBe(34);
+      expect(current.left - previous.left).toBe(coarse ? 46 : 34);
     }
   }
   const selected = within(tabs).getByRole('tab', { selected: true });
   expect(selected.textContent).toBe('');
   expect(getComputedStyle(selected, '::after').content).toBe('none');
-  expect(selected.getBoundingClientRect().width).toBe(32);
-  expect(tabs.closest('.sidebar-header')!.getBoundingClientRect().height).toBe(44);
+  expect(selected.getBoundingClientRect().width).toBe(coarse ? 44 : 32);
+  expect(tabs.closest('.sidebar-header')!.getBoundingClientRect().height).toBe(coarse ? 48 : 44);
   // Wait for the upstream button entrance animation before comparing geometry.
   await waitFor(() => {
     const iconSizes = [...bar.querySelectorAll('.glossa-icon')].map((icon) => {
       const rect = icon.getBoundingClientRect();
       return `${Math.round(rect.width)}x${Math.round(rect.height)}`;
     });
-    expect(new Set(iconSizes)).toEqual(new Set(['18x18']));
+    expect(new Set(iconSizes)).toEqual(new Set([coarse ? '20x20' : '18x18']));
     for (const tab of screen.getAllByRole('tab')) {
       expect(getComputedStyle(tab, '::before').borderRadius).toBe('10px');
       expect(getComputedStyle(tab, '::before').width).toBe('28px');
       expect(getComputedStyle(tab, '::before').height).toBe('28px');
-      expect(tab.querySelector('svg')!.getBoundingClientRect().width).toBeCloseTo(18, 0);
+      expect(tab.querySelector('svg')!.getBoundingClientRect().width).toBeCloseTo(
+        coarse ? 20 : 18,
+        0,
+      );
     }
   });
 

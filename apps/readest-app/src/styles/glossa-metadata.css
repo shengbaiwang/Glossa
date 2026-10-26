@@ -50,10 +50,14 @@
   display: block;
   width: 100%;
   aspect-ratio: 28 / 41;
-  overflow: hidden;
-  border: 1px solid var(--glossa-border);
-  border-radius: 5px;
-  background: var(--glossa-wash);
+  overflow: visible;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+}
+.glossa-metadata-cover-preview:focus-visible {
+  outline: 2px solid var(--glossa-focus);
+  outline-offset: 4px;
 }
 .glossa-metadata-cover-preview:disabled {
   cursor: default;

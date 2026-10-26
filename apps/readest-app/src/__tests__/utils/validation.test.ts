@@ -3,7 +3,6 @@ import {
   validateAndNormalizeDate,
   validateAndNormalizeLanguage,
   validateISBN,
-  validateAndNormalizeSubjects,
 } from '../../utils/validation';
 import type { ValidationResult } from '../../utils/validation';
 
@@ -474,93 +473,6 @@ describe('validateISBN', () => {
       // "9780470059029" is a known valid ISBN-13
       const result = validateISBN('9780470059029');
       expect(result.isValid).toBe(true);
-    });
-  });
-});
-
-describe('validateAndNormalizeSubjects', () => {
-  describe('empty input', () => {
-    it('should return valid with empty array for empty input', () => {
-      const result: ValidationResult<string[]> = validateAndNormalizeSubjects('');
-      expect(result.isValid).toBe(true);
-      expect(result.value).toEqual([]);
-    });
-  });
-
-  describe('valid subjects', () => {
-    it('should parse comma-separated subjects', () => {
-      const result = validateAndNormalizeSubjects('Fiction, Science');
-      expect(result.isValid).toBe(true);
-      expect(result.value).toEqual(['Fiction', 'Science']);
-    });
-
-    it('should parse a single subject', () => {
-      const result = validateAndNormalizeSubjects('Fiction');
-      expect(result.isValid).toBe(true);
-      expect(result.value).toEqual(['Fiction']);
-    });
-
-    it('should trim whitespace from each subject', () => {
-      const result = validateAndNormalizeSubjects('  Fiction  ,  Science  ,  History  ');
-      expect(result.isValid).toBe(true);
-      expect(result.value).toEqual(['Fiction', 'Science', 'History']);
-    });
-
-    it('should accept exactly 20 subjects', () => {
-      const subjects = Array.from({ length: 20 }, (_, i) => `Subject${i + 1}`).join(', ');
-      const result = validateAndNormalizeSubjects(subjects);
-      expect(result.isValid).toBe(true);
-      expect(result.value).toHaveLength(20);
-    });
-
-    it('should accept subject at exactly 100 characters', () => {
-      const longSubject = 'A'.repeat(100);
-      const result = validateAndNormalizeSubjects(longSubject);
-      expect(result.isValid).toBe(true);
-      expect(result.value).toEqual([longSubject]);
-    });
-  });
-
-  describe('too many subjects', () => {
-    it('should reject more than 20 subjects', () => {
-      const subjects = Array.from({ length: 21 }, (_, i) => `Subject${i + 1}`).join(', ');
-      const result = validateAndNormalizeSubjects(subjects);
-      expect(result.isValid).toBe(false);
-      expect(result.value).toBeNull();
-      expect(result.error).toMatch(/Too many subjects/);
-    });
-  });
-
-  describe('subject too long', () => {
-    it('should reject a subject over 100 characters', () => {
-      const longSubject = 'A'.repeat(101);
-      const result = validateAndNormalizeSubjects(longSubject);
-      expect(result.isValid).toBe(false);
-      expect(result.value).toBeNull();
-      expect(result.error).toMatch(/Subject too long/);
-    });
-
-    it('should reject when one of multiple subjects is too long', () => {
-      const longSubject = 'B'.repeat(101);
-      const result = validateAndNormalizeSubjects(`Fiction, ${longSubject}, Science`);
-      expect(result.isValid).toBe(false);
-      expect(result.value).toBeNull();
-      expect(result.error).toMatch(/Subject too long/);
-    });
-  });
-
-  describe('edge cases', () => {
-    it('should handle subjects with only commas yielding empty strings', () => {
-      const result = validateAndNormalizeSubjects(',,,');
-      expect(result.isValid).toBe(true);
-      // After splitting and trimming: ['', '', '', '']
-      expect(result.value).toEqual(['', '', '', '']);
-    });
-
-    it('should handle a subject with special characters', () => {
-      const result = validateAndNormalizeSubjects('Science & Technology, History: Modern Era');
-      expect(result.isValid).toBe(true);
-      expect(result.value).toEqual(['Science & Technology', 'History: Modern Era']);
     });
   });
 });

@@ -61,7 +61,10 @@ export default function PDFTools({ bookKey, bookDoc }: { bookKey: string; bookDo
       const book = useBookDataStore.getState().getBookData(bookKey)?.book;
       const source = book && (await appService?.resolveNativeBookFilePath(book));
       if (!source || controller.signal.aborted) return;
-      const cache = await openPDFCache(source, true);
+      const cache = await openPDFCache(source, true, {
+        bookId: book.hash,
+        revision: book.removal?.revision ?? 0,
+      });
       if (!cache || controller.signal.aborted) return;
       if (kind === 'export') {
         const { save } = await import('@tauri-apps/plugin-dialog');

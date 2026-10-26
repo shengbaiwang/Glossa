@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import LibraryHeader from '@/app/library/components/LibraryHeader';
+import { eventDispatcher } from '@/utils/event';
 import { DropdownProvider } from '@/context/DropdownContext';
 
 vi.mock('next/navigation', () => ({
@@ -17,7 +18,9 @@ vi.mock('@/hooks/useShortcuts', () => ({ default: vi.fn() }));
 vi.mock('@/store/themeStore', () => ({
   useThemeStore: () => ({ safeAreaInsets: { top: 0, right: 0, bottom: 0, left: 0 } }),
 }));
-vi.mock('@/store/libraryStore', () => ({ useLibraryStore: () => ({ currentBookshelf: [] }) }));
+vi.mock('@/store/libraryStore', () => ({
+  useLibraryStore: () => ({ currentBookshelf: [], selectedBooks: new Set(['a', 'b']) }),
+}));
 vi.mock('@/store/settingsStore', () => ({
   useSettingsStore: () => ({
     settings: { libraryViewMode: 'grid', libraryAutoColumns: true, libraryColumns: 4 },
@@ -25,7 +28,10 @@ vi.mock('@/store/settingsStore', () => ({
   }),
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 const importBooks = vi.fn();
 
@@ -60,12 +66,12 @@ it('offers display options without a book selection command', () => {
   expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
 });
 
-it('preserves select all, deselect and done for selection entered from the bookshelf', () => {
+it('preserves select all, deselect and clear selection for selection entered from the bookshelf', () => {
   render(<LibraryToolbar selecting />);
   fireEvent.click(screen.getByRole('button', { name: 'Select All' }));
   fireEvent.click(screen.getByRole('button', { name: 'Deselect' }));
   expect(screen.getByRole('button', { name: 'Select All' })).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Clear Selection' }));
   const menu = screen.getByRole('button', { name: 'Library Display' });
   fireEvent.click(menu);
   expect(menu.getAttribute('aria-expanded')).toBe('true');
@@ -97,4 +103,19 @@ it('opens import from the toolbar anchor and hides it during book selection', ()
   cleanup();
   render(<LibraryToolbar selecting />);
   expect(screen.queryByRole('button', { name: 'Import Books' })).toBeNull();
+});
+
+it('keeps only move and delete in the selected-count menu for touch and keyboard access', () => {
+  const dispatch = vi.spyOn(eventDispatcher, 'dispatch').mockResolvedValue();
+  render(<LibraryToolbar selecting />);
+  fireEvent.click(screen.getByRole('button', { name: '{{count}} selected' }));
+  expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+    'Move to…',
+    'Delete',
+  ]);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Move to…' }));
+  expect(dispatch).toHaveBeenCalledWith('library-move-selection');
+  fireEvent.click(screen.getByRole('button', { name: '{{count}} selected' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+  expect(dispatch).toHaveBeenCalledWith('library-delete-selection');
 });

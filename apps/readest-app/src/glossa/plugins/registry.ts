@@ -1,3 +1,4 @@
+import type { PluginManifest } from './manifest';
 import type { SystemSettings } from '@/types/settings';
 import { defineBundledPlugin } from './manifest';
 
@@ -10,7 +11,7 @@ export const PLUGINS = [
     version: '1.0.0',
     apiVersion: 1,
     activation: 'reader-panel',
-    format: 'EPUB',
+    format: ['EPUB', 'MD'],
     capabilities: ['reading-harness', 'model-provider'],
   }),
   defineBundledPlugin({
@@ -33,6 +34,16 @@ export const PLUGINS = [
     format: 'PDF',
     capabilities: ['local-pdf-contents'],
   }),
+  defineBundledPlugin({
+    id: 'webImport',
+    author: 'Glossa',
+    name: 'Import webpage',
+    version: '1.0.0',
+    apiVersion: 1,
+    activation: 'library-import',
+    format: 'WEB',
+    capabilities: ['web-page-capture'],
+  }),
 ] as const;
 export type PluginId = (typeof PLUGINS)[number]['id'];
 export type PluginPreferences = Partial<Record<PluginId, boolean>>;
@@ -41,8 +52,19 @@ export const isPluginEnabled = (
   settings: Pick<SystemSettings, 'officialModules'> | undefined,
   id: PluginId,
 ): boolean => settings?.officialModules?.[id] !== false;
-export const PANEL_PLUGINS = PLUGINS.filter((plugin) =>
-  typeof plugin.activation === 'string'
-    ? plugin.activation === 'reader-panel'
-    : plugin.activation.includes('reader-panel'),
+export const PANEL_PLUGINS = PLUGINS.filter((plugin) => plugin.id !== 'webImport').filter(
+  (plugin) =>
+    typeof plugin.activation === 'string'
+      ? plugin.activation === 'reader-panel'
+      : plugin.activation.includes('reader-panel'),
 );
+
+/** Keep availability consistent at tab selection, rendering and lazy activation. */
+export const pluginSupportsFormat = (
+  plugin: Pick<PluginManifest, 'format'> | undefined,
+  format: string,
+): boolean =>
+  !!plugin &&
+  (Array.isArray(plugin.format)
+    ? plugin.format.some((supported) => supported === format)
+    : plugin.format === format);

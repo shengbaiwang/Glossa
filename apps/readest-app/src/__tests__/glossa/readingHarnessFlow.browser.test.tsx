@@ -89,7 +89,7 @@ afterEach(() => {
 
 const firstParagraph =
   '理解一个观点，需要先找到它回答的问题，再观察作者给出的理由。结论提供方向，理由说明为什么可以朝这个方向思考。';
-async function setup() {
+async function setup(format: 'EPUB' | 'MD' = 'EPUB') {
   await page.viewport(1160, 900);
   document.documentElement.setAttribute('data-theme', 'default-light');
   const files = {
@@ -108,13 +108,20 @@ async function setup() {
     Object.fromEntries(Object.entries(files).map(([path, text]) => [path, strToU8(text)])),
   );
   const { book: bookDoc } = await new DocumentLoader(
-    new File([new Uint8Array(bytes)], 'harness.epub'),
+    format === 'MD'
+      ? new File(
+          [
+            `# 第一章　理解与理由\n\n${firstParagraph}\n\n${Array.from({ length: 22 }, (_, i) => `第${i + 1}个例子帮助我们观察条件。`).join('\n\n')}\n\n## 稍后的讨论\n\nOFF_PAGE_SENTINEL：这是稍后的讨论材料。\n\n# 第二章　比较与应用\n\nFUTURE_CHAPTER_SENTINEL：另一章的比较与应用材料。`,
+          ],
+          'harness.md',
+        )
+      : new File([new Uint8Array(bytes)], 'harness.epub'),
   ).open();
   const book = {
     hash: `harness-browser-${crypto.randomUUID()}`,
     title: '理解与理由',
     author: 'Glossa · 原创验收材料',
-    format: 'EPUB' as const,
+    format,
     createdAt: 1,
     updatedAt: 1,
   };
@@ -131,7 +138,7 @@ async function setup() {
   document.body.append(view);
   await view.open(bookDoc);
   view.renderer.setAttribute('max-column-count', '1');
-  await view.goTo('one.xhtml');
+  await view.goTo(format === 'MD' ? bookDoc.toc![0]!.href : 'one.xhtml');
   await waitFor(() => expect(view!.lastLocation?.range?.collapsed).toBe(false));
   const wrapper = () => (
     <div
@@ -555,4 +562,39 @@ it('automatically reads the selection frozen at send time and ignores later page
   await ask('解释这段话');
   await screen.findByRole('link', { name: /^Open source passage/ });
   expect(f.toolComplete).toHaveBeenCalledOnce();
+});
+
+it('reads Markdown on demand, restores verified citations and keeps the off state free of original text', async () => {
+  const { book, bookDoc, panel, wrapper } = await setup('MD');
+  expect(f.complete).not.toHaveBeenCalled();
+  expect(f.toolComplete).not.toHaveBeenCalled();
+  f.toolComplete.mockImplementation(async (request: ToolCompletionRequest) => {
+    const result = request.messages.find((message) => message.role === 'tool');
+    if (!result) return call('search_book', { queries: ['作者给出的理由'], chapterIds: [] });
+    const source = JSON.parse(result.content).sources.find(
+      (item: { text: string }) => item.text === firstParagraph,
+    );
+    const text = `需要核对理由。[原文](#source-${source.sourceId})`;
+    request.onDelta?.(text);
+    return { text, toolCalls: [] };
+  });
+  await ask('如何理解一个观点？');
+  await screen.findByRole('link', { name: /^Open source passage/ });
+  await view!.goTo(bookDoc.toc![1]!.href);
+  const origin = view!.lastLocation!.cfi;
+  panel.unmount();
+  render(wrapper());
+  fireEvent.click(await screen.findByRole('link', { name: /^Open source passage/ }));
+  await waitFor(() => expect(view!.resolveCFI(view!.lastLocation!.cfi!).index).toBe(0));
+  expect(view!.lastLocation!.cfi).not.toBe(origin);
+  expect((await loadConversations(book.hash))?.sessions[0]?.turns).toHaveLength(1);
+  fireEvent.click(screen.getByRole('switch', { name: 'Citations', checked: true }));
+  const reads = bookDoc.sections.map((section) => vi.spyOn(section, 'createDocument'));
+  f.complete.mockClear();
+  const count = f.toolComplete.mock.calls.length;
+  await ask('解释一个通用概念');
+  expect(f.toolComplete).toHaveBeenCalledTimes(count);
+  expect(reads.every((read) => read.mock.calls.length === 0)).toBe(true);
+  const requests = f.complete.mock.calls.map(([request]) => request as CompletionRequest);
+  expect(JSON.stringify(requests.map((request) => request.messages))).not.toContain(firstParagraph);
 });

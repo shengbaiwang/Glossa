@@ -22,7 +22,6 @@ interface GoogleBooksVolume {
   language?: string;
   industryIdentifiers?: { type: string; identifier: string }[];
   imageLinks?: GoogleBooksImageLinks;
-  categories?: string[];
   description?: string;
 }
 
@@ -146,7 +145,6 @@ export class GoogleBooksProvider extends BaseMetadataProvider {
       language: book.language || 'en',
       identifier: this.extractISBN(book.industryIdentifiers),
       coverImageUrl: this.getCoverImage(book.imageLinks),
-      subjects: book.categories || [],
       description: this.cleanDescription(book.description),
     };
   }

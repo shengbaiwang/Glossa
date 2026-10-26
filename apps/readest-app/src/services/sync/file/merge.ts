@@ -140,6 +140,10 @@ export const mergeBookMetadata = (local: Book, remote: Book): Book => {
     merged.readingStatus = remote.readingStatus;
     merged.readingStatusUpdatedAt = remote.readingStatusUpdatedAt;
   }
+  if ((remote.duplicateUpdatedAt ?? 0) > (local.duplicateUpdatedAt ?? 0)) {
+    merged.duplicateOf = remote.duplicateOf;
+    merged.duplicateUpdatedAt = remote.duplicateUpdatedAt;
+  }
   // The metadata group (title, author, tags, metadata) additionally merges on
   // its own metadataUpdatedAt clock — the client-side mirror of the native
   // server merge (issue #5438, same shape as the readingStatus clause above).
@@ -184,4 +188,5 @@ export const shouldApplyRemoteBookMetadata = (local: Book, remote: Book): boolea
   !local.deletedAt &&
   ((remote.updatedAt ?? 0) > (local.updatedAt ?? 0) ||
     (remote.readingStatusUpdatedAt ?? 0) > (local.readingStatusUpdatedAt ?? 0) ||
-    (remote.metadataUpdatedAt ?? 0) > (local.metadataUpdatedAt ?? 0));
+    (remote.metadataUpdatedAt ?? 0) > (local.metadataUpdatedAt ?? 0) ||
+    (remote.duplicateUpdatedAt ?? 0) > (local.duplicateUpdatedAt ?? 0));

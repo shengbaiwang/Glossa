@@ -22,6 +22,12 @@ import { useSettingsStore } from '@/store/settingsStore';
 import type { Book } from '@/types/book';
 import type { BookDoc } from '@/libs/document';
 import {
+  BookDataConflictSaved,
+  newBookDataEdit,
+  type BookDataEdit,
+} from '@/services/bookDataConflicts';
+import { withBookDataWrite } from '@/services/bookDataLifecycle';
+import {
   getActiveProviderConfig,
   getProviderStatus,
   MODEL_SETTINGS_EVENT,
@@ -78,7 +84,10 @@ import MindmapSourcePanel, { type MindmapSourceSelection } from './MindmapSource
 import { createBookReadingScope } from '@/glossa/harness/scope';
 import type { ChapterSource } from '@/glossa/context/types';
 import { generateBookConversation } from '@/glossa/harness/bookConversation';
-import { createEpubBookAccess, createEpubFocusReader } from '@/glossa/harness/epub';
+import {
+  createReflowableBookAccess,
+  createReflowableFocusReader,
+} from '@/glossa/harness/reflowable';
 import type { MapQuestionDraft } from '@/glossa/mindmap/export';
 
 interface Props {
@@ -92,7 +101,9 @@ const drafts = new Map<string, string>();
 const initialSessions = new Map<string, string>();
 const newSession = () => ({ id: crypto.randomUUID(), turns: [] as ConversationTurn[] });
 const errorMessage = (cause: unknown, fallback: string) =>
-  cause instanceof ConversationError || cause instanceof ModelServiceError
+  cause instanceof ConversationError ||
+  cause instanceof ModelServiceError ||
+  cause instanceof BookDataConflictSaved
     ? cause.message
     : fallback;
 export default function ConversationPanel(props: Props) {
@@ -102,7 +113,10 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
   const _ = useTranslation();
   const progress = useBookProgress(bookKey);
   const sectionPath = useMemo(
-    () => (book.format === 'EPUB' ? chapterPathForHref(bookDoc, progress?.sectionHref) : ''),
+    () =>
+      book.format === 'EPUB' || book.format === 'MD'
+        ? chapterPathForHref(bookDoc, progress?.sectionHref)
+        : '',
     [book.format, bookDoc, progress?.sectionHref],
   );
   const metadata: ChatIdentity = {
@@ -115,6 +129,7 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
   const [historyError, setHistoryError] = useState('');
   const [loadRevision, setLoadRevision] = useState(0);
   const [saveError, setSaveError] = useState(false);
+  const [conflictSaved, setConflictSaved] = useState(false);
   const [draft, setDraft] = useState('');
   const draftBeforeLoad = useRef('');
   const [config, setConfig] = useState<ProviderConfig | null>(null);
@@ -157,7 +172,7 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
   const turns = history?.sessions.find((s) => s.id === history.activeId)?.turns ?? [];
   const defaultScope = useMemo(
     () =>
-      book.format === 'EPUB' &&
+      (book.format === 'EPUB' || book.format === 'MD') &&
       bookDoc.sections?.length &&
       bookDoc.rendition?.layout !== 'pre-paginated'
         ? createBookReadingScope(book.hash)
@@ -179,21 +194,39 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
   const updateDraft = (value: string) => {
     setDraft(value);
     draftBeforeLoad.current = value;
-    if (historyRef.current) drafts.set(draftKey(historyRef.current.activeId), value);
+    const current = historyRef.current;
+    if (current) {
+      drafts.set(draftKey(current.activeId), value);
+      if (current.sessions.some((s) => s.id === current.activeId && s.draft !== undefined)) {
+        persist(
+          {
+            ...current,
+            sessions: current.sessions.map((s) =>
+              s.id === current.activeId ? { ...s, draft: value } : s,
+            ),
+          },
+          newBookDataEdit(),
+        );
+      }
+    }
   };
-  const persist = (next: ConversationHistory) => {
+  const persist = (next: ConversationHistory, edit?: BookDataEdit) => {
     historyRef.current = next;
     if (mounted.current) {
       setHistory(next);
       setSaveError(false);
+      setConflictSaved(false);
     }
     try {
-      void saveConversations(next)
+      void saveConversations(next, book.removal?.revision ?? 0, edit)
         .then(() => {
           if (mounted.current && !hasUnsavedConversations(book.hash)) setSaveError(false);
         })
-        .catch(() => {
-          if (mounted.current) setSaveError(true);
+        .catch((cause: unknown) => {
+          if (mounted.current) {
+            setSaveError(true);
+            setConflictSaved(cause instanceof BookDataConflictSaved);
+          }
         });
     } catch {
       if (mounted.current) setSaveError(true);
@@ -209,7 +242,7 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
     )
       return;
     const empty = current.sessions.find(
-      (s) => !s.turns.length && !drafts.get(draftKey(s.id))?.trim(),
+      (s) => !s.turns.length && !drafts.get(draftKey(s.id))?.trim() && !s.draft?.trim(),
     );
     if (!empty && current.sessions.length >= 20) {
       setError('This book has 20 conversations. Delete a conversation before starting another.');
@@ -248,13 +281,13 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
   useEffect(() => {
     let active = true;
     setHistoryError('');
-    void loadConversations(book.hash)
+    void loadConversations(book.hash, book.removal?.revision ?? 0)
       .then((saved) => {
         if (!active) return;
         const session = newSession();
         session.id = initialSessions.get(book.hash) ?? session.id;
         initialSessions.set(book.hash, session.id);
-        const next = saved ?? {
+        const next: ConversationHistory = saved ?? {
           version: 1 as const,
           bookId: book.hash,
           sessions: [session],
@@ -262,7 +295,11 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
         };
         historyRef.current = next;
         setHistory(next);
-        const restoredDraft = draftBeforeLoad.current || drafts.get(draftKey(next.activeId)) || '';
+        const restoredDraft =
+          draftBeforeLoad.current ||
+          drafts.get(draftKey(next.activeId)) ||
+          next.sessions.find((s) => s.id === next.activeId)?.draft ||
+          '';
         setDraft(restoredDraft);
         drafts.set(draftKey(next.activeId), restoredDraft);
         setSaveError(false);
@@ -280,7 +317,7 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
     return () => {
       active = false;
     };
-  }, [book.hash, loadRevision]);
+  }, [book.hash, book.removal?.revision, loadRevision]);
   useEffect(() => {
     let active = true,
       sequence = 0;
@@ -403,6 +440,7 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
       .catch(() => {});
   };
   const send = async (options?: { versionOf?: number; question?: string }) => {
+    const edit = newBookDataEdit();
     const current = historyRef.current;
     const index = options?.versionOf;
     const regenerate = index !== undefined;
@@ -508,6 +546,15 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
     setEditTurn(null);
     if (!regenerate && (!options?.question || draft.trim() === options.question)) updateDraft('');
     try {
+      await withBookDataWrite(book.hash, book.removal?.revision ?? 0, async () => {}, {
+        ...edit,
+        kind: 'question',
+        data: { version: 1, bookId: book.hash, sessionId, question, history: current },
+      });
+      if (controller.signal.aborted) {
+        finish('stopped');
+        return;
+      }
       const input = {
         metadata: snapshot,
         question,
@@ -538,8 +585,8 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
           ? await generateBookConversation({
               ...input,
               scope,
-              access: createEpubBookAccess(bookDoc, book.hash),
-              readFocus: createEpubFocusReader(
+              access: createReflowableBookAccess(bookDoc, book.hash, book.removal?.revision ?? 0),
+              readFocus: createReflowableFocusReader(
                 bookDoc,
                 useReaderStore.getState().getView(bookKey),
                 book.hash,
@@ -567,7 +614,8 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
       else {
         // Failed regenerations leave the previous valid answer intact.
         if (regenerate) text = '';
-        if (mounted.current && !regenerate && !text.trim()) setFailedQuestion(question);
+        if (mounted.current && !regenerate && !text.trim())
+          setFailedQuestion(cause instanceof BookDataConflictSaved ? '' : question);
         finish('failed');
         if (mounted.current) {
           if (regenerate && options?.question !== undefined) {
@@ -584,19 +632,22 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
     if (!latest || busy) return;
     setSourceSelection(null);
     const sessionId = latest.activeId;
-    persist({
-      ...latest,
-      sessions: latest.sessions.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              turns: session.turns.map((turn, i) =>
-                i === index ? selectAnswerVersion(turn, versionId) : turn,
-              ),
-            }
-          : session,
-      ),
-    });
+    persist(
+      {
+        ...latest,
+        sessions: latest.sessions.map((session) =>
+          session.id === sessionId
+            ? {
+                ...session,
+                turns: session.turns.map((turn, i) =>
+                  i === index ? selectAnswerVersion(turn, versionId) : turn,
+                ),
+              }
+            : session,
+        ),
+      },
+      newBookDataEdit(),
+    );
   };
   const startEditing = (turn: ConversationTurn) => {
     setEditTurn(turn.id);
@@ -620,16 +671,19 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
     const current = historyRef.current;
     if (!current) return;
     const title = value.trim();
-    persist({
-      ...current,
-      sessions: current.sessions.map((session) => {
-        if (session.id !== targetId) return session;
-        const next = { ...session };
-        if (title) next.title = title;
-        else delete next.title;
-        return next;
-      }),
-    });
+    persist(
+      {
+        ...current,
+        sessions: current.sessions.map((session) => {
+          if (session.id !== targetId) return session;
+          const next = { ...session };
+          if (title) next.title = title;
+          else delete next.title;
+          return next;
+        }),
+      },
+      newBookDataEdit(),
+    );
     setRenaming(false);
   };
   const query = searchQuery.trim().toLowerCase();
@@ -666,7 +720,7 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
     if (id) next = { ...current, activeId: id };
     else {
       const empty = current.sessions.find(
-        (s) => !s.turns.length && !drafts.get(draftKey(s.id))?.trim(),
+        (s) => !s.turns.length && !drafts.get(draftKey(s.id))?.trim() && !s.draft?.trim(),
       );
       if (empty) next = { ...current, activeId: empty.id };
       else if (current.sessions.length >= 20) {
@@ -677,8 +731,12 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
         next = { ...current, activeId: session.id, sessions: [...current.sessions, session] };
       }
     }
-    persist(next);
-    setDraft(drafts.get(draftKey(next.activeId)) ?? '');
+    persist(next, newBookDataEdit());
+    setDraft(
+      drafts.get(draftKey(next.activeId)) ??
+        next.sessions.find((s) => s.id === next.activeId)?.draft ??
+        '',
+    );
     setError('');
     setFailedQuestion('');
     setDeleting(false);
@@ -694,8 +752,12 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
     if (!sessions.length) sessions.push(newSession());
     drafts.delete(draftKey(current.activeId));
     const next = { ...current, sessions, activeId: sessions.at(-1)!.id };
-    persist(next);
-    setDraft(drafts.get(draftKey(next.activeId)) ?? '');
+    persist(next, newBookDataEdit());
+    setDraft(
+      drafts.get(draftKey(next.activeId)) ??
+        next.sessions.find((s) => s.id === next.activeId)?.draft ??
+        '',
+    );
     setDeleting(false);
     setError('');
     setFailedQuestion('');
@@ -706,12 +768,15 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
     const current = historyRef.current;
     if (!current || busy) return;
     setSourceSelection(null);
-    persist({
-      ...current,
-      sessions: current.sessions.map((session) =>
-        session.id === current.activeId ? { ...session, citationsEnabled: enabled } : session,
-      ),
-    });
+    persist(
+      {
+        ...current,
+        sessions: current.sessions.map((session) =>
+          session.id === current.activeId ? { ...session, citationsEnabled: enabled } : session,
+        ),
+      },
+      newBookDataEdit(),
+    );
   };
   const canSend = Boolean(history && ready && config && draft.trim() && !busy && turns.length < 40);
   return (
@@ -920,15 +985,21 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
       )}
       {saveError && (
         <div className='glossa-chat-message' role='alert'>
-          {_('Conversation not saved.')}
-          <button
-            type='button'
-            onClick={() => {
-              if (historyRef.current) persist(historyRef.current);
-            }}
-          >
-            {_('Retry saving')}
-          </button>
+          {_(
+            conflictSaved
+              ? 'New edits are preserved in Recently Deleted. Review the conflicting draft.'
+              : 'Conversation not saved.',
+          )}
+          {!conflictSaved && (
+            <button
+              type='button'
+              onClick={() => {
+                if (historyRef.current) persist(historyRef.current);
+              }}
+            >
+              {_('Retry saving')}
+            </button>
+          )}
         </div>
       )}
       <div className='glossa-chat-transcript-wrap'>

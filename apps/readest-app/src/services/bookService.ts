@@ -1,4 +1,7 @@
 import { SystemSettings } from '@/types/settings';
+import { archiveRemoval } from './bookRemovalState';
+import { activateBookData, withBookDataWrite } from './bookDataLifecycle';
+import { bookNoteEdits } from './bookDataConflicts';
 import { FileSystem, AppPlatform, BaseDir, OsPlatform } from '@/types/system';
 import {
   Book,
@@ -6,7 +9,6 @@ import {
   BookContent,
   BookFormat,
   BookLookupIndex,
-  BookNote,
   FIXED_LAYOUT_FORMATS,
   ImportBookOptions,
 } from '@/types/book';
@@ -37,8 +39,14 @@ import { ClosableFile } from '@/utils/file';
 import { TxtToEpubConverter } from '@/utils/txt';
 import { svg2png } from '@/utils/svg';
 import { normalizeMetadataIsbn } from '@/utils/isbn';
-import { repairImportedMetadata, resolveImportedMetadata } from '@/utils/importMetadata';
+import { resolveImportedMetadata } from '@/utils/importMetadata';
 import { BookFileNotFoundError } from './errors';
+import { snapshotMarkdownImport } from './markdownImport';
+import { fingerprintFile, fingerprintBook, contentIdentity } from './bookIdentity';
+import { withLibraryLock } from './libraryLock';
+import { saveLibraryBooksUnlocked } from './libraryService';
+import { safeLoadJSON } from './persistence';
+import { getLibraryFilename } from '@/utils/book';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import {
   isBookFileContentSource,
@@ -58,10 +66,7 @@ export function buildBookLookupIndex(books: Book[], osPlatform?: OsPlatform): Bo
       if (list) list.push(book);
       else byMetaKey.set(key, [book]);
     }
-    // In-place books carry the absolute source path on `filePath` (set by
-    // importBook below). Indexing them here lets a re-import of the exact
-    // same file short-circuit before touching disk or computing partialMD5.
-    // Skip URL-backed entries (remote books) and tombstoned ones.
+    // Paths are discovery hints. Reimport must still verify actual file bytes.
     if (book.filePath && !isValidURL(book.filePath) && !book.deletedAt) {
       const key = normalizeFilePathForIndex(book.filePath, osPlatform);
       if (key) byFilePath.set(key, book);
@@ -279,10 +284,14 @@ export async function updateCoverImage(
   imageFile?: string,
 ): Promise<void> {
   if (imageUrl === '_blank') {
-    await ctx.fs.removeFile(getCoverFilename(book), 'Books');
+    await withBookDataWrite(book.hash, book.removal?.revision ?? 0, () =>
+      ctx.fs.removeFile(getCoverFilename(book), 'Books'),
+    );
   } else if (imageUrl || imageFile) {
     const arrayBuffer = await imageToArrayBuffer(ctx, imageUrl, imageFile);
-    await ctx.fs.writeFile(getCoverFilename(book), 'Books', arrayBuffer);
+    await withBookDataWrite(book.hash, book.removal?.revision ?? 0, () =>
+      ctx.fs.writeFile(getCoverFilename(book), 'Books', arrayBuffer),
+    );
   }
 }
 
@@ -300,88 +309,6 @@ export async function computeCoverHash(fs: FileSystem, book: Book): Promise<stri
   return partialMD5(coverFile);
 }
 
-// --- Book Merge ---
-
-/**
- * Merge duplicate book entries that share the same metaHash and format as `book`.
- * Finds all other matching books in the array, selects the base config with the
- * largest reading progress page number, merges booknotes from all configs
- * (deduplicating by id, latest updatedAt wins), soft-deletes duplicates
- * (sets deletedAt), and cleans up their directories.
- *
- * @returns The merged config as a JSON string, or undefined if no duplicates were found.
- */
-export async function mergeBooks(
-  fs: FileSystem,
-  books: Book[],
-  book: Book,
-  lookupIndex?: BookLookupIndex,
-  originalFilename?: string,
-): Promise<string | undefined> {
-  if (!book.metaHash) return undefined;
-
-  const metaKey = `${book.metaHash}:${book.format}`;
-  const matches = lookupIndex
-    ? (lookupIndex.byMetaKey.get(metaKey) ?? []).filter((b) => !b.deletedAt && b !== book)
-    : books.filter(
-        (b) =>
-          b.metaHash === book.metaHash && b.format === book.format && !b.deletedAt && b !== book,
-      );
-  const duplicates = matches.filter(
-    (candidate) =>
-      !originalFilename ||
-      !candidate.originalFilename ||
-      getBaseFilename(candidate.originalFilename) === getBaseFilename(originalFilename),
-  );
-  if (duplicates.length === 0) return undefined;
-
-  const allCandidates = [book, ...duplicates];
-  const configs: Partial<BookConfig>[] = [];
-  for (const candidate of allCandidates) {
-    const configPath = getConfigFilename(candidate);
-    if (await fs.exists(configPath, 'Books')) {
-      try {
-        const str = (await fs.readFile(configPath, 'Books', 'text')) as string;
-        configs.push(JSON.parse(str));
-      } catch {
-        /* ignore corrupt configs */
-      }
-    }
-  }
-
-  let mergedConfigData: string | undefined;
-  if (configs.length > 0) {
-    const base = configs.reduce((best, cfg) => {
-      const bestPage = best.progress?.[0] ?? 0;
-      const cfgPage = cfg.progress?.[0] ?? 0;
-      return cfgPage > bestPage ? cfg : best;
-    });
-
-    const noteMap = new Map<string, BookNote>();
-    for (const cfg of configs) {
-      for (const note of cfg.booknotes ?? []) {
-        const existing = noteMap.get(note.id);
-        if (!existing || (note.updatedAt || 0) > (existing.updatedAt || 0)) {
-          noteMap.set(note.id, note);
-        }
-      }
-    }
-    base.booknotes = [...noteMap.values()];
-
-    mergedConfigData = serializeRawConfig(base);
-  }
-
-  for (const dup of duplicates) {
-    dup.deletedAt = Date.now();
-    const dupDir = getDir(dup);
-    if (await fs.exists(dupDir, 'Books')) {
-      await fs.removeDir(dupDir, 'Books', true);
-    }
-  }
-
-  return mergedConfigData;
-}
-
 // --- Book Import ---
 
 /**
@@ -393,13 +320,7 @@ export interface ImportBookInternalOptions extends ImportBookOptions {
   saveBookConfig: (book: Book, config: BookConfig) => Promise<void>;
   generateCoverImageUrl: (book: Book) => Promise<string>;
   preparePDF?: (book: Book, document: BookDoc) => Promise<void>;
-  /**
-   * Used by the in-place fast path to normalize the source path the same way
-   * `buildBookLookupIndex` does. Optional: when omitted the fast path falls
-   * back to a case-sensitive comparison, which is still safe (it will simply
-   * miss matches that differ only in casing on macOS / iOS / Windows and the
-   * import will proceed down the slow path as before).
-   */
+  /** Normalizes device-local source path hints consistently with the lookup index. */
   osPlatform?: OsPlatform;
 }
 
@@ -422,14 +343,17 @@ export async function importBook(
     saveCover = true,
     overwrite = false,
     transient = false,
-    inPlace = false,
+    inPlace: requestedInPlace = false,
     lookupIndex,
     osPlatform,
   } = options;
+  let inPlace = requestedInPlace;
   const isPseStream = typeof file === 'string' && isPseStreamFileName(file);
 
   let loadedBook: BookDoc | undefined;
   let fileobj: File | undefined;
+  let originalFile: File | undefined;
+  let contentFingerprint: string | undefined;
   try {
     let format: BookFormat;
     let filename: string;
@@ -455,6 +379,20 @@ export async function importBook(
           fileobj = file;
           filename = file.name;
         }
+        originalFile = fileobj;
+        if (/\.(?:md|markdown)$/i.test(filename)) {
+          // Markdown is an immutable reading snapshot, even in a watched folder.
+          inPlace = false;
+          if (typeof file === 'string' && options.markdownResourceRoot)
+            fileobj = await snapshotMarkdownImport(
+              fs,
+              fileobj,
+              file,
+              options.markdownResourceRoot,
+              options.signal,
+            );
+        }
+        contentFingerprint = await fingerprintFile(fileobj, options.signal);
         if (/\.txt$/i.test(filename)) {
           const txt2epub = new TxtToEpubConverter();
           ({ file: fileobj } = await txt2epub.convert({ file: fileobj }));
@@ -509,19 +447,17 @@ export async function importBook(
       }
       normalizeMetadataIsbn(loadedBook.metadata);
     } catch (error) {
+      options.signal?.throwIfAborted();
       throw new Error(`Failed to open the book file: ${(error as Error).message || error}`);
     }
 
-    const hash = isPseStream
+    const legacyHash = isPseStream
       ? md5(file as string)
       : usedNativeParser
         ? nativeHash!
         : await partialMD5(fileobj!);
 
-    // PDF metadata is often generic boilerplate (e.g. every PowerPoint export
-    // is titled "PowerPoint Presentation" by the same author), so metadata
-    // alone wrongly collapses distinct files into one book (issue #5411).
-    // Salt the hash with the original filename so only same-named PDFs dedupe.
+    // Metadata remains a legacy candidate hint; only a full fingerprint deduplicates.
     const importedMetadata = resolveImportedMetadata(
       loadedBook.metadata,
       isPseStream ? '' : filename,
@@ -539,267 +475,302 @@ export async function importBook(
       identityMetadata,
       format === 'PDF' ? getBaseFilename(filename) : undefined,
     );
-    let existingBook = lookupIndex
-      ? lookupIndex.byHash.get(hash)
-      : books.find((b) => b.hash === hash);
-    let metaHashMatch = false;
-    let oldBookDir: string | undefined;
-    if (existingBook) {
-      if (!transient) {
-        existingBook.deletedAt = null;
-      }
-      existingBook.createdAt = Date.now();
-      existingBook.updatedAt = Date.now();
-    }
-
-    // Aggregate all books with same metaHash and format, deduplicating into one entry
-    let bestConfigData: string | undefined;
-    // A filename fallback cannot establish EPUB identity. Keep PDF's existing
-    // filename-salted dedup contract; never merge generic EPUB placeholders.
-    if (!transient && metaHash && (!importedMetadata.usesFilename || format === 'PDF')) {
-      if (!existingBook) {
-        const metaKey = `${metaHash}:${format}`;
-        const firstMatch = lookupIndex
-          ? (lookupIndex.byMetaKey.get(metaKey) ?? []).find(
-              (b) =>
-                !b.deletedAt &&
-                (!b.originalFilename ||
-                  getBaseFilename(b.originalFilename) === getBaseFilename(filename)),
-            )
-          : books.find(
-              (b) =>
-                b.metaHash === metaHash &&
-                b.format === format &&
-                !b.deletedAt &&
-                (!b.originalFilename ||
-                  getBaseFilename(b.originalFilename) === getBaseFilename(filename)),
-            );
-        if (firstMatch) {
-          oldBookDir = getDir(firstMatch);
-          existingBook = firstMatch;
-          metaHashMatch = true;
-          existingBook.createdAt = Date.now();
-          existingBook.updatedAt = Date.now();
+    const parsedBook = loadedBook;
+    let returnedExisting = false;
+    const commit = async (): Promise<Book> => {
+      options.signal?.throwIfAborted();
+      const disk = transient
+        ? []
+        : await safeLoadJSON<Book[]>(fs, getLibraryFilename(), 'Books', []);
+      const current = new Map(books.map((book) => [book.hash, book]));
+      if (Array.isArray(disk))
+        for (const book of disk) {
+          const live = current.get(book.hash);
+          const latest = !live || book.updatedAt >= live.updatedAt ? { ...live, ...book } : live;
+          current.set(book.hash, {
+            ...latest,
+            ...((book.duplicateUpdatedAt ?? 0) > (latest.duplicateUpdatedAt ?? 0)
+              ? { duplicateOf: book.duplicateOf, duplicateUpdatedAt: book.duplicateUpdatedAt }
+              : {}),
+          });
         }
-      }
-      if (existingBook) {
-        bestConfigData = await mergeBooks(
-          fs,
-          books,
-          existingBook,
-          lookupIndex,
-          existingBook.originalFilename ?? filename,
-        );
-      }
-    }
-
-    const storedSourceTitle = existingBook?.sourceTitle || existingBook?.title;
-    if (existingBook && !metaHashMatch && !transient) {
-      repairImportedMetadata(existingBook, filename);
-    }
-    const primaryLanguage = getPrimaryLanguage(loadedBook.metadata.language);
-    const book: Book = {
-      hash,
-      format,
-      metaHash,
-      title: importedMetadata.title,
-      originalFilename: isPseStream ? undefined : getFilename(filename),
-      sourceTitle: existingBook && !metaHashMatch ? storedSourceTitle : importedMetadata.title,
-      primaryLanguage,
-      author: importedMetadata.author,
-      // Cached here because the library list never opens the book: it is a
-      // property of the file, so it is re-derived on every (re)import rather
-      // than synced as user data.
-      hasNarration:
-        (!!loadedBook.loadText &&
-          !!loadedBook.loadBlob &&
-          loadedBook.sections?.some((section) => section.mediaOverlay?.href)) ||
-        undefined,
-      metadata: loadedBook.metadata,
-      createdAt: existingBook ? existingBook.createdAt : Date.now(),
-      uploadedAt: existingBook ? existingBook.uploadedAt : null,
-      deletedAt: transient ? Date.now() : null,
-      downloadedAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    // update series info from metadata
-    if (book.metadata?.belongsTo?.series) {
-      const belongsTo = book.metadata.belongsTo.series;
-      const series = Array.isArray(belongsTo) ? belongsTo[0] : belongsTo;
-      if (series) {
-        book.metadata.series = formatTitle(series.name);
-        book.metadata.seriesIndex = parseFloat(series.position || '0');
-        if (series.total) book.metadata.seriesTotal = parseInt(series.total, 10);
-      }
-    }
-    // update book metadata when reimporting the same book
-    if (existingBook && metaHashMatch) {
-      // MetaHash match (different file, same book): override metadata and hash
-      existingBook.hash = hash;
-      existingBook.format = book.format;
-      existingBook.metaHash = metaHash;
-      if (!existingBook.metadataUpdatedAt) existingBook.title = book.title;
-      existingBook.sourceTitle = book.sourceTitle;
-      if (!existingBook.metadataUpdatedAt) existingBook.author = book.author;
-      existingBook.primaryLanguage = book.primaryLanguage;
-      existingBook.metadata = book.metadata;
-      existingBook.originalFilename = book.originalFilename;
-      existingBook.uploadedAt = null;
-      existingBook.downloadedAt = Date.now();
-    } else if (existingBook) {
-      // Same file hash: preserve user edits
-      existingBook.format = book.format;
-      existingBook.metaHash = metaHash;
-      existingBook.title = existingBook.title.trim() ? existingBook.title.trim() : book.title;
-      existingBook.sourceTitle = existingBook.sourceTitle ?? book.sourceTitle;
-      existingBook.author = existingBook.author ?? book.author;
-      existingBook.primaryLanguage = existingBook.primaryLanguage ?? book.primaryLanguage;
-      existingBook.metadata = book.metadata;
-      if (!transient) existingBook.originalFilename ||= book.originalFilename;
-      existingBook.downloadedAt = Date.now();
-    }
-
-    // Idempotent create (recursive): a plain createDir defaults to
-    // non-recursive and throws if the dir already exists, and the check-then-
-    // create above races two concurrent imports of the same book — on Windows
-    // the loser fails with "Cannot create a file when that file already exists"
-    // (Sentry READEST-H). create_dir_all is a no-op when the dir exists.
-    await fs.createDir(getDir(book), 'Books', true);
-    const bookFilename = getLocalBookFilename(book);
-    const willWriteBookFile =
-      saveBook &&
-      !transient &&
-      !inPlace &&
-      !!fileobj &&
-      (!(await fs.exists(bookFilename, 'Books')) || overwrite);
-    if (willWriteBookFile && fileobj) {
-      if (/\.txt$/i.test(filename)) {
-        await fs.writeFile(bookFilename, 'Books', fileobj);
-      } else if (typeof file === 'string' && isContentURI(file)) {
-        await fs.copyFile(file, 'None', bookFilename, 'Books');
-      } else if (typeof file === 'string' && !isValidURL(file)) {
-        try {
-          // try to copy the file directly first in case of large files to avoid memory issues
-          // on desktop when reading recursively from selected directory the direct copy will fail
-          // due to permission issues, then fallback to read and write files
-          await fs.copyFile(file, 'None', bookFilename, 'Books');
-        } catch {
-          await fs.writeFile(bookFilename, 'Books', await fileobj.arrayBuffer());
-        }
-      } else {
-        await fs.writeFile(bookFilename, 'Books', fileobj);
-      }
-    }
-    if (saveCover && (!(await fs.exists(getCoverFilename(book), 'Books')) || overwrite)) {
-      let cover = await loadedBook.getCover();
-      if (cover?.type === 'image/svg+xml') {
-        try {
-          console.log('Converting SVG cover to PNG...');
-          cover = await svg2png(cover);
-        } catch {}
-      }
-      if (cover) {
-        const coverBytes = await cover.arrayBuffer();
-        await fs.writeFile(getCoverFilename(book), 'Books', coverBytes);
-      }
-    }
-    // Maintain coverHash === partialMD5(cover.png) so cross-device cover sync
-    // can detect changes (issue #4544). Read from disk regardless of whether we
-    // just wrote it — a hash-match reimport may reuse an existing cover.
-    const coverHash = await computeCoverHash(fs, book);
-    book.coverHash = coverHash;
-    if (existingBook) existingBook.coverHash = coverHash;
-    // Never overwrite the config file only when it's not existed
-    if (!existingBook) {
-      await saveBookConfigFn(book, INIT_BOOK_CONFIG);
-      books.push(book);
-      if (lookupIndex) {
-        lookupIndex.byHash.set(book.hash, book);
-        if (book.metaHash) {
-          const key = `${book.metaHash}:${book.format}`;
-          const list = lookupIndex.byMetaKey.get(key);
-          if (list) list.push(book);
-          else lookupIndex.byMetaKey.set(key, [book]);
-        }
-      }
-    } else if (metaHashMatch && oldBookDir && oldBookDir !== getDir(book)) {
-      // Migrate config from old directory to new directory, updating bookHash and metaHash
-      // Use aggregated best config when available from deduplication
-      if (bestConfigData) {
-        const config: Partial<BookConfig> = JSON.parse(bestConfigData);
-        config.bookHash = hash;
-        config.metaHash = metaHash;
-        await fs.writeFile(getConfigFilename(book), 'Books', serializeRawConfig(config));
-      } else {
-        const oldConfigPath = `${oldBookDir}/config.json`;
-        if (await fs.exists(oldConfigPath, 'Books')) {
-          const configData = (await fs.readFile(oldConfigPath, 'Books', 'text')) as string;
-          const config: Partial<BookConfig> = JSON.parse(configData);
-          config.bookHash = hash;
-          config.metaHash = metaHash;
-          await fs.writeFile(getConfigFilename(book), 'Books', serializeRawConfig(config));
-        } else {
-          await saveBookConfigFn(book, INIT_BOOK_CONFIG);
-        }
-      }
-      // Clean up old directory
-      if (await fs.exists(oldBookDir, 'Books')) {
-        await fs.removeDir(oldBookDir, 'Books', true);
-      }
-    } else if (bestConfigData) {
-      // Exact hash match with duplicates removed — adopt the best config
-      const config: Partial<BookConfig> = JSON.parse(bestConfigData);
-      config.bookHash = hash;
-      config.metaHash = metaHash;
-      await fs.writeFile(getConfigFilename(book), 'Books', serializeRawConfig(config));
-    }
-
-    // update file links with url or path or content uri
-    if (isPseStream) {
-      book.url = file as string;
-      if (existingBook) existingBook.url = file as string;
-    } else if (typeof file === 'string') {
-      if (isValidURL(file)) {
-        book.url = file;
-        if (existingBook) existingBook.url = file;
-      } else if (transient || inPlace) {
-        // transient: source file is loaded directly, never persisted in Books/.
-        // inPlace: source file is inside the user's library root and we read it
-        // there directly instead of duplicating it under Books/<hash>/.
-        book.filePath = file;
-        if (existingBook) {
-          // A second on-disk file just deduped into a book we already have.
-          // Keep the path it is losing so the auto-import scan knows both
-          // files are accounted for (transient previews are never persisted,
-          // so there is nothing to remember for them).
-          if (inPlace && !transient) {
-            displaceSourcePath(existingBook, file, osPlatform);
+      const candidates = transient ? [] : [...current.values()];
+      let existingBook: Book | undefined;
+      if (contentFingerprint) {
+        const matches: Book[] = [];
+        for (const candidate of candidates) {
+          let identity = contentIdentity(candidate);
+          if (
+            !identity &&
+            (candidate.hash === legacyHash || (metaHash && candidate.metaHash === metaHash))
+          ) {
+            try {
+              identity = await fingerprintBook(fs, candidate, options.signal, false);
+            } catch {
+              // Unavailable bytes cannot establish identity; never fall back to metadata.
+            }
           }
-          existingBook.filePath = file;
+          if (identity === contentFingerprint) matches.push(candidate);
+        }
+        matches.sort(
+          (a, b) =>
+            Number(!!a.deletedAt) - Number(!!b.deletedAt) ||
+            Number(!!a.duplicateOf) - Number(!!b.duplicateOf) ||
+            a.createdAt - b.createdAt ||
+            a.hash.localeCompare(b.hash),
+        );
+        existingBook = matches[0];
+      } else if (isPseStream) {
+        existingBook = current.get(legacyHash);
+      }
+      // Keep established sidecar paths and anchors when verifying a legacy record.
+      let hash = existingBook?.hash ?? (contentFingerprint ? md5(contentFingerprint) : legacyHash);
+      let collision = 0;
+      while (!existingBook && current.has(hash)) hash = md5(`${contentFingerprint}:${++collision}`);
+      const storedSourceTitle = existingBook?.sourceTitle || existingBook?.title;
+      const primaryLanguage = getPrimaryLanguage(parsedBook.metadata.language);
+      const book: Book = {
+        hash,
+        format,
+        metaHash,
+        title: importedMetadata.title,
+        originalFilename: isPseStream ? undefined : getFilename(filename),
+        sourceTitle: existingBook ? storedSourceTitle : importedMetadata.title,
+        contentFingerprint,
+        storedContentFingerprint:
+          originalFile && fileobj !== originalFile
+            ? await fingerprintFile(fileobj!, options.signal)
+            : contentFingerprint,
+        primaryLanguage,
+        author: importedMetadata.author,
+        // Cached here because the library list never opens the book: it is a
+        // property of the file, so it is re-derived on every (re)import rather
+        // than synced as user data.
+        hasNarration:
+          (!!parsedBook.loadText &&
+            !!parsedBook.loadBlob &&
+            parsedBook.sections?.some((section) => section.mediaOverlay?.href)) ||
+          undefined,
+        metadata: parsedBook.metadata,
+        groupId: options.initialGroup?.id,
+        groupName: options.initialGroup?.name,
+        tags: options.initialTags,
+        createdAt: existingBook ? existingBook.createdAt : Date.now(),
+        uploadedAt: existingBook ? existingBook.uploadedAt : null,
+        deletedAt: transient ? Date.now() : null,
+        downloadedAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      // update series info from metadata
+      if (book.metadata?.belongsTo?.series) {
+        const belongsTo = book.metadata.belongsTo.series;
+        const series = Array.isArray(belongsTo) ? belongsTo[0] : belongsTo;
+        if (series) {
+          book.metadata.series = formatTitle(series.name);
+          book.metadata.seriesIndex = parseFloat(series.position || '0');
+          if (series.total) book.metadata.seriesTotal = parseInt(series.total, 10);
         }
       }
-    }
-    // Now that `filePath` is set, keep the path index in sync so later files
-    // in the same batch (and the next call into importBook) can hit the
-    // in-place fast path. Only persistent in-place imports go into the
-    // index — transient previews are short-lived and never persisted to
-    // the library so indexing them would just leak references.
-    if (lookupIndex && inPlace && !transient && typeof file === 'string') {
-      const indexedBook = existingBook || book;
-      if (indexedBook.filePath) {
-        const key = normalizeFilePathForIndex(indexedBook.filePath, osPlatform);
-        if (key) lookupIndex.byFilePath.set(key, indexedBook);
+      // A repeated import can restore availability; personal fields and sidecars stay intact.
+      const target: Book = existingBook
+        ? {
+            ...existingBook,
+            contentFingerprint: contentFingerprint ?? existingBook.contentFingerprint,
+          }
+        : book;
+      const wasExisting = !!existingBook && !existingBook.deletedAt;
+      if (
+        !transient &&
+        existingBook &&
+        [existingBook.removal, existingBook.localRemoval].some(
+          (intent) => intent && intent.local !== 'complete',
+        )
+      )
+        throw new Error('Finish or retry the existing removal before importing this book.');
+      if (existingBook?.deletedAt && !transient) {
+        target.deletedAt = null;
+        target.updatedAt = Date.now();
+        target.removalHistory = archiveRemoval(existingBook, 'removal');
+        const previous = existingBook.removal;
+        target.removal = {
+          version: 1,
+          id: crypto.randomUUID(),
+          revision: Math.max(Date.now(), (previous?.revision ?? 0) + 1),
+          requestedAt: Date.now(),
+          mode: 'restore',
+          local: 'complete',
+          cloud: previous?.cloud === 'none' || !previous ? 'none' : 'pending',
+          ...(previous?.cloudTargets
+            ? {
+                cloudTargets: Object.fromEntries(
+                  Object.keys(previous.cloudTargets).map((kind) => [kind, 'pending']),
+                ),
+              }
+            : {}),
+        };
+        await activateBookData(target.hash, target.removal.revision);
       }
-    }
-    book.coverImageUrl = await generateCoverImageUrlFn(book);
 
-    if (format === 'PDF' && !transient && (saveBook || inPlace)) {
-      // The managed copy/filePath now exists. Finish local preparation before
-      // releasing the parser, so the first reading view sees its checked TOC.
-      await options.preparePDF?.(existingBook || book, loadedBook);
-    }
+      // Idempotent create (recursive): a plain createDir defaults to
+      // non-recursive and throws if the dir already exists, and the check-then-
+      // create above races two concurrent imports of the same book — on Windows
+      // the loser fails with "Cannot create a file when that file already exists"
+      // (Sentry READEST-H). create_dir_all is a no-op when the dir exists.
+      await fs.createDir(getDir(target), 'Books', true);
+      const bookFilename = getLocalBookFilename(target);
+      const willWriteBookFile =
+        saveBook &&
+        !transient &&
+        !inPlace &&
+        !!fileobj &&
+        (!(await fs.exists(bookFilename, 'Books')) ||
+          overwrite ||
+          (!existingBook &&
+            (await fingerprintBook(fs, target, options.signal, false)) !==
+              book.storedContentFingerprint));
+      if (willWriteBookFile && fileobj) {
+        if (/\.txt$/i.test(filename)) {
+          await fs.writeFile(bookFilename, 'Books', fileobj);
+        } else if (fileobj === originalFile && typeof file === 'string' && isContentURI(file)) {
+          await fs.copyFile(file, 'None', bookFilename, 'Books');
+        } else if (fileobj === originalFile && typeof file === 'string' && !isValidURL(file)) {
+          try {
+            // try to copy the file directly first in case of large files to avoid memory issues
+            // on desktop when reading recursively from selected directory the direct copy will fail
+            // due to permission issues, then fallback to read and write files
+            await fs.copyFile(file, 'None', bookFilename, 'Books');
+          } catch {
+            await fs.writeFile(bookFilename, 'Books', await fileobj.arrayBuffer());
+          }
+        } else {
+          await fs.writeFile(bookFilename, 'Books', fileobj);
+        }
+        // Native path copies may race a source replacement after the first read.
+        // Publish only the identity of the bytes actually stored for reading.
+        const stored = await fs.openFile(bookFilename, 'Books');
+        try {
+          if ((await fingerprintFile(stored, options.signal)) !== book.storedContentFingerprint)
+            throw new Error('Book file changed during import. Please retry.');
+        } finally {
+          await (stored as Partial<ClosableFile>).close?.();
+        }
+        target.storedContentFingerprint = book.storedContentFingerprint;
+      }
+      if (
+        saveCover &&
+        !existingBook &&
+        (!(await fs.exists(getCoverFilename(target), 'Books')) || overwrite)
+      ) {
+        let cover = await parsedBook.getCover();
+        if (cover?.type === 'image/svg+xml') {
+          try {
+            console.log('Converting SVG cover to PNG...');
+            cover = await svg2png(cover);
+          } catch {}
+        }
+        if (cover) {
+          const coverBytes = await cover.arrayBuffer();
+          await fs.writeFile(getCoverFilename(target), 'Books', coverBytes);
+        }
+      }
+      // Maintain coverHash === partialMD5(cover.png) so cross-device cover sync
+      // can detect changes (issue #4544). Read from disk regardless of whether we
+      // just wrote it — a hash-match reimport may reuse an existing cover.
+      if (!existingBook) target.coverHash = await computeCoverHash(fs, target);
+      // Retrying after a failed commit must never reset a config already on disk.
+      if (!existingBook && !(await fs.exists(getConfigFilename(target), 'Books'))) {
+        await saveBookConfigFn(target, {
+          ...INIT_BOOK_CONFIG,
+          ...(target.format === 'MD' ? { viewSettings: { scrolled: true } } : {}),
+        });
+      }
 
-    return existingBook || book;
+      // update file links with url or path or content uri
+      if (isPseStream) {
+        target.url ??= file as string;
+      } else if (typeof file === 'string') {
+        if (isValidURL(file)) {
+          target.url ??= file;
+        } else if (transient || inPlace) {
+          // transient: source file is loaded directly, never persisted in Books/.
+          // inPlace: source file is inside the user's library root and we read it
+          // there directly instead of duplicating it under Books/<hash>/.
+          if (inPlace && !transient) displaceSourcePath(target, file, osPlatform);
+          target.filePath = file;
+        } else if (!transient) {
+          target.altFilePaths = [...new Set([...(target.altFilePaths ?? []), file])];
+        }
+      }
+      if (inPlace && originalFile && contentFingerprint) {
+        const currentSource = await fs.openFile(file as string, 'None');
+        try {
+          if ((await fingerprintFile(currentSource, options.signal)) !== contentFingerprint)
+            throw new Error('Book file changed during import. Please retry.');
+        } finally {
+          await (currentSource as Partial<ClosableFile>).close?.();
+        }
+      }
+      target.coverImageUrl = await generateCoverImageUrlFn(target);
+      if (willWriteBookFile || inPlace || transient) target.downloadedAt ??= Date.now();
+      const detachedSources: Book[] = [];
+      if (!transient && inPlace && typeof file === 'string') {
+        const sourceKey = normalizeFilePathForIndex(file, osPlatform);
+        for (const previous of candidates) {
+          if (
+            previous.hash === target.hash ||
+            !previous.filePath ||
+            normalizeFilePathForIndex(previous.filePath, osPlatform) !== sourceKey
+          )
+            continue;
+          if (contentIdentity(previous) !== contentFingerprint) {
+            detachedSources.push({
+              ...previous,
+              filePath: undefined,
+              altFilePaths: previous.altFilePaths?.filter(
+                (path) => normalizeFilePathForIndex(path, osPlatform) !== sourceKey,
+              ),
+              downloadedAt: (await fs.exists(getLocalBookFilename(previous), 'Books'))
+                ? previous.downloadedAt
+                : null,
+            });
+          }
+        }
+      }
+      if (!transient) await saveLibraryBooksUnlocked(fs, [...detachedSources, target]);
+      for (const detached of detachedSources) {
+        const previous = books.find((candidate) => candidate.hash === detached.hash);
+        if (previous) Object.assign(previous, detached);
+      }
+      const inMemory = books.find((candidate) => candidate.hash === target.hash);
+      const result = inMemory ? Object.assign(inMemory, target) : target;
+      if (!inMemory) books.push(result);
+      if (lookupIndex) {
+        lookupIndex.byHash.set(result.hash, result);
+        if (result.metaHash) {
+          const key = `${result.metaHash}:${result.format}`;
+          const rows = lookupIndex.byMetaKey.get(key) ?? [];
+          if (!rows.some((candidate) => candidate.hash === result.hash)) rows.push(result);
+          lookupIndex.byMetaKey.set(key, rows);
+        }
+        if (result.filePath) {
+          const key = normalizeFilePathForIndex(result.filePath, osPlatform);
+          if (key) lookupIndex.byFilePath.set(key, result);
+        }
+      }
+      returnedExisting = wasExisting;
+      options.onResult?.(wasExisting ? 'existing' : 'added');
+      return result;
+    };
+    const result = transient ? await commit() : await withLibraryLock(fs, commit);
+    if (
+      format === 'PDF' &&
+      !transient &&
+      (saveBook || inPlace) &&
+      (!returnedExisting || options.retryPDFContents !== false)
+    ) {
+      await options.preparePDF?.(result, loadedBook);
+    }
+    return result;
   } catch (error) {
     console.error('Error importing book:', error);
     throw error;
@@ -810,6 +781,11 @@ export async function importBook(
       await loadedBook?.destroy?.();
     } catch (error) {
       console.warn('Error destroying book document:', error);
+    }
+    if (originalFile && originalFile !== fileobj) {
+      try {
+        await (originalFile as Partial<ClosableFile>).close?.();
+      } catch {}
     }
     const f = fileobj as ClosableFile | undefined;
     if (f?.close) {
@@ -919,7 +895,14 @@ export async function saveBookConfig(
   } else {
     serializedConfig = serializeRawConfig(config);
   }
-  await fs.writeFile(getConfigFilename(book), 'Books', serializedConfig);
+  const edit = config.booknotes && bookNoteEdits.get(config.booknotes);
+  await withBookDataWrite(
+    book.hash,
+    book.removal?.revision ?? 0,
+    () => fs.writeFile(getConfigFilename(book), 'Books', serializedConfig),
+    edit ? { ...edit, kind: 'notes', data: config.booknotes } : undefined,
+  );
+  if (config.booknotes) bookNoteEdits.delete(config.booknotes);
 }
 
 export async function loadBookNav(fs: FileSystem, book: Book): Promise<BookNav | null> {
@@ -936,7 +919,9 @@ export async function loadBookNav(fs: FileSystem, book: Book): Promise<BookNav |
 }
 
 export async function saveBookNav(fs: FileSystem, book: Book, nav: BookNav): Promise<void> {
-  await fs.writeFile(getBookNavFilename(book), 'Books', JSON.stringify(nav));
+  await withBookDataWrite(book.hash, book.removal?.revision ?? 0, () =>
+    fs.writeFile(getBookNavFilename(book), 'Books', JSON.stringify(nav)),
+  );
 }
 
 export async function fetchBookDetails(

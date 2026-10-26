@@ -24,6 +24,7 @@ import { NativeTouchEventType } from '@/types/system';
 import { getLocale, getOSPlatform, makeSafeFilename, uniqueId } from '@/utils/misc';
 import { useThemeStore } from '@/store/themeStore';
 import { useBookDataStore } from '@/store/bookDataStore';
+import { newBookDataEdit } from '@/services/bookDataConflicts';
 import { getBookProgress, useBookProgress } from '@/store/readerProgressStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useReaderStore } from '@/store/readerStore';
@@ -779,7 +780,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
       if (i < pending.length) {
         scheduledHandle = setTimeout(tick, TICK_GAP_MS);
       } else if (touched) {
-        const updatedConfig = updateBooknotes(bookKey, allAnnotations);
+        const updatedConfig = updateBooknotes(bookKey, allAnnotations, false);
         if (updatedConfig) {
           saveConfig(envConfig, bookKey, updatedConfig, settings);
         }
@@ -1280,6 +1281,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   };
 
   const importFromMoonReader = async () => {
+    const edit = newBookDataEdit();
     setShowImportDialog(false);
 
     const { bookDoc } = bookData;
@@ -1357,7 +1359,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
         config.booknotes ?? [],
         conversion.notes,
       );
-      const updatedConfig = updateBooknotes(bookKey, merged);
+      const updatedConfig = updateBooknotes(bookKey, merged, edit);
       if (updatedConfig) {
         saveConfig(envConfig, bookKey, updatedConfig, settings);
       }
@@ -1392,6 +1394,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   };
 
   const importFromReadest = async () => {
+    const edit = newBookDataEdit();
     setShowImportDialog(false);
 
     const { bookDoc, book } = bookData;
@@ -1461,7 +1464,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
         config.booknotes ?? [],
         conversion.notes,
       );
-      let updatedConfig = updateBooknotes(bookKey, merged);
+      let updatedConfig = updateBooknotes(bookKey, merged, edit);
       // Only adopt the exported reading position when this book has none of
       // its own, so importing into a book you are midway through never moves
       // you. A freshly re-downloaded copy does pick its position back up.

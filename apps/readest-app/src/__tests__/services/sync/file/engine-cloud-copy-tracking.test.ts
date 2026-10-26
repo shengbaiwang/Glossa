@@ -118,9 +118,12 @@ describe('FileSyncEngine — device-local fields must not cross devices (#5084)'
           : null,
       readBinary: async () => new ArrayBuffer(8),
       list: async (p: string) => {
-        if (p.endsWith('/books')) return [{ name: 'h1', path: '/books/h1', isDirectory: true }];
+        if (p.endsWith('/books'))
+          return [{ name: 'h1', path: '/Readest/books/h1', isDirectory: true }];
         if (p.endsWith('/books/h1'))
-          return [{ name: 'Book h1.epub', path: '/books/h1/Book h1.epub', isDirectory: false }];
+          return [
+            { name: 'Book h1.epub', path: '/Readest/books/h1/Book h1.epub', isDirectory: false },
+          ];
         return [];
       },
       captured,

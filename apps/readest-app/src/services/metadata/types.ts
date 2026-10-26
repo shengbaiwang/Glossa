@@ -7,7 +7,6 @@ export interface Metadata {
   language?: string;
   identifier?: string;
   isbn?: string;
-  subjects?: string[];
   description?: string;
   coverImageUrl?: string;
 }

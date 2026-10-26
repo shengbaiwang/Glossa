@@ -41,11 +41,9 @@ import HighlightColorsEditor from './theme/HighlightColorsEditor';
 import CodeHighlightingSettings from './theme/CodeHighlightingSettings';
 import ReadingRulerSettings from './theme/ReadingRulerSettings';
 
-const ThemePanel: React.FC<SettingsPanelPanelProp & { readingOnly?: boolean }> = ({
-  bookKey,
-  onRegisterReset,
-  readingOnly = false,
-}) => {
+const ThemePanel: React.FC<
+  SettingsPanelPanelProp & { readingOnly?: boolean; applicationOnly?: boolean }
+> = ({ bookKey, onRegisterReset, readingOnly = false, applicationOnly = false }) => {
   const _ = useTranslation();
   const { themeMode, themeColor, isDarkMode, setThemeMode, setThemeColor, saveCustomTheme } =
     useThemeStore();
@@ -131,17 +129,18 @@ const ThemePanel: React.FC<SettingsPanelPanelProp & { readingOnly?: boolean }> =
   const { applyBackgroundTexture } = useBackgroundTexture();
 
   const handleReset = () => {
-    resetToDefaults({
-      overrideColor: setOverrideColor,
-      applyThemeToPDF: setApplyThemeToPDF,
-      invertImgColorInDark: setInvertImgColorInDark,
-      highlightTransparency: setHighlightTransparency,
-      codeHighlighting: setcodeHighlighting,
-      codeLanguage: setCodeLanguage,
-      readingRulerEnabled: setReadingRulerEnabled,
-      readingRulerLines: setReadingRulerLines,
-      readingRulerTransparency: setReadingRulerTransparency,
-    });
+    if (!applicationOnly)
+      resetToDefaults({
+        overrideColor: setOverrideColor,
+        applyThemeToPDF: setApplyThemeToPDF,
+        invertImgColorInDark: setInvertImgColorInDark,
+        highlightTransparency: setHighlightTransparency,
+        codeHighlighting: setcodeHighlighting,
+        codeLanguage: setCodeLanguage,
+        readingRulerEnabled: setReadingRulerEnabled,
+        readingRulerLines: setReadingRulerLines,
+        readingRulerTransparency: setReadingRulerTransparency,
+      });
     if (!readingOnly) {
       setThemeColor('default');
       setThemeMode('auto');
@@ -149,7 +148,7 @@ const ThemePanel: React.FC<SettingsPanelPanelProp & { readingOnly?: boolean }> =
     setSelectedTextureId('none');
     setBackgroundTransparency(0.4);
     setBackgroundSize('cover');
-    if (!readingOnly) {
+    if (!applicationOnly && (!readingOnly || !bookKey)) {
       setCustomHighlightColors(HIGHLIGHT_COLOR_HEX);
       setUserHighlightColors([]);
       setDefaultHighlightLabels({});
@@ -487,28 +486,30 @@ const ThemePanel: React.FC<SettingsPanelPanelProp & { readingOnly?: boolean }> =
             />
           )}
 
-          <BoxedList title={_('Reading colors')}>
-            {isPDF && appService?.supportsCanvasContext2DFilter && (
+          {!applicationOnly && (
+            <BoxedList title={_('Reading colors')}>
+              {isPDF && appService?.supportsCanvasContext2DFilter && (
+                <SettingsSwitchRow
+                  label={_('Apply Theme Colors to PDF')}
+                  checked={applyThemeToPDF}
+                  onChange={() => setApplyThemeToPDF(!applyThemeToPDF)}
+                />
+              )}
               <SettingsSwitchRow
-                label={_('Apply Theme Colors to PDF')}
-                checked={applyThemeToPDF}
-                onChange={() => setApplyThemeToPDF(!applyThemeToPDF)}
+                data-setting-id='settings.color.overrideBookColor'
+                label={_('Override Book Color')}
+                checked={overrideColor}
+                onChange={() => setOverrideColor(!overrideColor)}
               />
-            )}
-            <SettingsSwitchRow
-              data-setting-id='settings.color.overrideBookColor'
-              label={_('Override Book Color')}
-              checked={overrideColor}
-              onChange={() => setOverrideColor(!overrideColor)}
-            />
-            <SettingsSwitchRow
-              data-setting-id='settings.color.invertImageInDarkMode'
-              label={_('Invert Image In Dark Mode')}
-              checked={invertImgColorInDark}
-              disabled={!isDarkMode}
-              onChange={() => setInvertImgColorInDark(!invertImgColorInDark)}
-            />
-          </BoxedList>
+              <SettingsSwitchRow
+                data-setting-id='settings.color.invertImageInDarkMode'
+                label={_('Invert Image In Dark Mode')}
+                checked={invertImgColorInDark}
+                disabled={!isDarkMode}
+                onChange={() => setInvertImgColorInDark(!invertImgColorInDark)}
+              />
+            </BoxedList>
+          )}
 
           <BackgroundTextureSelector
             readerOnly={readingOnly}
@@ -529,7 +530,7 @@ const ThemePanel: React.FC<SettingsPanelPanelProp & { readingOnly?: boolean }> =
             data-setting-id='settings.color.backgroundTexture'
           />
 
-          {readingOnly && (
+          {!applicationOnly && readingOnly && !!bookKey && (
             <BoxedList title={_('Highlight Colors')}>
               <NumberInput
                 label={_('Transparency')}
@@ -541,7 +542,7 @@ const ThemePanel: React.FC<SettingsPanelPanelProp & { readingOnly?: boolean }> =
               />
             </BoxedList>
           )}
-          {!readingOnly && (
+          {!applicationOnly && (!readingOnly || !bookKey) && (
             <HighlightColorsEditor
               customHighlightColors={customHighlightColors}
               userHighlightColors={userHighlightColors}
@@ -555,25 +556,29 @@ const ThemePanel: React.FC<SettingsPanelPanelProp & { readingOnly?: boolean }> =
             />
           )}
 
-          <ReadingRulerSettings
-            enabled={readingRulerEnabled}
-            lines={readingRulerLines}
-            transparency={readingRulerTransparency}
-            color={readingRulerColor}
-            onEnabledChange={setReadingRulerEnabled}
-            onLinesChange={setReadingRulerLines}
-            onTransparencyChange={setReadingRulerTransparency}
-            onColorChange={setReadingRulerColor}
-            data-setting-id='settings.color.readingRuler'
-          />
+          {!applicationOnly && (
+            <ReadingRulerSettings
+              enabled={readingRulerEnabled}
+              lines={readingRulerLines}
+              transparency={readingRulerTransparency}
+              color={readingRulerColor}
+              onEnabledChange={setReadingRulerEnabled}
+              onLinesChange={setReadingRulerLines}
+              onTransparencyChange={setReadingRulerTransparency}
+              onColorChange={setReadingRulerColor}
+              data-setting-id='settings.color.readingRuler'
+            />
+          )}
 
-          <CodeHighlightingSettings
-            codeHighlighting={codeHighlighting}
-            codeLanguage={codeLanguage}
-            onToggle={setcodeHighlighting}
-            onLanguageChange={setCodeLanguage}
-            data-setting-id='settings.color.codeHighlighting'
-          />
+          {!applicationOnly && (
+            <CodeHighlightingSettings
+              codeHighlighting={codeHighlighting}
+              codeLanguage={codeLanguage}
+              onToggle={setcodeHighlighting}
+              onLanguageChange={setCodeLanguage}
+              data-setting-id='settings.color.codeHighlighting'
+            />
+          )}
         </>
       )}
     </div>

@@ -13,6 +13,7 @@ import {
   renameFolder,
   moveToFolder,
   removeFolder,
+  removeFolders,
   placeFolder,
   type FolderChange,
 } from '../utils/libraryFolders';
@@ -277,6 +278,8 @@ export function useLibraryFolders() {
       undefined,
     place: async (path: string, anchor: string, edge: 'before' | 'after') =>
       (await mutate((books, all) => placeFolder(books, all, path, anchor, edge))) !== undefined,
+    removeMany: async (selection: string[]) =>
+      (await mutate((books, all) => removeFolders(books, all, selection))) !== undefined,
     remove: async (path: string) =>
       (await mutate((books, all) => removeFolder(books, all, path))) !== undefined,
   };

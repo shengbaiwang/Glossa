@@ -10,6 +10,9 @@ import {
   LayoutGrid,
   X,
 } from '@/components/GlossaIcons';
+import Menu from '@/components/Menu';
+import MenuItem from '@/components/MenuItem';
+import { eventDispatcher } from '@/utils/event';
 import GlossaMark from '@/components/GlossaMark';
 
 import { useEnv } from '@/context/EnvContext';
@@ -62,7 +65,8 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
   const _ = useTranslation();
   const { appService } = useEnv();
   const { systemUIVisible, statusBarHeight } = useThemeStore();
-  const { currentBookshelf } = useLibraryStore();
+  const { currentBookshelf, selectedBooks } = useLibraryStore();
+  const selectedCount = selectedBooks?.size ?? 0;
 
   const headerRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -180,12 +184,44 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
               <CheckCheck size={17} aria-hidden='true' />
               <span>{isSelectAll ? _('Deselect') : _('Select All')}</span>
             </button>
+            <Dropdown
+              label={_('{{count}} selected', { count: selectedCount })}
+              buttonClassName='touch-target glossa-button'
+              toggleButton={
+                <>
+                  <span>{_('{{count}} selected', { count: selectedCount })}</span>
+                  <ChevronDown size={16} />
+                </>
+              }
+            >
+              <Menu>
+                <MenuItem
+                  noIcon
+                  transient
+                  label={_('Move to…')}
+                  disabled={!selectedCount}
+                  onClick={() => {
+                    void eventDispatcher.dispatch('library-move-selection');
+                  }}
+                />
+                <MenuItem
+                  noIcon
+                  transient
+                  label={_('Delete')}
+                  disabled={!selectedCount}
+                  onClick={() => {
+                    void eventDispatcher.dispatch('library-delete-selection');
+                  }}
+                />
+              </Menu>
+            </Dropdown>
             <button
               type='button'
               onClick={onToggleSelectMode}
-              className='touch-target glossa-button glossa-button-primary'
+              aria-label={_('Clear Selection')}
+              className='touch-target glossa-icon-button'
             >
-              {_('Done')}
+              <X size={18} />
             </button>
           </>
         ) : (

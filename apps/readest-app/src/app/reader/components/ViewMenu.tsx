@@ -1,15 +1,11 @@
 import React from 'react';
-import { Volume, Type, Gauge, Info, Highlight, RefreshCw, X } from '@/components/GlossaIcons';
+import { Volume, Type, Gauge, Info, Settings, X } from '@/components/GlossaIcons';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
-import { useEnv } from '@/context/EnvContext';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { eventDispatcher } from '@/utils/event';
-import { saveViewSettings } from '@/helpers/settings';
-import { getReadingQuickAction } from '@/utils/annotationToolbar';
-import QuickActionMenu from './annotator/QuickActionMenu';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';
 import BookMenuItems from './sidebar/BookMenu';
@@ -17,20 +13,17 @@ import BookMenuItems from './sidebar/BookMenu';
 interface ViewMenuProps {
   bookKey: string;
   setIsDropdownOpen?: (open: boolean) => void;
-  onShowMetaHashDialog?: () => void;
   onCloseBook?: () => void;
   showReadingAppearance?: boolean;
 }
 const ViewMenu: React.FC<ViewMenuProps> = ({
   bookKey,
   setIsDropdownOpen,
-  onShowMetaHashDialog,
   onCloseBook,
   showReadingAppearance = false,
 }) => {
   const _ = useTranslation();
   const iconSize = useResponsiveSize(16);
-  const { envConfig } = useEnv();
   const { getConfig, getBookData } = useBookDataStore();
   const { getViewSettings, getViewState } = useReaderStore();
   const { openSettingsDialog } = useSettingsStore();
@@ -72,42 +65,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
           setIsDropdownOpen?.(false);
         }}
       />
-      {viewSettings.enableAnnotationQuickActions && (
-        <MenuItem label={_('Selection Actions')} Icon={<Highlight size={iconSize} />}>
-          <QuickActionMenu
-            menuClassName='glossa-reader-inline-menu !relative !m-0 !w-full !border-0 !shadow-none'
-            selectedAction={getReadingQuickAction(viewSettings.annotationQuickAction)}
-            onActionSelect={(action) => {
-              const next =
-                getReadingQuickAction(viewSettings.annotationQuickAction) === action
-                  ? null
-                  : action;
-              void saveViewSettings(envConfig, bookKey, 'annotationQuickAction', next, true, true);
-            }}
-            setIsDropdownOpen={setIsDropdownOpen}
-          />
-        </MenuItem>
-      )}
-      <hr aria-hidden='true' className='border-base-300 my-1' />
-      <MenuItem
-        label={_('Sync Book')}
-        Icon={
-          <RefreshCw size={iconSize} className={viewState?.syncing ? 'animate-reverse-spin' : ''} />
-        }
-        onClick={() => {
-          eventDispatcher.dispatch('sync-book-progress', { bookKey });
-          setIsDropdownOpen?.(false);
-        }}
-      />
-      <MenuItem
-        label={_('Sync Info')}
-        disabled={!onShowMetaHashDialog}
-        Icon={<Info size={iconSize} />}
-        onClick={() => {
-          onShowMetaHashDialog?.();
-          setIsDropdownOpen?.(false);
-        }}
-      />
       <hr aria-hidden='true' className='border-base-300 my-1' />
       <MenuItem
         label={_('Book Details')}
@@ -127,6 +84,14 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
       />
       <BookMenuItems bookKey={bookKey} setIsDropdownOpen={setIsDropdownOpen} />
 
+      <MenuItem
+        label={_('Settings')}
+        Icon={<Settings size={iconSize} />}
+        onClick={() => {
+          setIsDropdownOpen?.(false);
+          openSettingsDialog('application');
+        }}
+      />
       {onCloseBook && (
         <>
           <hr aria-hidden='true' className='border-base-300 my-1' />

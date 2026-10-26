@@ -223,63 +223,14 @@ describe('reader ViewMenu', () => {
     );
   });
 
-  it('can enable a selection action from More while no quick action is active', () => {
-    const closeMenu = vi.fn();
-    render(<ViewMenu bookKey='book-1' setIsDropdownOpen={closeMenu} />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Selection Actions' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Instant Highlight' }));
-
-    expect(mocks.saveViewSettings).toHaveBeenCalledWith(
-      mocks.envConfig,
-      'book-1',
-      'annotationQuickAction',
-      'highlight',
-      true,
-      true,
-    );
-    expect(closeMenu).toHaveBeenCalledWith(false);
-  });
-
-  it('turns the active selection action off when selected again', () => {
-    mocks.viewSettings.annotationQuickAction = 'highlight';
-    render(<ViewMenu bookKey='book-1' />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Selection Actions' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Instant Highlight' }));
-
-    expect(mocks.saveViewSettings).toHaveBeenCalledWith(
-      mocks.envConfig,
-      'book-1',
-      'annotationQuickAction',
-      null,
-      true,
-      true,
-    );
-  });
-
-  it('restores saved translation actions and lets the user choose another action', () => {
-    mocks.viewSettings.annotationQuickAction = 'translate';
-    render(<ViewMenu bookKey='book-1' />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Selection Actions' }));
-    expect(screen.getByRole('menuitem', { name: 'Instant Translate' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Instant Copy' }));
-
-    expect(mocks.saveViewSettings).toHaveBeenCalledWith(
-      mocks.envConfig,
-      'book-1',
-      'annotationQuickAction',
-      'copy',
-      true,
-      true,
-    );
-  });
-
-  it('respects the explicit preference to disable selection quick actions', () => {
-    mocks.viewSettings.enableAnnotationQuickActions = false;
-    render(<ViewMenu bookKey='book-1' />);
-    expect(screen.queryByRole('button', { name: 'Selection Actions' })).toBeNull();
+  it('keeps repeated selection and sync commands out of the reading menu and exposes global settings', () => {
+    const close = vi.fn();
+    render(<ViewMenu bookKey='book-2' setIsDropdownOpen={close} />);
+    for (const name of ['Selection Actions', 'Sync Book', 'Sync Info'])
+      expect(screen.queryByText(name)).toBeNull();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Settings' }));
+    expect(mocks.openSettingsDialog).toHaveBeenCalledWith('application');
+    expect(close).toHaveBeenCalledWith(false);
   });
 
   it('closes a single book through More and dismisses the menu first', () => {

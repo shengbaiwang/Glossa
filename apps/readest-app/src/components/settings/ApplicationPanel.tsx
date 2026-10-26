@@ -1,9 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   CircleUserRound,
   Download,
-  Info,
   Database,
   Folder,
   RefreshCw,
@@ -27,14 +26,17 @@ import {
 } from '@/services/biometric';
 import { isTauriAppPlatform, isWebAppPlatform } from '@/services/environment';
 import { GLOSSA_DOWNLOAD_URL } from '@/services/constants';
-import { setAboutDialogVisible } from '@/components/AboutWindow';
 import { setBackupDialogVisible } from '@/app/library/components/BackupWindow';
 import { setCacheManagerDialogVisible } from '@/app/library/components/CacheManagerWindow';
 import { setMigrateDataDirDialogVisible } from '@/app/library/components/MigrateDataWindow';
 import { BoxedList, NavigationRow, SettingsSwitchRow } from './primitives';
 import FolderImportSettings from './FolderImportSettings';
+import DuplicateBooksPanel from './DuplicateBooksPanel';
+import LegacyBookCaches from '../LegacyBookCaches';
 
-const ApplicationPanel: React.FC<{ section: 'General' | 'Data' }> = ({ section }) => {
+const ApplicationPanel: React.FC<{ section: 'General' | 'Data' | 'About' | 'Account' }> = ({
+  section,
+}) => {
   const _ = useTranslation();
   const router = useRouter();
   const { envConfig, appService } = useEnv();
@@ -45,6 +47,14 @@ const ApplicationPanel: React.FC<{ section: 'General' | 'Data' }> = ({ section }
   const [biometry, setBiometry] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [progress, setProgress] = useState('');
+  const [reviewDuplicates, setReviewDuplicates] = useState(false);
+  const restoreDuplicateFocus = useRef(false);
+  useEffect(() => {
+    if (!reviewDuplicates && restoreDuplicateFocus.current) {
+      restoreDuplicateFocus.current = false;
+      document.querySelector<HTMLButtonElement>('[data-setting-id="review-duplicates"]')?.focus();
+    }
+  }, [reviewDuplicates]);
 
   useEffect(() => {
     if (!settings.pinCodeEnabled || !isBiometricSupported(appService)) return;
@@ -98,11 +108,44 @@ const ApplicationPanel: React.FC<{ section: 'General' | 'Data' }> = ({ section }
     await saveSysSettings(envConfig, 'savedBookCoverForLockScreen', value);
   };
 
+  if (section === 'Data' && reviewDuplicates)
+    return (
+      <DuplicateBooksPanel
+        onBack={() => {
+          restoreDuplicateFocus.current = true;
+          setReviewDuplicates(false);
+        }}
+      />
+    );
+
   if (section === 'Data')
     return (
       <div className='my-4 space-y-6'>
-        {isTauriAppPlatform() && <FolderImportSettings />}
+        {isTauriAppPlatform() && (
+          <>
+            <BoxedList title={_('Import')}>
+              <SettingsSwitchRow
+                label={_('Auto Import on File Open')}
+                checked={!!settings.autoImportBooksOnOpen}
+                onChange={() =>
+                  void saveSysSettings(
+                    envConfig,
+                    'autoImportBooksOnOpen',
+                    !settings.autoImportBooksOnOpen,
+                  )
+                }
+              />
+            </BoxedList>
+            <FolderImportSettings />
+          </>
+        )}
         <BoxedList title={_('Library Data')}>
+          <NavigationRow
+            title={_('Review Duplicates')}
+            data-setting-id='review-duplicates'
+            icon={Database}
+            onClick={() => setReviewDuplicates(true)}
+          />
           <NavigationRow
             title={_('Backup & Restore')}
             icon={Database}
@@ -129,6 +172,9 @@ const ApplicationPanel: React.FC<{ section: 'General' | 'Data' }> = ({ section }
             />
           )}
         </BoxedList>
+        <BoxedList title={_('Storage cleanup')}>
+          <LegacyBookCaches />
+        </BoxedList>
         {progress && (
           <p className='glossa-supporting-text' role='status'>
             {progress}
@@ -137,62 +183,63 @@ const ApplicationPanel: React.FC<{ section: 'General' | 'Data' }> = ({ section }
       </div>
     );
 
+  if (section === 'Account')
+    return (
+      <div className='my-4'>
+        <BoxedList title={_('Account')}>
+          <NavigationRow
+            title={user ? _('Account') : _('Sign In')}
+            status={user?.email}
+            icon={CircleUserRound}
+            onClick={() => {
+              setSettingsDialogOpen(false);
+              if (user) navigateToProfile(router);
+              else navigateToLogin(router);
+            }}
+          />
+        </BoxedList>
+      </div>
+    );
+
+  if (section === 'About')
+    return (
+      <div className='my-4 space-y-6'>
+        {appService?.hasUpdater && (
+          <BoxedList title={_('Update')} data-setting-id='settings.control.checkUpdates'>
+            <SettingsSwitchRow
+              label={_('Check Updates on Start')}
+              checked={!!settings.autoCheckUpdates}
+              onChange={() =>
+                void saveSysSettings(envConfig, 'autoCheckUpdates', !settings.autoCheckUpdates)
+              }
+            />
+            <SettingsSwitchRow
+              label={_('Nightly Builds')}
+              checked={settings.updateChannel === 'nightly'}
+              onChange={() =>
+                void saveSysSettings(
+                  envConfig,
+                  'updateChannel',
+                  settings.updateChannel === 'nightly' ? 'stable' : 'nightly',
+                )
+              }
+              data-setting-id='settings.control.nightlyChannel'
+            />
+          </BoxedList>
+        )}
+      </div>
+    );
+
   return (
     <div className='my-4 space-y-6'>
-      <BoxedList title={_('Account')}>
-        <NavigationRow
-          title={user ? _('Account') : _('Sign In')}
-          status={user?.email}
-          icon={CircleUserRound}
-          onClick={() => {
-            setSettingsDialogOpen(false);
-            if (user) navigateToProfile(router);
-            else navigateToLogin(router);
-          }}
-        />
-      </BoxedList>
       {isTauriAppPlatform() && (
         <BoxedList title={_('Startup')}>
-          <SettingsSwitchRow
-            label={_('Auto Import on File Open')}
-            checked={!!settings.autoImportBooksOnOpen}
-            onChange={() =>
-              void saveSysSettings(
-                envConfig,
-                'autoImportBooksOnOpen',
-                !settings.autoImportBooksOnOpen,
-              )
-            }
-          />
           <SettingsSwitchRow
             label={_('Open Last Book on Start')}
             checked={!!settings.openLastBooks}
             onChange={() =>
               void saveSysSettings(envConfig, 'openLastBooks', !settings.openLastBooks)
             }
-          />
-        </BoxedList>
-      )}
-      {appService?.hasUpdater && (
-        <BoxedList title={_('Update')} data-setting-id='settings.control.checkUpdates'>
-          <SettingsSwitchRow
-            label={_('Check Updates on Start')}
-            checked={!!settings.autoCheckUpdates}
-            onChange={() =>
-              void saveSysSettings(envConfig, 'autoCheckUpdates', !settings.autoCheckUpdates)
-            }
-          />
-          <SettingsSwitchRow
-            label={_('Nightly Builds')}
-            checked={settings.updateChannel === 'nightly'}
-            onChange={() =>
-              void saveSysSettings(
-                envConfig,
-                'updateChannel',
-                settings.updateChannel === 'nightly' ? 'stable' : 'nightly',
-              )
-            }
-            data-setting-id='settings.control.nightlyChannel'
           />
         </BoxedList>
       )}
@@ -278,11 +325,6 @@ const ApplicationPanel: React.FC<{ section: 'General' | 'Data' }> = ({ section }
         </BoxedList>
       )}
       <BoxedList>
-        <NavigationRow
-          title={_('About Glossa')}
-          icon={Info}
-          onClick={() => openWindow(setAboutDialogVisible)}
-        />
         {isWebAppPlatform() && (
           <NavigationRow
             title={_('Download Glossa')}

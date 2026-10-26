@@ -37,7 +37,7 @@ export interface ReadingPanelAdapter<T extends PassageResult> {
   unsaved: Map<string, T>;
   generate: (options: Parameters<typeof generateMindmap>[0]) => Promise<T>;
   load: (bookId: string, chapterId: string, passageId: string) => Promise<T | null>;
-  save: (result: T, signal?: AbortSignal) => Promise<void>;
+  save: (result: T, signal?: AbortSignal, revision?: number) => Promise<void>;
   cacheKey: (bookId: string, passage: ReadingPassage, config: ProviderConfig) => Promise<string>;
   Document: ComponentType<{
     guide: T;
@@ -334,7 +334,7 @@ function PassageResultPanel<T extends PassageResult>({
     setBusy('saving');
     setNotice('');
     try {
-      await adapter.save(result, controller.signal);
+      await adapter.save(result, controller.signal, book.removal?.revision ?? 0);
       if (controller.signal.aborted) return;
       if (unsavedGuides.get(identity) === result) unsavedGuides.delete(identity);
       setUnsaved(false);

@@ -4,7 +4,8 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { getFilename } from '@/utils/path';
 import { SUPPORTED_BOOK_EXTS } from '@/services/constants';
 import type { FileItem } from '@/types/system';
-import Dialog from '@/components/Dialog';
+import ImportDialog from './ImportDialog';
+import ImportProgress from './ImportProgress';
 
 export interface ImportFromFolderResult {
   directory: string;
@@ -15,6 +16,7 @@ export interface ImportFromFolderResult {
 
 export interface FolderImportOptions {
   signal?: AbortSignal;
+  onSaving?: () => void;
   onProgress?: (completed: number, total: number) => void;
 }
 
@@ -157,13 +159,10 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
   };
 
   return (
-    <Dialog
-      isOpen
-      title={_('Import Books')}
-      snapHeight={0.5}
+    <ImportDialog
+      title={_('Import folder')}
       onClose={handleClose}
-      boxClassName='glossa-folder-import-dialog sm:min-w-[420px] sm:max-w-[480px] sm:h-auto sm:max-h-[90%]'
-      contentClassName='!px-6 !py-2'
+      className='glossa-folder-import-dialog'
     >
       <form
         className='flex flex-col gap-4 pt-2 pb-2'
@@ -172,63 +171,61 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
           void handleConfirm();
         }}
       >
-        <button
-          type='button'
-          onClick={() => void handlePickDirectory()}
-          disabled={picking || importing}
-          className='eink-bordered border-base-300 bg-base-200/40 hover:bg-base-200/70 flex min-h-14 w-full items-center gap-3 rounded-lg px-3 py-3 text-start text-sm disabled:opacity-45'
-          title={directory || _('Choose a folder')}
-          aria-label={directory ? _('Change') : _('Choose a folder')}
-        >
-          <FolderOpen aria-hidden='true' className='text-base-content/70 h-5 w-5 shrink-0' />
-          <span className='min-w-0 flex-1'>
-            <span className='block truncate font-medium'>
-              {directory
-                ? getFilename(directory.replace(/[\\/]+$/, '')) || directory
-                : _('Choose a folder')}
-            </span>
-            {directory && (
-              <span className='text-base-content/60 mt-0.5 block truncate text-xs' dir='auto'>
-                {directory}
-              </span>
-            )}
-          </span>
-          {picking ? (
-            <span className='loading loading-spinner loading-xs' aria-hidden='true' />
-          ) : (
-            directory && (
-              <span className='text-base-content/65 shrink-0 text-xs'>{_('Change')}</span>
-            )
-          )}
-        </button>
-
-        {directory && (
-          <div
-            className='text-base-content/70 flex min-h-6 items-center gap-2 text-sm'
-            role='status'
-            aria-live='polite'
-            aria-atomic='true'
+        {!importing && (
+          <button
+            type='button'
+            onClick={() => void handlePickDirectory()}
+            disabled={picking || importing}
+            className='eink-bordered border-base-300 bg-base-200/40 hover:bg-base-200/70 flex min-h-14 w-full items-center gap-3 rounded-lg px-3 py-3 text-start text-sm disabled:opacity-45'
+            title={directory || _('Choose a folder')}
+            aria-label={directory ? _('Change') : _('Choose a folder')}
           >
-            {progress ? (
-              stopping ? (
-                _('Stopping…')
-              ) : (
-                _('Importing {{completed}} of {{total}} books…', progress)
+            <FolderOpen aria-hidden='true' className='text-base-content/70 h-5 w-5 shrink-0' />
+            <span className='min-w-0 flex-1'>
+              <span className='block truncate font-medium'>
+                {directory
+                  ? getFilename(directory.replace(/[\\/]+$/, '')) || directory
+                  : _('Choose a folder')}
+              </span>
+              {directory && (
+                <span className='text-base-content/60 mt-0.5 block truncate text-xs' dir='auto'>
+                  {directory}
+                </span>
+              )}
+            </span>
+            {picking ? (
+              <span className='loading loading-spinner loading-xs' aria-hidden='true' />
+            ) : (
+              directory && (
+                <span className='text-base-content/65 shrink-0 text-xs'>{_('Change')}</span>
               )
-            ) : scan?.directory !== directory || scan.status === 'scanning' ? (
-              <>
-                <span className='loading loading-spinner loading-xs' aria-hidden='true' />
-                {_('Scanning folder…')}
-              </>
-            ) : scan.status === 'ready' ? (
-              scan.files.length ? (
-                _('Found {{count}} books', { count: scan.files.length })
-              ) : (
-                _('No books found in this folder.')
-              )
-            ) : null}
-          </div>
+            )}
+          </button>
         )}
+
+        {directory &&
+          (progress ? (
+            <ImportProgress
+              label={_(
+                stopping
+                  ? 'Stopping…'
+                  : progress.completed === progress.total
+                    ? 'Saving to library…'
+                    : 'Importing…',
+              )}
+              detail={_('Importing {{completed}} of {{total}} books…', progress)}
+              completed={progress.completed === progress.total ? undefined : progress.completed}
+              total={progress.total}
+            />
+          ) : scan?.directory !== directory || scan.status === 'scanning' ? (
+            <ImportProgress label={_('Scanning folder…')} />
+          ) : scan.status === 'ready' ? (
+            <p className='text-base-content/70 text-sm' role='status' aria-live='polite'>
+              {scan.files.length
+                ? _('Found {{count}} books', { count: scan.files.length })
+                : _('No books found in this folder.')}
+            </p>
+          ) : null)}
 
         {(pickError ||
           importError ||
@@ -260,7 +257,7 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
           </div>
         )}
 
-        {hasSubfolders && (
+        {hasSubfolders && !importing && (
           <label className='flex min-h-11 cursor-pointer items-center gap-3 rounded-lg text-sm'>
             <input
               type='checkbox'
@@ -273,7 +270,7 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
           </label>
         )}
 
-        <div className='mt-1 flex justify-end gap-2'>
+        <div className='glossa-import-actions'>
           <button
             type='button'
             className='btn btn-ghost btn-sm eink-bordered'
@@ -282,12 +279,14 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
           >
             {_('Cancel')}
           </button>
-          <button type='submit' className='btn btn-contrast btn-sm' disabled={!canImport}>
-            {files?.length ? _('Import {{count}} books', { count: files.length }) : _('Import')}
-          </button>
+          {!importing && (
+            <button type='submit' className='btn btn-contrast btn-sm' disabled={!canImport}>
+              {files?.length ? _('Import {{count}} books', { count: files.length }) : _('Import')}
+            </button>
+          )}
         </div>
       </form>
-    </Dialog>
+    </ImportDialog>
   );
 };
 

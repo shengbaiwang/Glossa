@@ -3,6 +3,7 @@ export const pluginLoaders = {
   conversation: () => import('@/glossa/ui/ConversationPanel'),
   mindmap: () => import('@/glossa/ui/MindmapPanel'),
   pdfAutoContents: () => import('./pdfAutoContents'),
+  webImport: () => import('./webImport'),
 };
 export const pluginPanelLoaders = {
   conversation: pluginLoaders.conversation,

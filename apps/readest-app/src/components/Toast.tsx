@@ -8,12 +8,15 @@ export type ToastType = 'info' | 'success' | 'warning' | 'error';
 
 export const Toast = () => {
   const { safeAreaInsets } = useThemeStore();
+  const [action, setAction] = useState<{ label: string; onClick: () => void } | null>(null);
   const [toastMessage, setToastMessage] = useState('');
+  const [toastRevision, setToastRevision] = useState(0);
   const [toastType, setToastType] = useState<ToastType>('info');
   const [toastTimeout, setToastTimeout] = useState(5000);
   const [messageClass, setMessageClass] = useState('');
   const [isVisible, setIsVisible] = useState(false);
   const toastDismissTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastClearTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toastClassMap = {
     info: 'toast-info toast-center toast-middle',
@@ -37,33 +40,34 @@ export const Toast = () => {
   };
 
   useEffect(() => {
-    if (toastMessage) {
-      setTimeout(() => {
-        setIsVisible(true);
-      }, 0);
-    }
-  }, [toastMessage]);
-
-  useEffect(() => {
-    if (toastDismissTimeout.current) clearTimeout(toastDismissTimeout.current);
-    if (toastMessage) {
-      const timeout = setTimeout(() => {
-        setIsVisible(false);
-        setTimeout(() => setToastMessage(''), 300);
-      }, toastTimeout);
-      toastDismissTimeout.current = timeout;
-      return () => {
-        if (timeout) clearTimeout(timeout);
-      };
-    }
-    return;
-  }, [toastMessage, toastTimeout]);
+    if (!toastMessage) return;
+    const reveal = setTimeout(() => setIsVisible(true), 0);
+    toastDismissTimeout.current = setTimeout(() => {
+      setIsVisible(false);
+      toastClearTimeout.current = setTimeout(() => setToastMessage(''), 300);
+    }, toastTimeout);
+    return () => {
+      clearTimeout(reveal);
+      if (toastDismissTimeout.current) clearTimeout(toastDismissTimeout.current);
+      if (toastClearTimeout.current) clearTimeout(toastClearTimeout.current);
+    };
+  }, [toastMessage, toastTimeout, toastRevision]);
 
   const handleShowToast = async (event: CustomEvent) => {
-    const { message, type = 'info', timeout, className = '', callback = null } = event.detail;
+    const {
+      message,
+      type = 'info',
+      timeout,
+      className = '',
+      callback = null,
+      action = null,
+    } = event.detail;
+    if (toastClearTimeout.current) clearTimeout(toastClearTimeout.current);
+    setToastRevision((revision) => revision + 1);
+    setAction(action);
     setToastMessage(message);
     setToastType(type);
-    if (timeout) setToastTimeout(timeout);
+    setToastTimeout(timeout || 5000);
     if (callback && typeof callback === 'function') {
       setTimeout(() => callback(), timeout || 5000);
     }
@@ -79,7 +83,8 @@ export const Toast = () => {
 
   const handleDismiss = () => {
     setIsVisible(false);
-    setTimeout(() => setToastMessage(''), 300);
+    if (toastClearTimeout.current) clearTimeout(toastClearTimeout.current);
+    toastClearTimeout.current = setTimeout(() => setToastMessage(''), 300);
     if (toastDismissTimeout.current) clearTimeout(toastDismissTimeout.current);
   };
 
@@ -129,6 +134,19 @@ export const Toast = () => {
               </React.Fragment>
             ))}
           </span>
+
+          {action && (
+            <button
+              type='button'
+              className='touch-target glossa-button shrink-0'
+              onClick={() => {
+                handleDismiss();
+                action.onClick();
+              }}
+            >
+              {action.label}
+            </button>
+          )}
 
           {/* Close button */}
           <button

@@ -11,7 +11,7 @@ const oldTags = ['old'];
 const noTags: string[] = [];
 const keptTags = ['kept'];
 
-// Tags edit through the standard field pipeline like Subjects: a
+// Tags edit through the standard field pipeline: a
 // comma-separated string that splits into the tag list and honors the
 // per-field lock.
 describe('useMetadataEdit tags field', () => {
@@ -48,4 +48,26 @@ describe('useMetadataEdit tags field', () => {
 
     expect(result.current.editedTags).toEqual(['kept']);
   });
+});
+
+it('drops legacy subject fields from edit, reset, and source selection without creating tags', () => {
+  const legacy = { ...metadata, subject: ['History'], subjects: ['Legacy'] };
+  const { result } = renderHook(() => useMetadataEdit(legacy, keptTags));
+  expect(result.current.editedMeta).not.toHaveProperty('subject');
+  expect(result.current.editedMeta).not.toHaveProperty('subjects');
+  act(() => {
+    result.current.handleFieldChange('subject', 'Other');
+    result.current.handleSourceSelection({
+      sourceName: 'test',
+      sourceLabel: 'Test',
+      confidence: 1,
+      data: legacy,
+    });
+  });
+  expect(result.current.editedMeta).not.toHaveProperty('subject');
+  expect(result.current.editedMeta).not.toHaveProperty('subjects');
+  expect(result.current.editedTags).toEqual(keptTags);
+  act(() => result.current.resetToOriginal());
+  expect(result.current.editedMeta).not.toHaveProperty('subject');
+  expect(result.current.editedMeta).not.toHaveProperty('subjects');
 });

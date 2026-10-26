@@ -67,7 +67,7 @@ export default function MindmapPanel(props: Props) {
 }
 function MapBook(props: Props) {
   const _ = useTranslation();
-  const session = useMapWorkspace(props.book.hash);
+  const session = useMapWorkspace(props.book.hash, props.book.removal?.revision ?? 0);
   const [legacy, setLegacy] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [branch, setBranch] = useState<{ map: LocalMap; nodeId: string } | null>(null);
@@ -469,11 +469,15 @@ function MapBook(props: Props) {
   const useGeneratedMap = (result: ReadingMindmap) => {
     const created = createMapFromMindmap(result);
     let accepted = false;
-    session.update((data) => {
-      if (data.maps.length >= 20) return data;
-      accepted = true;
-      return { ...data, maps: [...data.maps, created], activeId: created.id };
-    });
+    session.update(
+      (data) => {
+        if (data.maps.length >= 20) return data;
+        accepted = true;
+        return { ...data, maps: [...data.maps, created], activeId: created.id };
+      },
+      true,
+      false,
+    );
     if (!accepted) {
       setCapacityError(true);
       return;
@@ -494,14 +498,18 @@ function MapBook(props: Props) {
     if (!branch) return;
     let accepted = false;
     try {
-      session.update((data) => {
-        const current = data.maps.find((m) => m.id === branch.map.id);
-        if (!current || JSON.stringify(current.nodes) !== JSON.stringify(branch.map.nodes))
-          return data;
-        const next = appendMapBranch(current, branch.nodeId, generated);
-        accepted = true;
-        return { ...data, maps: data.maps.map((m) => (m.id === current.id ? next : m)) };
-      });
+      session.update(
+        (data) => {
+          const current = data.maps.find((m) => m.id === branch.map.id);
+          if (!current || JSON.stringify(current.nodes) !== JSON.stringify(branch.map.nodes))
+            return data;
+          const next = appendMapBranch(current, branch.nodeId, generated);
+          accepted = true;
+          return { ...data, maps: data.maps.map((m) => (m.id === current.id ? next : m)) };
+        },
+        true,
+        false,
+      );
     } catch {
       /* Capacity and depth checks leave the original tree intact. */
     }
@@ -706,7 +714,9 @@ function MapBook(props: Props) {
       ? _('Saved on this device')
       : session.status === 'saving'
         ? _('Saving…')
-        : _('Not saved');
+        : session.status === 'deleted'
+          ? _('Conflicting draft saved')
+          : _('Not saved');
   return (
     <dialog
       ref={dialog}
@@ -1216,13 +1226,17 @@ function MapBook(props: Props) {
           {_('The mind map backup could not be imported.')}
         </p>
       )}
-      {(session.status === 'error' || session.status === 'conflict') && (
+      {(session.status === 'error' ||
+        session.status === 'conflict' ||
+        session.status === 'deleted') && (
         <div className='glossa-workmap-error' role='alert'>
           <p>
             {_(
-              session.status === 'conflict'
-                ? 'This book’s maps changed in another window. Download your edits before reopening the app.'
-                : 'Your changes are still here. Saving failed.',
+              session.status === 'deleted'
+                ? 'New edits are preserved in Recently Deleted. Review the conflicting draft.'
+                : session.status === 'conflict'
+                  ? 'This book’s maps changed in another window. Download your edits before reopening the app.'
+                  : 'Your changes are still here. Saving failed.',
             )}
           </p>
           {session.status === 'error' && (

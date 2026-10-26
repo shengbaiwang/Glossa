@@ -286,7 +286,8 @@ export async function generateOverviewMap(
           input.config,
         );
         const key = await getMapCheckpointKey(input);
-        const saved = await checkpoints.load(key);
+        const owner = { bookId: input.bookId, revision: input.access.dataRevision ?? 0 };
+        const saved = await checkpoints.load(key, owner);
         throwIfAborted(signal);
         let revision = saved.revision;
         const reusable =
@@ -323,7 +324,7 @@ export async function generateOverviewMap(
           writing = writing.then(async () => {
             throwIfAborted(signal);
             update();
-            revision = await checkpoints.save(key, revision, structuredClone(job!), signal);
+            revision = await checkpoints.save(key, revision, structuredClone(job!), signal, owner);
             throwIfAborted(signal);
             progress();
           });
@@ -567,7 +568,7 @@ export async function generateOverviewMap(
             const cacheKey = await getMapInventoryKey(input.access, part, input.config);
             if (!input.restart) {
               const cached = await bounded(workers.signal, 1000, () =>
-                inventories.load(cacheKey),
+                inventories.load(cacheKey, owner),
               ).catch(() => null);
               throwIfAborted(workers.signal);
               const parsed = inventoryPointsSchema.safeParse(cached);
@@ -639,7 +640,7 @@ export async function generateOverviewMap(
               batch.elapsedMs = Date.now() - batchStarted;
             });
             await bounded(workers.signal, 1000, (cacheSignal) =>
-              inventories.save(cacheKey, points, cacheSignal),
+              inventories.save(cacheKey, points, cacheSignal, owner),
             ).catch(() => {});
             throwIfAborted(workers.signal);
           };

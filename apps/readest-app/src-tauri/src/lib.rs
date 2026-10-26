@@ -32,6 +32,7 @@ mod macos;
 mod mobi_parser;
 mod nightly_update;
 mod parser_common;
+mod pdf_cache_ownership;
 mod pdf_enhancement;
 mod range_file;
 mod sentry_config;
@@ -437,6 +438,9 @@ pub fn run() {
             mobi_parser::parse_mobi_metadata,
             mobi_parser::extract_mobi_cover_full,
             pdf_enhancement::pdf_open_cache,
+            pdf_enhancement::pdf_purge_book,
+            pdf_enhancement::pdf_legacy_caches,
+            pdf_enhancement::pdf_clear_legacy_caches,
             pdf_enhancement::pdf_read_ocr_page,
             pdf_enhancement::pdf_start_ocr,
             pdf_enhancement::pdf_ocr_status,

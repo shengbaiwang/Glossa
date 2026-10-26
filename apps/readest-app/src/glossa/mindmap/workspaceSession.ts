@@ -1,10 +1,15 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { cleanMap, mapWorkspaceSchema, type MapWorkspace } from './workspace';
 import { loadMapWorkspace, MapStorageConflict, saveMapWorkspace } from './workspaceStore';
+import {
+  BookDataConflictSaved,
+  newBookDataEdit,
+  type BookDataEdit,
+} from '@/services/bookDataConflicts';
 
 type Snapshot = {
   data: MapWorkspace | null;
-  status: 'loading' | 'ready' | 'saving' | 'error' | 'conflict';
+  status: 'loading' | 'ready' | 'saving' | 'error' | 'conflict' | 'deleted';
   canUndo: boolean;
   canRedo: boolean;
 };
@@ -20,7 +25,11 @@ class MapSession {
   private persisted = 0;
   private loaded = false;
   private revision = 0;
-  constructor(readonly bookId: string) {}
+  private edit?: BookDataEdit;
+  constructor(
+    readonly bookId: string,
+    readonly dataRevision = 0,
+  ) {}
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -50,7 +59,7 @@ class MapSession {
       this.running = false;
     }
   };
-  update = (transform: (data: MapWorkspace) => MapWorkspace, history = true) => {
+  update = (transform: (data: MapWorkspace) => MapWorkspace, history = true, manual = history) => {
     const current = this.snapshot.data;
     if (!current) return;
     const data = transform(current);
@@ -61,6 +70,7 @@ class MapSession {
       this.future = [];
     }
     this.change++;
+    this.edit = manual ? newBookDataEdit() : undefined;
     const blocked = this.snapshot.status === 'conflict';
     this.publish(data, blocked ? 'conflict' : 'saving');
     if (!blocked) void this.save();
@@ -76,6 +86,7 @@ class MapSession {
     this.update(
       () => ({ ...data, ...previous, maps: previous.maps.map(cleanMap), revision: this.revision }),
       false,
+      true,
     );
   };
   save = async () => {
@@ -84,7 +95,19 @@ class MapSession {
     try {
       while (this.persisted !== this.change && this.snapshot.data) {
         const change = this.change;
-        await saveMapWorkspace({ ...this.snapshot.data, revision: this.revision });
+        try {
+          await saveMapWorkspace(
+            { ...this.snapshot.data, revision: this.revision },
+            this.dataRevision,
+            this.edit,
+          );
+        } catch (error) {
+          if (!(error instanceof BookDataConflictSaved)) throw error;
+          this.persisted = change;
+          if (this.change !== change) continue;
+          this.publish(this.snapshot.data, 'deleted');
+          return;
+        }
         this.revision++;
         this.persisted = change;
       }
@@ -100,11 +123,12 @@ class MapSession {
 // Shared per-book session serializes multiple panes and survives close/reopen and failed saves.
 const sessions = new Map<string, MapSession>();
 let unloadProtectionInstalled = false;
-export function useMapWorkspace(bookId: string) {
-  let session = sessions.get(bookId);
+export function useMapWorkspace(bookId: string, dataRevision = 0) {
+  const key = `${bookId}:${dataRevision}`;
+  let session = sessions.get(key);
   if (!session) {
-    session = new MapSession(bookId);
-    sessions.set(bookId, session);
+    session = new MapSession(bookId, dataRevision);
+    sessions.set(key, session);
   }
   const snapshot = useSyncExternalStore(
     session.subscribe,
@@ -117,7 +141,12 @@ export function useMapWorkspace(bookId: string) {
       unloadProtectionInstalled = true;
       window.addEventListener('beforeunload', (event) => {
         // Pending writes remain protected even after the reader pane has closed.
-        if ([...sessions.values()].some((s) => s.snapshot.data && s.snapshot.status !== 'ready')) {
+        if (
+          [...sessions.values()].some(
+            (s) =>
+              s.snapshot.data && s.snapshot.status !== 'ready' && s.snapshot.status !== 'deleted',
+          )
+        ) {
           event.preventDefault();
           event.returnValue = '';
         }

@@ -61,7 +61,7 @@
   .glossa-library-actions {
     grid-column: 2;
     grid-row: 1;
-    gap: 4px;
+    gap: var(--glossa-gap-chrome);
   }
 
   .glossa-library-sidebar-open .glossa-library-toolbar-settings {
@@ -69,16 +69,16 @@
   }
 
   .glossa-library-actions .glossa-icon-button {
-    width: 32px;
-    height: 32px;
-    min-height: 32px;
-    border-radius: var(--glossa-radius-navigation);
+    width: var(--glossa-control-size);
+    height: var(--glossa-control-size);
+    min-height: var(--glossa-control-size);
+    border-radius: var(--glossa-radius-control);
   }
 
   .glossa-library-actions .glossa-button {
-    min-height: 32px;
+    min-height: var(--glossa-control-size);
     padding: 5px 10px;
-    border-radius: var(--glossa-radius-navigation);
+    border-radius: var(--glossa-radius-control);
     font-size: 12px;
   }
 
@@ -99,6 +99,8 @@
     gap: 24px;
     min-height: 0;
     overflow-y: auto;
+    scrollbar-gutter: stable;
+    padding-inline-end: 8px;
   }
 
   .glossa-library-navigation-section {
@@ -278,23 +280,20 @@
     min-width: 0;
   }
 
-  .glossa-library-folder-row:has(> .glossa-folder-expander) > .glossa-library-folder-link,
-  .glossa-library-folder-row:has(> .glossa-folder-expander) > .glossa-library-folder-edit-content {
-    padding-inline-end: 30px;
-  }
-
   .glossa-library-navigation .glossa-folder-expander {
-    position: absolute;
-    z-index: 1;
-    inset-inline-end: 1px;
-    top: 0;
+    position: relative;
     width: 26px;
     min-width: 26px;
     padding: 0;
     justify-content: center;
+    align-self: stretch;
   }
   .glossa-folder-expander-space {
-    display: none;
+    width: 26px;
+    min-width: 26px;
+  }
+  .glossa-library-navigation-section > button {
+    margin-inline-start: 26px;
   }
   .glossa-library-folder-edit-content,
   .glossa-library-folder-edit-row {
@@ -310,10 +309,6 @@
     font-size: 13px;
     font-weight: 400;
     line-height: 1.4;
-  }
-  .glossa-library-folder-edit-row {
-    width: 100%;
-    flex-basis: 100%;
   }
   .glossa-library-folder-edit-content > svg,
   .glossa-library-folder-edit-row > svg {
@@ -383,9 +378,12 @@
     width: 44px;
     min-width: 44px;
   }
-  .glossa-library-folder-row:has(> .glossa-folder-expander) > .glossa-library-folder-link,
-  .glossa-library-folder-row:has(> .glossa-folder-expander) > .glossa-library-folder-edit-content {
-    padding-inline-end: 48px;
+  .glossa-folder-expander-space {
+    width: 44px;
+    min-width: 44px;
+  }
+  .glossa-library-navigation-section > button {
+    margin-inline-start: 44px;
   }
 }
 
@@ -428,4 +426,13 @@
 }
 .glossa-settings-advanced > summary:focus-visible {
   outline: 2px solid var(--glossa-ink);
+}
+
+/* Shared chrome rhythm for the library and each reading pane. */
+.glossa-reader-header :is(.header-tools-start, .header-tools-end),
+.glossa-reader-header .header-tools-start > .no-scrollbar {
+  column-gap: var(--glossa-gap-chrome);
+}
+.glossa-library-actions .glossa-button {
+  border-radius: var(--glossa-radius-control);
 }

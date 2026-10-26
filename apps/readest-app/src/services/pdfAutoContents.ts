@@ -629,7 +629,7 @@ export function preparePDFContents(
   book: BookDoc,
   signal?: AbortSignal,
   onReport?: (report: PDFContentsReport) => void,
-  options: { regenerate?: boolean } = {},
+  options: { regenerate?: boolean; owner?: import('./pdfEnhancement').PDFCacheOwner } = {},
 ) {
   const next = preparation.then(() => prepareContents(source, book, signal, onReport, options));
   preparation = next.catch(() => {});
@@ -642,7 +642,7 @@ async function prepareContents(
   book: BookDoc,
   signal?: AbortSignal,
   onReport?: (report: PDFContentsReport) => void,
-  options: { regenerate?: boolean } = {},
+  options: { regenerate?: boolean; owner?: import('./pdfEnhancement').PDFCacheOwner } = {},
 ): Promise<'preserved' | 'generated' | 'unavailable'> {
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -726,7 +726,7 @@ async function prepareContents(
   try {
     await report('running');
     check();
-    const cache = await bounded(openPDFCache(source, true));
+    const cache = await bounded(openPDFCache(source, true, options.owner));
     check();
     if (!cache || !book.getPDFText) return unavailable('pdf_contents_unavailable');
     // A user's saved outline always wins, including a deliberately empty one.

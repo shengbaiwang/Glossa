@@ -11,6 +11,7 @@ describe('bundled official modules', () => {
       'conversation',
       'mindmap',
       'pdfAutoContents',
+      'webImport',
     ]);
     for (const module of OFFICIAL_MODULES)
       expect(isOfficialModuleEnabled({}, module.id)).toBe(true);
@@ -24,6 +25,14 @@ describe('bundled official modules', () => {
     expect(resolveNotebookTab(none, 'mindmap')).toBe('notes');
     expect(resolveNotebookTab(none, 'notes')).toBe('notes');
     expect(isOfficialModuleEnabled(none, 'mindmap')).toBe(false);
+  });
+  it('offers Markdown conversation without extending mind maps or PDF tools', () => {
+    expect(resolveNotebookTab({}, 'conversation', 'MD')).toBe('conversation');
+    expect(resolveNotebookTab({}, 'mindmap', 'MD')).toBe('conversation');
+    expect(
+      resolveNotebookTab({ officialModules: { conversation: false } }, 'conversation', 'MD'),
+    ).toBe('notes');
+    expect(resolveNotebookTab({}, 'notes', 'MD')).toBe('notes');
   });
   it('resolves plugin panels for the current format without selecting an incompatible panel', () => {
     expect(resolveNotebookTab({}, 'conversation', 'PDF')).toBe('pdfAutoContents');

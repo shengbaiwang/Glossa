@@ -5,9 +5,9 @@ import {
   LibraryBig,
   Tags,
   Users,
-  Layers,
   ChevronDown,
   ChevronRight,
+  Trash2,
 } from '@/components/GlossaIcons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -60,6 +60,7 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
   );
   const navigate = (category: LibraryGroupByType, path = '') => {
     const params = new URLSearchParams(searchParams?.toString());
+    params.delete('section');
     params.set('groupBy', category);
     params.set('group', path ? md5Fingerprint(path) : '');
     onNavigate();
@@ -265,10 +266,12 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
     />
   );
   const editRow = (depth: number) => (
-    <div className='glossa-library-folder-edit-row' style={{ paddingInlineStart: depth * 14 + 11 }}>
+    <div className='glossa-library-folder-row' style={{ paddingInlineStart: depth * 14 }}>
       <span className='glossa-folder-expander-space' />
-      <BookCollection size={18} aria-hidden='true' />
-      {editor}
+      <div className='glossa-library-folder-edit-row'>
+        <BookCollection size={18} aria-hidden='true' />
+        {editor}
+      </div>
     </div>
   );
   return (
@@ -326,12 +329,31 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
           <button
             type='button'
             data-nav-focus
-            aria-current={groupBy === LibraryGroupByType.None ? 'page' : undefined}
+            aria-current={
+              groupBy === LibraryGroupByType.None &&
+              searchParams?.get('section') !== 'recently-deleted'
+                ? 'page'
+                : undefined
+            }
             {...dropProps('')}
             onClick={() => navigate(LibraryGroupByType.None)}
           >
             <LibraryBig size={18} aria-hidden='true' />
             <span>{_('All Books')}</span>
+          </button>
+          <button
+            type='button'
+            data-nav-focus
+            aria-current={searchParams?.get('section') === 'recently-deleted' ? 'page' : undefined}
+            onClick={() => {
+              const params = new URLSearchParams();
+              params.set('section', 'recently-deleted');
+              onNavigate();
+              navigateToLibrary(router, params.toString());
+            }}
+          >
+            <Trash2 size={18} aria-hidden='true' />
+            <span>{_('Recently Deleted')}</span>
           </button>
         </section>
         <section
@@ -476,7 +498,9 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
                     <span>{folderLabel(path)}</span>
                   </button>
                 )}
-                {editing?.path === undefined && editing?.parent === path && editRow(1)}
+                {editing?.path === undefined && editing?.parent === path && (
+                  <div className='w-full basis-full'>{editRow(1)}</div>
+                )}
               </div>
             );
           })}
@@ -494,7 +518,6 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
             { value: LibraryGroupByType.Author, Icon: Users },
             { value: LibraryGroupByType.Series, Icon: BookSeries },
             { value: LibraryGroupByType.Tag, Icon: Tags },
-            { value: LibraryGroupByType.Subject, Icon: Layers },
           ].map(({ value, Icon }) => (
             <button
               key={value}

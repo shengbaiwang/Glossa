@@ -7,6 +7,7 @@ import Alert from './Alert';
 
 interface ClipSignInRequest {
   url: string;
+  signal?: AbortSignal;
   respond: (ok: boolean) => void;
 }
 
@@ -41,6 +42,19 @@ const ClipSignInAlert: React.FC = () => {
       requestRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!request?.signal) return;
+    const abort = () => {
+      if (requestRef.current === request) {
+        requestRef.current = null;
+        setRequest(null);
+      }
+    };
+    if (request.signal.aborted) abort();
+    else request.signal.addEventListener('abort', abort, { once: true });
+    return () => request.signal?.removeEventListener('abort', abort);
+  }, [request]);
 
   const respond = (ok: boolean) => {
     requestRef.current = null;

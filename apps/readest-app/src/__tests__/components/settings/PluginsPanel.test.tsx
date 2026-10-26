@@ -22,8 +22,8 @@ afterEach(cleanup);
 
 it('shows one settings entry in every grid card and defers internal settings until opened', () => {
   const view = render(<PluginsPanel />);
-  expect(view.container.querySelectorAll('.glossa-plugin-grid > article')).toHaveLength(3);
-  for (const name of ['Conversation', 'Mind map', 'PDF automatic contents']) {
+  expect(view.container.querySelectorAll('.glossa-plugin-grid > article')).toHaveLength(4);
+  for (const name of ['Conversation', 'Mind map', 'PDF automatic contents', 'Import webpage']) {
     expect(screen.getByRole('button', { name: `${name} - Settings` })).toBeTruthy();
     expect(screen.getByRole('checkbox', { name })).toBeTruthy();
   }
@@ -83,4 +83,19 @@ it('preserves a pending plugin save and its recovery while visiting internal set
     true,
   );
   expect(screen.getByRole('alert')).toBeTruthy();
+});
+
+it('opens webpage plugin information without loading model settings or making requests', async () => {
+  useSettingsStore.setState({
+    settings: { officialModules: { webImport: false } } as SystemSettings,
+  });
+  render(<PluginsPanel />);
+  fireEvent.click(screen.getByRole('button', { name: 'Import webpage - Settings' }));
+  await screen.findByText('Save web articles to your library for offline reading.');
+  expect(screen.queryByText('Shared model configuration')).toBeNull();
+  expect(f.save).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Back to plugins' }));
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'Import webpage - Settings' }),
+  );
 });

@@ -3,8 +3,20 @@ import { AppService, BaseDir } from '@/types/system';
 import { SystemSettings } from '@/types/settings';
 import { EnvConfigType } from '@/services/environment';
 import { useLibraryStore } from '@/store/libraryStore';
-import { getCoverFilename, getLocalBookFilename } from '@/utils/book';
+import { getCoverFilename, getLocalBookFilename, getConfigFilename } from '@/utils/book';
 import { LocalStore } from './localStore';
+import { libraryIdentityIO } from '@/services/bookIdentity';
+import { registerBookDownload } from '@/services/bookDownloadIdentity';
+import { bookRemovalIO, cleanRemovedBook } from '@/services/appBookRemoval';
+import {
+  acknowledgeRemoval,
+  applyPeerRemoval,
+  loadRemovalBooks,
+  withCurrentRemoval,
+} from '@/services/bookRemovalService';
+import { getEnabledFileSyncBackends } from '@/services/sync/cloudSyncProvider';
+import { withLibraryLock } from '@/services/libraryLock';
+import { withBookDataWrite } from '@/services/bookDataLifecycle';
 
 /**
  * Where this device's copy of the book actually is, or null when it holds none
@@ -49,6 +61,14 @@ export const createAppLocalStore = ({
 }): LocalStore => ({
   loadConfig: (book) => appService.loadBookConfig(book, settings),
   saveBookConfig: (book, config) => appService.saveBookConfig(book, config, settings),
+  saveDownloadedConfig: (book, config) => {
+    const io = libraryIdentityIO(appService);
+    return withLibraryLock(io, async () => {
+      if (!(await appService.exists(getConfigFilename(book), 'Books'))) {
+        await appService.saveBookConfig(book, config, settings);
+      }
+    });
+  },
 
   loadBookFile: async (book) => {
     const source = await resolveLocalSource(appService, book);
@@ -73,7 +93,9 @@ export const createAppLocalStore = ({
   },
 
   saveBookFile: async (book, bytes) => {
-    await appService.writeFile(getLocalBookFilename(book), 'Books', bytes);
+    await withBookDataWrite(book.hash, book.removal?.revision ?? 0, () =>
+      appService.writeFile(getLocalBookFilename(book), 'Books', bytes),
+    );
   },
 
   prepareLocalBookPath: async (book) => {
@@ -98,7 +120,9 @@ export const createAppLocalStore = ({
   },
 
   saveBookCover: async (book, bytes) => {
-    await appService.writeFile(getCoverFilename(book), 'Books', bytes);
+    await withBookDataWrite(book.hash, book.removal?.revision ?? 0, () =>
+      appService.writeFile(getCoverFilename(book), 'Books', bytes),
+    );
   },
 
   addBookToLibrary: async (book) => {
@@ -113,26 +137,23 @@ export const createAppLocalStore = ({
     book.syncedAt = Date.now();
     book.downloadedAt = Date.now();
     if (!book.metaHash) book.metaHash = book.hash;
-    // Hydrate from disk if the store hasn't loaded yet. Merging against an
-    // empty in-memory array would persist this book as the *entire* library
-    // and clobber whatever is on disk. Mirrors useLibraryStore.updateBooks'
-    // hardening; the Sync-now caller also hydrates up front, so this is
-    // belt-and-suspenders for a data-loss path.
-    let library = useLibraryStore.getState().library;
-    if (!useLibraryStore.getState().libraryLoaded) {
-      library = await appService.loadLibraryBooks();
-      useLibraryStore.getState().setLibrary(library);
-    }
-    // Avoid duplicates if the user runs Sync now twice quickly.
-    if (library.find((b) => b.hash === book.hash)) return;
-    const newLibrary = [...library, book];
-    await appService.saveLibraryBooks(newLibrary);
-    // Update the store last so subscribers re-render against a library that's
-    // already persisted on disk.
-    useLibraryStore.getState().setLibrary(newLibrary);
+    const io = libraryIdentityIO(appService);
+    const registered = await registerBookDownload(io, book, useLibraryStore.getState().library);
+    useLibraryStore.getState().setLibrary(registered.books);
+    return registered.book;
   },
 
   updateBookMetadata: async (book) => {
+    if (book.removal) {
+      await applyPeerRemoval(
+        bookRemovalIO(appService),
+        book,
+        cleanRemovedBook(appService),
+        getEnabledFileSyncBackends(settings),
+      );
+      useLibraryStore.getState().setLibrary(await loadRemovalBooks(bookRemovalIO(appService)));
+      return;
+    }
     // The cover bytes were just refreshed via saveBookCover, so regenerate the
     // device-local blob URL the bookshelf renders.
     try {
@@ -168,21 +189,35 @@ export const createAppLocalStore = ({
     await useLibraryStore.getState().updateBooks(envConfig, rows);
   },
 
+  getCurrentBook: async (hash) =>
+    (await loadRemovalBooks(bookRemovalIO(appService))).find((b) => b.hash === hash),
+  acknowledgeRemoval: async (book, backend, status) => {
+    useLibraryStore
+      .getState()
+      .setLibrary(await acknowledgeRemoval(bookRemovalIO(appService), book, backend, status));
+  },
+  withCurrentRemoval: (book, action) => withCurrentRemoval(bookRemovalIO(appService), book, action),
+  withBookFileWrite: (book, action) =>
+    withBookDataWrite(book.hash, book.removal?.revision ?? 0, action),
   deleteBookLocally: async (book) => {
-    // Remove this device's managed copy of the book file (cloudService.deleteBook
-    // with 'local' only ever touches app-managed Books/<hash>/ sources; an
-    // in-place / external original is left untouched). The tombstone itself is
-    // set by the engine before this call — we just persist it.
-    try {
-      await appService.deleteBook(book, 'local');
-    } catch (e) {
-      console.warn('createAppLocalStore: local book delete failed', book.hash, e);
+    if (book.removal) {
+      const applied = await applyPeerRemoval(
+        bookRemovalIO(appService),
+        book,
+        cleanRemovedBook(appService),
+        getEnabledFileSyncBackends(settings),
+      );
+      useLibraryStore.getState().setLibrary(await loadRemovalBooks(bookRemovalIO(appService)));
+      return applied;
     }
+    // Legacy tombstones still propagate, but failed filesystem work must remain retryable.
+    await appService.deleteBook(book, 'local');
     book.coverImageUrl = null;
     book.syncedAt = Date.now();
     if (!useLibraryStore.getState().libraryLoaded) {
       useLibraryStore.getState().setLibrary(await appService.loadLibraryBooks());
     }
     await useLibraryStore.getState().updateBook(envConfig, book);
+    return book;
   },
 });

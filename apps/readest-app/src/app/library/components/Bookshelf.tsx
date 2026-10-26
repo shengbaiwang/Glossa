@@ -21,18 +21,19 @@ import {
   LibraryViewModeType,
 } from '@/types/settings';
 import { useEnv } from '@/context/EnvContext';
-import { useThemeStore } from '@/store/themeStore';
 import { useAutoFocus } from '@/hooks/useAutoFocus';
 import { useSettingsStore } from '@/store/settingsStore';
+import { removalScope } from '@/services/appBookRemoval';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useLibraryFolders } from '../hooks/useLibraryFolders';
+import { useLibraryBookEdits } from '../hooks/useLibraryBookEdits';
 import { useLibraryMarquee } from '../hooks/useLibraryMarquee';
 import FolderToolbar from './FolderToolbar';
 import FolderDeleteDialog from './FolderDeleteDialog';
 import BookContextMenuPopup from './BookContextMenuPopup';
 import { md5Fingerprint } from '@/utils/md5';
 import { useTranslation } from '@/hooks/useTranslation';
-import { navigateToLibrary, navigateToReader, showReaderWindow } from '@/utils/nav';
+import { navigateToLibrary, navigateToReader } from '@/utils/nav';
 import {
   createBookFilter,
   createBookGroups,
@@ -52,22 +53,17 @@ import {
   resolveCurrentShelfBooks,
   selectDownloadableBooks,
   selectRecentShelfBooks,
-  withReadingStatus,
   withTimeRemainingLast,
 } from '../utils/libraryUtils';
 import { eventDispatcher } from '@/utils/event';
-import { getLocalBookFilename } from '@/utils/book';
-import { MIMETYPES, EXTS } from '@/libs/document';
-import { makeSafeFilename } from '@/utils/misc';
 
 import { useSpatialNavigation } from '../hooks/useSpatialNavigation';
+import type { RemovalResult } from '@/services/bookRemovalService';
 import DeleteConfirmAlert from '@/components/DeleteConfirmAlert';
 import Spinner from '@/components/Spinner';
 import ModalPortal from '@/components/ModalPortal';
 import BookshelfItem, { generateBookshelfItems } from './BookshelfItem';
-import SelectModeActions from './SelectModeActions';
 import GroupingModal from './GroupingModal';
-import SetStatusAlert from './SetStatusAlert';
 import RecentShelf, { RECENT_SHELF_BOOK_COUNT } from './RecentShelf';
 import { useOpenBook } from '../hooks/useOpenBook';
 import LibrarySearchResults from './LibrarySearchResults';
@@ -90,8 +86,12 @@ interface BookshelfProps {
     options?: { redownload?: boolean; queued?: boolean; silent?: boolean },
   ) => Promise<boolean>;
   handleBookUpload: (book: Book, syncBooks?: boolean) => Promise<boolean>;
-  handleBookDelete: (book: Book, syncBooks?: boolean) => Promise<boolean>;
-  handleBookPurge: (book: Book, syncBooks?: boolean) => Promise<boolean>;
+  onRemoveBooks?: (
+    books: Book[],
+    options?: { signal?: AbortSignal; onProgress?: (result: RemovalResult) => void },
+  ) => Promise<RemovalResult>;
+  handleBookDelete: (book: Book, signal?: AbortSignal) => Promise<boolean>;
+  handleBookPurge?: (book: Book, syncBooks?: boolean) => Promise<boolean>;
   handleSetSelectMode: (selectMode: boolean) => void;
   handleShowDetailsBook: (book: Book) => void;
   handleLibraryNavigation: (targetGroup: string) => void;
@@ -110,6 +110,7 @@ interface BookshelfProps {
 type BookshelfListContext = {
   autoColumns: boolean;
   fixedColumns: number;
+  coverWidth?: number;
   listScale: number;
   /**
    * The recently-read shelf, rendered in the Virtuoso header so it scrolls with
@@ -154,7 +155,9 @@ const BookshelfGridList: GridComponents<BookshelfListContext>['List'] = React.fo
       ...style,
       gridTemplateColumns:
         context && !context.autoColumns
-          ? `repeat(${context.fixedColumns}, minmax(0, 1fr))`
+          ? context.coverWidth
+            ? `repeat(auto-fill, minmax(min(${context.coverWidth}px, 100%), 1fr))`
+            : `repeat(${context.fixedColumns}, minmax(0, 1fr))`
           : undefined,
     }}
   >
@@ -233,7 +236,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   handleBookUpload,
   handleBookDownload,
   handleBookDelete,
-  handleBookPurge,
+  onRemoveBooks,
   handleSetSelectMode,
   handleShowDetailsBook,
   handleLibraryNavigation,
@@ -246,9 +249,8 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const _ = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { envConfig, appService } = useEnv();
+  const { appService } = useEnv();
   const { settings } = useSettingsStore();
-  const { safeAreaInsets } = useThemeStore();
 
   const groupId = searchParams?.get('group') || '';
   const queryTerm = searchParams?.get('q')?.trim() || null;
@@ -271,20 +273,20 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const coverFit = searchParams?.get('cover') || settings.libraryCoverFit;
 
   const [loading, setLoading] = useState(false);
-  const [showSelectModeActions, setShowSelectModeActions] = useState(false);
-  const [selectModeActionsHeight, setSelectModeActionsHeight] = useState(0);
   const [bookIdsToDelete, setBookIdsToDelete] = useState<string[]>([]);
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
-  const [showStatusAlert, setShowStatusAlert] = useState(false);
   const [showGroupingModal, setShowGroupingModal] = useState(false);
   const [importBookUrl] = useState(searchParams?.get('url') || '');
 
-  const abortDeletionRef = useRef(false);
+  const deletionController = useRef<AbortController | null>(null);
+  const [groupPathsToDelete, setGroupPathsToDelete] = useState<string[]>([]);
+  const [deletionProgress, setDeletionProgress] = useState<RemovalResult | null>(null);
+  useEffect(() => () => deletionController.current?.abort(), []);
   const isImportingBook = useRef(false);
   const autofocusRef = useAutoFocus<HTMLDivElement>();
   useSpatialNavigation(autofocusRef);
 
-  const { setCurrentBookshelf, setLibrary, updateBooks } = useLibraryStore();
+  const { setCurrentBookshelf, setLibrary } = useLibraryStore();
   const { setSelectedBooks, getSelectedBooks, toggleSelectedBook } = useLibraryStore();
   // The raw Set from the store: its identity only changes when the selection
   // does, so memos keyed on it stay stable across unrelated re-renders
@@ -292,6 +294,10 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const { selectedBooks: selectedBookSet } = useLibraryStore();
   const { getGroupName } = useLibraryStore();
   const folders = useLibraryFolders();
+  const bookEdits = useLibraryBookEdits();
+  useEffect(() => {
+    bookEdits.clearUndo();
+  }, [folders.revision, bookEdits.clearUndo]);
   const [creatingFolder, setCreatingFolder] = useState<string | null>(null);
   const [folderMenu, setFolderMenu] = useState<{ x: number; y: number } | null>(null);
   const [deletingFolder, setDeletingFolder] = useState<string | null>(null);
@@ -520,245 +526,118 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     setCurrentBookshelf(currentShelfBooks);
   }, [currentShelfBooks, setCurrentBookshelf]);
 
+  const selectionAnchor = useRef<string | null>(null);
   const toggleSelection = useCallback(
-    (id: string) => {
-      toggleSelectedBook(id);
+    (id: string, range = false) => {
+      const ids = sortedBookshelfItems.map((item) => ('hash' in item ? item.hash : item.id));
+      const from = selectionAnchor.current ? ids.indexOf(selectionAnchor.current) : -1;
+      const to = ids.indexOf(id);
+      if (range && from >= 0 && to >= 0)
+        setSelectedBooks([
+          ...new Set([
+            ...getSelectedBooks(),
+            ...ids.slice(Math.min(from, to), Math.max(from, to) + 1),
+          ]),
+        ]);
+      else {
+        toggleSelectedBook(id);
+        selectionAnchor.current = id;
+      }
     },
-    [toggleSelectedBook],
+    [sortedBookshelfItems, toggleSelectedBook, setSelectedBooks, getSelectedBooks],
   );
 
-  const openSelectedBooks = () => {
-    handleSetSelectMode(false);
-    if (appService?.hasWindow && settings.openBookInNewWindow) {
-      showReaderWindow(appService, getSelectedBooks());
-    } else {
-      setTimeout(() => setLoading(true), 200);
-      navigateToReader(router, getSelectedBooks());
-    }
-  };
-
-  const openBookDetails = () => {
-    handleSetSelectMode(false);
-    const selectedBooks = getSelectedBooks();
-    const book = libraryBooks.find((book) => book.hash === selectedBooks[0]);
-    if (book) {
-      handleShowDetailsBook(book);
-    }
-  };
-
-  // `bookIdsToDelete` always holds book hashes by the time we get here —
-  // group ids are expanded into their constituent hashes at intake (see
-  // `deleteSelectedBooks` and `handleDeleteBooksIntent`), so a top-level
-  // folder is now resolved against the rendered group's `books` rollup,
-  // which already includes nested sub-folder books.
+  // Only explicitly selected book identities are removed; groups never expand here.
   const getBooksToDelete = () => {
     const wanted = new Set(bookIdsToDelete);
-    return filteredBooks.filter((book) => wanted.has(book.hash) && !book.deletedAt);
+    return libraryBooks.filter((book) => wanted.has(book.hash) && !book.deletedAt);
   };
 
-  const confirmDelete = async (purgeData: boolean) => {
-    const books = getBooksToDelete();
-    // Toggling "purge all reading data" on the confirmation routes the whole
-    // batch through the purge path, which also wipes each book's reading-data
-    // sidecars (config/nav) instead of leaving the metadata folder behind.
-    const deleteBook = purgeData ? handleBookPurge : handleBookDelete;
-    const concurrency = 20;
-
-    for (let i = 0; i < books.length; i += concurrency) {
-      if (abortDeletionRef.current) {
-        abortDeletionRef.current = false;
-        break;
+  const confirmDelete = async () => {
+    if (deletionController.current) return;
+    const controller = new AbortController();
+    deletionController.current = controller;
+    try {
+      if (groupPathsToDelete.length) {
+        if (!(await folders.removeMany(groupPathsToDelete)))
+          throw new Error('Group removal failed');
+        setGroupPathsToDelete([]);
       }
-      const batch = books.slice(i, i + concurrency);
-      await Promise.all(batch.map((book) => deleteBook(book, false)));
+      const wanted = new Set(bookIdsToDelete);
+      const books = useLibraryStore
+        .getState()
+        .library.filter((book) => wanted.has(book.hash) && !book.deletedAt);
+      if (books.length) {
+        if (onRemoveBooks) {
+          const result = await onRemoveBooks(books, {
+            signal: controller.signal,
+            onProgress: setDeletionProgress,
+          });
+          setSelectedBooks([...result.failed, ...result.pending]);
+        } else {
+          const remaining: string[] = [];
+          for (const book of books) {
+            if (controller.signal.aborted || !(await handleBookDelete(book, controller.signal)))
+              remaining.push(book.hash);
+          }
+          setSelectedBooks(remaining);
+          await handlePushLibrary();
+        }
+      } else setSelectedBooks([]);
+      setShowDeleteAlert(false);
+    } finally {
+      deletionController.current = null;
     }
-    handlePushLibrary();
-    setSelectedBooks([]);
-    setShowDeleteAlert(false);
-    setShowSelectModeActions(true);
   };
 
-  const deleteSelectedBooks = async () => {
-    const selection = getSelectedBooks();
-    const selectedItems = sortedBookshelfItems.filter((item) =>
-      selection.includes('hash' in item ? item.hash : item.id),
-    );
-    if (
-      groupBy === LibraryGroupByType.Group &&
-      selectedItems.length > 0 &&
-      selectedItems.every((item) => 'books' in item && item.books.length === 0)
-    ) {
-      for (const item of selectedItems) {
-        if (!('books' in item) || !(await folders.remove(item.name))) return;
-      }
-      handleSetSelectMode(false);
-      return;
-    }
-    // Expand any group ids in the selection into the book hashes they
-    // visually represent — `generateBookshelfItems` rolls nested-folder
-    // books into the parent group, and we want every one of them queued
-    // for deletion, not just the books whose own `groupId` happens to
-    // match the top-level group's id.
-    setBookIdsToDelete(expandBookshelfSelection(getSelectedBooks(), sortedBookshelfItems));
-    setShowSelectModeActions(false);
+  const beginDeletion = (ids: string[]) => {
+    const wanted = new Set(ids);
+    const groups =
+      groupBy === LibraryGroupByType.Group
+        ? sortedBookshelfItems.flatMap((item) =>
+            'books' in item && wanted.has(item.id) ? [item.name] : [],
+          )
+        : [];
+    // A selected container is dissolved. It never expands implicitly into book deletion.
+    const books = libraryBooks.filter((book) => wanted.has(book.hash) && !book.deletedAt);
+    if (!groups.length && !books.length) return;
+    setGroupPathsToDelete(groups);
+    setBookIdsToDelete(books.map((book) => book.hash));
+    setDeletionProgress(null);
     setShowDeleteAlert(true);
   };
+  const deleteSelectedBooks = async () => beginDeletion(getSelectedBooks());
 
   const groupSelectedBooks = () => {
-    setShowSelectModeActions(false);
     setShowGroupingModal(true);
   };
 
-  const showStatusSelection = () => {
-    setShowSelectModeActions(false);
-    setShowStatusAlert(true);
-  };
-
-  const sendSelectedBook = async () => {
-    // "Send" hands the actual book file (epub/pdf/...) to the OS share
-    // sheet (UIActivityViewController on iOS, Intent.ACTION_SEND on
-    // Android, NSSharingServicePicker on macOS) so the user can fire it
-    // off to Mail / Messages / WeChat / AirDrop / etc. Backed by
-    // tauri-plugin-sharekit via appService.saveFile({ share: true }).
-    //
-    // This is intentionally distinct from the per-item "Share Book"
-    // context menu, which uploads the book to the readest backend and
-    // generates a public link. "Send" is offline file egress; "Share
-    // Book" is remote collaboration. They share zero infra.
-    //
-    // Linux has no system share sheet, and Windows is intentionally
-    // disabled (issue #4343 — WebView2's native share UI blocks the main
-    // thread waiting on cancel/complete callbacks that may never fire).
-    // We hide the button entirely on those platforms (see sendEnabled
-    // in the JSX) so users don't see an action that can't be honoured.
-
-    const ids = getSelectedBooks();
-    if (ids.length !== 1) return;
-    const book = filteredBooks.find((b) => b.hash === ids[0]);
-    if (!book || !appService) return;
-
-    // Anchor the macOS share popover to the selected book's cover, not
-    // to the Send button — the user just tapped/clicked the book, so
-    // their visual focus is on the cover. We look the cover up via the
-    // `data-book-hash` attribute that BookshelfItem stamps on its root
-    // div. The rect must be captured *before* setShowSelectModeActions
-    // tears the popup down (the bookshelf itself stays mounted, but we
-    // still want to grab it up front to keep the share-call site
-    // simple). preferredEdge='bottom' maps to NSMinYEdge, which in
-    // WKWebView's flipped coord space is the rect's top edge, so the
-    // popover renders above the cover (and only auto-flips below when
-    // there's no room above). On iOS / Android the share sheet is modal
-    // and ignores sharePosition, so this work is harmless there.
-    const coverEl = document.querySelector<HTMLElement>(`[data-book-hash="${book.hash}"]`);
-    const anchorRect = coverEl?.getBoundingClientRect();
-    const sharePosition = anchorRect
-      ? {
-          x: anchorRect.left + anchorRect.width / 2,
-          y: anchorRect.top + anchorRect.height / 2,
-          preferredEdge: 'bottom' as const,
-        }
-      : undefined;
-
-    setShowSelectModeActions(false);
-    handleSetSelectMode(false);
-
-    try {
-      // Resolve the file the same way bookContent.resolveBookContentSource
-      // does, but via the public AppService surface (the underlying `fs`
-      // is protected): managed copy under Books/<hash>/ first, then the
-      // device-local in-place import path. Cloud-only books or remote
-      // URL books can't be shared without first downloading them.
-      const managedPath = getLocalBookFilename(book);
-      let path: string;
-      let base: 'Books' | 'None';
-      if (await appService.exists(managedPath, 'Books')) {
-        path = managedPath;
-        base = 'Books';
-      } else if (book.filePath && (await appService.exists(book.filePath, 'None'))) {
-        path = book.filePath;
-        base = 'None';
-      } else {
-        eventDispatcher.dispatch('toast', {
-          type: 'warning',
-          message: _('Book file is not available locally'),
-          timeout: 2500,
-        });
-        return;
-      }
-      const ext = EXTS[book.format] ?? 'bin';
-      const mimeType = MIMETYPES[book.format]?.[0] ?? 'application/octet-stream';
-      const baseName = makeSafeFilename(book.sourceTitle || book.title || book.hash);
-      const shareFilename = `${baseName}.${ext}`;
-
-      // Native (Tauri) only — the Share button is hidden on web because
-      // browsers can't surface a real "share to <app>" sheet for an
-      // arbitrary local file. Hand the already-on-disk file straight to
-      // the OS share sheet via `options.filePath`. Without it,
-      // saveFile() falls back to writing a temp copy under
-      // BaseDirectory.Temp, which on Android resolves to
-      // /data/local/tmp/ — the app sandbox has no write permission
-      // there and the call fails with EACCES ("failed to open file at
-      // path: /data/local/tmp/...epub Permission denied (os error
-      // 13)"). Passing the absolute path also avoids re-buffering the
-      // whole epub/pdf into memory just to have saveFile write it back
-      // to disk.
-      const absoluteFilePath = await appService.resolveFilePath(path, base);
-      // `null` content: there's nothing to write — the file already lives at
-      // `filePath`, which the native share path reads directly.
-      await appService.saveFile(shareFilename, null, {
-        share: true,
-        mimeType,
-        filePath: absoluteFilePath,
-        sharePosition,
-      });
-    } catch (err) {
-      console.error('Failed to send book file:', err);
-      eventDispatcher.dispatch('toast', {
-        type: 'error',
-        message: _('Failed to send book'),
-        timeout: 2500,
-      });
-    }
-  };
-
-  const updateBooksStatus = async (status: ReadingStatus | undefined) => {
-    const selectedIds = getSelectedBooks();
-    const booksToUpdate: Book[] = [];
-
-    for (const id of selectedIds) {
-      const book = filteredBooks.find((b) => b.hash === id);
-      if (book) {
-        booksToUpdate.push(withReadingStatus(book, status));
-      }
-    }
-
-    if (booksToUpdate.length > 0) {
-      await updateBooks(envConfig, booksToUpdate);
-    }
-
-    setSelectedBooks([]);
-    setShowStatusAlert(false);
-    setShowSelectModeActions(true);
-  };
-
+  const handleRenameBook = useCallback(
+    (book: Book, title: string) => bookEdits.apply([book], 'title', title),
+    [bookEdits.apply],
+  );
   const handleUpdateReadingStatus = useCallback(
     async (book: Book, status: ReadingStatus | undefined) => {
-      const updatedBook = withReadingStatus(book, status);
-      await updateBooks(envConfig, [updatedBook]);
+      const selection = getSelectedBooks();
+      const ids = selection.includes(book.hash)
+        ? expandBookshelfSelection(selection, sortedBookshelfItems)
+        : [book.hash];
+      await bookEdits.apply(
+        useLibraryStore.getState().library.filter((b) => ids.includes(b.hash)),
+        'readingStatus',
+        status,
+      );
     },
-    [envConfig, updateBooks],
+    [bookEdits.apply, getSelectedBooks, sortedBookshelfItems],
   );
 
   const handleDeleteBooksIntent = (event: CustomEvent) => {
     const { ids } = event.detail;
-    setBookIdsToDelete(ids);
-    setShowSelectModeActions(false);
-    setShowDeleteAlert(true);
+    beginDeletion(ids);
   };
 
   useEffect(() => {
     if (isSelectMode) {
-      setShowSelectModeActions(true);
       if (isSelectAll) {
         setSelectedBooks(
           currentBookshelfItems.map((item) => ('hash' in item ? item.hash : item.id)),
@@ -768,7 +647,6 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       }
     } else {
       setSelectedBooks([]);
-      setShowSelectModeActions(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSelectMode, isSelectAll, isSelectNone, currentBookshelfItems]);
@@ -778,7 +656,22 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     return () => {
       eventDispatcher.off('delete-books', handleDeleteBooksIntent);
     };
-  }, []);
+  }, [sortedBookshelfItems]);
+
+  useEffect(() => {
+    const move = () => {
+      if (getSelectedBooks().length) groupSelectedBooks();
+    };
+    const remove = () => {
+      if (getSelectedBooks().length) void deleteSelectedBooks();
+    };
+    eventDispatcher.on('library-move-selection', move);
+    eventDispatcher.on('library-delete-selection', remove);
+    return () => {
+      eventDispatcher.off('library-move-selection', move);
+      eventDispatcher.off('library-delete-selection', remove);
+    };
+  });
 
   // OverlayScrollbars + Virtuoso integration: Virtuoso manages its own
   // scroller; OverlayScrollbars wraps it for overlay scrollbar rendering.
@@ -857,6 +750,17 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     }
   };
 
+  const downloadFromCard = async (
+    book: Book,
+    options?: { redownload?: boolean; queued?: boolean },
+  ) => {
+    if (getSelectedBooks().includes(book.hash) && getSelectedBooks().length > 1) {
+      await downloadSelectedBooks();
+      return true;
+    }
+    return handleBookDownload(book, options);
+  };
+
   const isGridMode = viewMode === 'grid';
   const hasItems = sortedBookshelfItems.length > 0;
   // In grid mode the Import-Books "+" tile is rendered as an extra grid cell
@@ -899,9 +803,12 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           toggleSelection={toggleSelection}
           handleSetSelectMode={handleSetSelectMode}
           handleBookUpload={handleBookUpload}
-          handleBookDownload={handleBookDownload}
+          handleBookDownload={downloadFromCard}
           showBookDetailsModal={handleShowDetailsBook}
           showTimeRemaining={showTimeRemaining}
+          handleRenameBook={handleRenameBook}
+          handleUpdateReadingStatus={handleUpdateReadingStatus}
+          handleGroupBooks={groupSelectedBooks}
         />
       ) : null,
     [
@@ -916,23 +823,19 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       handleBookUpload,
       handleBookDownload,
       handleShowDetailsBook,
+      handleRenameBook,
+      handleUpdateReadingStatus,
       showTimeRemaining,
     ],
   );
 
-  // Reserve enough trailing space for the fixed select-mode action bar so the
-  // last book scrolls clear of it (#5175). `selectModeActionsHeight` already
-  // includes the bar's safe-area padding and is 0 whenever the bar is hidden,
-  // so the baseline breathing room applies at all other times.
-  const footerHeight =
-    selectModeActionsHeight > 0
-      ? selectModeActionsHeight + DEFAULT_FOOTER_HEIGHT
-      : DEFAULT_FOOTER_HEIGHT;
+  const footerHeight = DEFAULT_FOOTER_HEIGHT;
 
   const listContext = useMemo<BookshelfListContext>(
     () => ({
       autoColumns: settings.libraryAutoColumns,
       fixedColumns: settings.libraryColumns,
+      coverWidth: settings.libraryCoverWidth,
       listScale: settings.libraryListScale ?? 100,
       recentShelfHeader,
       collectionTitle: queryTerm
@@ -966,6 +869,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     [
       settings.libraryAutoColumns,
       settings.libraryColumns,
+      settings.libraryCoverWidth,
       settings.libraryListScale,
       recentShelfHeader,
       queryTerm,
@@ -1002,12 +906,13 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           }
           canUndoFolder={folders.canUndo}
           handleBookUpload={handleBookUpload}
-          handleBookDownload={handleBookDownload}
+          handleBookDownload={downloadFromCard}
           handleBookDelete={handleBookDelete}
           handleSetSelectMode={handleSetSelectMode}
           handleShowDetailsBook={handleShowDetailsBook}
           handleLibraryNavigation={handleLibraryNavigation}
           handleUpdateReadingStatus={handleUpdateReadingStatus}
+          handleRenameBook={handleRenameBook}
           transferProgress={
             'hash' in item ? booksTransferProgress[(item as Book).hash] || null : null
           }
@@ -1031,6 +936,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       handleShowDetailsBook,
       handleLibraryNavigation,
       handleUpdateReadingStatus,
+      handleRenameBook,
       showTimeRemaining,
       groupBy,
       renameFolder,
@@ -1066,6 +972,17 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       role='main'
       aria-label={_('Bookshelf')}
       className='bookshelf glossa-bookshelf flex min-h-0 flex-grow flex-col focus:outline-none'
+      onClick={(event) => {
+        if (
+          isSelectMode &&
+          !(event.target as HTMLElement).closest(
+            '[data-book-hash], [data-group-name], button, input, form, [role="menu"], [role="dialog"]',
+          )
+        ) {
+          setSelectedBooks([]);
+          handleSetSelectMode(false);
+        }
+      }}
       onContextMenu={(event) => {
         if (
           groupBy !== LibraryGroupByType.Group ||
@@ -1085,10 +1002,37 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           event.preventDefault();
           handleSetSelectMode(true);
           setSelectedBooks(
-            currentBookshelfItems
-              .filter((item) => 'hash' in item)
-              .map((item) => (item as Book).hash),
+            currentBookshelfItems.map((item) => ('hash' in item ? item.hash : item.id)),
           );
+          return;
+        }
+        if (
+          isSelectMode &&
+          (event.key === 'Delete' || event.key === 'Backspace') &&
+          getSelectedBooks().length
+        ) {
+          event.preventDefault();
+          void deleteSelectedBooks();
+          return;
+        }
+        if (
+          (event.metaKey || event.ctrlKey) &&
+          event.shiftKey &&
+          event.key.toLowerCase() === 'm' &&
+          getSelectedBooks().length
+        ) {
+          event.preventDefault();
+          groupSelectedBooks();
+          return;
+        }
+        if (
+          (event.metaKey || event.ctrlKey) &&
+          event.key.toLowerCase() === 'z' &&
+          !event.shiftKey &&
+          bookEdits.canUndo()
+        ) {
+          event.preventDefault();
+          void bookEdits.undo();
           return;
         }
         if (event.key === 'Escape' && isSelectMode) {
@@ -1270,33 +1214,6 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           <Spinner loading />
         </div>
       )}
-      {!showGroupingModal && isSelectMode && showSelectModeActions && (
-        <SelectModeActions
-          selectedBooks={selectedBooks}
-          safeAreaBottom={safeAreaInsets?.bottom || 0}
-          onHeightChange={setSelectModeActionsHeight}
-          // Native send targets: iOS, Android, macOS — route through
-          // tauri-plugin-sharekit (UIActivityViewController /
-          // Intent.ACTION_SEND / NSSharingServicePicker). Linux has no
-          // system share sheet, Windows WebView2 share UI is disabled
-          // upstream (issue #4343 — deadlocks the main thread), and web
-          // browsers don't expose a real "send file to <app>" sheet, so
-          // the button is hidden on those platforms.
-          sendEnabled={
-            !!appService &&
-            (appService.isIOSApp || appService.isAndroidApp || appService.isMacOSApp)
-          }
-          canDownload={downloadableBooks.length > 0}
-          onOpen={openSelectedBooks}
-          onGroup={groupSelectedBooks}
-          onDetails={openBookDetails}
-          onStatus={showStatusSelection}
-          onDownload={downloadSelectedBooks}
-          onSend={sendSelectedBook}
-          onDelete={deleteSelectedBooks}
-          onCancel={() => handleSetSelectMode(false)}
-        />
-      )}
       {showGroupingModal && selectedBooks.length > 0 && (
         <ModalPortal>
           <GroupingModal
@@ -1309,7 +1226,6 @@ const Bookshelf: React.FC<BookshelfProps> = ({
             parentGroupName={getGroupName(groupId) || ''}
             onCancel={() => {
               setShowGroupingModal(false);
-              setShowSelectModeActions(true);
             }}
             onConfirm={() => {
               setShowGroupingModal(false);
@@ -1319,37 +1235,38 @@ const Bookshelf: React.FC<BookshelfProps> = ({
         </ModalPortal>
       )}
       {showDeleteAlert && (
-        <div
-          className={clsx('delete-alert fixed bottom-0 left-0 right-0 z-50 flex justify-center')}
-          style={{
-            paddingBottom: `${(safeAreaInsets?.bottom || 0) + 16}px`,
-          }}
-        >
+        <ModalPortal>
           <DeleteConfirmAlert
-            title={_('Confirm Deletion')}
-            message={_('Are you sure to delete {{count}} selected book(s)?', {
-              count: getBooksToDelete().length,
-            })}
-            showPurgeToggle
-            onCancel={() => {
-              abortDeletionRef.current = true;
-              setShowDeleteAlert(false);
-              setShowSelectModeActions(true);
-            }}
+            title={_(groupPathsToDelete.length ? 'Delete selection?' : 'Delete books?')}
+            message={
+              groupPathsToDelete.length
+                ? _(
+                    'Dissolve {{groups}} group(s) and delete {{books}} selected book(s). Other books stay in the library.',
+                    { groups: groupPathsToDelete.length, books: getBooksToDelete().length },
+                  )
+                : _(
+                    'You can restore these {{count}} book(s) and their reading data from Recently Deleted.',
+                    { count: getBooksToDelete().length },
+                  )
+            }
+            books={[
+              ...groupPathsToDelete.map((path) => ({ hash: `group:${path}`, title: path })),
+              ...getBooksToDelete(),
+            ]}
+            scope={
+              deletionProgress
+                ? _('Completed {{done}} · Failed {{failed}} · Not started {{pending}}', {
+                    done: deletionProgress.completed.length,
+                    failed: deletionProgress.failed.length,
+                    pending: deletionProgress.pending.length,
+                  })
+                : removalScope(settings, _)
+            }
+            onCancel={() => setShowDeleteAlert(false)}
+            onStop={() => deletionController.current?.abort()}
             onConfirm={confirmDelete}
           />
-        </div>
-      )}
-      {showStatusAlert && (
-        <SetStatusAlert
-          selectedCount={getSelectedBooks().length}
-          safeAreaBottom={safeAreaInsets?.bottom || 0}
-          onCancel={() => {
-            setShowStatusAlert(false);
-            setShowSelectModeActions(true);
-          }}
-          onUpdateStatus={updateBooksStatus}
-        />
+        </ModalPortal>
       )}
     </div>
   );

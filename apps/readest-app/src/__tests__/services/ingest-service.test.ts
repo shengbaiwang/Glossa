@@ -9,7 +9,7 @@ vi.mock('@/services/transferManager', () => ({
 
 import { ingestFile } from '@/services/ingestService';
 import { transferManager } from '@/services/transferManager';
-import type { Book } from '@/types/book';
+import type { Book, ImportBookOptions } from '@/types/book';
 import type { AppService, OsPlatform } from '@/types/system';
 import type { SystemSettings } from '@/types/settings';
 
@@ -28,6 +28,7 @@ function makeBook(overrides: Partial<Book> = {}): Book {
 function makeDeps(
   over: {
     importResult?: Book | null;
+    importStatus?: 'added' | 'existing';
     bookSyncEnabled?: boolean;
     isLoggedIn?: boolean;
     externalLibraryFolders?: string[];
@@ -35,7 +36,12 @@ function makeDeps(
   } = {},
 ) {
   const importResult = over.importResult === undefined ? makeBook() : over.importResult;
-  const importBook = vi.fn().mockResolvedValue(importResult);
+  const importBook = vi
+    .fn()
+    .mockImplementation(async (_file, _books, options: ImportBookOptions) => {
+      options.onResult?.(over.importStatus ?? 'added');
+      return importResult;
+    });
   // Default to a case-sensitive platform so existing tests keep exercising
   // the strict-prefix path; per-test overrides switch to macos/windows/ios
   // when the case-insensitive behavior is under test.
@@ -82,11 +88,15 @@ describe('ingestFile', () => {
       { file: 'book.epub', books: [], lookupIndex },
       { appService, settings, isLoggedIn },
     );
-    expect(importBook).toHaveBeenCalledWith('book.epub', [], {
-      lookupIndex,
-      transient: undefined,
-      inPlace: false,
-    });
+    expect(importBook).toHaveBeenCalledWith(
+      'book.epub',
+      [],
+      expect.objectContaining({
+        lookupIndex,
+        transient: undefined,
+        inPlace: false,
+      }),
+    );
   });
 
   test('applies groupId and groupName', async () => {
@@ -210,11 +220,15 @@ describe('ingestFile', () => {
       { file: 'book.epub', books: [], transient: true },
       { appService, settings, isLoggedIn },
     );
-    expect(importBook).toHaveBeenCalledWith('book.epub', [], {
-      lookupIndex: undefined,
-      transient: true,
-      inPlace: false,
-    });
+    expect(importBook).toHaveBeenCalledWith(
+      'book.epub',
+      [],
+      expect.objectContaining({
+        lookupIndex: undefined,
+        transient: true,
+        inPlace: false,
+      }),
+    );
   });
 
   test('does not queue an upload when the book is already uploaded', async () => {
@@ -542,15 +556,7 @@ describe('ingestFile', () => {
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: false });
   });
 
-  // ------ in-place + byFilePath fast path ------
-  // ingestFile probes the byFilePath index before delegating to importBook
-  // so a re-scan of an already-imported external folder skips file I/O,
-  // parsing, hashing, AND every downstream side effect (group / tag / upload
-  // decisions). The fast path returning early is what guarantees a manual
-  // GroupingModal assignment survives a folder re-import — without it, a
-  // path-derived empty groupId would clobber the existing group.
-
-  test('byFilePath hit short-circuits importBook entirely on in-place re-import', async () => {
+  test('verifies an indexed path and preserves grouping when its content already exists', async () => {
     const { appService, settings, isLoggedIn, importBook } = makeDeps({
       externalLibraryFolders: ['/Users/me/Library'],
       osPlatform: 'macos',
@@ -567,6 +573,10 @@ describe('ingestFile', () => {
       groupId: 'manual',
       groupName: 'Manual/Group',
     };
+    importBook.mockImplementationOnce(async (_file, _books, options: ImportBookOptions) => {
+      options.onResult?.('existing');
+      return existing;
+    });
     // macOS is case-insensitive, so the index key is lowercased to match
     // what `normalizeFilePathForIndex` produces in production.
     const lookupIndex = {
@@ -585,8 +595,7 @@ describe('ingestFile', () => {
       { appService, settings, isLoggedIn },
     );
     expect(book).toBe(existing);
-    // importBook never ran, so no file I/O, no parser, no partialMD5.
-    expect(importBook).not.toHaveBeenCalled();
+    expect(importBook).toHaveBeenCalledTimes(1);
     // Existing fields are untouched: createdAt / updatedAt / group all stay.
     expect(existing.createdAt).toBe(1000);
     expect(existing.updatedAt).toBe(2000);
@@ -594,8 +603,7 @@ describe('ingestFile', () => {
     expect(existing.groupName).toBe('Manual/Group');
   });
 
-  test('repairs legacy placeholder metadata on a folder fast-path hit without parsing or regrouping', async () => {
-    const deps = makeDeps({ externalLibraryFolders: ['/Library'] });
+  test('does not rewrite legacy metadata or regroup verified existing content', async () => {
     const sourcePath = '/Library/马基雅维里主义.pdf';
     const existing = makeBook({
       format: 'PDF',
@@ -607,6 +615,11 @@ describe('ingestFile', () => {
       progress: [17, 200],
       metadata: { title: 'ssreader', author: 'ssreader', language: 'zh' },
     });
+    const deps = makeDeps({
+      externalLibraryFolders: ['/Library'],
+      importResult: existing,
+      importStatus: 'existing',
+    });
     const lookupIndex = {
       byHash: new Map([[existing.hash, existing]]),
       byMetaKey: new Map(),
@@ -617,13 +630,13 @@ describe('ingestFile', () => {
       deps,
     );
     expect(book).toBe(existing);
-    expect(book?.title).toBe('马基雅维里主义');
-    expect(book?.author).toBe('');
+    expect(book?.title).toBe('ssreader');
+    expect(book?.author).toBe('ssreader');
     expect(book?.sourceTitle).toBe('ssreader');
     expect(book?.groupId).toBe('manual');
     expect(book?.progress).toEqual([17, 200]);
     expect(book?.updatedAt).toBe(2000);
-    expect(deps.importBook).not.toHaveBeenCalled();
+    expect(deps.importBook).toHaveBeenCalledTimes(1);
   });
 
   test('without inPlace the byFilePath index is ignored and importBook runs', async () => {
@@ -707,9 +720,13 @@ describe('ingestFile', () => {
   });
 });
 
-test('an explicit in-place PDF re-import retries contents without changing grouping, timestamps or upload state', async () => {
-  const deps = makeDeps({ externalLibraryFolders: ['/Library'] });
+test('delegates explicit PDF retry to the unified importer and preserves existing data', async () => {
   const existing = makeBook({ format: 'PDF', filePath: '/Library/book.pdf', groupId: 'manual' });
+  const deps = makeDeps({
+    externalLibraryFolders: ['/Library'],
+    importResult: existing,
+    importStatus: 'existing',
+  });
   const prepare = vi.fn().mockResolvedValue(undefined);
   deps.appService.prepareBookContents = prepare;
   const lookupIndex = {
@@ -723,8 +740,8 @@ test('an explicit in-place PDF re-import retries contents without changing group
       deps,
     ),
   ).toBe(existing);
-  expect(prepare).toHaveBeenCalledExactlyOnceWith(existing);
-  expect(deps.importBook).not.toHaveBeenCalled();
+  expect(prepare).not.toHaveBeenCalled();
+  expect(deps.importBook).toHaveBeenCalledTimes(1);
   expect(existing).toMatchObject({ updatedAt: 2000, createdAt: 1000, groupId: 'manual' });
   expect(transferManager.queueUpload).not.toHaveBeenCalled();
   prepare.mockClear();
@@ -733,4 +750,5 @@ test('an explicit in-place PDF re-import retries contents without changing group
     deps,
   );
   expect(prepare).not.toHaveBeenCalled();
+  expect(deps.importBook.mock.calls[1]?.[2]).toMatchObject({ retryPDFContents: false });
 });

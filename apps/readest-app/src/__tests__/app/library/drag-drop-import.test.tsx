@@ -119,3 +119,17 @@ it('uses native physical drop coordinates for the sidebar destination and remove
   });
   expect(mocks.dispatch).not.toHaveBeenCalled();
 });
+
+it('does not treat an empty native internal drag as an unsupported book import', async () => {
+  mocks.tauri = true;
+  Object.defineProperty(document, 'elementFromPoint', {
+    configurable: true,
+    value: () => screen.getByRole('button'),
+  });
+  const { result } = renderHook(useDragDropImport);
+  await act(async () =>
+    mocks.native({ payload: { type: 'drop', position: { x: 80, y: 120 }, paths: [] } }),
+  );
+  expect(result.current.isDragging).toBe(false);
+  expect(mocks.dispatch).not.toHaveBeenCalled();
+});

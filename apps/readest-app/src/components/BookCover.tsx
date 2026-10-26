@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import Image from 'next/image';
-import { memo, useEffect, useRef, useState } from 'react';
+import { CSSProperties, memo, useState } from 'react';
 import { Book } from '@/types/book';
 import { LibraryCoverFitType, LibraryViewModeType } from '@/types/settings';
 import { formatAuthors, formatTitle } from '@/utils/book';
@@ -17,157 +17,88 @@ interface BookCoverProps {
   onAspectRatioChange?: (ratio: number) => void;
 }
 
-const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
-  ({
-    book,
-    mode = 'grid',
-    coverFit = 'crop',
-    showSpine = false,
-    className,
-    imageClassName,
-    isPreview,
-    onImageError,
-    onAspectRatioChange,
-  }) => {
-    const coverRef = useRef<HTMLDivElement>(null);
-    const [imageLoaded, setImageLoaded] = useState(false);
-    const [imageError, setImageError] = useState(false);
+const BookCover = memo(function BookCover({
+  book,
+  mode = 'grid',
+  coverFit = 'crop',
+  showSpine = false,
+  className,
+  imageClassName,
+  isPreview,
+  onImageError,
+  onAspectRatioChange,
+}: BookCoverProps) {
+  const coverUrl = book.metadata?.coverImageUrl || book.coverImageUrl;
+  const [imageState, setImageState] = useState<{
+    url: string;
+    status: 'loaded' | 'error';
+    ratio?: number;
+  }>();
+  // A replacement image starts with its own paper cover, even if the previous
+  // request finishes late. No imperative visibility state survives a URL change.
+  const currentImage = imageState?.url === coverUrl ? imageState : undefined;
+  const imageLoaded = currentImage?.status === 'loaded';
+  const author = formatAuthors(book.author || book.metadata?.author || '');
 
-    const shouldShowSpine = showSpine && imageLoaded && !imageError;
+  const handleImageLoad = (event: React.SyntheticEvent<HTMLImageElement>) => {
+    const { naturalWidth, naturalHeight } = event.currentTarget;
+    const ratio = naturalWidth > 0 && naturalHeight > 0 ? naturalWidth / naturalHeight : undefined;
+    setImageState({ url: coverUrl!, status: 'loaded', ratio });
+    if (ratio) onAspectRatioChange?.(ratio);
+  };
 
-    const toggleImageVisibility = (showImage: boolean) => {
-      if (coverRef.current) {
-        const coverImage = coverRef.current.querySelector('.cover-image');
-        const fallbackCover = coverRef.current.querySelector('.fallback-cover');
-        if (coverImage) {
-          coverImage.classList.toggle('invisible', !showImage);
-        }
-        if (fallbackCover) {
-          fallbackCover.classList.toggle('invisible', showImage);
-        }
-      }
-    };
-
-    const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-      setImageLoaded(true);
-      setImageError(false);
-      toggleImageVisibility(true);
-      const img = e.currentTarget;
-      if (onAspectRatioChange && img.naturalWidth > 0 && img.naturalHeight > 0) {
-        onAspectRatioChange(img.naturalWidth / img.naturalHeight);
-      }
-    };
-
-    const handleImageError = () => {
-      setImageLoaded(false);
-      setImageError(true);
-      toggleImageVisibility(false);
-      onImageError?.();
-    };
-
-    useEffect(() => {
-      toggleImageVisibility(true);
-    }, [book.metadata?.coverImageUrl, book.coverImageUrl]);
-
-    return (
-      <div
-        ref={coverRef}
-        className={clsx('book-cover-container relative flex h-full w-full', className)}
-      >
-        {coverFit === 'crop' ? (
-          <>
+  return (
+    <div
+      className={clsx('book-cover-container relative flex h-full w-full', className)}
+      data-fit={coverFit}
+      data-mode={mode}
+      data-material={showSpine ? 'paper' : 'flat'}
+      data-preview={isPreview || undefined}
+      style={{ '--book-cover-ratio': currentImage?.ratio ?? 28 / 41 } as CSSProperties}
+    >
+      <div className='book-cover-surface'>
+        <div className='book-cover-face'>
+          {coverUrl && currentImage?.status !== 'error' && (
             <Image
-              src={book.metadata?.coverImageUrl || book.coverImageUrl!}
+              key={coverUrl}
+              src={coverUrl}
               alt={book.title}
-              fill={true}
+              fill
+              sizes='(max-width: 640px) 50vw, 240px'
               loading='lazy'
               draggable={false}
-              className={clsx('cover-image crop-cover-img object-cover', imageClassName)}
+              aria-hidden={!imageLoaded}
+              className={clsx(
+                'cover-image',
+                coverFit === 'crop'
+                  ? 'crop-cover-img object-cover'
+                  : 'fit-cover-img object-contain',
+                !imageLoaded && 'invisible',
+                imageClassName,
+              )}
               onLoad={handleImageLoad}
-              onError={handleImageError}
+              onError={() => {
+                setImageState({ url: coverUrl, status: 'error' });
+                onImageError?.();
+              }}
             />
-            <div
-              className={`book-spine absolute inset-0 ${shouldShowSpine ? 'visible' : 'invisible'}`}
-            />
-          </>
-        ) : (
-          <div className={clsx('flex h-full w-full justify-start')}>
-            <div
-              className={clsx(
-                'flex h-full max-h-full items-end',
-                mode === 'grid' ? 'items-end' : 'items-center',
-              )}
-            >
-              <Image
-                src={book.metadata?.coverImageUrl || book.coverImageUrl!}
-                alt={book.title}
-                width={0}
-                height={0}
-                sizes='100vw'
-                loading='lazy'
-                draggable={false}
-                className={clsx(
-                  'cover-image fit-cover-img h-auto max-h-full w-auto max-w-full shadow-md',
-                  imageClassName,
-                )}
-                onLoad={handleImageLoad}
-                onError={handleImageError}
-              />
-              <div
-                className={`book-spine absolute inset-0 ${shouldShowSpine ? 'visible' : 'invisible'}`}
-              />
-            </div>
-          </div>
-        )}
-
-        <div
-          className={clsx(
-            'fallback-cover invisible absolute inset-0 p-2',
-            'text-neutral-content text-center font-serif font-medium',
-            isPreview ? 'bg-base-200/50' : 'bg-base-100',
-            imageClassName,
           )}
-        >
-          <div className='flex h-1/2 items-center justify-center'>
-            <span
-              className={clsx(
-                isPreview ? 'line-clamp-2' : mode === 'grid' ? 'line-clamp-3' : 'line-clamp-2',
-                isPreview ? 'text-[0.5em]' : mode === 'grid' ? 'text-lg' : 'text-sm',
-              )}
-            >
+          <div
+            className={clsx('fallback-cover', imageLoaded && 'invisible')}
+            role='img'
+            aria-label={[formatTitle(book.title), author].filter(Boolean).join(' — ')}
+            aria-hidden={imageLoaded}
+          >
+            <span className={clsx('book-cover-title', isPreview ? 'line-clamp-2' : 'line-clamp-3')}>
               {formatTitle(book.title)}
             </span>
+            <span className='book-cover-author line-clamp-2'>{author}</span>
           </div>
-          <div className='h-1/6'></div>
-          <div className='flex h-1/3 items-center justify-center'>
-            <span
-              className={clsx(
-                'text-neutral-content/50 line-clamp-1',
-                isPreview ? 'text-[0.4em]' : mode === 'grid' ? 'text-base' : 'text-xs',
-              )}
-            >
-              {formatAuthors(book.author || book.metadata?.author || '')}
-            </span>
-          </div>
+          {showSpine && <span className='book-spine' aria-hidden='true' />}
         </div>
       </div>
-    );
-  },
-  (prevProps, nextProps) => {
-    return (
-      prevProps.book.coverImageUrl === nextProps.book.coverImageUrl &&
-      prevProps.book.metadata?.coverImageUrl === nextProps.book.metadata?.coverImageUrl &&
-      prevProps.book.updatedAt === nextProps.book.updatedAt &&
-      prevProps.mode === nextProps.mode &&
-      prevProps.coverFit === nextProps.coverFit &&
-      prevProps.isPreview === nextProps.isPreview &&
-      prevProps.showSpine === nextProps.showSpine &&
-      prevProps.className === nextProps.className &&
-      prevProps.imageClassName === nextProps.imageClassName
-    );
-  },
-);
-
-BookCover.displayName = 'BookCover';
+    </div>
+  );
+});
 
 export default BookCover;

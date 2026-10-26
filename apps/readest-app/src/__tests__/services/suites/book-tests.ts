@@ -25,6 +25,28 @@ export function bookTests(
   });
 
   describe('Book import', () => {
+    it('defaults new Markdown to continuous reading and preserves personal changes on reimport', async () => {
+      const service = getService();
+      const books: Book[] = [];
+      const make = () =>
+        new File(['# Different metadata title\n\nOriginal reading material.'], 'Original notes.md');
+      const book = (await service.importBook(make(), books, { saveCover: false }))!;
+      expect(book.format).toBe('MD');
+      expect(book.title).toBe('Original notes');
+      const settings = await service.loadSettings();
+      const config = await service.loadBookConfig(book, settings);
+      expect(config.viewSettings?.scrolled).toBe(true);
+      config.viewSettings = { ...config.viewSettings, scrolled: false };
+      config.location = 'saved-location';
+      await service.saveBookConfig(book, config, settings);
+      const duplicate = await service.importBook(make(), books, { saveCover: false });
+      expect(duplicate?.hash).toBe(book.hash);
+      expect(books).toHaveLength(1);
+      const reopened = await service.loadBookConfig(book, settings);
+      expect(reopened.viewSettings?.scrolled).toBe(false);
+      expect(reopened.location).toBe('saved-location');
+    });
+
     it('should import an EPUB book with correct metadata', async () => {
       const service = getService();
       const file = await getBookFile('sample-alice.epub');

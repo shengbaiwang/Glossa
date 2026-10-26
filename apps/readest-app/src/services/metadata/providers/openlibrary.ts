@@ -12,7 +12,6 @@ interface OpenLibraryBookSearch {
   language?: string[];
   isbn?: string[];
   cover_i?: number | string;
-  subject?: string[];
   description?: string[];
 }
 
@@ -27,7 +26,6 @@ interface OpenLibraryBookID {
     medium?: string;
     large?: string;
   };
-  subjects?: { name: string }[];
   description?: string | { value: string };
 }
 
@@ -119,7 +117,6 @@ export class OpenLibraryProvider extends BaseMetadataProvider {
       language: code6392to6391(book.languages?.[0]?.name || ''),
       identifier: isbn,
       coverImage: book.cover?.large || book.cover?.medium || book.cover?.small,
-      subjects: book.subjects?.map((s: { name: string }) => s.name).slice(0, 5) || [],
       description: this.extractDescription(book.description || ''),
     } as Metadata;
   }
@@ -135,7 +132,6 @@ export class OpenLibraryProvider extends BaseMetadataProvider {
       coverImageUrl: book.cover_i
         ? `https://covers.openlibrary.org/b/id/${book.cover_i}-L.jpg`
         : undefined,
-      subjects: book.subject?.slice(0, 5) || [],
       description: book.description?.[0],
     } as Metadata;
   }

@@ -1,136 +1,45 @@
 import { describe, expect, it } from 'vitest';
-
 import { getBookContextMenuItemIds } from '@/app/library/utils/libraryUtils';
 import { buildFeedBookUrl } from '@/services/rss/feedBookUrl';
-import { Book } from '@/types/book';
-
-const createBook = (overrides: Partial<Book> = {}): Book => ({
-  hash: 'hash-1',
+import type { Book } from '@/types/book';
+const book: Book = {
+  hash: 'book',
+  title: 'Book',
+  author: 'Author',
   format: 'EPUB',
-  title: 'Test Book',
-  author: 'Test Author',
-  createdAt: 0,
-  updatedAt: 0,
-  ...overrides,
-});
-
-describe('getBookContextMenuItemIds', () => {
-  it('returns a deterministic order for a local downloaded book', () => {
-    const book = createBook({ downloadedAt: 1 });
-    expect(getBookContextMenuItemIds(book)).toEqual([
-      'select',
+  createdAt: 1,
+  updatedAt: 1,
+};
+describe('quiet book context menu', () => {
+  it.each([
+    undefined,
+    'finished',
+    'unread',
+    'abandoned',
+  ] as const)('keeps status %s on the book card', (readingStatus) => {
+    expect(getBookContextMenuItemIds({ ...book, downloadedAt: 1, readingStatus })).toEqual([
       'group',
-      'markFinished',
-      'markAbandoned',
-      'showDetails',
       'showInFinder',
-      'searchGoodreads',
-      'upload',
       'delete',
     ]);
   });
-
-  it('shows markUnread + markAbandoned + clearStatus for a finished book', () => {
-    const book = createBook({ downloadedAt: 1, readingStatus: 'finished' });
-    expect(getBookContextMenuItemIds(book)).toEqual([
-      'select',
+  it('omits file location for a cloud-only book', () => {
+    expect(getBookContextMenuItemIds({ ...book, uploadedAt: 1 })).toEqual(['group', 'delete']);
+  });
+  it('allows revealing an in-place imported file', () => {
+    expect(getBookContextMenuItemIds({ ...book, filePath: '/books/book.epub' })).toEqual([
       'group',
-      'markUnread',
-      'markAbandoned',
-      'clearStatus',
-      'showDetails',
       'showInFinder',
-      'searchGoodreads',
-      'upload',
       'delete',
     ]);
   });
-
-  it('shows "Mark as Finished" + "Clear Status" for an unread book', () => {
-    const book = createBook({ downloadedAt: 1, readingStatus: 'unread' });
-    expect(getBookContextMenuItemIds(book)).toEqual([
-      'select',
-      'group',
-      'markFinished',
-      'markAbandoned',
-      'clearStatus',
-      'showDetails',
-      'showInFinder',
-      'searchGoodreads',
-      'upload',
-      'delete',
-    ]);
-  });
-
-  it('hides markAbandoned but offers markFinished + clearStatus for an abandoned book', () => {
-    const book = createBook({ downloadedAt: 1, readingStatus: 'abandoned' });
-    expect(getBookContextMenuItemIds(book)).toEqual([
-      'select',
-      'group',
-      'markFinished',
-      'clearStatus',
-      'showDetails',
-      'showInFinder',
-      'searchGoodreads',
-      'upload',
-      'delete',
-    ]);
-  });
-
-  it('offers Download (not Upload) for a cloud-only book', () => {
-    const book = createBook({ uploadedAt: 1 });
-    expect(getBookContextMenuItemIds(book)).toEqual([
-      'select',
-      'group',
-      'markFinished',
-      'markAbandoned',
-      'showDetails',
-      'showInFinder',
-      'searchGoodreads',
-      'download',
-      'delete',
-    ]);
-  });
-
-  it('omits download/upload/share for a book that is neither downloaded nor uploaded', () => {
-    const book = createBook({ filePath: '/some/external/file.epub' });
-    expect(getBookContextMenuItemIds(book)).toEqual([
-      'select',
-      'group',
-      'markFinished',
-      'markAbandoned',
-      'showDetails',
-      'showInFinder',
-      'searchGoodreads',
-      'delete',
-    ]);
-  });
-
-  // Issue #5307 — a feed subscription has no file anywhere: the cloud has
-  // nothing to upload it to and nothing to hand a share link. Offering those
-  // actions only produces a failed transfer.
-  it('omits download/upload/share for a feed book (issue #5307)', () => {
-    const book = createBook({
-      downloadedAt: 1,
-      url: buildFeedBookUrl('https://www.saastr.com/feed/'),
-    });
-    expect(getBookContextMenuItemIds(book)).toEqual([
-      'select',
-      'group',
-      'markFinished',
-      'markAbandoned',
-      'showDetails',
-      'showInFinder',
-      'searchGoodreads',
-      'delete',
-    ]);
-  });
-
-  it('produces the same order on repeated calls and never duplicates an item (issue #4389)', () => {
-    const book = createBook({ downloadedAt: 1, uploadedAt: 1, readingStatus: 'finished' });
-    const first = getBookContextMenuItemIds(book);
-    const second = getBookContextMenuItemIds(book);
-    expect(second).toEqual(first);
-    expect(new Set(first).size).toBe(first.length);
+  it('omits file actions for a fileless feed', () => {
+    expect(
+      getBookContextMenuItemIds({
+        ...book,
+        downloadedAt: 1,
+        url: buildFeedBookUrl('https://example.com/feed'),
+      }),
+    ).toEqual(['group', 'delete']);
   });
 });

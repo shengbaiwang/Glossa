@@ -208,7 +208,7 @@ describe('BaseAppService', () => {
     // clearAllMocks resets call history but not implementations, so restore the
     // shared saveLibraryBooks mock's default after these override it.
     afterEach(() => {
-      vi.mocked(LibrarySvc.saveLibraryBooks).mockReset().mockResolvedValue(undefined);
+      vi.mocked(LibrarySvc.saveLibraryBooks).mockReset().mockResolvedValue([]);
       vi.mocked(requestStoragePermission).mockReset();
     });
 
@@ -223,10 +223,10 @@ describe('BaseAppService', () => {
       service.isAndroidApp = true;
       vi.mocked(LibrarySvc.saveLibraryBooks)
         .mockRejectedValueOnce(permError())
-        .mockResolvedValueOnce(undefined);
+        .mockResolvedValueOnce([]);
       vi.mocked(requestStoragePermission).mockResolvedValue(true);
 
-      await expect(service.saveLibraryBooks([])).resolves.toBeUndefined();
+      await expect(service.saveLibraryBooks([])).resolves.toEqual([]);
       expect(requestStoragePermission).toHaveBeenCalledTimes(1);
       expect(LibrarySvc.saveLibraryBooks).toHaveBeenCalledTimes(2);
     });

@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useThemeStore } from '@/store/themeStore';
 import { Overlay } from '@/components/Overlay';
 import ModalPortal from '@/components/ModalPortal';
@@ -65,7 +65,16 @@ const BookContextMenuPopup: React.FC<BookContextMenuPopupProps> = ({
 }) => {
   const { safeAreaInsets: insets } = useThemeStore();
   const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef(document.activeElement);
   const [placement, setPlacement] = useState<{ left: number; top: number } | null>(null);
+
+  useEffect(() => {
+    const trigger = triggerRef.current;
+    return () => {
+      if (trigger instanceof HTMLElement && trigger.isConnected)
+        trigger.focus({ preventScroll: true });
+    };
+  }, []);
 
   useLayoutEffect(() => {
     if (!menuRef.current) return;
@@ -89,6 +98,9 @@ const BookContextMenuPopup: React.FC<BookContextMenuPopupProps> = ({
     <ModalPortal showOverlay={false}>
       <Overlay onDismiss={onClose} className='z-0' />
       <div
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerUp={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
         ref={menuRef}
         className={clsx('absolute z-[1] w-max', !placement && 'invisible')}
         style={{ left: placement?.left ?? 0, top: placement?.top ?? 0 }}

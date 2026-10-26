@@ -1,0 +1,233 @@
+/* One measured face owns the artwork, binding, paper edge and cast shadow. */
+.book-cover-container {
+  container: glossa-cover / size;
+  align-items: flex-start;
+  justify-content: flex-start;
+  --book-cover-depth: 0px;
+  --book-cover-radius: 3px;
+  --book-cover-paper: #ded7c9;
+  --book-cover-paper-rule: #c5bdad;
+  --book-cover-rest-shadow: 0 1px 2px rgb(35 29 20 / 0.13), 1px 4px 9px rgb(35 29 20 / 0.1);
+  --book-cover-raised-shadow: 0 2px 3px rgb(35 29 20 / 0.12), 1px 7px 13px rgb(35 29 20 / 0.14);
+}
+
+.book-cover-container[data-mode='list'] {
+  align-items: center;
+}
+
+.book-cover-container[data-material='paper'] {
+  --book-cover-depth: clamp(2px, 1.6cqw, 4px);
+  --book-cover-radius: 2px;
+}
+
+.book-cover-surface {
+  position: relative;
+  isolation: isolate;
+  flex: none;
+  width: calc(100% - var(--book-cover-depth));
+  height: calc(100% - var(--book-cover-depth));
+  border-radius: var(--book-cover-radius);
+  box-shadow: var(--book-cover-rest-shadow);
+  transition:
+    transform 240ms cubic-bezier(0.2, 0.7, 0.25, 1),
+    box-shadow 240ms cubic-bezier(0.2, 0.7, 0.25, 1);
+}
+
+.book-cover-container[data-fit='fit'] .book-cover-surface {
+  width: min(
+    calc(100cqw - var(--book-cover-depth)),
+    calc((100cqh - var(--book-cover-depth)) * var(--book-cover-ratio))
+  );
+  height: min(
+    calc(100cqh - var(--book-cover-depth)),
+    calc((100cqw - var(--book-cover-depth)) / var(--book-cover-ratio))
+  );
+}
+
+.book-cover-container[data-material='paper'] .book-cover-surface {
+  border-start-start-radius: 1px;
+  border-end-start-radius: 2px 3px;
+}
+
+.book-cover-container[data-material='paper'] .book-cover-surface::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset-block: 2px calc(-1 * var(--book-cover-depth));
+  inset-inline: 1px calc(-1 * var(--book-cover-depth));
+  border-radius: 2px;
+  border-start-start-radius: 1px;
+  /* Tuck the page heel beneath the binding, with no offset tab or outer keyline. */
+  border-end-start-radius: calc(var(--book-cover-depth) + 3px);
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--book-cover-paper) 0 1px,
+    color-mix(in srgb, var(--book-cover-paper) 74%, var(--book-cover-paper-rule)) 1px 2px
+  );
+  box-shadow: inset 0 -0.5px 0 var(--book-cover-paper-rule);
+  pointer-events: none;
+}
+
+.book-cover-face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  background: var(--glossa-surface);
+}
+
+.book-cover-face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgb(35 29 20 / 0.09);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.book-cover-face .cover-image {
+  border-radius: inherit;
+}
+
+.book-cover-face .book-spine {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: clamp(8px, 8%, 15px);
+  background: linear-gradient(
+    to right,
+    rgb(24 19 13 / 0.24),
+    rgb(24 19 13 / 0.08) 15%,
+    rgb(255 250 235 / 0.1) 32%,
+    transparent 48%,
+    rgb(24 19 13 / 0.13) 62%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 7px), rgb(0 0 0 / 0.55));
+  pointer-events: none;
+}
+
+.book-cover-container:dir(rtl) .book-spine {
+  transform: scaleX(-1);
+}
+
+.book-cover-face .fallback-cover {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 24% 12% 16%;
+  color: var(--glossa-ink);
+  background: color-mix(in srgb, var(--glossa-surface) 88%, #d8cfb9);
+  font-family: ui-serif, Georgia, 'Noto Serif', serif;
+  text-align: center;
+}
+
+.fallback-cover::before {
+  content: '';
+  position: absolute;
+  top: 13%;
+  width: 18%;
+  border-top: 1px solid color-mix(in srgb, var(--glossa-ink) 28%, transparent);
+}
+
+.book-cover-title {
+  font-size: clamp(12px, 9cqw, 24px);
+  font-weight: 500;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.book-cover-author {
+  font-size: clamp(9px, 5.5cqw, 14px);
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--glossa-ink) 62%, transparent);
+}
+
+@container glossa-cover (max-width: 100px) {
+  .book-cover-surface {
+    --book-cover-depth: 2px;
+  }
+  .book-cover-container[data-material='flat'] .book-cover-surface {
+    --book-cover-depth: 0px;
+  }
+  .book-cover-title {
+    font-size: clamp(7px, 12cqw, 12px);
+    line-height: 1.4;
+  }
+  .book-cover-author {
+    font-size: clamp(6px, 8cqw, 9px);
+  }
+}
+
+[data-theme$='-dark'] .book-cover-container {
+  --book-cover-paper: #aaa293;
+  --book-cover-paper-rule: #8f8778;
+  --book-cover-rest-shadow: 0 1px 2px rgb(0 0 0 / 0.35), 1px 4px 9px rgb(0 0 0 / 0.3);
+  --book-cover-raised-shadow: 0 2px 3px rgb(0 0 0 / 0.35), 1px 7px 13px rgb(0 0 0 / 0.38);
+}
+
+[data-theme$='-dark'] .book-cover-face::after {
+  border-color: rgb(255 247 227 / 0.1);
+}
+
+/* Animate the book only. Its hit target, title and reading status stay still. */
+.glossa-book-card:not(.glossa-book-card-selected):focus-visible .book-item:not([data-selecting])
+  .book-cover-container[data-material='paper']:not([data-preview])
+  .book-cover-surface {
+  transform: translateY(-2px);
+  box-shadow: var(--book-cover-raised-shadow);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .glossa-book-card:not(.glossa-book-card-selected):hover
+    .book-item:not([data-selecting])
+    .book-cover-container[data-material='paper']:not([data-preview])
+    .book-cover-surface {
+    transform: translateY(-2px);
+    box-shadow: var(--book-cover-raised-shadow);
+  }
+
+  .glossa-book-card:not(.glossa-book-card-selected):active
+    .book-item:not([data-selecting])
+    .book-cover-container[data-material='paper']:not([data-preview])
+    .book-cover-surface {
+    transform: translateY(0);
+    box-shadow: var(--book-cover-rest-shadow);
+    transition-duration: 90ms;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .book-cover-surface {
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
+[data-eink='true'] .book-cover-container,
+[data-eink='true'] .book-cover-surface {
+  --book-cover-depth: 0px;
+}
+
+[data-eink='true'] .book-cover-surface {
+  box-shadow: none !important;
+  transition: none !important;
+  transform: none !important;
+}
+
+[data-eink='true'] .book-cover-face::after {
+  border-color: var(--glossa-ink);
+}
+
+[data-eink='true'] .book-cover-surface::before,
+[data-eink='true'] .book-spine {
+  display: none;
+}
+
+[data-eink='true'] .book-cover-face .fallback-cover {
+  background: var(--glossa-surface);
+}

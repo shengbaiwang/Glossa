@@ -30,7 +30,7 @@ describe('getOPDSBookMetadata', () => {
     expect(result.published).toBe('2020-01-02');
     expect(result.language).toBe('fr');
     expect(result.identifier).toBe('urn:isbn:9780316769488');
-    expect(result.subject).toEqual(['Fantasy', 'Adventure']);
+    expect(result).not.toHaveProperty('subject');
     expect(result.description).toContain('<b>fine</b>');
   });
 
@@ -89,13 +89,13 @@ describe('getOPDSBookMetadata', () => {
     expect(result.language).toEqual(['de', 'en']);
   });
 
-  it('falls back to the subject code when there is no label and accepts plain strings', () => {
+  it('ignores external subject codes and plain strings', () => {
     const withCode = getOPDSBookMetadata({ metadata: { subject: [{ code: 'sci-fi' }] } });
-    expect(withCode.subject).toEqual(['sci-fi']);
+    expect(withCode).toEqual({});
     const plain = getOPDSBookMetadata({
       metadata: { subject: ['History'] as unknown as PublicationMetadata['subject'] },
     });
-    expect(plain.subject).toEqual(['History']);
+    expect(plain).toEqual({});
   });
 });
 
@@ -128,10 +128,10 @@ describe('applyOPDSMetadata', () => {
       title: 'Feed Title',
       author: ['Jane Doe', 'John Smith'],
       language: 'fr',
-      subject: ['Fantasy'],
+      ...{ subject: ['Fantasy'] },
     });
     expect(book.metadata?.title).toBe('Feed Title');
-    expect(book.metadata?.subject).toEqual(['Fantasy']);
+    expect(book.metadata).not.toHaveProperty('subject');
     // Fields the feed omitted keep the file's values.
     expect(book.metadata?.publisher).toBe('File Press');
     expect(book.metadata?.series).toBe('File Series');

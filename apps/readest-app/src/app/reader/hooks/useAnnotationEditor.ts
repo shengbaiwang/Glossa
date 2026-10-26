@@ -159,7 +159,7 @@ export const useAnnotationEditor = ({
       } catch {
         const latest = getConfig(bookKey)?.booknotes ?? [];
         const rollback = latest.map((a) => (a === updated ? existing : a));
-        updateBooknotes(bookKey, rollback);
+        updateBooknotes(bookKey, rollback, false);
         return false;
       }
       for (const v of getViewsById(bookKey.split('-')[0]!)) {

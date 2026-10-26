@@ -525,7 +525,7 @@ export abstract class BaseAppService implements AppService {
   // Prompt for storage permission at most once per session (see saveLibraryBooks).
   private storagePermissionRequested = false;
 
-  async saveLibraryBooks(books: Book[], options?: SaveLibraryBooksOptions): Promise<void> {
+  async saveLibraryBooks(books: Book[], options?: SaveLibraryBooksOptions): Promise<Book[] | void> {
     try {
       return await LibrarySvc.saveLibraryBooks(this.fs, books, options);
     } catch (error) {

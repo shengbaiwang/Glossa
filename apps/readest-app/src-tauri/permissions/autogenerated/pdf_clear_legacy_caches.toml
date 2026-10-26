@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pdf-clear-legacy-caches"
+description = "Enables the pdf_clear_legacy_caches command without any pre-configured scope."
+commands.allow = ["pdf_clear_legacy_caches"]
+
+[[permission]]
+identifier = "deny-pdf-clear-legacy-caches"
+description = "Denies the pdf_clear_legacy_caches command without any pre-configured scope."
+commands.deny = ["pdf_clear_legacy_caches"]

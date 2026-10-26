@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatSeries } from '@/utils/book';
+import { formatSeries, getVisibleBooks } from '@/utils/book';
+import type { Book } from '@/types/book';
 
 describe('formatSeries', () => {
   it('returns an empty string when there is no series name', () => {
@@ -30,5 +31,28 @@ describe('formatSeries', () => {
   it('omits the number when the index is zero or not a finite number', () => {
     expect(formatSeries('Harry Potter', 0)).toBe('Harry Potter');
     expect(formatSeries('Harry Potter', Number.NaN)).toBe('Harry Potter');
+  });
+});
+
+describe('duplicate visibility', () => {
+  const books = (links: Record<string, string | undefined>): Book[] =>
+    Object.entries(links).map(([hash, duplicateOf]) => ({
+      hash,
+      duplicateOf,
+      title: hash,
+      author: '',
+      format: 'EPUB',
+      createdAt: 1,
+      updatedAt: 1,
+    }));
+  it('shows the keeper and an orphan whose keeper has not synced yet', () => {
+    expect(
+      getVisibleBooks(books({ a: undefined, b: 'a', c: 'missing' })).map((b) => b.hash),
+    ).toEqual(['a', 'c']);
+  });
+  it('resolves conflicting sync choices to one visible cycle member', () => {
+    expect(getVisibleBooks(books({ a: 'b', b: 'c', c: 'b', d: 'a' })).map((b) => b.hash)).toEqual([
+      'b',
+    ]);
   });
 });

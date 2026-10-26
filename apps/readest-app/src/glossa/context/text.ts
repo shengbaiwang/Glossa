@@ -3,6 +3,9 @@ import type { ChapterSource } from './types';
 export const normalizeSourceText = (text: string): string =>
   text.normalize('NFC').replace(/\s+/g, ' ').trim();
 
+export const normalizeCodeText = (text: string): string =>
+  text.normalize('NFC').replace(/\r\n?/g, '\n').trimEnd();
+
 export const checkAborted = (signal?: AbortSignal): void => {
   if (signal?.aborted) throw new DOMException('Chapter operation cancelled', 'AbortError');
 };
@@ -33,6 +36,12 @@ const blockTags = new Set([
 ]);
 
 export const isReadable = (node: Text): boolean => {
+  if (node.parentElement?.closest('.md-missing-image')) return false;
+  const math = node.parentElement?.closest('math');
+  // Native MathML contains both visual tokens and the exact TeX annotation.
+  // Use the latter once so evidence retains operators and source semantics.
+  if (math && !node.parentElement?.closest('annotation[encoding="application/x-tex"]'))
+    return false;
   let element = node.parentElement;
   while (element) {
     if (
@@ -50,10 +59,21 @@ export const isReadable = (node: Text): boolean => {
 };
 
 /** Exact, readable text inside a range, including partially visible text nodes. */
-export function readRangeText(doc: Document, range: Range): string {
+export function readRangeText(doc: Document, range: Range, code = false): string {
   const walker = doc.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
   const parts: string[] = [];
+  const formulas = new Set<Element>();
   const append = (node: Text) => {
+    const math = node.parentElement?.closest('math');
+    if (math) {
+      if (!formulas.has(math) && range.intersectsNode(math)) {
+        formulas.add(math);
+        parts.push(
+          math.querySelector('annotation[encoding="application/x-tex"]')?.textContent ?? '',
+        );
+      }
+      return;
+    }
     if (!isReadable(node) || !range.intersectsNode(node)) return;
     const start = node === range.startContainer ? range.startOffset : 0;
     const end = node === range.endContainer ? range.endOffset : node.length;
@@ -65,7 +85,7 @@ export function readRangeText(doc: Document, range: Range): string {
     let node: Node | null;
     while ((node = walker.nextNode())) append(node as Text);
   }
-  return normalizeSourceText(parts.join(''));
+  return (code ? normalizeCodeText : normalizeSourceText)(parts.join(''));
 }
 
 /** Intersect with the visible/selected range; never expand to the unread end of a paragraph. */
@@ -82,7 +102,7 @@ export function collectRangeBlocks(doc: Document, within: Range): TextBlock[] {
       range.setStart(within.startContainer, within.startOffset);
     if (range.compareBoundaryPoints(Range.END_TO_END, within) > 0)
       range.setEnd(within.endContainer, within.endOffset);
-    const text = readRangeText(doc, range);
+    const text = readRangeText(doc, range, block.kind === 'code');
     return text ? [{ ...block, range, text }] : [];
   });
 }
@@ -101,6 +121,7 @@ const owningBlock = (node: Text, root: Element): Element => {
 
 const blockKind = (element: Element): ChapterSource['kind'] => {
   const tag = element.localName.toLowerCase();
+  if (tag === 'pre' || element.closest('pre')) return 'code';
   if (/^h[1-6]$/.test(tag)) return 'heading';
   if (tag === 'table') return 'table';
   if (tag === 'li' || tag === 'dt' || tag === 'dd') return 'list';
@@ -126,13 +147,19 @@ export const collectTextBlocks = (doc: Document, within?: Range): TextBlock[] =>
   }
   return groups.flatMap(({ element, nodes }) => {
     const kind = blockKind(element);
-    const text = normalizeSourceText(
+    const text = (kind === 'code' ? normalizeCodeText : normalizeSourceText)(
       nodes.map((node) => node.data).join(kind === 'table' ? ' ' : ''),
     );
     if (!text) return [];
     const range = doc.createRange();
     range.setStart(nodes[0]!, 0);
     range.setEnd(nodes.at(-1)!, nodes.at(-1)!.length);
+    // Whole-formula anchors need a visible box: annotation itself is hidden by
+    // MathML layout. Keep the native DOM intact and anchor around its wrapper.
+    const firstFormula = nodes[0]!.parentElement?.closest('.glossa-formula');
+    const lastFormula = nodes.at(-1)!.parentElement?.closest('.glossa-formula');
+    if (firstFormula) range.setStartBefore(firstFormula);
+    if (lastFormula) range.setEndAfter(lastFormula);
     return [{ text, kind, range }];
   });
 };

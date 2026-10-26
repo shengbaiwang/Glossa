@@ -6,6 +6,7 @@ import type { SystemSettings } from '@/types/settings';
 import type { EnvConfigType } from '@/services/environment';
 import { useLibraryStore } from '@/store/libraryStore';
 import { createAppLocalStore } from '@/services/sync/file/appLocalStore';
+import { fingerprintFile } from '@/services/bookIdentity';
 
 /**
  * Regression test for the library-clobber data-loss path: when "Sync now"
@@ -45,6 +46,14 @@ beforeEach(() => {
     }),
     generateCoverImageUrl: vi.fn(async () => 'blob:cover'),
     deleteBook: vi.fn(async () => {}),
+    resolveFilePath: vi.fn(async (path: string) => (path ? `/books/${path}` : '/books')),
+    exists: vi.fn(async (path: string) => path.endsWith('.epub') || path === 'library.json'),
+    readDirectory: vi.fn(async () => []),
+    openFile: vi.fn(async (path: string) => new File([path], path)),
+    readFile: vi.fn(async () => JSON.stringify(savedLibrary ?? onDisk)),
+    writeFile: vi.fn(async (path: string, _base: string, value: string) => {
+      if (path === 'library.json') savedLibrary = JSON.parse(value) as Book[];
+    }),
   } as unknown as AppService;
   envConfig = { getAppService: async () => appService } as unknown as EnvConfigType;
 });
@@ -57,10 +66,48 @@ const makeStore = () =>
   createAppLocalStore({ appService, settings: {} as SystemSettings, envConfig });
 
 describe('createAppLocalStore — library hydration (data-loss guard)', () => {
+  test('verifies concurrent downloads once and retains a legacy duplicate for review', async () => {
+    const file = new File(['same bytes'], 'same.epub');
+    const contentFingerprint = await fingerprintFile(file);
+    const personal = makeBook('a', {
+      title: 'Personal title',
+      groupId: 'mine',
+      progress: [40, 100],
+      contentFingerprint,
+    });
+    savedLibrary = [personal];
+    useLibraryStore.getState().setLibrary([personal]);
+    appService.openFile = vi.fn(async () => file);
+    const store = makeStore();
+    await Promise.all([
+      store.addBookToLibrary(makeBook('remote', { contentFingerprint })),
+      store.addBookToLibrary(makeBook('remote', { contentFingerprint })),
+    ]);
+    expect(savedLibrary).toHaveLength(2);
+    expect(useLibraryStore.getState().visibleLibrary).toHaveLength(1);
+    expect(savedLibrary!.find((book) => book.hash === 'a')).toMatchObject(personal);
+    expect(savedLibrary!.find((book) => book.hash === 'remote')?.duplicateOf).toBe('a');
+  });
+
+  test('rejects mismatched downloaded bytes before registering a remote identity', async () => {
+    const contentFingerprint = await fingerprintFile(new File(['expected'], 'expected.epub'));
+    await expect(
+      makeStore().addBookToLibrary(makeBook('c', { contentFingerprint })),
+    ).rejects.toThrow('fingerprint mismatch');
+    expect(savedLibrary).toBeNull();
+  });
+
+  test('does not reset a sidecar already saved by an earlier download attempt', async () => {
+    appService.exists = vi.fn(async () => true);
+    appService.saveBookConfig = vi.fn();
+    await makeStore().saveDownloadedConfig!(makeBook('c'), { updatedAt: 0, booknotes: [] });
+    expect(appService.saveBookConfig).not.toHaveBeenCalled();
+  });
+
   test('addBookToLibrary keeps existing on-disk books when the store is unloaded', async () => {
     await makeStore().addBookToLibrary(makeBook('c'));
 
-    expect(appService.loadLibraryBooks).toHaveBeenCalledTimes(1);
+    expect(appService.readFile).toHaveBeenCalledWith('library.json', 'Books', 'text');
     expect(savedLibrary).not.toBeNull();
     const hashes = savedLibrary!.map((b) => b.hash).sort();
     // The downloaded book is appended; a, b must survive (no clobber to [c]).

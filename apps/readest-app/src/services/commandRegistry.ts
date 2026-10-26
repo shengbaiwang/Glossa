@@ -171,6 +171,10 @@ const panelIcons: Record<SettingsPanelType, IconType> = {
   Models: RiShareLine,
   Conversation: RiChat1Line,
   Custom: IoAccessibilityOutline,
+  ReadingTheme: VscSymbolColor,
+  Dictionaries: RiTranslate,
+  Speech: LiaHandPointerSolid,
+  About: Settings2,
 };
 
 // font panel items
@@ -591,6 +595,27 @@ export const buildCommandRegistry = (options: CommandRegistryOptions): CommandIt
     icon: panelIcons[panel],
     action: () => openSettingsPanel(panel, def.id),
   });
+
+  items.push(
+    createSettingsItem(
+      {
+        id: 'settings.speech.rate',
+        labelKey: _('Speed'),
+        keywords: ['speech', 'read aloud', 'speed', '朗读', '语速'],
+      },
+      'Speech',
+      'Reading',
+    ),
+    createSettingsItem(
+      {
+        id: 'settings.dictionaries.manage',
+        labelKey: _('Dictionaries'),
+        keywords: ['dictionary', 'lookup', '词典'],
+      },
+      'Dictionaries',
+      'Reading',
+    ),
+  );
 
   for (const module of OFFICIAL_MODULES) {
     items.push(

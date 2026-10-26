@@ -15,6 +15,9 @@ const { settings, save, navigate, openSettings } = vi.hoisted(() => ({
     libraryCoverFit: 'crop',
     librarySkeuomorphicCovers: false,
     libraryRecentShelfEnabled: true,
+    libraryCoverWidth: undefined as number | undefined,
+    libraryShowAuthor: undefined as boolean | undefined,
+    libraryShowProgress: undefined as boolean | undefined,
   },
   save: vi.fn(),
   navigate: vi.fn(),
@@ -46,6 +49,9 @@ beforeEach(() => {
     libraryCoverFit: 'crop',
     librarySkeuomorphicCovers: false,
     libraryRecentShelfEnabled: true,
+    libraryCoverWidth: undefined,
+    libraryShowAuthor: undefined,
+    libraryShowProgress: undefined,
   });
   save.mockReset();
   navigate.mockReset();
@@ -60,33 +66,31 @@ it('keeps display choices together without a selection command', () => {
   expect(screen.queryByRole('menuitem', { name: 'Select Books' })).toBeNull();
   expect(screen.getByRole('button', { name: 'List', pressed: true })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Grid', pressed: false })).toBeTruthy();
-  expect(
-    screen.getByRole('menuitemcheckbox', { name: 'Skeuomorphic Book Covers - OFF' }),
-  ).toBeTruthy();
+  expect(screen.queryByText('Library Display')).toBeNull();
+  expect(screen.queryByRole('group', { name: 'Book Covers' })).toBeNull();
+  expect(screen.getByRole('checkbox', { name: 'Show recent reading' })).toBeTruthy();
   expect(screen.queryByRole('group', { name: 'Cover Size' })).toBeNull();
 });
 
-it('adjusts only the active size and disables its unavailable direction', async () => {
+it('adjusts only the current list size with a bounded slider', async () => {
   settings.libraryListScale = 80;
   render(<ViewMenu />);
-  const size = within(screen.getByRole('group', { name: 'List Size' }));
-  expect(size.getByRole('button', { name: 'Decrease' }).hasAttribute('disabled')).toBe(true);
-  fireEvent.click(size.getByRole('button', { name: 'Increase' }));
+  const slider = screen.getByRole('slider', { name: 'List Size' });
+  expect(slider.getAttribute('min')).toBe('80');
+  expect(slider.getAttribute('max')).toBe('140');
+  fireEvent.change(slider, { target: { value: '90' } });
   await waitFor(() => expect(save).toHaveBeenCalledWith({}, 'libraryListScale', 90));
   expect(save).not.toHaveBeenCalledWith({}, 'libraryColumns', expect.anything());
 });
 
 it('preserves URL filters when changing layout and fitting covers', async () => {
+  settings.libraryViewMode = 'grid';
   window.history.replaceState(null, '', '/library?q=sample&group=one');
   try {
     render(<ViewMenu />);
-    fireEvent.click(screen.getByRole('button', { name: 'Grid' }));
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith({}, 'q=sample&group=one&view=grid'));
-    fireEvent.click(
-      within(screen.getByRole('group', { name: 'Book Covers' })).getByRole('button', {
-        name: 'Fit',
-      }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'List' }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({}, 'q=sample&group=one&view=list'));
+    fireEvent.click(screen.getByRole('button', { name: 'Show full cover' }));
     await waitFor(() => expect(save).toHaveBeenCalledWith({}, 'libraryCoverFit', 'fit'));
     expect(navigate).toHaveBeenCalledWith({}, 'q=sample&group=one&cover=fit');
   } finally {
@@ -94,7 +98,7 @@ it('preserves URL filters when changing layout and fitting covers', async () => 
   }
 });
 
-it('sizes the grid from its visible automatic columns and plus enlarges covers', async () => {
+it('starts from visible cover width and saves size independently of column count', async () => {
   settings.libraryViewMode = 'grid';
   const shelf = document.createElement('div');
   shelf.className = 'glossa-collection-grid';
@@ -102,28 +106,44 @@ it('sizes the grid from its visible automatic columns and plus enlarges covers',
   document.body.appendChild(shelf);
   try {
     render(<ViewMenu />);
-    fireEvent.click(
-      within(screen.getByRole('group', { name: 'Cover Size' })).getByRole('button', {
-        name: 'Increase',
-      }),
-    );
+    const slider = screen.getByRole('slider', { name: 'Cover Size' });
+    expect((slider as HTMLInputElement).value).toBe('200');
+    fireEvent.change(slider, { target: { value: '220' } });
     await waitFor(() => expect(save).toHaveBeenCalledWith({}, 'libraryAutoColumns', false));
-    expect(save).toHaveBeenCalledWith({}, 'libraryColumns', 4);
+    expect(save).toHaveBeenCalledWith({}, 'libraryCoverWidth', 220);
+    expect(save).not.toHaveBeenCalledWith({}, 'libraryColumns', expect.anything());
   } finally {
     shelf.remove();
   }
 });
 
-it('restores automatic sizing and saves skeuomorphic covers and recent reading in existing fields', async () => {
+it('restores automatic sizing and reuses existing cover and recent reading fields', async () => {
   settings.libraryViewMode = 'grid';
   settings.libraryAutoColumns = false;
+  settings.libraryCoverWidth = 220;
   render(<ViewMenu />);
   fireEvent.click(screen.getByRole('button', { name: 'Auto', pressed: false }));
   await waitFor(() => expect(save).toHaveBeenCalledWith({}, 'libraryAutoColumns', true));
-  fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Skeuomorphic Book Covers - OFF' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: '3D covers' }));
   await waitFor(() => expect(save).toHaveBeenCalledWith({}, 'librarySkeuomorphicCovers', true));
-  fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Continue reading - ON' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Show recent reading' }));
   await waitFor(() => expect(save).toHaveBeenCalledWith({}, 'libraryRecentShelfEnabled', false));
+});
+
+it('keeps book information collapsed and defaults old preferences to visible', async () => {
+  render(<ViewMenu />);
+  const disclosure = screen.getByRole('button', { name: 'Book information' }).closest('details')!;
+  expect(disclosure.open).toBe(false);
+  disclosure.open = true;
+  const info = within(disclosure);
+  expect((info.getByRole('checkbox', { name: 'Author' }) as HTMLInputElement).checked).toBe(true);
+  expect(
+    (info.getByRole('checkbox', { name: 'Reading Progress' }) as HTMLInputElement).checked,
+  ).toBe(true);
+  fireEvent.click(info.getByRole('checkbox', { name: 'Author' }));
+  await waitFor(() => expect(save).toHaveBeenCalledWith({}, 'libraryShowAuthor', false));
+  fireEvent.click(info.getByRole('checkbox', { name: 'Reading Progress' }));
+  await waitFor(() => expect(save).toHaveBeenCalledWith({}, 'libraryShowProgress', false));
 });
 
 it('preserves effective secondary sorting inside one disclosure', async () => {
@@ -146,10 +166,7 @@ it('preserves effective secondary sorting inside one disclosure', async () => {
   await waitFor(() => expect(save).toHaveBeenCalledWith({}, 'librarySortByAuto', false));
 });
 
-it('opens global appearance in the existing settings panel and closes this menu', () => {
-  const close = vi.fn();
-  render(<ViewMenu setIsDropdownOpen={close} />);
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Theme & Background' }));
-  expect(openSettings).toHaveBeenCalledWith('application', '', 'Theme');
-  expect(close).toHaveBeenCalledWith(false);
+it('keeps appearance in global settings rather than this menu', () => {
+  render(<ViewMenu />);
+  expect(screen.queryByRole('menuitem', { name: 'Theme & Background' })).toBeNull();
 });

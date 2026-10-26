@@ -1,12 +1,18 @@
 import clsx from 'clsx';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { Book } from '@/types/book';
+import { useLibraryBookEdits } from '@/app/library/hooks/useLibraryBookEdits';
+import { useLibraryStore } from '@/store/libraryStore';
+import { useSettingsStore } from '@/store/settingsStore';
+import { removalScope } from '@/services/appBookRemoval';
+import { EXTS, MIMETYPES } from '@/libs/document';
+import { getLocalBookFilename } from '@/utils/book';
+import { makeSafeFilename } from '@/utils/misc';
 import { formatAuthors, formatTitle, getBookWithUpdatedMetadata } from '@/utils/book';
 import { BookMetadata } from '@/libs/document';
 import { useEnv } from '@/context/EnvContext';
 import { useAuth } from '@/context/AuthContext';
-import { useThemeStore } from '@/store/themeStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useMetadataEdit } from './useMetadataEdit';
 import { DeleteAction } from '@/types/system';
@@ -14,10 +20,13 @@ import { eventDispatcher } from '@/utils/event';
 import { isWebAppPlatform } from '@/services/environment';
 import DeleteConfirmAlert from '@/components/DeleteConfirmAlert';
 import Dialog from '@/components/Dialog';
+import ModalPortal from '@/components/ModalPortal';
 import BookDetailView from './BookDetailView';
 import BookDetailEdit from './BookDetailEdit';
 import SourceSelector from './SourceSelector';
 import Spinner from '../Spinner';
+
+type DeleteHandler = (book: Book, signal?: AbortSignal) => void | boolean | Promise<void | boolean>;
 
 interface BookDetailModalProps {
   book: Book;
@@ -25,23 +34,21 @@ interface BookDetailModalProps {
   onClose: () => void;
   handleBookDownload?: (book: Book, options?: { redownload?: boolean; queued?: boolean }) => void;
   handleBookUpload?: (book: Book) => void;
-  handleBookDelete?: (book: Book) => void;
-  handleBookDeleteCloudBackup?: (book: Book) => void;
-  handleBookDeleteLocalCopy?: (book: Book) => void;
-  handleBookPurge?: (book: Book) => void;
+  handleBookDelete?: DeleteHandler;
+  handleBookDeleteLocalCopy?: DeleteHandler;
+  handleBookPurge?: DeleteHandler;
   handleBookMetadataUpdate?: (book: Book, updatedMetadata: BookMetadata, tags: string[]) => void;
-  onMetadataValueClick?: (type: 'tag' | 'subject', value: string) => void;
+  onMetadataValueClick?: (type: 'tag', value: string) => void;
 }
 
-// Purge is no longer a standalone menu action — it is an opt-in toggle on the
-// standard ('both') delete confirmation, so the menu only triggers these three.
-type DeleteMenuAction = Exclude<DeleteAction, 'purge'>;
+// Permanent deletion is available only from Recently Deleted.
+type DeleteMenuAction = Exclude<DeleteAction, 'purge' | 'cloud'>;
 
 interface DeleteConfig {
   title: string;
   message: string;
-  handler?: (book: Book) => void;
-  showPurgeToggle?: boolean;
+  handler?: DeleteHandler;
+  confirmLabel: string;
 }
 
 const BookDetailModal: React.FC<BookDetailModalProps> = ({
@@ -51,17 +58,18 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
   handleBookDownload,
   handleBookUpload,
   handleBookDelete,
-  handleBookDeleteCloudBackup,
   handleBookDeleteLocalCopy,
-  handleBookPurge,
   handleBookMetadataUpdate,
   onMetadataValueClick,
 }) => {
   const _ = useTranslation();
+  const { settings } = useSettingsStore();
+  const bookEdits = useLibraryBookEdits();
   const { envConfig, appService } = useEnv();
   const { user } = useAuth();
-  const { safeAreaInsets } = useThemeStore();
   const [activeDeleteAction, setActiveDeleteAction] = useState<DeleteMenuAction | null>(null);
+  const deletionController = useRef<AbortController | null>(null);
+  useEffect(() => () => deletionController.current?.abort(), []);
   const [isLoading, setIsLoading] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [bookMeta, setBookMeta] = useState<BookMetadata | null>(null);
@@ -71,6 +79,27 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
   // save, so the details view tracks the saved book locally to refresh its
   // cover/title/author immediately (otherwise it shows the stale prop).
   const [displayBook, setDisplayBook] = useState<Book>(book);
+  const storedBook = useLibraryStore((state) =>
+    state.library.find((item) => item.hash === book.hash),
+  );
+  useEffect(() => {
+    if (storedBook) setDisplayBook(storedBook);
+  }, [storedBook]);
+  useEffect(() => {
+    if (!storedBook) return;
+    setBookTags(storedBook.tags ?? []);
+    setBookMeta((previous) => {
+      const metadata = storedBook.metadata ?? previous;
+      if (!metadata) return null;
+      if (
+        metadata === previous &&
+        metadata.title === storedBook.title &&
+        metadata.author === storedBook.author
+      )
+        return previous;
+      return { ...metadata, title: storedBook.title, author: storedBook.author };
+    });
+  }, [storedBook?.metadata, storedBook?.title, storedBook?.author, storedBook?.tags]);
 
   // Initialize metadata edit hook
   const {
@@ -94,58 +123,68 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
 
   const deleteConfigs: Record<DeleteMenuAction, DeleteConfig> = {
     both: {
-      title: _('Confirm Deletion'),
-      message: _('Are you sure to delete the selected book?'),
+      title: _('Delete book?'),
+      message: _('You can restore this book and its reading data from Recently Deleted.'),
       handler: handleBookDelete,
-      showPurgeToggle: !!handleBookPurge,
-    },
-    cloud: {
-      title: _('Confirm Deletion'),
-      message: _('Are you sure to delete the cloud backup of the selected book?'),
-      handler: handleBookDeleteCloudBackup,
+      confirmLabel: _('Delete'),
     },
     local: {
-      title: _('Confirm Deletion'),
-      message: _('Are you sure to delete the local copy of the selected book?'),
+      title: _('Clear local download?'),
+      message: _(
+        'Clear the downloaded copy from this device? Personal data and cloud copies are kept.',
+      ),
       handler: handleBookDeleteLocalCopy,
+      confirmLabel: _('Clear download'),
     },
   };
 
   useEffect(() => {
+    let cancelled = false;
     const fetchBookDetails = async () => {
-      const appService = await envConfig.getAppService();
       try {
-        let details = book.metadata || null;
-        if (!details && book.downloadedAt) {
-          details = await appService.fetchBookDetails(book);
-        }
-        // Imported fields may have been corrected without discarding the raw
-        // metadata. Editing/resetting starts from the name shown in the library.
+        const service = await envConfig.getAppService();
+        const startingBook =
+          useLibraryStore.getState().library.find((item) => item.hash === book.hash) ?? book;
+        let details = startingBook.metadata ?? null;
+        if (!details && startingBook.downloadedAt)
+          details = await service.fetchBookDetails(startingBook);
+        if (cancelled) return;
+        // An earlier disk read must not overwrite a title/author saved while it was pending.
+        const current =
+          useLibraryStore.getState().library.find((item) => item.hash === book.hash) ??
+          startingBook;
+        details = current.metadata ?? details;
         setBookMeta(
-          details && book.metadata
+          details
             ? {
                 ...details,
-                ...(book.title && book.title !== formatTitle(details.title)
-                  ? { title: book.title }
+                ...(current.title && current.title !== formatTitle(details.title)
+                  ? { title: current.title }
                   : {}),
-                ...(book.author !== formatAuthors(details.author, book.primaryLanguage)
-                  ? { author: book.author }
+                ...(current.author !== formatAuthors(details.author, current.primaryLanguage)
+                  ? { author: current.author }
                   : {}),
               }
-            : details,
+            : null,
         );
-        const size = await appService.getBookFileSize(book);
-        setFileSize(size);
-      } finally {
+        const size = await service.getBookFileSize(current);
+        if (!cancelled) setFileSize(size);
+      } catch {
+        if (!cancelled) setFileSize(null);
       }
     };
-    fetchBookDetails();
+    void fetchBookDetails();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book]);
 
   useEffect(() => {
-    setDisplayBook(book);
-    setBookTags(book.tags ?? []);
+    const current =
+      useLibraryStore.getState().library.find((item) => item.hash === book.hash) ?? book;
+    setDisplayBook(current);
+    setBookTags(current.tags ?? []);
   }, [book]);
 
   const handleClose = () => {
@@ -183,29 +222,79 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
     setActiveDeleteAction(action);
   };
 
-  const confirmDeleteAction = async (purgeData: boolean) => {
+  const confirmDeleteAction = async () => {
     if (!activeDeleteAction) return;
-
-    const config = deleteConfigs[activeDeleteAction];
-    handleClose();
-
-    // The standard "Cloud & Device" delete escalates to a full purge when the
-    // user opts in via the confirmation toggle. The cloud-only / device-only
-    // variants keep the library entry, so purging reading data does not apply.
-    if (activeDeleteAction === 'both' && purgeData && handleBookPurge) {
-      handleBookPurge(book);
-    } else if (config.handler) {
-      config.handler(book);
+    const handler = deleteConfigs[activeDeleteAction].handler;
+    const controller = new AbortController();
+    deletionController.current = controller;
+    try {
+      const done = handler && (await handler(displayBook, controller.signal));
+      if (controller.signal.aborted && done === false) {
+        setActiveDeleteAction(null);
+        return;
+      }
+      if (!handler || done === false) throw new Error('Removal failed');
+      handleClose();
+    } finally {
+      deletionController.current = null;
     }
   };
 
-  const cancelDeleteAction = () => {
-    setActiveDeleteAction(null);
-  };
+  const cancelDeleteAction = () => setActiveDeleteAction(null);
 
   const handleDelete = () => handleDeleteAction('both');
-  const handleDeleteCloudBackup = () => handleDeleteAction('cloud');
   const handleDeleteLocalCopy = () => handleDeleteAction('local');
+
+  const handleInlineEdit = async (field: 'title' | 'author' | 'tags', value: string) => {
+    const saved = await bookEdits.apply(
+      [{ ...displayBook, metadata: displayBook.metadata ?? bookMeta ?? undefined }],
+      field,
+      field === 'tags' ? value.split(/[,，]/) : value,
+    );
+    if (saved) {
+      const latest = useLibraryStore.getState().library.find((b) => b.hash === book.hash);
+      if (latest) {
+        setDisplayBook(latest);
+        setBookMeta(latest.metadata ?? null);
+        setBookTags(latest.tags ?? []);
+      }
+    }
+    return saved;
+  };
+  const handleBookSend = async () => {
+    if (!appService) return;
+    const anchor = document.querySelector('[role="dialog"] .title-author')?.getBoundingClientRect();
+    const sharePosition = anchor
+      ? {
+          x: anchor.left + anchor.width / 2,
+          y: anchor.top + anchor.height / 2,
+          preferredEdge: 'bottom' as const,
+        }
+      : undefined;
+    setIsLoading(true);
+    try {
+      const managed = getLocalBookFilename(displayBook);
+      const local = await appService.exists(managed, 'Books');
+      const path = local ? managed : displayBook.filePath;
+      if (!path || (!local && !(await appService.exists(path, 'None'))))
+        throw new Error('file_unavailable');
+      const filePath = await appService.resolveFilePath(path, local ? 'Books' : 'None');
+      await appService.saveFile(
+        `${makeSafeFilename(displayBook.sourceTitle || displayBook.title || displayBook.hash)}.${EXTS[displayBook.format] ?? 'bin'}`,
+        null,
+        {
+          share: true,
+          sharePosition,
+          filePath,
+          mimeType: MIMETYPES[displayBook.format]?.[0] ?? 'application/octet-stream',
+        },
+      );
+    } catch {
+      void eventDispatcher.dispatch('toast', { type: 'error', message: _('Failed to send book') });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleBookExport = async () => {
     setIsLoading(true);
@@ -286,11 +375,15 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
                 metadata={bookMeta}
                 fileSize={fileSize}
                 shareEnabled={shareEnabled}
+                onInlineEdit={handleBookMetadataUpdate ? handleInlineEdit : undefined}
+                onSend={
+                  appService &&
+                  (appService.isMacOSApp || appService.isIOSApp || appService.isAndroidApp)
+                    ? handleBookSend
+                    : undefined
+                }
                 onEdit={handleBookMetadataUpdate ? handleEditMetadata : undefined}
                 onDelete={handleBookDelete ? handleDelete : undefined}
-                onDeleteCloudBackup={
-                  handleBookDeleteCloudBackup ? handleDeleteCloudBackup : undefined
-                }
                 onDeleteLocalCopy={handleBookDeleteLocalCopy ? handleDeleteLocalCopy : undefined}
                 onDownload={handleBookDownload ? handleRedownload : undefined}
                 onUpload={handleBookUpload ? handleReupload : undefined}
@@ -318,20 +411,18 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
         )}
 
         {activeDeleteAction && currentDeleteConfig && (
-          <div
-            className={clsx('fixed bottom-0 left-0 right-0 z-50 flex justify-center')}
-            style={{
-              paddingBottom: `${(safeAreaInsets?.bottom || 0) + 16}px`,
-            }}
-          >
+          <ModalPortal>
             <DeleteConfirmAlert
               title={currentDeleteConfig.title}
               message={currentDeleteConfig.message}
-              showPurgeToggle={currentDeleteConfig.showPurgeToggle}
+              books={[displayBook]}
+              scope={removalScope(settings, _, activeDeleteAction === 'local')}
+              confirmLabel={currentDeleteConfig.confirmLabel}
+              onStop={() => deletionController.current?.abort()}
               onCancel={cancelDeleteAction}
               onConfirm={confirmDeleteAction}
             />
-          </div>
+          </ModalPortal>
         )}
       </div>
     </>

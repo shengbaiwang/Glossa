@@ -25,6 +25,46 @@ const makeBook = (overrides?: Partial<Book>): Book =>
   }) as Book;
 
 describe('BookCover', () => {
+  it('shows a readable paper cover immediately when there is no image', () => {
+    const { container } = render(
+      <BookCover book={makeBook({ coverImageUrl: undefined })} showSpine />,
+    );
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('.fallback-cover')?.classList.contains('invisible')).toBe(false);
+    expect(container.querySelector('.fallback-cover')?.textContent).toContain('Test Book');
+  });
+
+  it('keeps the fallback visible until the image loads and restores it on failure', () => {
+    const onImageError = vi.fn();
+    const { container } = render(<BookCover book={makeBook()} onImageError={onImageError} />);
+    expect(container.querySelector('.fallback-cover')?.classList.contains('invisible')).toBe(false);
+    fireEvent.load(container.querySelector('img')!);
+    expect(container.querySelector('.fallback-cover')?.classList.contains('invisible')).toBe(true);
+    fireEvent.error(container.querySelector('img')!);
+    expect(container.querySelector('.fallback-cover')?.classList.contains('invisible')).toBe(false);
+    expect(onImageError).toHaveBeenCalledOnce();
+  });
+
+  it('does not reuse the loaded image state when the cover URL changes', () => {
+    const book = makeBook();
+    const { container, rerender } = render(<BookCover book={book} />);
+    fireEvent.load(container.querySelector('img')!);
+    rerender(
+      <BookCover book={{ ...book, coverImageUrl: 'https://example.com/replacement.jpg' }} />,
+    );
+    expect(container.querySelector('.fallback-cover')?.classList.contains('invisible')).toBe(false);
+    fireEvent.load(container.querySelector('img')!);
+    expect(container.querySelector('.fallback-cover')?.classList.contains('invisible')).toBe(true);
+  });
+
+  it('updates the paper title and author after inline edits without a timestamp change', () => {
+    const book = makeBook({ coverImageUrl: undefined });
+    const { container, rerender } = render(<BookCover book={book} />);
+    rerender(<BookCover book={{ ...book, title: 'New title', author: 'New author' }} />);
+    expect(container.querySelector('.fallback-cover')?.textContent).toContain('New title');
+    expect(container.querySelector('.fallback-cover')?.textContent).toContain('New author');
+  });
+
   it('passes loading="lazy" to crop-mode Image', () => {
     const { container } = render(<BookCover book={makeBook()} coverFit='crop' />);
     const img = container.querySelector('img.cover-image');

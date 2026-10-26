@@ -1,4 +1,5 @@
 //! Local PDF sidecars. The source file and the book's identity/CFIs never change.
+use crate::pdf_cache_ownership::{self as ownership, LegacyCache, Owner};
 use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -69,7 +70,7 @@ struct Job {
 }
 static JOB: OnceLock<Mutex<Option<Job>>> = OnceLock::new();
 static NEXT_JOB: AtomicU64 = AtomicU64::new(1);
-static OUTLINE_LOCK: Mutex<()> = Mutex::new(());
+static CACHE_LOCK: Mutex<()> = Mutex::new(());
 fn jobs() -> &'static Mutex<Option<Job>> {
     JOB.get_or_init(|| Mutex::new(None))
 }
@@ -266,14 +267,15 @@ pub async fn pdf_open_cache(
     app: AppHandle,
     source: String,
     create: bool,
+    owner: Option<Owner>,
 ) -> Result<Option<CacheInfo>, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let (_, id) = fingerprint(&app, &source)?;
-        let dir = cache_dir(&app, &id)?;
-        if !dir.exists() && !create {
+        let _guard = CACHE_LOCK.lock().map_err(error)?;
+        let (_, fingerprint) = fingerprint(&app, &source)?;
+        let Some(id) = ownership::open(&root(&app)?, &fingerprint, owner.as_ref(), create)? else {
             return Ok(None);
-        }
-        fs::create_dir_all(&dir).map_err(error)?;
+        };
+        let dir = cache_dir(&app, &id)?;
         info(&dir, id).map(Some)
     })
     .await
@@ -292,6 +294,8 @@ pub async fn pdf_read_ocr_page(
         return Err("invalid_pdf_page".into());
     }
     tauri::async_runtime::spawn_blocking(move || {
+        let _guard = CACHE_LOCK.lock().map_err(error)?;
+        ownership::access(&root(&app)?, &cache_id, None)?;
         let version = ocr_version(
             detect.unwrap_or(false),
             contents.unwrap_or(false),
@@ -349,6 +353,7 @@ pub async fn pdf_start_ocr(
             let contents = contents.unwrap_or(false);
             let heading = heading.unwrap_or(false);
             let version = ocr_version(detect, contents, heading)?;
+            let _cache_guard = CACHE_LOCK.lock().map_err(error)?;
             let mut guard = jobs().lock().map_err(error)?;
             if guard.as_ref().is_some_and(|j| j.status.state == "running") {
                 return Err("pdf_ocr_busy".into());
@@ -358,10 +363,9 @@ pub async fn pdf_start_ocr(
             if pages.is_empty() || pages.len() > 5000 || pages.iter().any(|i| *i >= 5000) {
                 return Err("pdf_page_limit".into());
             }
-            let (path, id) = fingerprint(&app, &source)?;
-            if id != cache_id {
-                return Err("pdf_source_changed".into());
-            }
+            let (path, source_id) = fingerprint(&app, &source)?;
+            ownership::access(&root(&app)?, &cache_id, Some(&source_id))?;
+            let id = cache_id;
             let dir = cache_dir(&app, &id)?;
             fs::create_dir_all(dir.join(version)).map_err(error)?;
             if cache_size(&root(&app)?) >= 1024 * 1024 * 1024 || cache_size(&dir) >= CACHE_LIMIT {
@@ -456,7 +460,7 @@ pub async fn pdf_start_ocr(
                     }
                 };
                 let unchanged = fingerprint(&app, &source)
-                    .map(|(_, hash)| hash == id)
+                    .map(|(_, hash)| hash == source_id)
                     .unwrap_or(false);
                 if let Ok(mut guard) = jobs().lock() {
                     if let Some(job) = guard.as_mut().filter(|j| Arc::ptr_eq(&j.child, &child)) {
@@ -582,11 +586,10 @@ pub async fn pdf_save_outline(
         {
             return Err("invalid_pdf_outline".into());
         }
-        let (_, id) = fingerprint(&app, &source)?;
-        if id != cache_id {
-            return Err("pdf_source_changed".into());
-        }
-        let _lock = OUTLINE_LOCK.lock().map_err(error)?;
+        let _lock = CACHE_LOCK.lock().map_err(error)?;
+        let (_, source_id) = fingerprint(&app, &source)?;
+        ownership::access(&root(&app)?, &cache_id, Some(&source_id))?;
+        let id = cache_id;
         let dir = cache_dir(&app, &id)?;
         let current = info(&dir, id.clone())?;
         if current.revision != revision {
@@ -1090,8 +1093,11 @@ pub async fn pdf_export_copy(
                 *active = Some(ExportJob { id: cache_id.clone(), cancelled: cancelled.clone(), child: None });
             }
             let result = (|| {
-                let (source_path, id) = fingerprint(&app, &source)?;
-                if id != cache_id { return Err("pdf_source_changed".into()); }
+                let cache_guard = CACHE_LOCK.lock().map_err(error)?;
+                let (source_path, source_id) = fingerprint(&app, &source)?;
+                ownership::access(&root(&app)?, &cache_id, Some(&source_id))?;
+                if cancelled.load(Ordering::SeqCst) { return Err("pdf_export_cancelled".into()); }
+                let id = cache_id.clone();
                 let requested = PathBuf::from(&destination);
                 if !app.fs_scope().is_allowed(&requested) { return Err("pdf_access_denied".into()); }
                 let parent = requested.parent().ok_or("pdf_access_denied")?.canonicalize().map_err(error)?;
@@ -1113,6 +1119,7 @@ pub async fn pdf_export_copy(
                         .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|_| "pdf_worker_unavailable")?;
                     let child = Arc::new(Mutex::new(child));
                     if let Some(job) = EXPORT_JOB.lock().map_err(error)?.as_mut() { job.child = Some(child.clone()); }
+                    drop(cache_guard);
                     let start = Instant::now();
                     loop {
                         let mut child = child.lock().map_err(error)?;
@@ -1125,7 +1132,9 @@ pub async fn pdf_export_copy(
                             Err(_) => { let _ = child.kill(); let _ = child.wait(); return Err("pdf_worker_unavailable".into()); }
                         }
                     }
-                    if fingerprint(&app, &source)?.1 != id { return Err("pdf_source_changed".into()); }
+                    let _publish_guard = CACHE_LOCK.lock().map_err(error)?;
+                    ownership::access(&root(&app)?, &id, Some(&source_id))?;
+                    if fingerprint(&app, &source)?.1 != source_id { return Err("pdf_source_changed".into()); }
                     if cancelled.load(Ordering::SeqCst) { return Err("pdf_export_cancelled".into()); }
                     if fs::metadata(&exported).map_err(error)?.len() > 512 * 1024 * 1024 { return Err("pdf_export_limit".into()); }
                     let mut input = File::open(&exported).map_err(error)?;
@@ -1142,4 +1151,71 @@ pub async fn pdf_export_copy(
             result
         }
     }).await.map_err(error)?
+}
+
+// Called while CACHE_LOCK is held. Killing and reaping writers precedes removal.
+fn stop_cache_writers(ids: &[String]) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(job) = jobs().lock().map_err(error)?.as_mut() {
+            if ids.contains(&job.status.cache_id) {
+                let mut child = job.child.lock().map_err(error)?;
+                let _ = child.kill();
+                child.wait().map_err(error)?;
+                job.status.state = "cancelled".into();
+                job.status.error = None;
+            }
+        }
+        if let Some(job) = EXPORT_JOB.lock().map_err(error)?.as_mut() {
+            if ids.contains(&job.id) {
+                job.cancelled
+                    .store(true, std::sync::atomic::Ordering::SeqCst);
+                if let Some(child) = job.child.as_ref() {
+                    let mut child = child.lock().map_err(error)?;
+                    let _ = child.kill();
+                    child.wait().map_err(error)?;
+                }
+            }
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = ids;
+    Ok(())
+}
+#[tauri::command]
+pub async fn pdf_purge_book(app: AppHandle, book_id: String, revision: u64) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = CACHE_LOCK.lock().map_err(error)?;
+        let root = root(&app)?;
+        let ids = ownership::block(&root, &book_id, revision)?;
+        stop_cache_writers(&ids)?;
+        ownership::remove(&root, &ids)
+    })
+    .await
+    .map_err(error)?
+}
+#[tauri::command]
+pub async fn pdf_legacy_caches(app: AppHandle) -> Result<Vec<LegacyCache>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = CACHE_LOCK.lock().map_err(error)?;
+        ownership::legacy(&root(&app)?)
+    })
+    .await
+    .map_err(error)?
+}
+#[tauri::command]
+pub async fn pdf_clear_legacy_caches(
+    app: AppHandle,
+    targets: Vec<LegacyCache>,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = CACHE_LOCK.lock().map_err(error)?;
+        let root = root(&app)?;
+        let ids = ownership::review_legacy(&root, &targets)?;
+        ownership::block_legacy(&root, &ids)?;
+        stop_cache_writers(&ids)?;
+        ownership::remove(&root, &ids)
+    })
+    .await
+    .map_err(error)?
 }

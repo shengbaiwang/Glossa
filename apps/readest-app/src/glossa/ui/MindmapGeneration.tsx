@@ -114,12 +114,12 @@ function OverviewForm(
   const access = useMemo(() => {
     try {
       return props.book.format === 'EPUB'
-        ? createEpubBookAccess(props.bookDoc, props.book.hash)
+        ? createEpubBookAccess(props.bookDoc, props.book.hash, props.book.removal?.revision ?? 0)
         : null;
     } catch {
       return null;
     }
-  }, [props.bookDoc, props.book.hash, props.book.format]);
+  }, [props.bookDoc, props.book.hash, props.book.format, props.book.removal?.revision]);
   const [chapterId, setChapterId] = useState('');
   const [progress, setProgress] = useState<MapProgress | null>(null);
   const [checking, setChecking] = useState(true);
@@ -147,7 +147,10 @@ function OverviewForm(
           target: props.kind === 'book' ? { kind: 'book' } : { kind: 'chapter', chapterId },
           config: model.config,
         });
-        const { checkpoint } = await mapCheckpointStore.load(key);
+        const { checkpoint } = await mapCheckpointStore.load(key, {
+          bookId: props.book.hash,
+          revision: props.book.removal?.revision ?? 0,
+        });
         const failure =
           checkpoint?.failure ?? checkpoint?.batches.find((batch) => batch.failure)?.failure;
         if (alive && failure && !checkpoint?.result)
@@ -178,7 +181,15 @@ function OverviewForm(
     return () => {
       alive = false;
     };
-  }, [model.config, model.busy, props.book.hash, props.kind, chapterId, title]);
+  }, [
+    model.config,
+    model.busy,
+    props.book.hash,
+    props.kind,
+    chapterId,
+    title,
+    props.book.removal?.revision,
+  ]);
   useEffect(() => {
     setResult(null);
   }, [model.config, props.book.hash, chapterId]);
@@ -321,7 +332,11 @@ export function BranchGeneration(
         nodeId: props.nodeId,
         config,
         signal,
-        access: createEpubBookAccess(props.bookDoc, props.book.hash),
+        access: createEpubBookAccess(
+          props.bookDoc,
+          props.book.hash,
+          props.book.removal?.revision ?? 0,
+        ),
       });
       if (!signal.aborted) {
         setResult(generated);

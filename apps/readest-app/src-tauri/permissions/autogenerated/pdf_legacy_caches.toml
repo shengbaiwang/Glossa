@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pdf-legacy-caches"
+description = "Enables the pdf_legacy_caches command without any pre-configured scope."
+commands.allow = ["pdf_legacy_caches"]
+
+[[permission]]
+identifier = "deny-pdf-legacy-caches"
+description = "Denies the pdf_legacy_caches command without any pre-configured scope."
+commands.deny = ["pdf_legacy_caches"]

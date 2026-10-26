@@ -72,8 +72,16 @@ function PDFContentsBook({ book, bookDoc, bookKey }: ReadingPanelProps) {
           const path = await appService?.resolveNativeBookFilePath(book);
           if (controller.signal.aborted) return;
           if (!path) throw new Error('pdf_source_unavailable');
-          const current = await openPDFCache(path);
-          const previous = current && (await previousPDFContents(current, count).catch(() => null));
+          const current = await openPDFCache(path, false, {
+            bookId: book.hash,
+            revision: book.removal?.revision ?? 0,
+          });
+          const previous =
+            current &&
+            (await previousPDFContents(current, count, {
+              bookId: book.hash,
+              revision: book.removal?.revision ?? 0,
+            }).catch(() => null));
           if (controller.signal.aborted) return;
           setSource(path);
           setCache(current);
@@ -122,11 +130,17 @@ function PDFContentsBook({ book, bookDoc, bookKey }: ReadingPanelProps) {
       await runPluginTask(
         'pdfAutoContents',
         async (signal) => {
-          const current = await openPDFCache(source);
+          const current = await openPDFCache(source, false, {
+            bookId: book.hash,
+            revision: book.removal?.revision ?? 0,
+          });
           if (signal.aborted) return;
           if (restore) {
             if (!current) throw new Error('outline_changed');
-            const restored = await restorePDFContents(source, current, count, signal);
+            const restored = await restorePDFContents(source, current, count, signal, {
+              bookId: book.hash,
+              revision: book.removal?.revision ?? 0,
+            });
             if (!signal.aborted) {
               await publish(restored, signal);
               if (signal.aborted) return;
@@ -141,7 +155,11 @@ function PDFContentsBook({ book, bookDoc, bookKey }: ReadingPanelProps) {
             setMessage('Your edited contents are preserved.');
             return;
           }
-          if (current) await rememberPDFContents(current, count, signal);
+          if (current)
+            await rememberPDFContents(current, count, signal, {
+              bookId: book.hash,
+              revision: book.removal?.revision ?? 0,
+            });
           if (signal.aborted) return;
           const plugin = await pluginLoaders.pdfAutoContents();
           if (signal.aborted) return;
@@ -155,8 +173,16 @@ function PDFContentsBook({ book, bookDoc, bookKey }: ReadingPanelProps) {
           });
           if (signal.aborted) return;
           if (outcome.result === 'generated' || outcome.result === 'preserved') {
-            const saved = await openPDFCache(source);
-            const previous = saved && (await previousPDFContents(saved, count).catch(() => null));
+            const saved = await openPDFCache(source, false, {
+              bookId: book.hash,
+              revision: book.removal?.revision ?? 0,
+            });
+            const previous =
+              saved &&
+              (await previousPDFContents(saved, count, {
+                bookId: book.hash,
+                revision: book.removal?.revision ?? 0,
+              }).catch(() => null));
             if (signal.aborted) return;
             if (saved) await publish(saved, signal);
             if (signal.aborted) return;

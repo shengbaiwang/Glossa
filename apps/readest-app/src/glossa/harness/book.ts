@@ -3,6 +3,7 @@ import type { ChapterSource } from '@/glossa/context/types';
 /** Format-independent, local-only book access. Implementations never call a model. */
 export interface BookReadingAccess {
   documentHash: string;
+  dataRevision?: number;
   sourceContext?: (source: ChapterSource) => { sectionTitles: string[]; heading?: string };
   chapters: { id: string; title: string; depth: number }[];
   readChapter: (id: string, signal: AbortSignal) => Promise<ChapterSource[]>;

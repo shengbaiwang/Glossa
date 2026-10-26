@@ -179,9 +179,14 @@ describe('mind maps in real IndexedDB', () => {
       expect(await loadMindmap(guide.bookId, guide.chapterId, guide.passageId)).toBeNull();
       await saveMindmap(guide);
       expect(await loadMindmap(guide.bookId, guide.chapterId, guide.passageId)).toEqual(guide);
-      expect(opened.mock.calls.every(([name]) => name === DB_NAME)).toBe(true);
       expect(
-        transacted.mock.contexts.every((db) => db instanceof IDBDatabase && db.name === DB_NAME),
+        opened.mock.calls.every(([name]) => [DB_NAME, 'glossa-book-data-lifecycle'].includes(name)),
+      ).toBe(true);
+      expect(
+        transacted.mock.contexts.every(
+          (db) =>
+            db instanceof IDBDatabase && [DB_NAME, 'glossa-book-data-lifecycle'].includes(db.name),
+        ),
       ).toBe(true);
       expect(deleted).not.toHaveBeenCalled();
     } finally {

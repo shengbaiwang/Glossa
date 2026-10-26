@@ -4,9 +4,6 @@ import type { SystemSettings } from '@/types/settings';
 import { transferManager } from '@/services/transferManager';
 import { isReadestCloudStorageActive } from '@/services/sync/cloudSyncProvider';
 import { normalizeFilePathForIndex } from '@/services/bookService';
-import { isContentURI, isValidURL } from '@/utils/misc';
-import { repairImportedMetadata } from '@/utils/importMetadata';
-import { isPseStreamFileName } from '@/services/opds/pseStream';
 
 export interface IngestFileDeps {
   appService: AppService;
@@ -27,6 +24,7 @@ export interface IngestFileDeps {
 export interface IngestFileOptions {
   /** A file path (desktop/mobile) or a File object (web). */
   file: File | string;
+  markdownResourceRoot?: string;
   /** Current library, used by importBook for dedup. */
   books: Book[];
   /** Pre-built lookup index for O(1) dedup during batch imports. */
@@ -48,6 +46,8 @@ export interface IngestFileOptions {
   forceCopy?: boolean;
   /** Explicit re-imports may resume PDF contents; background folder scans opt out. */
   retryPDFContents?: boolean;
+  onResult?: (status: 'added' | 'existing') => void;
+  signal?: AbortSignal;
 }
 
 /**
@@ -168,59 +168,28 @@ export async function ingestFile(
     appBooksPrefix ?? null,
   );
 
-  // In-place re-import fast path. When the source file lives under one of
-  // the user's registered external library folders and the byFilePath index
-  // already knows about it, skip importBook entirely and return the existing
-  // library entry. No timestamp / cover / config writes or downstream group
-  // / tag / upload logic, so a re-scan can't silently rewrite library sort
-  // order or clobber a manual GroupingModal assignment via a path-derived
-  // group string. Explicit PDF re-import may prepare missing contents with
-  // its own parser; silent background scans pass retryPDFContents: false.
-  //
-  // This is intentionally separate from importBook's byHash / byMetaKey
-  // dedup: a byHash hit means a *different* source path resolves to a known
-  // book (drop a copy from elsewhere, or revive a soft-deleted entry), which
-  // correctly clears `deletedAt` and refreshes timestamps. A byFilePath hit
-  // is the same on-disk file at the same path — there is nothing to refresh,
-  // and refreshing would silently rewrite library sort order on every
-  // re-scan. Soft-deleted books are excluded from `byFilePath` at index
-  // build time so they fall through to byHash and get resurrected.
-  //
-  // Reject URLs, content URIs and PSE streams defensively. The byFilePath
-  // index only carries real on-disk paths, but `inPlace` could in principle
-  // be set on a non-path source by a buggy caller.
-  if (
-    inPlace &&
-    !opts.transient &&
-    opts.lookupIndex &&
-    typeof opts.file === 'string' &&
-    !isPseStreamFileName(opts.file) &&
-    !isValidURL(opts.file) &&
-    !isContentURI(opts.file)
-  ) {
-    const key = normalizeFilePathForIndex(opts.file, appService.osPlatform);
-    const existing = key ? opts.lookupIndex.byFilePath.get(key) : undefined;
-    if (existing) {
-      repairImportedMetadata(existing, opts.file);
-      if (existing.format === 'PDF' && opts.retryPDFContents !== false)
-        await appService.prepareBookContents?.(existing);
-      return existing;
-    }
-  }
-
+  // A known path can contain a replaced edition. Every explicit import verifies bytes.
+  const outcome: { status: 'added' | 'existing' } = { status: 'added' };
   const book = await appService.importBook(opts.file, opts.books, {
     lookupIndex: opts.lookupIndex,
+    markdownResourceRoot: opts.markdownResourceRoot,
     transient: opts.transient,
     inPlace,
+    signal: opts.signal,
+    retryPDFContents: opts.retryPDFContents,
+    initialGroup:
+      opts.groupId !== undefined ? { id: opts.groupId, name: opts.groupName } : undefined,
+    initialTags: opts.subjectTag?.trim() ? [opts.subjectTag.trim()] : undefined,
+    onResult: (result) => {
+      outcome.status = result;
+    },
   });
   if (!book) return null;
+  opts.onResult?.(outcome.status);
+  if (outcome.status === 'existing') return book;
 
-  // Tri-state: undefined leaves whatever group the existing
-  // (deduped) book already had untouched; an explicit string —
-  // including the empty string — replaces it. The empty-string case
-  // is what library imports use to "demote" a book back to the root
-  // when the user picks Import-from-Folder → flatten on a previously
-  // grouped book.
+  // Mirror the newly committed metadata for callers using an AppService adapter.
+  // Existing records returned above retain their personal group and tags.
   if (opts.groupId !== undefined) {
     book.groupId = opts.groupId;
     book.groupName = opts.groupName;

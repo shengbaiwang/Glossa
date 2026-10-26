@@ -212,6 +212,7 @@ describe('auto-import: watched folder with duplicated files', () => {
   });
 
   it('preserves separately named versions with different bytes despite matching metadata', async () => {
+    service.getFs().openFile.mockImplementation(async (path: string) => new File([path], path));
     mockPartialMD5.mockImplementation(async (file: File) =>
       file.name === ORIGINAL_PATH ? 'hash-a' : 'hash-b',
     );
@@ -227,7 +228,7 @@ describe('auto-import: watched folder with duplicated files', () => {
     expect(await runScan(library)).toEqual([]);
   });
 
-  it('leaves alternative paths unset for a copy-mode import', async () => {
+  it('remembers duplicate source paths for a copy-mode import without reading from them', async () => {
     const library: Book[] = [];
     const lookupIndex = buildBookLookupIndex(library, 'linux');
     await service.importBook(ORIGINAL_PATH, library, { lookupIndex });
@@ -236,6 +237,6 @@ describe('auto-import: watched folder with duplicated files', () => {
     const book = library.find((b) => !b.deletedAt)!;
     // Copy-mode books live under Books/<hash>/ and carry no source path at all.
     expect(book.filePath).toBeUndefined();
-    expect(book.altFilePaths).toBeUndefined();
+    expect(book.altFilePaths).toEqual([ORIGINAL_PATH, DUPLICATE_PATH]);
   });
 });

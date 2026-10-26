@@ -20,6 +20,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(mocks.search),
 }));
 vi.mock('@/context/EnvContext', () => ({ useEnv: () => ({ envConfig: {}, appService: {} }) }));
+vi.mock('@/app/library/hooks/useOpenBook', () => ({ useOpenBook: () => ({ openBook: vi.fn() }) }));
 vi.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: null }) }));
 vi.mock('@/hooks/useTranslation', () => ({
   useTranslation: () => (key: string, values?: Record<string, unknown>) =>
@@ -87,6 +88,110 @@ const books: Book[] = [
     updatedAt: 1,
   },
 ];
+
+it.each([
+  1100, 390,
+])('shares reader chrome dimensions, corners and spacing at %ipx', async (width) => {
+  await page.viewport(width, 780);
+  document.documentElement.setAttribute('data-page', 'library');
+  const { container } = render(<LibraryPreview />);
+  const actions = container.querySelector('.glossa-library-actions')!;
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  expect(getComputedStyle(actions).columnGap).toBe('2px');
+  for (const button of container.querySelectorAll<HTMLButtonElement>(
+    '.glossa-library-actions button, .glossa-library-sidebar-toggle',
+  )) {
+    if (!button.getBoundingClientRect().height) continue;
+    expect(button.getBoundingClientRect().height).toBe(coarse ? 44 : 32);
+    expect(getComputedStyle(button).borderRadius).toBe('11px');
+    expect(button.querySelector('svg')!.getBoundingClientRect().width).toBe(coarse ? 20 : 18);
+  }
+});
+
+it('places group expansion before its icon and reserves scrollbar space in both directions', async () => {
+  await page.viewport(1100, 380);
+  document.documentElement.setAttribute('data-page', 'library');
+  document.documentElement.setAttribute('data-theme', 'default-light');
+  const { container } = render(<LibraryPreview />);
+  const scroller = container.querySelector<HTMLElement>('.glossa-library-navigation-categories')!;
+  scroller.style.overflowY = 'scroll';
+  expect(getComputedStyle(scroller).scrollbarGutter).toBe('stable');
+  for (const dir of ['ltr', 'rtl']) {
+    document.documentElement.dir = dir;
+    const row = container.querySelector('[data-folder-row="历史"]')!;
+    const expander = row.querySelector('[data-expander]')!.getBoundingClientRect();
+    const icon = row.querySelector('.glossa-library-folder-link svg')!.getBoundingClientRect();
+    if (dir === 'ltr') expect(expander.right).toBeLessThanOrEqual(icon.left);
+    else expect(expander.left).toBeGreaterThanOrEqual(icon.right);
+    const button = row.querySelector('[data-expander]')!;
+    expect(
+      button.contains(
+        document.elementFromPoint(
+          expander.x + expander.width / 2,
+          expander.y + expander.height / 2,
+        ),
+      ),
+    ).toBe(true);
+  }
+});
+
+it('uses the same cover stage and metadata baselines for books and groups in both views', async () => {
+  await page.viewport(1000, 780);
+  document.documentElement.setAttribute('data-page', 'library');
+  const group = {
+    id: 'sample',
+    name: 'Sample group',
+    displayName: 'Sample group',
+    books,
+    updatedAt: 1,
+  };
+  const { container, rerender } = render(
+    <div style={{ display: 'grid', gridTemplateColumns: '180px 180px', gap: 20 }}>
+      <BookItem
+        book={books[0]!}
+        mode='grid'
+        coverFit='fit'
+        isSelectMode={false}
+        bookSelected={false}
+        transferProgress={null}
+        handleBookUpload={vi.fn()}
+        handleBookDownload={vi.fn()}
+        showBookDetailsModal={vi.fn()}
+        showTimeRemaining={false}
+      />
+      <GroupItem mode='grid' group={group} isSelectMode={false} groupSelected={false} />
+    </div>,
+  );
+  await waitFor(() =>
+    expect(container.querySelectorAll('.glossa-book-cover-stage')).toHaveLength(2),
+  );
+  const stages = container.querySelectorAll('.glossa-book-cover-stage');
+  expect(stages[0]!.getBoundingClientRect().height).toBeCloseTo(
+    stages[1]!.getBoundingClientRect().height,
+    0,
+  );
+  const titles = container.querySelectorAll('.glossa-book-title');
+  expect(titles[0]!.getBoundingClientRect().top).toBeCloseTo(
+    titles[1]!.getBoundingClientRect().top,
+    0,
+  );
+  const metadata = container.querySelectorAll('.glossa-book-author');
+  expect(metadata[0]!.getBoundingClientRect().top).toBeCloseTo(
+    metadata[1]!.getBoundingClientRect().top,
+    0,
+  );
+  rerender(
+    <div className='glossa-collection-list'>
+      <GroupItem mode='list' group={group} isSelectMode={false} groupSelected={false} />
+    </div>,
+  );
+  expect(container.querySelectorAll('.glossa-group-stack-cover')).toHaveLength(2);
+  expect(container.querySelector('.glossa-book-author')?.textContent).toBe('2 books');
+  const cover = container.querySelector('.groupitem-main')!.getBoundingClientRect();
+  expect(cover.width).toBeCloseTo(76, 0);
+  expect(cover.height).toBeCloseTo(112, 0);
+  expect(container.querySelector('[style*="scroll-position"]')).toBeNull();
+});
 
 function LibraryPreview() {
   const [sidebar, setSidebar] = useState(true);
@@ -161,11 +266,11 @@ afterEach(() => {
 it('separates direct folders from the library and metadata with quiet, compact rows', async () => {
   await page.viewport(1100, 780);
   document.documentElement.setAttribute('data-page', 'library');
-  mocks.search = 'groupBy=subject';
+  mocks.search = 'groupBy=tag';
   render(<LibraryPreview />);
   const library = screen.getByRole('region', { name: 'Library' });
   const browse = screen.getByRole('region', { name: 'Browse' });
-  const selected = screen.getByRole('button', { name: 'Subjects' });
+  const selected = screen.getByRole('button', { name: 'Tags' });
   const regular = screen.getByRole('button', { name: 'Authors' });
   const groups = screen.getByRole('region', { name: 'My Groups' });
   expect(groups.getBoundingClientRect().top - library.getBoundingClientRect().bottom).toBe(24);
@@ -202,8 +307,11 @@ it('separates direct folders from the library and metadata with quiet, compact r
   }
   for (const theme of ['default-light', 'default-dark']) {
     document.documentElement.setAttribute('data-theme', theme);
+    await page.screenshot({
+      path: `../../../../../../.glossa-dev/qa/library-sections-${matchMedia('(pointer: coarse)').matches ? 'touch' : 'pointer'}-${theme}.png`,
+    });
     const background = getComputedStyle(selected).backgroundColor;
-    await page.getByRole('button', { name: 'Subjects' }).hover();
+    await page.getByRole('button', { name: 'Tags' }).hover();
     expect(getComputedStyle(selected).backgroundColor).toBe(background);
     await page.screenshot({
       path: `../../../../../../.glossa-dev/qa/library-sections-${matchMedia('(pointer: coarse)').matches ? 'touch' : 'pointer'}-${theme}.png`,
@@ -290,6 +398,11 @@ it.each([
     expect(detail.contains(document.elementFromPoint(x, buttonBounds.bottom - 3))).toBe(true);
   }
   if (matchMedia('(pointer: coarse)').matches) {
+    const statusBounds = screen
+      .getByRole('button', { name: 'Reading Status' })
+      .getBoundingClientRect();
+    expect(statusBounds.width).toBeGreaterThanOrEqual(44);
+    expect(statusBounds.height).toBeGreaterThanOrEqual(44);
     expect(buttonBounds.width).toBeGreaterThanOrEqual(44);
     expect(buttonBounds.height).toBeGreaterThanOrEqual(44);
   }
@@ -362,8 +475,9 @@ it('keeps settings reachable with the keyboard in a short RTL e-ink window', asy
   if (matchMedia('(pointer: coarse)').matches)
     expect(settings.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
   screen.getByRole('button', { name: 'All Books' }).focus();
+  await userEvent.keyboard('{Tab}');
   await userEvent.keyboard('{Home}');
-  expect(getComputedStyle(document.activeElement!).outlineOffset).toBe('-2px');
+  await waitFor(() => expect(getComputedStyle(document.activeElement!).outlineOffset).toBe('-2px'));
   await userEvent.keyboard('{End}');
   expect(document.activeElement).toBe(settings);
   await userEvent.keyboard('{Enter}');

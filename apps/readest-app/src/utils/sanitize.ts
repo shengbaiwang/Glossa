@@ -1,4 +1,4 @@
-import DOMPurify from 'dompurify';
+import DOMPurify, { type Config } from 'dompurify';
 
 export const sanitizeString = (str?: string) => {
   if (!str) return str;
@@ -14,62 +14,80 @@ export const sanitizeString = (str?: string) => {
  * Runs against the real DOM, so callers must be on the client (browser or Tauri
  * webview), both of which provide `window`/`DOMParser`.
  */
+const HTML_OPTIONS: Config = {
+  ALLOWED_TAGS: [
+    'h1',
+    'h2',
+    'h3',
+    'h4',
+    'h5',
+    'h6',
+    'p',
+    'br',
+    'hr',
+    'blockquote',
+    'pre',
+    'code',
+    'strong',
+    'em',
+    'b',
+    'i',
+    'u',
+    's',
+    'del',
+    'ins',
+    'sup',
+    'sub',
+    'span',
+    'ul',
+    'ol',
+    'li',
+    'dl',
+    'dt',
+    'dd',
+    'table',
+    'thead',
+    'tbody',
+    'tr',
+    'th',
+    'td',
+    'a',
+    'img',
+    'figure',
+    'figcaption',
+    // Markdown footnote definitions arrive wrapped in <section class="footnotes">
+    // (see utils/mdFootnotes.ts), which must survive to be found and re-emitted.
+    'section',
+  ],
+  // `id` is allowed so heading anchors survive — the EPUB's nested
+  // navMap uses `chapter1.xhtml#heading-id` to link the TOC sidebar to
+  // each section. Without it readers see one entry per chapter only.
+  // `class` is allowed so Markdown code fences keep their `language-*`
+  // class for theming (see utils/md.ts).
+  ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'colspan', 'rowspan', 'id', 'class'],
+  // Drop anything that would load or run remote code.
+  FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input'],
+  FORBID_ATTR: ['srcset'],
+  ALLOW_DATA_ATTR: false,
+};
+
 export function sanitizeHtml(html: string): string {
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: [
-      'h1',
-      'h2',
-      'h3',
-      'h4',
-      'h5',
-      'h6',
-      'p',
-      'br',
-      'hr',
-      'blockquote',
-      'pre',
-      'code',
-      'strong',
-      'em',
-      'b',
-      'i',
-      'u',
-      's',
-      'del',
-      'ins',
-      'sup',
-      'sub',
-      'span',
-      'ul',
-      'ol',
-      'li',
-      'dl',
-      'dt',
-      'dd',
-      'table',
-      'thead',
-      'tbody',
-      'tr',
-      'th',
-      'td',
-      'a',
-      'img',
-      'figure',
-      'figcaption',
-      // Markdown footnote definitions arrive wrapped in <section class="footnotes">
-      // (see utils/mdFootnotes.ts), which must survive to be found and re-emitted.
-      'section',
-    ],
-    // `id` is allowed so heading anchors survive — the EPUB's nested
-    // navMap uses `chapter1.xhtml#heading-id` to link the TOC sidebar to
-    // each section. Without it readers see one entry per chapter only.
-    // `class` is allowed so Markdown code fences keep their `language-*`
-    // class for theming (see utils/md.ts).
-    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'colspan', 'rowspan', 'id', 'class'],
-    // Drop anything that would load or run remote code.
-    FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input'],
-    FORBID_ATTR: ['srcset'],
-    ALLOW_DATA_ATTR: false,
+  return DOMPurify.sanitize(html, HTML_OPTIONS);
+}
+
+/** Keep images inert until a Markdown snapshot resolves their permitted bytes. */
+export function sanitizeMarkdownHtml(html: string): DocumentFragment {
+  const purify = DOMPurify(window);
+  purify.addHook('uponSanitizeAttribute', (node, event) => {
+    if (node.nodeName.toLowerCase() === 'img' && event.attrName === 'src') {
+      node.setAttribute('data-glossa-image', event.attrValue);
+      event.keepAttr = false;
+    }
+  });
+  return purify.sanitize(html, {
+    ...HTML_OPTIONS,
+    ADD_ATTR: ['data-glossa-image'],
+    RETURN_DOM_FRAGMENT: true,
   });
 }
 

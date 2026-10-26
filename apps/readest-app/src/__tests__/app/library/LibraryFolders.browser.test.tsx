@@ -1,8 +1,9 @@
 import { useReducer, useState } from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { page, userEvent, commands } from 'vitest/browser';
 import Bookshelf from '@/app/library/components/Bookshelf';
+import ViewMenu from '@/app/library/components/ViewMenu';
 import GroupingModal from '@/app/library/components/GroupingModal';
 import LibraryNavigation from '@/app/library/components/LibraryNavigation';
 import { useDragDropImport } from '@/app/library/hooks/useDragDropImport';
@@ -43,7 +44,7 @@ vi.mock('@/context/EnvContext', () => {
   const appService = { ...mocks, hasContextMenu: true, isLinuxApp: true };
   return {
     useEnv: () => ({
-      envConfig: {},
+      envConfig: { getAppService: async () => appService },
       appService,
     }),
   };
@@ -181,6 +182,7 @@ beforeEach(() => {
     libraryFolders: [],
     libraryRecentShelfEnabled: false,
   } as SystemSettings);
+  useLibraryStore.setState({ libraryLoaded: true });
   useLibraryStore.getState().setLibrary([]);
 });
 afterEach(() => {
@@ -445,6 +447,7 @@ it('creates and renames empty folders, navigates two levels, and stays in a vali
   expect(screen.queryByRole('button', { name: 'New subgroup' })).toBeNull();
   await userEvent.click(screen.getByRole('button', { name: 'Import Books' }));
   expect(mocks.importBooks).toHaveBeenCalled();
+  useLibraryStore.setState({ libraryLoaded: true });
   useLibraryStore.getState().setLibrary([]);
   expect(
     useLibraryStore
@@ -527,8 +530,7 @@ it('deletes a selected empty folder instead of asking to delete zero books', asy
   render(<Shelf />);
   const card = await screen.findByRole('button', { name: '文学' });
   fireEvent.contextMenu(card, { clientX: 100, clientY: 150 });
-  await userEvent.click(await screen.findByText('Select Group'));
-  await userEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete group' }));
   await waitFor(() => expect(useSettingsStore.getState().settings.libraryFolders).toEqual([]));
   expect(screen.queryByText('Confirm Deletion')).toBeNull();
 });
@@ -552,7 +554,7 @@ it('deletes a nonempty branch safely and restores it with keyboard undo', async 
   await userEvent.click(screen.getByRole('button', { name: 'Delete group' }));
   await waitFor(() => expect(useLibraryStore.getState().library[0]?.groupName).toBe('B/C'));
   screen.getByRole('navigation').querySelector<HTMLButtonElement>('[aria-label="B"]')!.focus();
-  await userEvent.keyboard('{Control>}z{/Control}');
+  await userEvent.keyboard('{Meta>}z{/Meta}');
   await waitFor(() => expect(useLibraryStore.getState().library[0]?.groupName).toBe('A/B/C'));
   expect(useLibraryStore.getState().library[0]?.progress).toEqual([1, 4]);
 });
@@ -693,6 +695,34 @@ it('restores temporary expansion when a drag is cancelled with Escape', async ()
   ]);
 });
 
+it('keeps keyboard focus on each saved group through four nested levels', async () => {
+  await page.viewport(1100, 780);
+  render(<DirectShelf />);
+  const nav = within(screen.getByRole('navigation'));
+  await userEvent.click(screen.getByRole('button', { name: 'My Groups' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'New group' }));
+  let path = '';
+  for (const name of ['Root', 'Second', 'Third', 'Fourth']) {
+    const input = screen.getByRole('textbox', { name: 'Group name' });
+    expect(document.activeElement).toBe(input);
+    await userEvent.fill(input, name);
+    await userEvent.keyboard('{Enter}');
+    path = [path, name].filter(Boolean).join('/');
+    await waitFor(() =>
+      expect(nav.getByRole('button', { name: path })).toBe(document.activeElement),
+    );
+    expect(screen.queryByRole('textbox', { name: 'Group name' })).toBeNull();
+    await userEvent.keyboard('{Shift>}{F10}{/Shift}');
+    if (name === 'Fourth') {
+      expect(screen.queryByRole('menuitem', { name: 'New subgroup' })).toBeNull();
+      await userEvent.keyboard('{Escape}');
+      expect(nav.getByRole('button', { name: path })).toBe(document.activeElement);
+    } else {
+      await userEvent.click(screen.getByRole('menuitem', { name: 'New subgroup' }));
+    }
+  }
+});
+
 it('aligns new root and nested folder icons and names with the existing rows', async () => {
   await page.viewport(1100, 780);
   useSettingsStore.getState().setSettings({
@@ -744,4 +774,109 @@ it('shows author collections with matching counts and opens missing authors as a
   expect(screen.getByRole('button', { name: missing[1]!.title })).toBeTruthy();
   expect(screen.queryByRole('button', { name: original.title })).toBeNull();
   expect(mocks.openBook).not.toHaveBeenCalled();
+});
+
+it('renames in place with real mouse and keyboard, then undoes without a bottom toolbar', async () => {
+  await page.viewport(1100, 780);
+  useLibraryStore.getState().setLibrary([original]);
+  render(<Shelf />);
+  const title = await screen.findByRole('button', { name: 'Title' });
+  await userEvent.dblClick(title);
+  const input = screen.getByRole('textbox', { name: 'Title' });
+  await userEvent.fill(input, '个人书名');
+  await userEvent.keyboard('{Enter}');
+  await waitFor(() => expect(useLibraryStore.getState().library[0]?.title).toBe('个人书名'));
+  expect(mocks.openBook).not.toHaveBeenCalled();
+  expect(document.querySelector('.glossa-selection-action-bar')).toBeNull();
+  screen.getByRole('main', { name: 'Bookshelf' }).focus();
+  await userEvent.keyboard('{Meta>}z{/Meta}');
+  await waitFor(() => expect(useLibraryStore.getState().library[0]?.title).toBe(original.title));
+  await page.screenshot({ path: '../../../../../../.glossa-dev/qa/library-direct-edit.png' });
+});
+it('selects a contiguous range and changes its status through one book card', async () => {
+  await page.viewport(1100, 780);
+  const items = [
+    original,
+    { ...original, hash: 'b'.repeat(32), title: '第二本' },
+    { ...original, hash: 'c'.repeat(32), title: '第三本' },
+  ];
+  useLibraryStore.getState().setLibrary(items);
+  render(<Shelf />);
+  const first = await screen.findByRole('button', { name: original.title });
+  const third = screen.getByRole('button', { name: '第三本' });
+  await userEvent.keyboard('{Meta>}');
+  await userEvent.click(first);
+  await userEvent.keyboard('{/Meta}');
+  await userEvent.keyboard('{Shift>}');
+  await userEvent.click(third);
+  await userEvent.keyboard('{/Shift}');
+  expect(useLibraryStore.getState().getSelectedBooks()).toHaveLength(3);
+  expect(document.querySelector('.glossa-selection-action-bar')).toBeNull();
+  await userEvent.click(screen.getAllByRole('button', { name: 'Reading Status' })[0]!);
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Mark as Finished' }));
+  await waitFor(() =>
+    expect(
+      useLibraryStore.getState().library.every((book) => book.readingStatus === 'finished'),
+    ).toBe(true),
+  );
+  expect(mocks.openBook).not.toHaveBeenCalled();
+  expect(screen.queryByRole('menuitem')).toBeNull();
+  await page.screenshot({ path: '../../../../../../.glossa-dev/qa/library-direct-selection.png' });
+});
+
+it('selects all visible groups with the keyboard', async () => {
+  useSettingsStore
+    .getState()
+    .setSettings({ ...useSettingsStore.getState().settings, libraryFolders: ['A', 'B'] });
+  render(<Shelf />);
+  await screen.findByRole('button', { name: 'A' });
+  screen.getByRole('main', { name: 'Bookshelf' }).focus();
+  await userEvent.keyboard('{Meta>}a{/Meta}');
+  await waitFor(() =>
+    expect(useLibraryStore.getState().getSelectedBooks().sort()).toEqual(
+      [md5Fingerprint('A'), md5Fingerprint('B')].sort(),
+    ),
+  );
+});
+
+it('keeps legacy column counts until resized, then adapts cover sizing to the shelf width', async () => {
+  await page.viewport(1100, 780);
+  mocks.search = 'groupBy=none';
+  window.history.replaceState(null, '', '?groupBy=none');
+  useSettingsStore.getState().setSettings({
+    ...useSettingsStore.getState().settings,
+    libraryAutoColumns: false,
+    libraryColumns: 4,
+  });
+  useLibraryStore.getState().setLibrary(
+    Array.from({ length: 12 }, (_, i) => ({
+      ...original,
+      hash: String(i).padStart(32, '0'),
+      title: `Original ${i}`,
+    })),
+  );
+  const view = render(
+    <>
+      <ViewMenu />
+      <Shelf />
+    </>,
+  );
+  const grid = await waitFor(() => {
+    const element = view.container.querySelector<HTMLElement>('.glossa-collection-grid');
+    expect(element).toBeTruthy();
+    return element!;
+  });
+  const columns = () => getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+  expect(columns()).toBe(4);
+  fireEvent.change(screen.getByRole('slider', { name: 'Cover Size' }), {
+    target: { value: '220' },
+  });
+  await waitFor(() => expect(grid.style.gridTemplateColumns).toContain('220px'));
+  const wideColumns = columns();
+  await page.viewport(390, 780);
+  await waitFor(() => expect(columns()).toBeLessThan(wideColumns));
+  expect(grid.scrollWidth).toBeLessThanOrEqual(grid.clientWidth);
+  fireEvent.click(screen.getByRole('button', { name: 'Auto' }));
+  await waitFor(() => expect(grid.style.gridTemplateColumns).toBe(''));
+  expect(mocks.saveSettings).toHaveBeenCalled();
 });

@@ -4,6 +4,14 @@ import { Book, BookConfig, BookNote } from '@/types/book';
 import { EnvConfigType } from '@/services/environment';
 import { BookDoc } from '@/libs/document';
 import { useLibraryStore } from './libraryStore';
+import {
+  bookNoteEdits,
+  newBookDataEdit,
+  BookDataConflictSaved,
+  type BookDataEdit,
+} from '@/services/bookDataConflicts';
+import { eventDispatcher } from '@/utils/event';
+import { stubTranslation as _ } from '@/utils/misc';
 
 // Throttle library.json writes triggered by per-book saveConfig.
 //
@@ -31,9 +39,10 @@ import { useLibraryStore } from './libraryStore';
 // happens via flushPendingLibrarySave() on hook unmount + window blur.
 const LIBRARY_SAVE_THROTTLE_MS = 30_000;
 let librarySaveTimeoutId: ReturnType<typeof setTimeout> | null = null;
-let librarySaveAppService: { saveLibraryBooks: (books: Book[]) => Promise<void> } | null = null;
+let librarySaveAppService: { saveLibraryBooks: (books: Book[]) => Promise<Book[] | void> } | null =
+  null;
 const scheduleLibrarySave = (appService: {
-  saveLibraryBooks: (books: Book[]) => Promise<void>;
+  saveLibraryBooks: (books: Book[]) => Promise<Book[] | void>;
 }) => {
   librarySaveAppService = appService;
   if (librarySaveTimeoutId != null) return;
@@ -75,7 +84,11 @@ interface BookDataState {
     config: BookConfig,
     settings: SystemSettings,
   ) => Promise<void>;
-  updateBooknotes: (key: string, booknotes: BookNote[]) => BookConfig | undefined;
+  updateBooknotes: (
+    key: string,
+    booknotes: BookNote[],
+    edit?: BookDataEdit | false,
+  ) => BookConfig | undefined;
   getBookData: (keyOrId: string) => BookData | null;
   clearBookData: (keyOrId: string) => void;
 }
@@ -145,6 +158,7 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
     config: BookConfig,
     settings: SystemSettings,
   ) => {
+    const readerBook = get().getBookData(bookKey)?.book;
     const appService = await envConfig.getAppService();
     const { library, hashIndex, setLibrary } = useLibraryStore.getState();
     const hash = bookKey.split('-')[0]!;
@@ -163,24 +177,63 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
       updatedAt: now,
       downloadedAt: original.downloadedAt || now,
     };
-    const newLibrary = [updatedBook, ...library.slice(0, idx), ...library.slice(idx + 1)];
-    setLibrary(newLibrary);
-
     // Refresh updatedAt immutably via the store rather than mutating the
     // caller-provided object. This notifies Zustand subscribers and works
     // regardless of whether the caller passed the shared store config.
-    get().setConfig(bookKey, { updatedAt: now });
     const configToSave = { ...config, updatedAt: now };
     // Per-book config: still write eagerly — it's small (one book's
     // settings + booknotes) and is the source of truth used by sync to
     // reconstruct the shelf if library.json is missing or stale.
-    await appService.saveBookConfig(updatedBook, configToSave, settings);
+    // A live reader keeps the generation it opened. A peer restore must not grant an old
+    // reader permission to replace the new book's notes or progress.
+    try {
+      await appService.saveBookConfig(
+        { ...updatedBook, removal: (readerBook ?? original).removal },
+        configToSave,
+        settings,
+      );
+    } catch (cause) {
+      if (cause instanceof BookDataConflictSaved) {
+        void eventDispatcher
+          .dispatch('toast', {
+            type: 'info',
+            message: _(
+              'New edits are preserved in Recently Deleted. Review the conflicting draft.',
+            ),
+            timeout: 6000,
+          })
+          .catch(() => {});
+      }
+      throw cause;
+    }
+    const latestRows = useLibraryStore.getState().library;
+    const latest = latestRows.find((book) => book.hash === hash);
+    if (
+      latest &&
+      latest.updatedAt <= now &&
+      (latest.removal?.revision ?? 0) === (original.removal?.revision ?? 0)
+    ) {
+      setLibrary([
+        {
+          ...latest,
+          progress: config.progress,
+          updatedAt: now,
+          downloadedAt: latest.downloadedAt || now,
+        },
+        ...latestRows.filter((book) => book.hash !== hash),
+      ]);
+    }
+    get().setConfig(bookKey, { updatedAt: now });
     // Library JSON write: throttled (see scheduleLibrarySave docs) so a
     // burst of saveConfig calls during reading doesn't fire IPC on every
     // page turn.
     scheduleLibrarySave(appService);
   },
-  updateBooknotes: (key: string, booknotes: BookNote[]) => {
+  updateBooknotes: (
+    key: string,
+    booknotes: BookNote[],
+    edit: BookDataEdit | false = newBookDataEdit(),
+  ) => {
     let updatedConfig: BookConfig | undefined;
     set((state) => {
       const id = key.split('-')[0]!;
@@ -199,16 +252,13 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
         updatedAt: Date.now(),
         booknotes: dedupedBooknotes,
       };
+      if (edit) bookNoteEdits.set(dedupedBooknotes, edit);
       return {
         booksData: {
           ...state.booksData,
           [id]: {
             ...book,
-            config: {
-              ...book.config,
-              updatedAt: Date.now(),
-              booknotes: dedupedBooknotes,
-            },
+            config: updatedConfig,
           },
         },
       };

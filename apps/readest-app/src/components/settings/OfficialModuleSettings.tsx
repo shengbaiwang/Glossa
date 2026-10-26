@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { Ellipsis, ListTree, MessageSquare, Share2 } from '@/components/GlossaIcons';
+import { Ellipsis, Link, ListTree, MessageSquare, Share2 } from '@/components/GlossaIcons';
 import { Toggle } from '@/components/primitives/toggle';
 import { broadcastGlobalSettings } from '@/utils/settingsSync';
 import {
@@ -67,7 +67,9 @@ export default function OfficialModuleSettings({
                 ? MessageSquare
                 : module.id === 'mindmap'
                   ? Share2
-                  : ListTree;
+                  : module.id === 'webImport'
+                    ? Link
+                    : ListTree;
             return (
               <article
                 key={module.id}

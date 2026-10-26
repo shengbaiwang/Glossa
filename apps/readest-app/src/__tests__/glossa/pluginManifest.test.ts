@@ -21,12 +21,24 @@ describe('plugin manifest draft', () => {
     }
   });
 
+  it('declares multiple supported formats while preserving single-format manifests', () => {
+    const manifest = pluginManifestSchema.parse(example);
+    expect(pluginManifestSchema.parse({ ...manifest, format: ['EPUB', 'MD'] }).format).toEqual([
+      'EPUB',
+      'MD',
+    ]);
+    expect(pluginManifestSchema.safeParse({ ...manifest, format: [] }).success).toBe(false);
+    expect(pluginManifestSchema.safeParse({ ...manifest, format: ['EPUB', 'HTML'] }).success).toBe(
+      false,
+    );
+  });
+
   it('accepts namespaced metadata without registering or loading a third-party plugin', () => {
     const manifest = pluginManifestSchema.parse(example);
     expect(manifest.id).toBe('org.example.outline');
     expect(Object.keys(pluginLoaders)).toEqual(PLUGINS.map((plugin) => plugin.id));
     expect(manifest.id in pluginLoaders).toBe(false);
-    expect(PLUGINS).toHaveLength(3);
+    expect(PLUGINS).toHaveLength(4);
   });
   it('accepts explicit panel and import activation without allowing automatic startup', () => {
     const manifest = pluginManifestSchema.parse(example);

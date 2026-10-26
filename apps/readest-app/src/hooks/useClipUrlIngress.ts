@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { useAuth } from '@/context/AuthContext';
 import { useEnv } from '@/context/EnvContext';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { isTauriAppPlatform } from '@/services/environment';
 import { ingestFile } from '@/services/ingestService';
-import { convertToEpubWithWorker } from '@/services/send/conversion/conversionWorker';
-import { clipPageWithSignInFallback, isClipCancelled } from '@/services/send/clipSignIn';
-import type { ConvertedBook } from '@/services/send/conversion/types';
+import { isClipCancelled } from '@/services/send/clipSignIn';
+import { pluginLoaders } from '@/glossa/plugins/loaders';
+import { isPluginEnabled } from '@/glossa/plugins/registry';
 import { eventDispatcher } from '@/utils/event';
 import { parseAnnotationDeepLink } from '@/utils/deeplink';
 import { parseShareDeepLink } from '@/utils/share';
@@ -26,22 +25,6 @@ interface PendingShareSave {
   groupName?: string | null;
   htmlFile?: string | null;
   addedAt?: string;
-}
-
-/**
- * Convert page HTML the iOS Share Extension captured from the user's
- * signed-in Safari tab (App Group file, referenced by `htmlFile`). The
- * native command reads and deletes the file, so this is single-shot.
- */
-async function convertSharedHtml(url: string, htmlFile: string): Promise<ConvertedBook> {
-  const { html } = await invoke<{ html?: string | null }>(
-    'plugin:native-bridge|read_share_clip_html',
-    { payload: { fileName: htmlFile } },
-  );
-  if (!html) {
-    throw new Error('Shared page HTML unavailable');
-  }
-  return await convertToEpubWithWorker({ kind: 'page', html, url });
 }
 
 /**
@@ -79,13 +62,24 @@ export function useClipUrlIngress() {
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
   const { user } = useAuth();
-  const inflight = useRef<Set<string>>(new Set());
+  const inflight = useRef<Map<string, AbortController>>(new Map());
+  useEffect(
+    () => () => {
+      for (const controller of inflight.current.values()) controller.abort();
+    },
+    [],
+  );
 
   const clipAndImport = useCallback(
     async (url: string, options: ClipOptions = {}) => {
-      if (!appService) return;
+      if (!appService || !isPluginEnabled(useSettingsStore.getState().settings, 'webImport'))
+        return;
       if (inflight.current.has(url)) return;
-      inflight.current.add(url);
+      const controller = new AbortController();
+      inflight.current.set(url, controller);
+      const unsubscribe = useSettingsStore.subscribe(({ settings }) => {
+        if (!isPluginEnabled(settings, 'webImport')) controller.abort();
+      });
 
       eventDispatcher.dispatch('toast', {
         type: 'info',
@@ -94,42 +88,40 @@ export function useClipUrlIngress() {
       });
 
       try {
-        let book: ConvertedBook | null = null;
-        // Prefer the DOM the Share Extension already captured from the
-        // user's signed-in browser tab — no re-fetch, no login wall.
-        if (options.htmlFile) {
-          try {
-            book = await convertSharedHtml(url, options.htmlFile);
-          } catch (err) {
-            console.warn('[clip] shared HTML conversion failed, refetching via clip_url', err);
-          }
-        }
-        if (!book) {
-          book = await clipPageWithSignInFallback(url, _, appService);
-        }
-        const { library } = useLibraryStore.getState();
-        const { settings } = useSettingsStore.getState();
-        const ingested = await ingestFile(
-          { file: book.file, books: library, forceUpload: true },
-          { appService, settings, isLoggedIn: !!user },
-        );
-        if (!ingested) {
-          throw new Error('Import produced no book');
-        }
-        if (options.groupId) ingested.groupId = options.groupId;
-        if (options.groupName) ingested.groupName = options.groupName;
-        await useLibraryStore.getState().updateBooks(envConfig, [ingested]);
-        eventDispatcher.dispatch('toast', {
-          type: 'success',
-          message: _('Saved “{{title}}” to your library.', {
-            title: ingested.title || book.title || url,
-          }),
-          timeout: 3000,
+        const { importWebPage } = await pluginLoaders.webImport();
+        await importWebPage({
+          url,
+          translate: _,
+          appService,
+          signal: controller.signal,
+          onStage: () => {},
+          htmlFile: options.htmlFile,
+          save: async (file) => {
+            const { library } = useLibraryStore.getState();
+            const { settings } = useSettingsStore.getState();
+            const ingested = await ingestFile(
+              { file, books: library, forceUpload: true },
+              { appService, settings, isLoggedIn: !!user },
+            );
+            if (!ingested) {
+              throw new Error('Import produced no book');
+            }
+            if (options.groupId) ingested.groupId = options.groupId;
+            if (options.groupName) ingested.groupName = options.groupName;
+            await useLibraryStore.getState().updateBooks(envConfig, [ingested]);
+            eventDispatcher.dispatch('toast', {
+              type: 'success',
+              message: _('Saved “{{title}}” to your library.', {
+                title: ingested.title || url,
+              }),
+              timeout: 3000,
+            });
+          },
         });
       } catch (err) {
         // The user closed the interactive sign-in capture — their call,
         // not an error worth toasting about.
-        if (!isClipCancelled(err)) {
+        if (!controller.signal.aborted && !isClipCancelled(err)) {
           const detail =
             err instanceof Error
               ? err.message
@@ -143,6 +135,7 @@ export function useClipUrlIngress() {
           });
         }
       } finally {
+        unsubscribe();
         inflight.current.delete(url);
       }
     },
@@ -237,7 +230,11 @@ export function useClipUrlIngress() {
     };
 
     w.__readestOnShareExtensionPending = (saves) => {
-      if (!Array.isArray(saves)) return false;
+      if (
+        !Array.isArray(saves) ||
+        !isPluginEnabled(useSettingsStore.getState().settings, 'webImport')
+      )
+        return false;
       for (const save of saves) {
         if (!save || typeof save.url !== 'string') continue;
         void clipAndImport(save.url, {

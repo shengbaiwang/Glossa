@@ -4,12 +4,7 @@ import {
   LibrarySecondarySortByType,
   LibrarySortByType,
 } from '@/types/settings';
-import {
-  formatAuthors,
-  formatTitle,
-  getContributorNames,
-  isCurrentlyReadingBook,
-} from '@/utils/book';
+import { formatAuthors, formatTitle, isCurrentlyReadingBook, getVisibleBooks } from '@/utils/book';
 import { md5Fingerprint } from '@/utils/md5';
 import { stubTranslation as _ } from '@/utils/misc';
 import { SIZE_PER_LOC, SIZE_PER_TIME_UNIT } from '@/services/constants';
@@ -27,7 +22,6 @@ const LIBRARY_CATEGORY_LABELS: Record<LibraryGroupByType, string> = {
   [LibraryGroupByType.Author]: _('Authors'),
   [LibraryGroupByType.Series]: _('Series'),
   [LibraryGroupByType.Tag]: _('Tags'),
-  [LibraryGroupByType.Subject]: _('Subjects'),
 };
 
 export const getLibraryCategoryLabel = (groupBy: LibraryGroupByType): string =>
@@ -114,10 +108,11 @@ export const ensureLibraryGroupByType = (
   value: string | null | undefined,
   fallback: LibraryGroupByType,
 ): LibraryGroupByType => {
+  if (value === 'subject') return LibraryGroupByType.None;
   if (value && VALID_GROUP_BY_TYPES.includes(value as LibraryGroupByType)) {
     return value as LibraryGroupByType;
   }
-  return fallback;
+  return VALID_GROUP_BY_TYPES.includes(fallback) ? fallback : LibraryGroupByType.None;
 };
 
 /**
@@ -201,14 +196,9 @@ const normalizeValues = (values: string[]): string[] => [
   ...new Set(values.map((value) => value.trim()).filter(Boolean)),
 ];
 
-export const getBookSubjects = (book: Book): string[] => {
-  return getContributorNames(book.metadata?.subject);
-};
-
 const getBookTags = (book: Book): string[] => normalizeValues(book.tags ?? []);
 
-const getBookValuesText = (book: Book): string =>
-  [...getBookTags(book), ...getBookSubjects(book)].join(' ');
+const getBookValuesText = (book: Book): string => getBookTags(book).join(' ');
 
 export const createBookFilter = (queryTerm: string | null) => (item: Book) => {
   if (!queryTerm) return true;
@@ -420,7 +410,7 @@ export const createBookSorter =
  */
 export const selectRecentShelfBooks = (books: Book[], count: number): Book[] => {
   const byRecency = createBookSorter(LibrarySortByType.Updated, '');
-  return books
+  return getVisibleBooks(books)
     .filter(isCurrentlyReadingBook)
     .sort((a, b) => -byRecency(a, b))
     .slice(0, count);
@@ -485,7 +475,7 @@ export const createBookGroups = (
   groupBy: LibraryGroupByType,
 ): (Book | BooksGroup)[] => {
   // Filter out deleted books
-  const activeBooks = books.filter((book) => !book.deletedAt);
+  const activeBooks = getVisibleBooks(books);
 
   if (groupBy === LibraryGroupByType.None) {
     return activeBooks;
@@ -501,10 +491,6 @@ export const createBookGroups = (
 
   if (groupBy === LibraryGroupByType.Tag) {
     return createValueGroups(activeBooks, 'tag', getBookTags);
-  }
-
-  if (groupBy === LibraryGroupByType.Subject) {
-    return createValueGroups(activeBooks, 'subject', getBookSubjects);
   }
 
   // 'group' mode is handled separately by generateBookshelfItems
@@ -603,7 +589,7 @@ const createAuthorGroups = (books: Book[]): (Book | BooksGroup)[] => {
 
 const createValueGroups = (
   books: Book[],
-  namespace: 'tag' | 'subject',
+  namespace: 'tag',
   getValues: (book: Book) => string[],
 ): (Book | BooksGroup)[] => {
   const valueMap = new Map<string, Book[]>();
@@ -640,7 +626,7 @@ export const resolveCurrentShelfBooks = (
   groupId = '',
   manualGroupName?: string,
 ): Book[] => {
-  const activeBooks = books.filter((book) => !book.deletedAt);
+  const activeBooks = getVisibleBooks(books);
   if (!groupId) return activeBooks;
   if (groupBy === LibraryGroupByType.None) return [];
   if (groupBy === LibraryGroupByType.Group) {
@@ -859,19 +845,7 @@ export const createGroupSorter =
     return 0;
   };
 
-export type BookContextMenuItemId =
-  | 'select'
-  | 'group'
-  | 'markFinished'
-  | 'markUnread'
-  | 'markAbandoned'
-  | 'clearStatus'
-  | 'showDetails'
-  | 'showInFinder'
-  | 'searchGoodreads'
-  | 'download'
-  | 'upload'
-  | 'delete';
+export type BookContextMenuItemId = 'group' | 'showInFinder' | 'delete';
 
 /**
  * Build a new Book with an explicit reading status. Stamps both `updatedAt`
@@ -983,24 +957,8 @@ export const pickFresherMetadata = (
  * order and the menu appears to shuffle on every open (issue #4389).
  */
 export const getBookContextMenuItemIds = (book: Book): BookContextMenuItemId[] => {
-  const ids: BookContextMenuItemId[] = ['select', 'group'];
-  ids.push(book.readingStatus === 'finished' ? 'markUnread' : 'markFinished');
-  if (book.readingStatus !== 'abandoned') ids.push('markAbandoned');
-  // "Clear Status" is offered only when the book has an explicit status set.
-  if (
-    book.readingStatus === 'finished' ||
-    book.readingStatus === 'unread' ||
-    book.readingStatus === 'abandoned'
-  ) {
-    ids.push('clearStatus');
-  }
-  ids.push('showDetails', 'showInFinder', 'searchGoodreads');
-  // A feed book has no file to move: every transfer action would fail, and the
-  // share dialog uploads before it can hand out a link (issue #5307).
-  if (!isFeedBook(book)) {
-    if (book.uploadedAt && !book.downloadedAt) ids.push('download');
-    if (!book.uploadedAt && book.downloadedAt) ids.push('upload');
-  }
+  const ids: BookContextMenuItemId[] = ['group'];
+  if (!isFeedBook(book) && (book.downloadedAt || book.filePath)) ids.push('showInFinder');
   ids.push('delete');
   return ids;
 };

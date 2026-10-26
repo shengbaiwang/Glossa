@@ -7,7 +7,7 @@ import '@/styles/glossa.css';
 import '@/styles/glossa-library.css';
 
 const translations: Record<string, string> = {
-  'Import Books': '导入书籍',
+  'Import folder': '导入文件夹',
   Change: '更换',
   Cancel: '取消',
   'Keep subfolder groups': '保留子文件夹分组',

@@ -7,7 +7,6 @@ import { Insets } from '@/types/misc';
 import { useEnv } from '@/context/EnvContext';
 import { useThemeStore } from '@/store/themeStore';
 import { useReaderStore } from '@/store/readerStore';
-import { useBookDataStore } from '@/store/bookDataStore';
 import { useNotebookStore } from '@/store/notebookStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -20,17 +19,14 @@ import { AnnotationToolType } from '@/types/annotator';
 import { saveViewSettings } from '@/helpers/settings';
 import { getHeaderTriggerHeight } from '@/utils/insets';
 import Dropdown from '@/components/Dropdown';
-import ModalPortal from '@/components/ModalPortal';
 import WindowButtons from '@/components/WindowButtons';
 import QuickActionMenu from './annotator/QuickActionMenu';
 import SidebarToggler from './SidebarToggler';
 import BookmarkToggler from './BookmarkToggler';
 import NotebookToggler from './NotebookToggler';
 import SettingsToggler from './SettingsToggler';
-import ApplicationSettingsButton from '@/components/settings/ApplicationSettingsButton';
 
 import ViewMenu from './ViewMenu';
-import SyncInfoDialog from './SyncInfoDialog';
 
 interface HeaderBarProps {
   bookKey: string;
@@ -65,17 +61,10 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
   const { isSideBarVisible, getIsSideBarVisible, sideBarBookKey } = useSidebarStore();
   const { isNotebookVisible } = useNotebookStore();
   const { getView, getViewSettings, setHoveredBookKey } = useReaderStore();
-  const { getBookData, getConfig } = useBookDataStore();
-  const viewSettings = getViewSettings(bookKey);
-  const bookData = getBookData(bookKey);
-  const bookConfig = getConfig(bookKey);
-  const lastSyncedAt =
-    Math.max(bookConfig?.lastSyncedAtConfig || 0, bookConfig?.lastSyncedAtNotes || 0) || undefined;
-
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [isMetaHashDialogOpen, setIsMetaHashDialogOpen] = useState(false);
   const [headerWidth, setHeaderWidth] = useState(0);
   const view = getView(bookKey);
+  const viewSettings = getViewSettings(bookKey)!;
   const iconSize18 = useResponsiveSize(18);
 
   const docs = view?.renderer.getContents() ?? [];
@@ -248,24 +237,6 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
               <LibraryBig size={iconSize18} aria-hidden='true' />
             </button>
           </div>
-          {enableAnnotationQuickActions && annotationQuickAction && (
-            <Dropdown
-              label={_('Instant {{action}}', { action: _(annotationQuickActionButton.label) })}
-              className='exclude-title-bar-mousedown dropdown-bottom dropdown-center'
-              menuClassName='!relative'
-              buttonClassName={clsx(
-                'glossa-icon-button btn btn-ghost h-8 min-h-8 w-8 p-0',
-                viewSettings?.annotationQuickAction && 'bg-base-300/50',
-              )}
-              toggleButton={<AnnotationToolQuickActionIcon size={iconSize18} />}
-              onToggle={handleToggleDropdown}
-            >
-              <QuickActionMenu
-                selectedAction={viewSettings.annotationQuickAction}
-                onActionSelect={handleAnnotationQuickActionSelect}
-              />
-            </Dropdown>
-          )}
         </div>
 
         <div
@@ -289,6 +260,24 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
         </div>
 
         <div className='header-tools-end bg-base-100 z-20 ms-auto flex h-full min-w-max items-center gap-x-3 ps-2 max-[350px]:gap-x-2'>
+          {enableAnnotationQuickActions && annotationQuickAction && (
+            <Dropdown
+              label={_('Instant {{action}}', { action: _(annotationQuickActionButton.label) })}
+              className='exclude-title-bar-mousedown dropdown-bottom dropdown-center'
+              menuClassName='!relative'
+              buttonClassName={clsx(
+                'glossa-icon-button btn btn-ghost h-8 min-h-8 w-8 p-0',
+                viewSettings?.annotationQuickAction && 'bg-base-300/50',
+              )}
+              toggleButton={<AnnotationToolQuickActionIcon size={iconSize18} />}
+              onToggle={handleToggleDropdown}
+            >
+              <QuickActionMenu
+                selectedAction={viewSettings.annotationQuickAction}
+                onActionSelect={handleAnnotationQuickActionSelect}
+              />
+            </Dropdown>
+          )}
           <BookmarkToggler bookKey={bookKey} />
           {!isHeaderCompact && <SettingsToggler bookKey={bookKey} />}
           <Dropdown
@@ -302,22 +291,9 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
             <ViewMenu
               bookKey={bookKey}
               showReadingAppearance={isHeaderCompact}
-              onShowMetaHashDialog={() => setIsMetaHashDialogOpen(true)}
               onCloseBook={handleCloseBook}
             />
           </Dropdown>
-          <ApplicationSettingsButton />
-          {isMetaHashDialogOpen && (
-            <ModalPortal showOverlay={false}>
-              <SyncInfoDialog
-                isOpen={isMetaHashDialogOpen}
-                metadata={bookData?.bookDoc?.metadata ?? bookData?.book?.metadata}
-                storedMetaHash={bookData?.book?.metaHash}
-                lastSyncedAt={lastSyncedAt}
-                onClose={() => setIsMetaHashDialogOpen(false)}
-              />
-            </ModalPortal>
-          )}
           {(!isNotebookVisible || sideBarBookKey !== bookKey || isMobile) && (
             <NotebookToggler bookKey={bookKey} />
           )}

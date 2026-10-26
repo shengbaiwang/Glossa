@@ -18,6 +18,7 @@ import { ClosableFile } from '@/utils/file';
 import { ProgressHandler } from '@/utils/transfer';
 import { CLOUD_BOOKS_SUBDIR, CLOUD_REPLICAS_SUBDIR } from './constants';
 import { isBookFileContentSource, resolveBookContentSource } from './bookContent';
+import { registerBookDownload } from './bookDownloadIdentity';
 
 export async function deleteBook(
   fs: FileSystem,
@@ -57,6 +58,10 @@ export async function deleteBook(
       if (await fs.exists(ttsCacheDir, 'Cache')) {
         await fs.removeDir(ttsCacheDir, 'Cache', true);
       }
+      const verificationDir = `removal-checks/${book.hash}`;
+      if (await fs.exists(verificationDir, 'Cache')) {
+        await fs.removeDir(verificationDir, 'Cache', true);
+      }
     }
 
     if (deleteAction === 'both' && (await fs.exists(getCoverFilename(book), 'Books'))) {
@@ -77,11 +82,7 @@ export async function deleteBook(
     const fps = [getRemoteBookFilename(book), getCoverFilename(book)];
     for (const fp of fps) {
       const cfp = `${CLOUD_BOOKS_SUBDIR}/${fp}`;
-      try {
-        deleteCloudFile(cfp);
-      } catch (error) {
-        console.log('Failed to delete uploaded file:', error);
-      }
+      await deleteCloudFile(cfp);
     }
     book.uploadedAt = null;
   }
@@ -220,7 +221,6 @@ export async function uploadBook(
   );
   completedFiles.count++;
 
-  book.deletedAt = null;
   book.updatedAt = Date.now();
   book.uploadedAt = Date.now();
   book.downloadedAt = Date.now();
@@ -354,7 +354,8 @@ export async function downloadBook(
   }
   // some books may not have cover image, so we need to check if the book is downloaded
   if (bookDownloaded || (!onlyCover && !needDownBook)) {
-    book.downloadedAt = Date.now();
+    const registered = await registerBookDownload(fs, book, [book]);
+    Object.assign(book, registered.book);
   }
   if ((bookCoverDownloaded || !needDownCover) && !book.coverDownloadedAt) {
     book.coverDownloadedAt = Date.now();

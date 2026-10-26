@@ -7,7 +7,7 @@ export const passageSourcesSchema = z
       .object({
         sourceId: z.string().min(1).max(200),
         text: z.string().min(1).max(PASSAGE_MAX_CHARACTERS),
-        kind: z.enum(['heading', 'paragraph', 'list', 'table', 'quote']),
+        kind: z.enum(['heading', 'paragraph', 'list', 'table', 'quote', 'code']),
         anchor: z
           .object({
             sectionIndex: z.number().int().nonnegative(),

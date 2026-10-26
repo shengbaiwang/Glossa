@@ -4,7 +4,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import type { MapQuestionDraft } from '@/glossa/mindmap/export';
 import type { ReadingPanelProps } from '@/glossa/ui/ReadingPassagePanel';
 import { pluginPanelLoaders } from '../plugins/loaders';
-import { OFFICIAL_MODULES, isOfficialModuleEnabled } from './registry';
+import { OFFICIAL_MODULES, isOfficialModuleEnabled, pluginSupportsFormat } from './registry';
 
 type Props = ReadingPanelProps &
   (
@@ -47,7 +47,10 @@ export default function OfficialModulePanel(props: Props) {
     [attempt],
   );
   if (
-    props.book.format !== OFFICIAL_MODULES.find((module) => module.id === props.moduleId)?.format ||
+    !pluginSupportsFormat(
+      OFFICIAL_MODULES.find((module) => module.id === props.moduleId),
+      props.book.format,
+    ) ||
     !isOfficialModuleEnabled(settings, props.moduleId)
   )
     return null;

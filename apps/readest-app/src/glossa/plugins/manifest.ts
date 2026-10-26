@@ -3,7 +3,8 @@ import { valid } from 'semver';
 
 /** Draft v1 package metadata. Parsing a manifest never registers or executes code. */
 export const PLUGIN_API_VERSION = 1;
-const activationSchema = z.enum(['reader-panel', 'persistent-import']);
+const formatSchema = z.enum(['EPUB', 'PDF', 'WEB', 'MD']);
+const activationSchema = z.enum(['reader-panel', 'persistent-import', 'library-import']);
 export const pluginManifestSchema = z
   .object({
     id: z
@@ -21,10 +22,16 @@ export const pluginManifestSchema = z
       ),
     apiVersion: z.literal(PLUGIN_API_VERSION),
     activation: z.union([activationSchema, z.array(activationSchema).min(1).max(2)]),
-    format: z.enum(['EPUB', 'PDF']),
+    format: z.union([formatSchema, z.array(formatSchema).min(1).max(4)]),
     capabilities: z
       .array(
-        z.enum(['reading-harness', 'model-provider', 'verified-sources', 'local-pdf-contents']),
+        z.enum([
+          'reading-harness',
+          'model-provider',
+          'verified-sources',
+          'local-pdf-contents',
+          'web-page-capture',
+        ]),
       )
       .max(4),
   })

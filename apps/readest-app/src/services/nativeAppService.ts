@@ -9,6 +9,7 @@ import {
   remove,
   copyFile,
   stat,
+  lstat,
   BaseDirectory,
   WriteFileOptions,
   DirEntry,
@@ -564,6 +565,10 @@ export const nativeFileSystem: FileSystem = {
     } catch {
       return false;
     }
+  },
+  async lstat(path: string, base: BaseDir) {
+    const { fp, baseDir } = this.resolvePath(path, base);
+    return await lstat(fp, baseDir ? { baseDir } : undefined);
   },
   async stats(path: string, base: BaseDir) {
     const { fp, baseDir } = this.resolvePath(path, base);

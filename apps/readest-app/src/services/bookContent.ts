@@ -6,6 +6,8 @@ import { isContentURI, isValidURL } from '@/utils/misc';
 import { isPseStreamFileName } from './opds/pseStream';
 import { isFeedBookUrl } from '@/services/rss/feedBookUrl';
 
+export type BookContentFileSystem = Pick<FileSystem, 'exists' | 'openFile' | 'readDir'>;
+
 export type BookContentSource =
   | { kind: 'managed'; path: string; base: 'Books'; legacy?: boolean }
   | { kind: 'external'; path: string; base: 'None' }
@@ -26,7 +28,7 @@ export function isBookFileContentSource(
 }
 
 async function resolveLegacyManagedSource(
-  fs: FileSystem,
+  fs: BookContentFileSystem,
   book: Book,
 ): Promise<BookContentSource | null> {
   try {
@@ -41,7 +43,7 @@ async function resolveLegacyManagedSource(
 }
 
 export async function resolveBookContentSource(
-  fs: FileSystem,
+  fs: BookContentFileSystem,
   book: Book,
 ): Promise<BookContentSource> {
   // Prefer the managed copy when it exists; book.filePath is device-local and

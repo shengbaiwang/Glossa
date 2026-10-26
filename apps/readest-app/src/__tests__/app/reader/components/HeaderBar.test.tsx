@@ -91,7 +91,6 @@ vi.mock('@/helpers/settings', () => ({ saveViewSettings: vi.fn() }));
 vi.mock('@/components/ModalPortal', () => ({ default: () => null }));
 vi.mock('@/components/WindowButtons', () => ({ default: () => null }));
 vi.mock('@/app/reader/components/ViewMenu', () => ({ default: () => null }));
-vi.mock('@/app/reader/components/SyncInfoDialog', () => ({ default: () => null }));
 vi.mock('@/app/reader/components/annotator/QuickActionMenu', () => ({ default: () => null }));
 
 const insets = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -146,7 +145,6 @@ describe('reader top bar hierarchy', () => {
       'Add Bookmark',
       'Reading Appearance',
       'Book Actions',
-      'Settings',
       'Reading Assistant',
     ]);
   });

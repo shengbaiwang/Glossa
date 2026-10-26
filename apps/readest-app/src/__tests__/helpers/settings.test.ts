@@ -42,6 +42,7 @@ import {
   getBackgroundTextureSettings,
   getLibraryViewSettings,
   saveViewSettings,
+  saveReadingDefaults,
 } from '@/helpers/settings';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { EnvConfigType } from '@/services/environment';
@@ -199,6 +200,19 @@ describe('getBackgroundTextureSettings', () => {
 });
 
 describe('saveViewSettings', () => {
+  test('keeps an adjustment inside the current book even when it followed defaults', async () => {
+    const current = { isGlobal: true, fontWeight: 400 };
+    const other = { isGlobal: true, fontWeight: 400 };
+    openBookKeys.push('current', 'other');
+    getViewSettingsMock.mockImplementation((key) => (key === 'current' ? current : other));
+    getViewStateMock.mockReturnValue({ isPrimary: true });
+    getConfigMock.mockReturnValue({ viewSettings: current });
+    await saveViewSettings(envConfig, 'current', 'fontWeight', 600);
+    expect(current).toEqual({ isGlobal: false, fontWeight: 600 });
+    expect(other.fontWeight).toBe(400);
+    expect(useSettingsStore.getState().saveSettings).not.toHaveBeenCalled();
+    expect(saveConfigMock).toHaveBeenCalledOnce();
+  });
   test('updates defaults and following books without replacing a book-specific override', async () => {
     openBookKeys.push('following', 'personal');
     const following = { isGlobal: true, fontWeight: 400 };
@@ -250,7 +264,7 @@ describe('saveViewSettings', () => {
     getViewSettingsMock.mockReturnValue(viewSettings);
     getViewStateMock.mockReturnValue({ isPrimary: true });
     getConfigMock.mockReturnValue(config);
-    await saveViewSettings(envConfig, 'book-1', 'fontWeight', 700);
+    await saveViewSettings(envConfig, '', 'fontWeight', 700);
     expect(saveConfigMock).toHaveBeenCalledWith(
       envConfig,
       'book-1',
@@ -273,7 +287,7 @@ describe('saveViewSettings', () => {
     });
 
     try {
-      await saveViewSettings(envConfig, 'book-1', 'userStylesheet', 'body { color: red; }');
+      await saveViewSettings(envConfig, '', 'userStylesheet', 'body { color: red; }');
     } finally {
       unsubscribe();
     }
@@ -291,7 +305,7 @@ describe('saveViewSettings', () => {
       saveSettings: saveSettingsMock,
     } as unknown as ReturnType<typeof useSettingsStore.getState>);
 
-    await saveViewSettings(envConfig, 'book-1', 'userUIStylesheet', '.app { background: black; }');
+    await saveViewSettings(envConfig, '', 'userUIStylesheet', '.app { background: black; }');
 
     expect(saveSettingsMock).toHaveBeenCalledTimes(1);
     expect(savedSettings!.globalViewSettings.userUIStylesheet).toBe('.app { background: black; }');
@@ -319,5 +333,47 @@ describe('saveViewSettings', () => {
     // into the cross-device globals.
     expect(referenceChanges).toHaveLength(0);
     expect(useSettingsStore.getState().settings).toBe(initial);
+  });
+});
+
+describe('saveReadingDefaults', () => {
+  test('copies reading preferences without locations, private text or application state', async () => {
+    const current = {
+      isGlobal: false,
+      fontWeight: 650,
+      ttsRate: 1.6,
+      ttsLocation: 'private-cfi',
+      ttsReadAloudText: 'private excerpt',
+      sideBarTab: 'search',
+      uiLanguage: 'fr',
+      referencePageCount: 999,
+    };
+    getViewSettingsMock.mockReturnValue(current);
+    await saveReadingDefaults(envConfig, 'current');
+    const saved = useSettingsStore.getState().settings.globalViewSettings;
+    expect(saved.fontWeight).toBe(650);
+    expect(saved.ttsRate).toBe(1.6);
+    for (const key of [
+      'ttsLocation',
+      'ttsReadAloudText',
+      'sideBarTab',
+      'uiLanguage',
+      'referencePageCount',
+      'isGlobal',
+    ])
+      expect(saved).not.toHaveProperty(key);
+    expect(current.ttsLocation).toBe('private-cfi');
+    expect(current.isGlobal).toBe(false);
+    expect(saveConfigMock).not.toHaveBeenCalled();
+    expect(useSettingsStore.getState().saveSettings).toHaveBeenCalledOnce();
+  });
+  test('keeps the previous defaults when persistence fails and allows retry', async () => {
+    getViewSettingsMock.mockReturnValue({ fontWeight: 650 });
+    const before = useSettingsStore.getState().settings;
+    vi.mocked(useSettingsStore.getState().saveSettings).mockRejectedValueOnce(new Error('disk'));
+    await expect(saveReadingDefaults(envConfig, 'current')).rejects.toThrow('disk');
+    expect(useSettingsStore.getState().settings).toBe(before);
+    await saveReadingDefaults(envConfig, 'current');
+    expect(useSettingsStore.getState().settings.globalViewSettings.fontWeight).toBe(650);
   });
 });

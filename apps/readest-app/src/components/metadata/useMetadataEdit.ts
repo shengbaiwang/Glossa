@@ -1,9 +1,9 @@
+import { removeBookSubjectMetadata } from '@/utils/bookMetadata';
 import { useEffect, useState } from 'react';
 import { BookMetadata } from '@/libs/document';
 import {
   validateAndNormalizeDate,
   validateAndNormalizeLanguage,
-  validateAndNormalizeSubjects,
   validateISBN,
   ValidationResult,
 } from '@/utils/validation';
@@ -30,7 +30,6 @@ export const useMetadataEdit = (metadata: BookMetadata | null, tags: string[]) =
     'published',
     'language',
     'identifier',
-    'subject',
     'tags',
     'description',
     'subtitle',
@@ -42,7 +41,7 @@ export const useMetadataEdit = (metadata: BookMetadata | null, tags: string[]) =
 
   useEffect(() => {
     if (metadata) {
-      setEditedMeta({ ...metadata });
+      setEditedMeta({ ...removeBookSubjectMetadata(metadata) });
     }
   }, [metadata]);
 
@@ -60,12 +59,12 @@ export const useMetadataEdit = (metadata: BookMetadata | null, tags: string[]) =
   }, []);
 
   const handleFieldChange = (field: string, value: string | undefined) => {
-    if (lockedFields[field]) {
+    if (!lockableFields.includes(field) || lockedFields[field]) {
       return;
     }
 
     // Tags live on the book, not in the metadata document; they still edit
-    // like Subjects — a separator-split string. Empty segments survive so a
+    // as a separator-split string. Empty segments survive so a
     // just-typed comma is not swallowed by the value round-trip; they are
     // dropped at save time.
     if (field === 'tags') {
@@ -75,13 +74,7 @@ export const useMetadataEdit = (metadata: BookMetadata | null, tags: string[]) =
 
     setEditedMeta((prevMeta) => {
       const newMeta = { ...prevMeta } as { [key: string]: unknown };
-      switch (field) {
-        case 'subject':
-          newMeta['subject'] = value ? value.split(/,|;|，|、/).map((s) => s.trim()) : [];
-          break;
-        default:
-          newMeta[field] = value;
-      }
+      newMeta[field] = value;
       return newMeta as BookMetadata;
     });
 
@@ -130,17 +123,6 @@ export const useMetadataEdit = (metadata: BookMetadata | null, tags: string[]) =
           validationResult = validateAndNormalizeLanguage(value);
           if (!validationResult.isValid) {
             console.warn(`Invalid language for field ${field}:`, validationResult.error);
-            setFieldErrors((prev) => ({ ...prev, [field]: validationResult.error || '' }));
-            return false;
-          }
-        }
-        break;
-
-      case 'subject':
-        if (value.trim()) {
-          validationResult = validateAndNormalizeSubjects(value);
-          if (!validationResult.isValid) {
-            console.warn(`Invalid subjects for field ${field}:`, validationResult.error);
             setFieldErrors((prev) => ({ ...prev, [field]: validationResult.error || '' }));
             return false;
           }
@@ -220,7 +202,7 @@ export const useMetadataEdit = (metadata: BookMetadata | null, tags: string[]) =
     const newMeta = { ...editedMeta } as { [key: string]: unknown };
     const newSources = { ...fieldSources };
 
-    Object.entries(selectedSource.data).forEach(([key, value]) => {
+    Object.entries(removeBookSubjectMetadata(selectedSource.data)).forEach(([key, value]) => {
       if (lockedFields[key] || !value) {
         return;
       }
@@ -254,7 +236,7 @@ export const useMetadataEdit = (metadata: BookMetadata | null, tags: string[]) =
 
   const resetToOriginal = () => {
     if (metadata) {
-      setEditedMeta({ ...metadata });
+      setEditedMeta({ ...removeBookSubjectMetadata(metadata) });
     }
     setEditedTags([...tags]);
     setFieldSources({});

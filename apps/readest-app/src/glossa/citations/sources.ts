@@ -5,6 +5,7 @@ import {
   checkAborted,
   collectTextBlocks,
   normalizeSourceText,
+  normalizeCodeText,
   readRangeText,
   isReadable,
 } from '../context/text';
@@ -32,6 +33,7 @@ export const resolveSource = async (
 ): Promise<ResolvedSource | null> => {
   checkAborted(signal);
   const { sectionIndex, cfi, quote } = source.anchor;
+  const normalize = source.kind === 'code' ? normalizeCodeText : normalizeSourceText;
   const section = book.sections[sectionIndex];
   if (!section || !quote.exact) return null;
   const doc = await section.createDocument();
@@ -45,10 +47,9 @@ export const resolveSource = async (
       const text = collectTextBlocks(doc, range)
         .map((block) => block.text)
         .join(' ');
-      if (normalizeSourceText(text) === normalizeSourceText(quote.exact))
-        return { cfi, text, recovered: false };
-      const selectedText = readRangeText(doc, range);
-      if (selectedText === normalizeSourceText(quote.exact))
+      if (normalize(text) === normalize(quote.exact)) return { cfi, text, recovered: false };
+      const selectedText = readRangeText(doc, range, source.kind === 'code');
+      if (selectedText === normalize(quote.exact))
         return { cfi, text: selectedText, recovered: false };
     }
   } catch {
@@ -57,7 +58,7 @@ export const resolveSource = async (
   const blocks = collectTextBlocks(doc);
   let matches = blocks
     .map((block, index) => ({ block, index }))
-    .filter(({ block }) => block.text === normalizeSourceText(quote.exact));
+    .filter(({ block }) => block.text === normalize(quote.exact));
   if (matches.length > 1 && (quote.prefix || quote.suffix)) {
     matches = matches.filter(
       ({ index }) =>
@@ -65,6 +66,7 @@ export const resolveSource = async (
         (!quote.suffix || blocks[index + 1]?.text.startsWith(quote.suffix)),
     );
   }
+  if (source.kind === 'code' && matches.length !== 1) return null;
   if (matches.length !== 1 || source.sourceId.startsWith('chat-')) {
     // A selection can begin/end inside a paragraph. Recover only an unambiguous exact quote.
     const ranges: Range[] = matches.map(({ block }) => block.range);

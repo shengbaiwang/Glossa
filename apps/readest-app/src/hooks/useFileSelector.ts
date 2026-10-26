@@ -22,6 +22,7 @@ export interface SelectedFile {
   // For Tauri file
   path?: string;
   basePath?: string;
+  resourceRoot?: string;
 
   // Explicit destination for a dropped directory entry (including Web File objects).
   groupName?: string;

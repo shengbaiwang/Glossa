@@ -1,8 +1,12 @@
 import { FileSystem, SaveLibraryBooksOptions } from '@/types/system';
 import { Book } from '@/types/book';
 import { getLibraryFilename } from '@/utils/book';
+import { removeBookSubjectMetadata } from '@/utils/bookMetadata';
 import { repairImportedMetadata } from '@/utils/importMetadata';
-import { safeLoadJSON, safeSaveJSON } from './persistence';
+import { safeLoadJSON, safeSaveJSON, type JSONFileSystem } from './persistence';
+import { withLibraryLock } from './libraryLock';
+import { protectBookRemoval } from './bookRemovalState';
+import { contentIdentity } from './bookIdentity';
 
 const COVER_CONCURRENCY = 20;
 
@@ -28,14 +32,29 @@ export async function loadLibraryBooks(
 
   const books = await safeLoadJSON<Book[]>(fs, libraryFilename, 'Books', []);
 
+  let removedSubjects = false;
   await processInBatches(books, COVER_CONCURRENCY, async (book) => {
-    // In-memory and idempotent: normal saves persist the correction. Loading
-    // never adds a competing disk write or changes reading timestamps.
+    // Cleanup does not alter the metadata or reading clocks.
+    if (book.metadata) {
+      const metadata = removeBookSubjectMetadata(book.metadata);
+      removedSubjects ||= metadata !== book.metadata;
+      book.metadata = metadata;
+    }
     repairImportedMetadata(book);
     book.coverImageUrl = await generateCoverImageUrl(book);
     book.updatedAt ??= book.lastUpdated || Date.now();
   });
 
+  // Re-read the latest disk rows and remove only retired fields. Do not write
+  // the load snapshot over an edit another window made while covers loaded.
+  if (removedSubjects) {
+    try {
+      await saveLibraryBooks(fs, []);
+    } catch {
+      // Reading remains available; the next load or routine save retries cleanup.
+      console.warn('Could not persist retired book subject cleanup.');
+    }
+  }
   return books;
 }
 
@@ -43,13 +62,25 @@ export async function saveLibraryBooks(
   fs: FileSystem,
   books: Book[],
   options?: SaveLibraryBooksOptions,
-): Promise<void> {
+): Promise<Book[]> {
+  return withLibraryLock(fs, () => saveLibraryBooksUnlocked(fs, books, options));
+}
+
+/** Caller must hold withLibraryLock; import commits share this transaction boundary. */
+export async function saveLibraryBooksUnlocked(
+  fs: JSONFileSystem,
+  books: Book[],
+  options?: SaveLibraryBooksOptions,
+): Promise<Book[]> {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const incoming = books.map(({ coverImageUrl, ...rest }) => rest);
+  const incoming = books.map(({ coverImageUrl, ...rest }) => ({
+    ...rest,
+    ...(rest.metadata ? { metadata: removeBookSubjectMetadata(rest.metadata) } : {}),
+  }));
 
   if (options?.replace) {
     await safeSaveJSON(fs, getLibraryFilename(), 'Books', incoming);
-    return;
+    return incoming;
   }
 
   // Merge-floor: treat the on-disk library as a floor. A routine save may add
@@ -60,7 +91,32 @@ export async function saveLibraryBooks(
   // must go through `{ replace: true }`.
   const existing = await safeLoadJSON<Book[]>(fs, getLibraryFilename(), 'Books', []);
   const merged = new Map<string, Book>();
-  for (const book of existing) merged.set(book.hash, book);
-  for (const book of incoming) merged.set(book.hash, book); // incoming wins per hash
-  await safeSaveJSON(fs, getLibraryFilename(), 'Books', Array.from(merged.values()));
+  for (const book of Array.isArray(existing) ? existing : []) {
+    merged.set(
+      book.hash,
+      book.metadata ? { ...book, metadata: removeBookSubjectMetadata(book.metadata) } : book,
+    );
+  }
+  for (const book of incoming) {
+    const previous = merged.get(book.hash);
+    if (
+      previous &&
+      contentIdentity(previous) &&
+      contentIdentity(book) &&
+      contentIdentity(previous) !== contentIdentity(book)
+    ) {
+      throw new Error('Book content identity conflict');
+    }
+    merged.set(book.hash, {
+      ...(previous ? protectBookRemoval(book, previous) : book),
+      contentFingerprint: book.contentFingerprint ?? previous?.contentFingerprint,
+      storedContentFingerprint: book.storedContentFingerprint ?? previous?.storedContentFingerprint,
+      ...((previous?.duplicateUpdatedAt ?? 0) > (book.duplicateUpdatedAt ?? 0)
+        ? { duplicateOf: previous?.duplicateOf, duplicateUpdatedAt: previous?.duplicateUpdatedAt }
+        : {}),
+    });
+  }
+  const persisted = Array.from(merged.values());
+  await safeSaveJSON(fs, getLibraryFilename(), 'Books', persisted);
+  return persisted;
 }

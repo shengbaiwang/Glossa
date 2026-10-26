@@ -1,6 +1,7 @@
+import { removeBookSubjectMetadata } from '@/utils/bookMetadata';
 import type { Book } from '@/types/book';
 import type { BookMetadata } from '@/libs/document';
-import type { OPDSPublication, OPDSSubject } from '@/types/opds';
+import type { OPDSPublication } from '@/types/opds';
 import { SYMBOL } from '@/types/opds';
 import { getOPDSDescriptionHtml } from '@/app/opds/utils/opdsContent';
 import { formatAuthors, formatTitle, getPrimaryLanguage } from '@/utils/book';
@@ -22,14 +23,6 @@ type PersonLike = string | { name?: string } | undefined;
 const personNames = (value: PersonLike | PersonLike[] | undefined): string[] => {
   const values = Array.isArray(value) ? value : [value];
   return values.map((v) => (typeof v === 'string' ? v : (v?.name ?? '')).trim()).filter(Boolean);
-};
-
-const subjectNames = (value: string | OPDSSubject | Array<string | OPDSSubject> | undefined) => {
-  if (!value) return [];
-  const values = Array.isArray(value) ? value : [value];
-  return values
-    .map((s) => (typeof s === 'string' ? s : s?.name || s?.code || '').trim())
-    .filter(Boolean);
 };
 
 /**
@@ -69,9 +62,6 @@ export const getOPDSBookMetadata = (publication: {
   const identifier = meta.identifier?.trim();
   if (identifier) result.identifier = identifier;
 
-  const subjects = subjectNames(meta.subject);
-  if (subjects.length) result.subject = subjects;
-
   // Same precedence as PublicationView: the typed Atom <content>/<summary>
   // first, then the OPDS 2.0 plain description; sanitized because BookDetailView
   // renders the description as HTML.
@@ -99,7 +89,7 @@ export const getOPDSBookMetadata = (publication: {
  */
 export const applyOPDSMetadata = (book: Book, opdsMetadata: OPDSBookMetadata): void => {
   if (!Object.keys(opdsMetadata).length) return;
-  const metadata = { ...book.metadata, ...opdsMetadata } as BookMetadata;
+  const metadata = removeBookSubjectMetadata({ ...book.metadata, ...opdsMetadata }) as BookMetadata;
   normalizeMetadataIsbn(metadata);
   book.metadata = metadata;
   if (opdsMetadata.language) {

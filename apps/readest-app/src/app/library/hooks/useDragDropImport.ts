@@ -125,9 +125,17 @@ export const useDragDropImport = () => {
       page?.addEventListener('dragleave', leave as EventListener);
       page?.addEventListener('drop', drop as unknown as EventListener);
     }
+    let nativeInternalDrag = false;
     const unlisten = isTauriAppPlatform()
       ? getCurrentWebview().onDragDropEvent((event) => {
           const payload = event.payload;
+          if (payload.type === 'enter') nativeInternalDrag = payload.paths.length === 0;
+          if (nativeInternalDrag || (payload.type === 'drop' && payload.paths.length === 0)) {
+            clear();
+            setIsDragging(false);
+            if (payload.type === 'drop' || payload.type === 'leave') nativeInternalDrag = false;
+            return;
+          }
           if (payload.type === 'over' || payload.type === 'enter' || payload.type === 'drop') {
             const ratio = window.devicePixelRatio || 1;
             const target = targetAt(

@@ -1,12 +1,13 @@
 import type { CSSProperties } from 'react';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import ViewMenu from '@/app/library/components/ViewMenu';
 import BookItem from '@/app/library/components/BookItem';
 import GroupItem from '@/app/library/components/GroupItem';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { Book } from '@/types/book';
+import type { SystemSettings } from '@/types/settings';
 import '@/styles/globals.css';
 import '@/styles/glossa.css';
 import '@/styles/glossa-library.css';
@@ -18,7 +19,14 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('@/context/EnvContext', () => ({ useEnv: () => ({ envConfig: {}, appService: {} }) }));
 vi.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: null }) }));
-vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (key: string) => key }));
+const language = vi.hoisted(() => ({ chinese: false }));
+vi.mock('@/hooks/useTranslation', async () => {
+  const zh = await fetch('/locales/zh-CN/translation.json').then((response) => response.json());
+  return {
+    useTranslation: () => (key: string) =>
+      language.chinese ? ((zh as Record<string, string>)[key] ?? key) : key,
+  };
+});
 vi.mock('@/hooks/useMedianPageDurationSecs', () => ({
   useMedianPageDurationSecs: () => undefined,
 }));
@@ -61,7 +69,26 @@ const book: Book = {
   format: 'EPUB',
   createdAt: 1,
   updatedAt: 1,
+  progress: [1, 4],
 };
+
+beforeEach(() => {
+  language.chinese = false;
+  useSettingsStore.setState({
+    settings: {
+      libraryViewMode: 'grid',
+      libraryListScale: 100,
+      libraryAutoColumns: true,
+      libraryColumns: 6,
+      libraryCoverFit: 'crop',
+      libraryRecentShelfEnabled: true,
+      librarySkeuomorphicCovers: false,
+      libraryGroupBy: 'none',
+      librarySortBy: 'title',
+      librarySortAscending: true,
+    } as SystemSettings,
+  });
+});
 
 afterEach(() => {
   cleanup();
@@ -127,20 +154,23 @@ it('keeps active sizing and cover choices aligned in light, dark, narrow RTL and
     document.documentElement.dir = dir;
     document.documentElement.setAttribute('data-eink', String(eink));
     const { container } = render(<SizePreview />);
-    const row = screen.getByRole('group', { name: 'List Size' });
-    const plus = within(row).getByRole('button', { name: 'Increase' });
-    expect(row.getBoundingClientRect().height).toBeLessThanOrEqual(48);
+    const row = screen.getByRole('group', { name: 'Cover Size' });
+    const slider = within(row).getByRole('slider');
+    expect(row.getBoundingClientRect().height).toBeLessThanOrEqual(110);
     const touch = matchMedia('(pointer: coarse)').matches;
     if (touch) {
-      expect(plus.getBoundingClientRect().width).toBeGreaterThanOrEqual(44);
-      expect(plus.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+      expect(slider.getBoundingClientRect().width).toBeGreaterThanOrEqual(44);
+      expect(slider.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+      for (const toggle of container.querySelectorAll('.glossa-library-display-toggle')) {
+        expect(toggle.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+      }
     }
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
     const menu = container.querySelector('.view-menu')!;
     expect(menu.getBoundingClientRect().height).toBeLessThan(touch ? 470 : 430);
     const covers = screen.getByRole('group', { name: 'Book Covers' });
-    const crop = within(covers).getByRole('button', { name: 'Crop', pressed: true });
-    const fit = within(covers).getByRole('button', { name: 'Fit', pressed: false });
+    const crop = within(covers).getByRole('button', { name: 'Fill cover', pressed: true });
+    const fit = within(covers).getByRole('button', { name: 'Show full cover', pressed: false });
     expect(crop.getBoundingClientRect().top).toBe(fit.getBoundingClientRect().top);
     expect(crop.getBoundingClientRect().height).toBeGreaterThanOrEqual(touch ? 44 : 36);
     expect(screen.queryByRole('menuitem', { name: 'Select Books' })).toBeNull();
@@ -157,22 +187,23 @@ it('keeps active sizing and cover choices aligned in light, dark, narrow RTL and
 
 it('sizes book and group covers immediately with the keyboard and retains size after reopening', async () => {
   await page.viewport(1100, 844);
+  useSettingsStore.setState({
+    settings: { ...useSettingsStore.getState().settings, libraryViewMode: 'list' },
+  });
   const view = render(<SizePreview />);
   const cover = view.container.querySelector('.bookitem-main')!;
-  const group = view.container.querySelector('.groupitem-main .library-list-item')!;
+  const group = view.container.querySelector('.groupitem-main')!;
   const initial = cover.getBoundingClientRect().height;
   const initialGroup = group.getBoundingClientRect().height;
-  const plus = within(screen.getByRole('group', { name: 'List Size' })).getByRole('button', {
-    name: 'Increase',
-  });
-  plus.focus();
-  await userEvent.keyboard('{Enter}');
+  const slider = screen.getByRole('slider', { name: 'List Size' });
+  slider.focus();
+  await userEvent.keyboard('{ArrowRight}');
   await waitFor(() => expect(cover.getBoundingClientRect().height).toBeGreaterThan(initial));
   expect(group.getBoundingClientRect().height).toBeGreaterThan(initialGroup);
-  expect(screen.getByText('110%')).toBeTruthy();
+  expect((screen.getByRole('slider', { name: 'List Size' }) as HTMLInputElement).value).toBe('110');
   cleanup();
   render(<SizePreview />);
-  expect(screen.getByText('110%')).toBeTruthy();
+  expect((screen.getByRole('slider', { name: 'List Size' }) as HTMLInputElement).value).toBe('110');
 });
 
 it('opens sorting with the keyboard and bounds expanded content in a short window', async () => {
@@ -192,4 +223,38 @@ it('opens sorting with the keyboard and bounds expanded content in a short windo
   expect(menu.scrollWidth).toBeLessThanOrEqual(menu.clientWidth);
   await userEvent.keyboard('{Enter}');
   await waitFor(() => expect(sort.getAttribute('aria-expanded')).toBe('false'));
+});
+
+it('applies book information to list and recent-style cards and retains it after reopening', async () => {
+  await page.viewport(390, 844);
+  const view = render(<SizePreview />);
+  await page.getByRole('button', { name: 'Book information' }).click();
+  await page.getByRole('checkbox', { name: /^Author$/ }).click();
+  await waitFor(() =>
+    expect(view.container.querySelector('.book-item .glossa-book-author')).toBeNull(),
+  );
+  expect(screen.getByText(book.title)).toBeTruthy();
+  await page.getByRole('checkbox', { name: 'Reading Progress' }).click();
+  await waitFor(() => expect(screen.queryByText('25%')).toBeNull());
+  cleanup();
+  render(<SizePreview />);
+  expect(document.querySelector('.book-item .glossa-book-author')).toBeNull();
+  await page.getByRole('button', { name: 'Book information' }).click();
+  expect((screen.getByRole('checkbox', { name: /^Author$/ }) as HTMLInputElement).checked).toBe(
+    false,
+  );
+});
+
+it('previews the compact Chinese menu with the actual translations', async () => {
+  language.chinese = true;
+  await page.viewport(600, 660);
+  document.documentElement.setAttribute('data-page', 'library');
+  document.documentElement.setAttribute('data-theme', 'default-dark');
+  const view = render(<SizePreview />);
+  expect(screen.getByRole('button', { name: '完整显示' })).toBeTruthy();
+  expect(screen.getByRole('checkbox', { name: '立体封面' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '书卡信息' })).toBeTruthy();
+  await page.screenshot({ path: '../../../../../../.glossa-dev/qa/display-menu-zh-dark.png' });
+  const menu = view.container.querySelector('.view-menu')!;
+  expect(menu.scrollWidth).toBeLessThanOrEqual(menu.clientWidth);
 });

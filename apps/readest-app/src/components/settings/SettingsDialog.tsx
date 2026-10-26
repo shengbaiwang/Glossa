@@ -20,6 +20,9 @@ import {
   X,
   Search,
   Puzzle,
+  BookOpen,
+  Info,
+  Volume,
 } from '@/components/GlossaIcons';
 import { getDirFromUILanguage } from '@/utils/rtl';
 import { getCommandPaletteShortcut } from '@/services/environment';
@@ -37,6 +40,8 @@ import ApplicationPanel from './ApplicationPanel';
 import PluginsPanel, { type PluginSettingsTarget } from './PluginsPanel';
 import SettingsScopeControl from './SettingsScopeControl';
 import ReadingDisplayControls from './ReadingDisplayControls';
+import SpeechPanel from './SpeechPanel';
+import AboutContent from '@/components/AboutContent';
 
 // Preserve existing reader shortcuts and remembered categories after consolidation.
 const pluginTarget = (panel: string | null): PluginSettingsTarget | null => {
@@ -57,7 +62,11 @@ export type SettingsPanelType =
   | 'Integrations'
   | 'Models'
   | 'Conversation'
-  | 'Custom';
+  | 'Custom'
+  | 'ReadingTheme'
+  | 'Dictionaries'
+  | 'Speech'
+  | 'About';
 export type SettingsPanelPanelProp = {
   bookKey: string;
   onRegisterReset: (resetFn: () => void) => void;
@@ -110,9 +119,13 @@ const SettingsDialog: React.FC<{
       ),
   );
   const tabConfig: TabConfig[] = [
-    { tab: 'General', icon: Settings2, label: _('General') },
+    { tab: 'General', icon: Settings2, label: _('Startup & Window') },
     { tab: 'Data', icon: Database, label: _('Library Data') },
     { tab: 'Plugins', icon: Puzzle, label: _('Plugins') },
+    { tab: 'ReadingTheme', icon: Palette, label: _('Colors & Annotations') },
+    { tab: 'Dictionaries', icon: Languages, label: _('Dictionaries') },
+    { tab: 'Speech', icon: Volume, label: _('Read Aloud') },
+    { tab: 'About', icon: Info, label: _('About') },
     {
       tab: 'Font',
       icon: Type,
@@ -126,7 +139,7 @@ const SettingsDialog: React.FC<{
     {
       tab: 'Theme',
       icon: Palette,
-      label: _('Theme'),
+      label: reading ? _('Theme') : _('App Appearance'),
     },
     {
       tab: 'Control',
@@ -146,22 +159,25 @@ const SettingsDialog: React.FC<{
     {
       tab: 'Custom',
       icon: Braces,
-      label: _('Custom Styles'),
+      label: _('Advanced'),
     },
   ].filter((tab) => {
     if (reading) return ['Font', 'Layout', 'Theme'].includes(tab.tab);
     return true;
   }) as TabConfig[];
 
-  const panelGroups = reading
-    ? [{ label: '', tabs: ['Font', 'Layout', 'Theme'] }]
-    : [
-        {
-          label: _('Application'),
-          tabs: ['General', 'Theme', 'Language', 'Integrations', 'Plugins', 'Data'],
-        },
-        { label: _('Reading Defaults'), tabs: ['Font', 'Layout', 'Control', 'Custom'] },
-      ];
+  const categories = [
+    { id: 'General', label: _('General'), icon: Settings2, tabs: ['General', 'Language', 'Theme'] },
+    {
+      id: 'Reading',
+      label: _('Reading'),
+      icon: BookOpen,
+      tabs: ['Font', 'Layout', 'ReadingTheme', 'Control', 'Dictionaries', 'Speech', 'Custom'],
+    },
+    { id: 'Library', label: _('Library & Sync'), icon: Database, tabs: ['Data', 'Integrations'] },
+    { id: 'Plugins', label: _('Plugins'), icon: Puzzle, tabs: ['Plugins'] },
+    { id: 'About', label: _('About'), icon: Info, tabs: ['About'] },
+  ];
 
   const [activePanel, setActivePanel] = useState<SettingsPanelType>(() => {
     // Deep-link: if a caller asked for a specific panel before opening the
@@ -239,6 +255,10 @@ const SettingsDialog: React.FC<{
     Record<SettingsPanelType, (() => void) | null>
   >({
     General: null,
+    ReadingTheme: null,
+    Dictionaries: null,
+    Speech: null,
+    About: null,
     Plugins: null,
     Data: null,
     Font: null,
@@ -281,7 +301,11 @@ const SettingsDialog: React.FC<{
         font: 'Font',
         layout: 'Layout',
         theme: 'Theme',
-        color: 'Theme',
+        color: ['themeMode', 'themeColor', 'backgroundTexture'].includes(parts[2] ?? '')
+          ? 'Theme'
+          : 'ReadingTheme',
+        speech: 'Speech',
+        dictionaries: 'Dictionaries',
         general: 'General',
         plugins: 'Plugins',
         data: 'Data',
@@ -308,7 +332,7 @@ const SettingsDialog: React.FC<{
         'settings.control.checkUpdates',
         'settings.control.nightlyChannel',
       ].includes(activeSettingsItemId)
-        ? 'General'
+        ? 'About'
         : panelMap[panelKey || ''];
       if (
         targetPanel &&
@@ -340,6 +364,18 @@ const SettingsDialog: React.FC<{
   }, [activeSettingsItemId, activePanel, setActiveSettingsItemId]);
 
   const currentPanel = tabConfig.find((tab) => tab.tab === activePanel);
+  const category = categories.find((item) => item.tabs.includes(activePanel)) ?? categories[0]!;
+  const navigationItems = reading
+    ? tabConfig.map((tab) => ({ id: tab.tab, label: tab.label, icon: tab.icon, target: tab.tab }))
+    : categories.map((item) => ({
+        id: item.id,
+        label: item.label,
+        icon: item.icon,
+        target: item.tabs[0] as SettingsPanelType,
+      }));
+  const subpanels = category.tabs
+    .map((tab) => tabConfig.find((item) => item.tab === tab))
+    .filter((item): item is TabConfig => !!item);
 
   const windowControls = (
     <div className='flex h-full items-center justify-end gap-x-[var(--glossa-gap-chrome)]'>
@@ -351,7 +387,9 @@ const SettingsDialog: React.FC<{
       >
         <Search size={18} />
       </button>
-      {['Font', 'Layout', 'Theme', 'Control', 'Language', 'Custom'].includes(activePanel) && (
+      {['Font', 'Layout', 'Theme', 'ReadingTheme', 'Control', 'Language', 'Custom'].includes(
+        activePanel,
+      ) && (
         <button
           type='button'
           onClick={handleResetCurrentPanel}
@@ -423,22 +461,16 @@ const SettingsDialog: React.FC<{
         <select
           aria-label={_('Settings Panels')}
           className='select eink-bordered glossa-settings-mobile-panel-select w-full'
-          value={activePanel}
-          onChange={(event) => handleSetActivePanel(event.target.value as SettingsPanelType)}
+          value={category.id}
+          onChange={(event) => {
+            const next = categories.find((item) => item.id === event.target.value);
+            if (next) handleSetActivePanel(next.tabs[0] as SettingsPanelType);
+          }}
         >
-          {panelGroups.map((group) => (
-            <optgroup key={group.label} label={group.label}>
-              {group.tabs.map((tab) => {
-                const config = tabConfig.find((item) => item.tab === tab);
-                return (
-                  config && (
-                    <option key={tab} value={tab}>
-                      {config.label}
-                    </option>
-                  )
-                );
-              })}
-            </optgroup>
+          {categories.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.label}
+            </option>
           ))}
         </select>
       )}
@@ -450,62 +482,49 @@ const SettingsDialog: React.FC<{
           aria-label={_('Settings Panels')}
           className={clsx('glossa-settings-navigation', reading && 'dialog-tabs')}
         >
-          {panelGroups.map((group) => (
-            <div key={group.label} className='glossa-settings-nav-group'>
-              {group.label && <div className='glossa-settings-group-label'>{group.label}</div>}
-              {group.tabs.map((tab) => {
-                const config = tabConfig.find((item) => item.tab === tab);
-                if (!config) return null;
-                const Icon = config.icon;
-                return (
-                  <button
-                    key={tab}
-                    type='button'
-                    data-tab={tab}
-                    aria-label={config.label}
-                    aria-pressed={activePanel === tab}
-                    className='glossa-settings-nav-button'
-                    onClick={() => handleSetActivePanel(config.tab)}
-                    onKeyDownCapture={(event) => {
-                      if (
-                        ![
-                          'ArrowRight',
-                          'ArrowLeft',
-                          'ArrowDown',
-                          'ArrowUp',
-                          'Home',
-                          'End',
-                        ].includes(event.key)
-                      )
-                        return;
-                      event.preventDefault();
-                      event.stopPropagation();
-                      const buttons = Array.from(
-                        tabsRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? [],
-                      );
-                      const index = buttons.indexOf(event.currentTarget);
-                      const direction =
-                        event.key === 'ArrowDown' ||
-                        event.key === (isRtl ? 'ArrowLeft' : 'ArrowRight')
-                          ? 1
-                          : -1;
-                      const target =
-                        event.key === 'Home'
-                          ? buttons[0]
-                          : event.key === 'End'
-                            ? buttons.at(-1)
-                            : buttons[(index + direction + buttons.length) % buttons.length];
-                      target?.focus();
-                      target?.click();
-                    }}
-                  >
-                    <Icon aria-hidden='true' size={18} />
-                    <span>{config.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          ))}
+          {navigationItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                type='button'
+                data-tab={item.id}
+                aria-label={item.label}
+                aria-pressed={reading ? activePanel === item.target : category.id === item.id}
+                className='glossa-settings-nav-button'
+                onClick={() => handleSetActivePanel(item.target)}
+                onKeyDownCapture={(event) => {
+                  if (
+                    !['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Home', 'End'].includes(
+                      event.key,
+                    )
+                  )
+                    return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const buttons = Array.from(
+                    tabsRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? [],
+                  );
+                  const index = buttons.indexOf(event.currentTarget);
+                  const direction =
+                    event.key === 'ArrowDown' || event.key === (isRtl ? 'ArrowLeft' : 'ArrowRight')
+                      ? 1
+                      : -1;
+                  const target =
+                    event.key === 'Home'
+                      ? buttons[0]
+                      : event.key === 'End'
+                        ? buttons.at(-1)
+                        : buttons[(index + direction + buttons.length) % buttons.length];
+                  target?.focus();
+                  target?.click();
+                }}
+              >
+                <Icon aria-hidden='true' size={18} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
         </nav>
         <div
           ref={panelRef}
@@ -514,7 +533,30 @@ const SettingsDialog: React.FC<{
           className='glossa-settings-content'
         >
           {reading && <SettingsScopeControl bookKey={bookKey} />}
-          {!reading && <div className='glossa-settings-panel-title'>{currentPanel?.label}</div>}
+          {!reading && (
+            <>
+              <div className='glossa-settings-panel-title'>{category.label}</div>
+              {subpanels.length > 1 && (
+                <div
+                  role='group'
+                  aria-label={_('Settings Sections')}
+                  className='glossa-settings-sections'
+                >
+                  {subpanels.map((item) => (
+                    <button
+                      key={item.tab}
+                      type='button'
+                      className='glossa-settings-nav-button'
+                      aria-pressed={activePanel === item.tab}
+                      onClick={() => handleSetActivePanel(item.tab)}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
           {(activePanel === 'General' || activePanel === 'Data') && (
             <ApplicationPanel section={activePanel} />
           )}
@@ -549,12 +591,13 @@ const SettingsDialog: React.FC<{
               />
             </>
           )}
-          {activePanel === 'Theme' && (
+          {(activePanel === 'Theme' || activePanel === 'ReadingTheme') && (
             <ThemePanel
-              key={panelBookKey}
-              readingOnly={reading}
+              key={`${panelBookKey}:${activePanel}`}
+              readingOnly={reading || activePanel === 'ReadingTheme'}
+              applicationOnly={!reading && activePanel === 'Theme'}
               bookKey={panelBookKey}
-              onRegisterReset={(fn) => registerResetFunction('Theme', fn)}
+              onRegisterReset={(fn) => registerResetFunction(activePanel, fn)}
             />
           )}
           {activePanel === 'Control' && (
@@ -565,15 +608,28 @@ const SettingsDialog: React.FC<{
             />
           )}
 
-          {activePanel === 'Language' && (
+          {(activePanel === 'Language' || activePanel === 'Dictionaries') && (
             <LangPanel
-              key={panelBookKey}
+              key={activePanel}
+              section={activePanel === 'Language' ? 'interface' : 'dictionaries'}
               bookKey={panelBookKey}
               onRegisterReset={(fn) => registerResetFunction('Language', fn)}
             />
           )}
 
-          {activePanel === 'Integrations' && <IntegrationsPanel onSyncLibrary={onSyncLibrary} />}
+          {activePanel === 'Speech' && <SpeechPanel />}
+          {activePanel === 'About' && (
+            <>
+              <ApplicationPanel section='About' />
+              <AboutContent />
+            </>
+          )}
+          {activePanel === 'Integrations' && (
+            <>
+              <ApplicationPanel section='Account' />
+              <IntegrationsPanel onSyncLibrary={onSyncLibrary} />
+            </>
+          )}
           {activePanel === 'Custom' && (
             <MiscPanel
               key={panelBookKey}

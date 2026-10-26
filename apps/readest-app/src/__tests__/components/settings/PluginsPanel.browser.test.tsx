@@ -66,7 +66,7 @@ it.each([
     </main>,
   );
   const cards = [...view.container.querySelectorAll('.glossa-plugin-card')];
-  expect(cards).toHaveLength(3);
+  expect(cards).toHaveLength(4);
   if (fixture.width === 760) {
     expect(cards[0]!.getBoundingClientRect().top).toBe(cards[1]!.getBoundingClientRect().top);
     expect(cards[0]!.getBoundingClientRect().left).not.toBe(cards[1]!.getBoundingClientRect().left);

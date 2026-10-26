@@ -143,3 +143,23 @@ describe('isClipCancelled', () => {
     expect(isClipCancelled(undefined)).toBe(false);
   });
 });
+
+it('does not convert a late native capture after cancellation', async () => {
+  let finish!: (value: string) => void;
+  invokeMock.mockReset().mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  vi.mocked(convertToEpubWithWorker).mockClear();
+  const controller = new AbortController();
+  const pending = clipPageWithSignInFallback('https://example.com/a', _, desktopAppService, {
+    signal: controller.signal,
+  });
+  const rejection = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+  controller.abort();
+  finish('<html>late result</html>');
+  await rejection;
+  expect(convertToEpubWithWorker).not.toHaveBeenCalled();
+});

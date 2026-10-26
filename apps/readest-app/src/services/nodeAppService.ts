@@ -328,6 +328,20 @@ export const nodeFileSystem: FileSystem = {
     }
   },
 
+  async lstat(filePath: string, base: BaseDir) {
+    const fullPath = await toAbsolute(this.resolvePath(filePath, base));
+    const info = await fsp.lstat(fullPath);
+    return {
+      isFile: info.isFile(),
+      isDirectory: info.isDirectory(),
+      isSymlink: info.isSymbolicLink(),
+      size: info.size,
+      mtime: info.mtime,
+      atime: info.atime,
+      birthtime: info.birthtime,
+    };
+  },
+
   async stats(filePath: string, base: BaseDir): Promise<FileInfo> {
     const fullPath = await toAbsolute(this.resolvePath(filePath, base));
     const stat = await fsp.stat(fullPath);

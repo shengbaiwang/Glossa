@@ -45,7 +45,7 @@ describe('DeleteConfirmAlert purge toggle', () => {
     expect(toggle.checked).toBe(false);
 
     const confirm = screen.getByText('Delete').closest('button')!;
-    expect(confirm.className).toContain('btn-warning');
+    expect(confirm.className).toContain('btn-contrast');
 
     fireEvent.click(confirm);
     expect(onConfirm).toHaveBeenCalledTimes(1);
@@ -80,5 +80,41 @@ describe('DeleteConfirmAlert purge toggle', () => {
     const { onCancel } = setup();
     fireEvent.click(screen.getByText('Cancel').closest('button')!);
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('deletion keyboard safety', () => {
+  it('does not offer a fake Stop action for an operation without cancellation', () => {
+    const onConfirm = vi.fn(() => new Promise<void>(() => {}));
+    const { onCancel } = setup({ onConfirm });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+    expect((screen.getByRole('button', { name: 'Cancel' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    fireEvent.keyDown(screen.getByRole('alertdialog'), { key: 'Escape' });
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+  it('stops cancellable work without dismissing its pending result', () => {
+    const onStop = vi.fn();
+    const { onCancel } = setup({ onConfirm: () => new Promise<void>(() => {}), onStop });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    expect(onStop).toHaveBeenCalledOnce();
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+  it('focuses Cancel and does not turn an unrelated Enter into deletion', () => {
+    const { onConfirm } = setup();
+    expect(document.activeElement).toBe(screen.getByText('Cancel').closest('button'));
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+  it('accepts only one confirmation while work is pending', () => {
+    const onConfirm = vi.fn(() => new Promise<void>(() => {}));
+    setup({ onConfirm });
+    const button = screen.getByText('Delete').closest('button')!;
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 });

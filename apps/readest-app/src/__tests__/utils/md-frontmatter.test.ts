@@ -132,7 +132,6 @@ describe('frontmatterToMetadata', () => {
       publisher: 'Harper',
       published: '1851-10-18',
       description: 'A whale of a book',
-      subject: ['fiction', 'classics'],
       series: 'Sea Tales',
       seriesIndex: 2,
     });
@@ -144,8 +143,8 @@ describe('frontmatterToMetadata', () => {
     expect(map('date: 2020').metadata.published).toBe('2020');
     expect(map('pubdate: 2021').metadata.published).toBe('2021');
     expect(map('summary: s').metadata.description).toBe('s');
-    expect(map('subject: [a]').metadata.subject).toEqual(['a']);
-    expect(map('keywords: [a]').metadata.subject).toEqual(['a']);
+    expect(map('subject: [a]').metadata).toEqual({});
+    expect(map('keywords: [a]').metadata).toEqual({});
   });
 
   it('keeps multiple authors as an array', () => {
@@ -162,8 +161,8 @@ describe('frontmatterToMetadata', () => {
     expect(map('title:\n  - Only').metadata.title).toBe('Only');
   });
 
-  it('wraps a scalar into an array for list-valued fields', () => {
-    expect(map('tags: fiction').metadata.subject).toEqual(['fiction']);
+  it('does not convert frontmatter tags to retired subject metadata', () => {
+    expect(map('tags: fiction').metadata).toEqual({});
   });
 
   it('ignores blank values', () => {

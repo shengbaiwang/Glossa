@@ -1,0 +1,196 @@
+/* Deletion shares the paper/ink surfaces and keeps recovery beside the book. */
+.glossa-deleted .btn,
+.glossa-removal-dialog .btn {
+  animation: none;
+  transform: none;
+}
+.glossa-removal-dialog {
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+}
+.glossa-removal-targets {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--glossa-wash);
+  font-weight: 500;
+}
+.glossa-removal-targets li + li {
+  margin-top: 6px;
+}
+.glossa-removal-caption {
+  color: var(--glossa-muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+.glossa-removal-targets .glossa-removal-caption {
+  margin-bottom: 6px;
+}
+.glossa-removal-description {
+  font-size: 14px;
+  line-height: 1.7;
+}
+.glossa-removal-description .glossa-removal-caption {
+  margin-top: 6px;
+}
+.glossa-removal-details {
+  font-size: 13px;
+}
+.glossa-removal-details > summary {
+  min-height: 44px;
+  padding-block: 12px;
+  cursor: pointer;
+  color: var(--glossa-muted);
+}
+.glossa-removal-details > summary:focus-visible {
+  outline: 2px solid var(--glossa-focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.glossa-removal-details > p {
+  padding-block: 4px 12px;
+  line-height: 1.7;
+}
+.glossa-deleted {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 28px 32px;
+  background: var(--glossa-surface);
+  color: var(--glossa-ink);
+}
+.glossa-deleted-content {
+  max-width: 880px;
+  margin-inline: auto;
+}
+.glossa-deleted-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.glossa-deleted-heading h2 {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 20px;
+  font-weight: 550;
+  letter-spacing: -0.02em;
+}
+.glossa-deleted-count {
+  color: var(--glossa-muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+.glossa-deleted-selection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  border-bottom: 1px solid var(--glossa-border);
+  font-size: 13px;
+}
+.glossa-deleted-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-block: 14px;
+  border-bottom: 1px solid var(--glossa-border);
+}
+.glossa-deleted-row[data-selected='true'] {
+  background: var(--glossa-wash);
+}
+.glossa-deleted-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+.glossa-deleted-book {
+  min-width: 0;
+  flex: 1;
+}
+.glossa-deleted-book h3 {
+  font-size: 14px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.glossa-deleted-book p {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--glossa-muted);
+}
+.glossa-deleted-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.glossa-deleted-actions button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.glossa-deleted-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-block: 12px;
+  font-size: 13px;
+}
+.glossa-deleted-notice > :first-child {
+  min-width: 0;
+  flex: 1;
+}
+.glossa-deleted-empty {
+  padding: 64px 16px;
+  text-align: center;
+  color: var(--glossa-muted);
+  font-size: 14px;
+}
+.glossa-deleted-empty svg {
+  margin: 0 auto 14px;
+}
+.glossa-deleted-recovery {
+  margin-top: 24px;
+  border-top: 1px solid var(--glossa-border);
+}
+[data-eink='true'] .glossa-removal-targets {
+  border: 1px solid var(--glossa-ink);
+  background: transparent;
+}
+[data-eink='true'] .glossa-removal-dialog .btn-error {
+  border: 1px solid #000;
+  background: #000;
+  color: #fff !important;
+  box-shadow: none;
+}
+[data-eink='true'] :is(.glossa-deleted-row, .glossa-deleted-selection, .glossa-deleted-recovery) {
+  border-color: var(--glossa-ink);
+}
+[data-eink='true']
+  :is(.glossa-removal-caption, .glossa-removal-details > summary, .glossa-deleted-book p) {
+  color: var(--glossa-ink);
+}
+@media (max-width: 540px) {
+  .glossa-deleted {
+    padding: 20px 16px;
+  }
+  .glossa-deleted-heading {
+    margin-bottom: 14px;
+  }
+  .glossa-deleted-row {
+    flex-wrap: wrap;
+    column-gap: 2px;
+  }
+  .glossa-deleted-actions {
+    margin-inline-start: auto;
+  }
+  .glossa-deleted-book {
+    flex-basis: calc(100% - 48px);
+  }
+}

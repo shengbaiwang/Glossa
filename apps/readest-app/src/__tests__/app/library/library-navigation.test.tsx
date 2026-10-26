@@ -47,7 +47,7 @@ beforeEach(() => {
 });
 
 describe('LibraryNavigation', () => {
-  it('creates from the heading menu, defaults blank names and stops at four levels', async () => {
+  it('creates from the heading menu, defaults blank names and restores focus', async () => {
     mocks.search = new URLSearchParams('groupBy=group');
     render(<LibraryNavigation onNavigate={vi.fn()} />);
     expect(screen.queryByRole('button', { name: 'New group' })).toBeNull();
@@ -55,23 +55,45 @@ describe('LibraryNavigation', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'New group' }));
     fireEvent.submit(screen.getByRole('textbox').closest('form')!);
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Untitled' })).toBe(document.activeElement),
+      expect(document.activeElement?.getAttribute('aria-label')).toBe('Untitled'),
     );
-    for (const [parent, name] of [
-      ['Untitled', 'B'],
-      ['Untitled/B', 'C'],
-      ['Untitled/B/C', 'D'],
-    ]) {
-      fireEvent.contextMenu(screen.getByRole('button', { name: parent }));
-      fireEvent.click(screen.getByRole('menuitem', { name: 'New subgroup' }));
-      fireEvent.change(screen.getByRole('textbox'), { target: { value: name } });
-      fireEvent.submit(screen.getByRole('textbox').closest('form')!);
-      await waitFor(() =>
-        expect(screen.getByRole('button', { name: parent + '/' + name })).toBe(
-          document.activeElement,
-        ),
-      );
-    }
+    expect(screen.getByRole('button', { name: 'Untitled' })).toBe(document.activeElement);
+  });
+
+  it.each([
+    ['Untitled', 'B'],
+    ['Untitled/B', 'C'],
+    ['Untitled/B/C', 'D'],
+  ])('creates a subgroup beneath %s and restores focus', async (parent, name) => {
+    mocks.search = new URLSearchParams('groupBy=group');
+    const settings = useSettingsStore.getState().settings;
+    const ancestors = parent
+      .split('/')
+      .map((_, index, parts) => parts.slice(0, index + 1).join('/'));
+    useSettingsStore.setState({
+      settings: { ...settings, libraryFolders: [...(settings.libraryFolders ?? []), ...ancestors] },
+    });
+    render(<LibraryNavigation onNavigate={vi.fn()} />);
+    fireEvent.contextMenu(screen.getByRole('button', { name: parent }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New subgroup' }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: name } });
+    fireEvent.submit(screen.getByRole('textbox').closest('form')!);
+    // Poll focus directly so accessible-name queries do not block the async save effects.
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute('aria-label')).toBe(parent + '/' + name),
+    );
+    expect(screen.getByRole('button', { name: parent + '/' + name })).toBe(document.activeElement);
+  });
+
+  it('does not offer another subgroup at the fourth level', () => {
+    const settings = useSettingsStore.getState().settings;
+    useSettingsStore.setState({
+      settings: {
+        ...settings,
+        libraryFolders: ['Untitled', 'Untitled/B', 'Untitled/B/C', 'Untitled/B/C/D'],
+      },
+    });
+    render(<LibraryNavigation onNavigate={vi.fn()} />);
     fireEvent.contextMenu(screen.getByRole('button', { name: 'Untitled/B/C/D' }));
     expect(screen.queryByRole('menuitem', { name: 'New subgroup' })).toBeNull();
   });
@@ -84,14 +106,14 @@ describe('LibraryNavigation', () => {
       within(library)
         .getAllByRole('button')
         .map((button) => button.textContent),
-    ).toEqual(['All Books']);
+    ).toEqual(['All Books', 'Recently Deleted']);
     expect(screen.getByRole('region', { name: 'My Groups' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '文学/小说' })).toBeTruthy();
     expect(
       within(browse)
         .getAllByRole('button')
         .map((button) => button.textContent),
-    ).toEqual(['Authors', 'Series', 'Tags', 'Subjects']);
+    ).toEqual(['Authors', 'Series', 'Tags']);
   });
 
   it('keeps the active category visible while viewing one of its groups', () => {
@@ -121,6 +143,8 @@ describe('LibraryNavigation', () => {
     const books = screen.getByRole('button', { name: 'All Books' });
     books.focus();
     fireEvent.keyDown(books, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Recently Deleted' }));
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'My Groups' }));
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(screen.getByRole('button', { name: '文学' }));
@@ -129,7 +153,7 @@ describe('LibraryNavigation', () => {
     fireEvent.keyDown(document.activeElement!, { key: 'End' });
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' });
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Subjects' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Tags' }));
     expect(mocks.navigate).not.toHaveBeenCalled();
   });
 
@@ -262,4 +286,13 @@ it('creates a root group with the keyboard shortcut without adding a bottom acti
   fireEvent.keyDown(heading, { key: 'N', ctrlKey: true, shiftKey: true });
   expect(screen.getByRole('textbox')).toBe(document.activeElement);
   expect(screen.queryByRole('button', { name: 'New group' })).toBeNull();
+});
+
+it('keeps old subject navigation readable as all books with no subject entry', () => {
+  mocks.search = new URLSearchParams('groupBy=subject&group=old-subject');
+  render(<LibraryNavigation onNavigate={vi.fn()} />);
+  expect(screen.getByRole('button', { name: 'All Books' }).getAttribute('aria-current')).toBe(
+    'page',
+  );
+  expect(screen.queryByRole('button', { name: 'Subjects' })).toBeNull();
 });

@@ -10,7 +10,9 @@ import {
   extractFootnoteDefs,
 } from './mdFootnotes';
 import { frontmatterToMetadata, parseFrontmatter } from './mdFrontmatter';
-import { sanitizeHtml } from './sanitize';
+import { markdownMath, renderMarkdownMath } from './mdMath';
+import { sanitizeMarkdownHtml } from './sanitize';
+import { readMarkdownInput, resolveMarkdownImages } from './mdResources';
 
 // Render a standalone Markdown (.md) file into an in-memory foliate-js book at
 // runtime (no EPUB conversion). The document is split into one section per
@@ -24,20 +26,35 @@ const XHTML_NS = 'http://www.w3.org/1999/xhtml';
 // A scoped parser: `marked` itself is a shared singleton also imported by the
 // annotation note renderer and the export dialog, and must not gain footnote
 // parsing as a side effect.
-const markdown = new Marked({ gfm: true }).use(markedFootnote({ prefixId: FOOTNOTE_PREFIX_ID }), {
-  hooks: { preprocess: expandInlineFootnotes },
-});
+const markdown = new Marked({ gfm: true }).use(
+  markedFootnote({ prefixId: FOOTNOTE_PREFIX_ID }),
+  markdownMath,
+  {
+    hooks: { preprocess: expandInlineFootnotes },
+    renderer: {
+      checkbox: ({ checked }) => `<span class="md-task-marker">${checked ? '☑' : '☐'}</span> `,
+    },
+  },
+);
 
-// Minimal defaults so code blocks wrap inside the paginated column (long lines
-// would otherwise overflow and break pagination) and tables/images stay legible
-// under every theme. `currentColor` keeps borders readable in dark / e-ink.
+// Keep the shared reader's fonts, theme and Aa preferences. Scope structural
+// defaults to Markdown so imported books retain their publisher styles.
 const MD_STYLE = `
-img { max-width: 100%; height: auto; }
-pre { white-space: pre-wrap; overflow-wrap: break-word; }
-pre, code { font-family: monospace; }
-table { border-collapse: collapse; }
-th, td { border: 1px solid currentColor; padding: 0.2em 0.5em; }
-blockquote { margin-inline: 1em; }
+.glossa-markdown img { max-width: 100%; height: auto; }
+.glossa-markdown :is(h1,h2,h3,h4,h5,h6) { line-height: 1.35; margin-block: 1.6em 0.65em; break-after: avoid; }
+.glossa-markdown h1 { font-size: 1.8em; }
+.glossa-markdown h2 { font-size: 1.45em; }
+.glossa-markdown h3 { font-size: 1.2em; }
+.glossa-markdown :is(h4,h5,h6) { font-size: 1em; }
+.glossa-markdown pre, .glossa-markdown pre code { white-space: pre !important; overflow-wrap: normal; word-break: normal; }
+.glossa-markdown pre { box-sizing: border-box; overflow: auto; max-width: 100%; max-height: min(65vh, calc(var(--available-height, 600) * 0.8px)); padding: 0.85em 1em; border: 1px solid color-mix(in srgb, currentColor 16%, transparent); background: color-mix(in srgb, currentColor 4%, transparent); scrollbar-width: thin; touch-action: pan-x pan-y; }
+.glossa-markdown code { font-family: var(--monospace, monospace); font-size: 0.9em; }
+.glossa-markdown :not(pre) > code { padding: 0.1em 0.25em; background: color-mix(in srgb, currentColor 5%, transparent); }
+.glossa-markdown table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.glossa-markdown th, .glossa-markdown td { border: 1px solid color-mix(in srgb, currentColor 24%, transparent); padding: 0.45em 0.65em; min-inline-size: 4em; text-align: start; }
+.glossa-markdown th { font-weight: 600; }
+.glossa-markdown blockquote { margin-inline: 0; padding-inline-start: 1em; border-inline-start: 2px solid color-mix(in srgb, currentColor 24%, transparent); }
+.md-missing-image { display: block; margin-block: 0.75em; padding: 0.65em; border: 1px dashed currentColor; font-size: 0.85em; opacity: 0.7; }
 .md-footnotes { margin-block-start: 2em; font-size: 0.9em; }
 .md-footnotes hr { width: 30%; margin-inline-start: 0; border: 0; border-top: 1px solid currentColor; opacity: 0.4; }
 sup a, .footnote-backref { text-decoration: none; }
@@ -46,7 +63,7 @@ sup a, .footnote-backref { text-decoration: none; }
 
 const wrapXhtml = (inner: string): string =>
   '<?xml version="1.0" encoding="utf-8"?>\n' +
-  `<html xmlns="${XHTML_NS}"><head><meta charset="utf-8"/>` +
+  `<html xmlns="${XHTML_NS}" class="glossa-markdown"><head><meta charset="utf-8"/>` +
   `<style>${MD_STYLE}</style></head><body>${inner}</body></html>`;
 
 const slugify = (text: string): string =>
@@ -72,14 +89,25 @@ type MarkdownSection = SectionItem & {
 };
 
 export async function makeMarkdownBook(file: File): Promise<BookDoc> {
-  const text = await file.text();
+  const input = await readMarkdownInput(file);
+  const text = new TextDecoder().decode(input.original);
   // The frontmatter block is stripped before rendering so it does not show up
   // as a stray `<hr>` + text; its keys become the book's metadata (issue #5279).
   const { body, fields } = parseFrontmatter(text);
   const { metadata: frontmatter, coverBlob } = frontmatterToMetadata(fields);
+  // Library cover consumers may fetch this URL later. Markdown remains local
+  // even when frontmatter advertises a remote cover; original bytes are kept.
+  delete frontmatter.coverImageUrl;
   const rawHtml = await markdown.parse(body);
-  const safeHtml = sanitizeHtml(rawHtml);
-  const docBody = new DOMParser().parseFromString(safeHtml, 'text/html').body;
+  const fragment = sanitizeMarkdownHtml(rawHtml);
+  const docBody = new DOMParser().parseFromString(
+    '<!doctype html><html><body></body></html>',
+    'text/html',
+  ).body;
+  docBody.append(fragment);
+  resolveMarkdownImages(docBody, input.resources);
+
+  renderMarkdownMath(docBody);
 
   // Lift the collected footnote definitions out before anything else looks at
   // the document: they are re-emitted per chapter below, and taking them out

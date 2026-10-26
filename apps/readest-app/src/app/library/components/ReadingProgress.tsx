@@ -10,6 +10,7 @@ import { useMedianPageDurationSecs } from '@/hooks/useMedianPageDurationSecs';
 interface ReadingProgressProps {
   book: Book;
   showTimeRemaining: boolean;
+  showProgress?: boolean;
 }
 
 const getProgressPercentage = (book: Book) => {
@@ -24,7 +25,7 @@ const getProgressPercentage = (book: Book) => {
 };
 
 const ReadingProgress: React.FC<ReadingProgressProps> = memo(
-  ({ book, showTimeRemaining }) => {
+  ({ book, showTimeRemaining, showProgress = true }) => {
     const _ = useTranslation();
     const progressPercentage = useMemo(() => getProgressPercentage(book), [book]);
     const medianPageDurationSecs = useMedianPageDurationSecs(book.hash) ?? undefined;
@@ -57,7 +58,7 @@ const ReadingProgress: React.FC<ReadingProgressProps> = memo(
           role='status'
         >
           <StatusBadge status={book.readingStatus}>{_('On hold')}</StatusBadge>
-          {progressPercentage !== null && !Number.isNaN(progressPercentage) && (
+          {showProgress && progressPercentage !== null && !Number.isNaN(progressPercentage) && (
             <span>{progressPercentage}%</span>
           )}
         </div>
@@ -80,6 +81,8 @@ const ReadingProgress: React.FC<ReadingProgressProps> = memo(
       return <div className='flex justify-start'></div>;
     }
 
+    if (!showProgress) return <span>{_('Reading')}</span>;
+
     return (
       <div
         className='text-neutral-content/70 flex min-w-0 justify-between text-xs'
@@ -95,7 +98,8 @@ const ReadingProgress: React.FC<ReadingProgressProps> = memo(
       prevProps.book.hash === nextProps.book.hash &&
       prevProps.book.updatedAt === nextProps.book.updatedAt &&
       prevProps.book.readingStatus === nextProps.book.readingStatus &&
-      prevProps.showTimeRemaining === nextProps.showTimeRemaining
+      prevProps.showTimeRemaining === nextProps.showTimeRemaining &&
+      prevProps.showProgress === nextProps.showProgress
     );
   },
 );

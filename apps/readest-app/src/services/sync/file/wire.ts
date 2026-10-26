@@ -1,3 +1,5 @@
+import { removeBookSubjectMetadata } from '@/utils/bookMetadata';
+import { bookRemovalSchema } from '@/services/bookRemovalState';
 import { Book, BookConfig, BookNote } from '@/types/book';
 
 /**
@@ -123,7 +125,27 @@ export const parseRemoteLibraryIndex = (raw: string | null): RemoteLibraryIndex 
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as RemoteLibraryIndex;
-    if (parsed && parsed.schemaVersion === 1) return parsed;
+    const safeHash = (hash: unknown) =>
+      typeof hash === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(hash);
+    if (
+      parsed &&
+      parsed.schemaVersion === 1 &&
+      Number.isFinite(parsed.updatedAt) &&
+      Array.isArray(parsed.books) &&
+      parsed.books.every(
+        (book) =>
+          book &&
+          safeHash(book.hash) &&
+          typeof book.title === 'string' &&
+          Number.isFinite(book.updatedAt) &&
+          (book.removal === undefined || bookRemovalSchema.safeParse(book.removal).success),
+      ) &&
+      new Set(parsed.books.map((book) => book.hash)).size === parsed.books.length &&
+      [parsed.uploadedHashes, parsed.emptyDirs].every(
+        (value) => value === undefined || (Array.isArray(value) && value.every(safeHash)),
+      )
+    )
+      return parsed;
   } catch {
     // Ignore parse errors — a malformed index is treated as "no index".
   }
@@ -150,13 +172,20 @@ const DEVICE_LOCAL_BOOK_FIELDS = [
   'coverImageUrl',
   'downloadedAt',
   'coverDownloadedAt',
+  'localRemoval',
+  'removalHistory',
 ] as const satisfies readonly (keyof Book)[];
 
 /** A copy of `book` safe to publish to — or adopt from — the shared index. */
 export const stripDeviceLocalFields = (book: Book): Book => {
-  const copy = { ...book };
+  const copy = {
+    ...book,
+    ...(book.metadata ? { metadata: removeBookSubjectMetadata(book.metadata) } : {}),
+  };
   for (const field of DEVICE_LOCAL_BOOK_FIELDS) {
     delete copy[field];
   }
+  if (copy.removal)
+    copy.removal = { ...copy.removal, cloud: 'none', cloudTargets: undefined, failure: undefined };
   return copy;
 };

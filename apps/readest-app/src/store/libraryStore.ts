@@ -1,9 +1,12 @@
+import { removeBookSubjectMetadata } from '@/utils/bookMetadata';
 import { create } from 'zustand';
 import { Book, BookGroupType, ReadingStatus } from '@/types/book';
 import { EnvConfigType, isTauriAppPlatform } from '@/services/environment';
 import { md5Fingerprint } from '@/utils/md5';
 import { useSettingsStore } from '@/store/settingsStore';
 import { collectFolderPaths } from '@/app/library/utils/libraryFolders';
+import { protectBookRemoval } from '@/services/bookRemovalState';
+import { getVisibleBooks } from '@/utils/book';
 
 interface LibraryState {
   library: Book[]; // might contain deleted books
@@ -53,6 +56,12 @@ interface LibraryState {
   getGroupsByParent: (parentPath?: string) => BookGroupType[];
 }
 
+function withoutSubjects(book: Book): Book {
+  if (!book.metadata) return book;
+  const metadata = removeBookSubjectMetadata(book.metadata);
+  return metadata === book.metadata ? book : { ...book, metadata };
+}
+
 function buildHashIndex(books: Book[]): Map<string, number> {
   const index = new Map<string, number>();
   for (let i = 0; i < books.length; i++) {
@@ -90,11 +99,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   setCheckOpenWithBooks: (check) => set({ checkOpenWithBooks: check }),
   setCheckLastOpenBooks: (check) => set({ checkLastOpenBooks: check }),
   setLibrary: (books) => {
+    books = books.map(withoutSubjects);
     set({
       library: books,
       libraryLoaded: true,
       hashIndex: buildHashIndex(books),
-      visibleLibrary: books.filter((b) => !b.deletedAt),
+      visibleLibrary: getVisibleBooks(books),
     });
     get().refreshGroups();
   },
@@ -120,7 +130,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     newLibrary[idx] = updatedBook;
     set({
       library: newLibrary,
-      visibleLibrary: newLibrary.filter((b) => !b.deletedAt),
+      visibleLibrary: getVisibleBooks(newLibrary),
     });
   },
 
@@ -129,9 +139,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   updateBook: async (envConfig: EnvConfigType, book: Book) => {
+    book = withoutSubjects(book);
     const appService = await envConfig.getAppService();
     const { library, hashIndex } = get();
     const idx = hashIndex.get(book.hash);
+    if (idx !== undefined) book = protectBookRemoval(book, library[idx]!);
     // Build the new library immutably — never mutate the previous-state array.
     const newLibrary =
       idx !== undefined
@@ -140,9 +152,21 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({
       library: newLibrary,
       hashIndex: buildHashIndex(newLibrary),
-      visibleLibrary: newLibrary.filter((b) => !b.deletedAt),
+      visibleLibrary: getVisibleBooks(newLibrary),
     });
-    await appService.saveLibraryBooks(newLibrary);
+    const persisted = await appService.saveLibraryBooks(newLibrary);
+    if (persisted) {
+      const lifecycles = new Map(
+        persisted.filter((b) => b.removal || b.localRemoval).map((b) => [b.hash, b]),
+      );
+      if (lifecycles.size)
+        get().setLibrary(
+          get().library.map((b) => {
+            const current = lifecycles.get(b.hash);
+            return current ? protectBookRemoval(b, current) : b;
+          }),
+        );
+    }
   },
   updateBooks: async (
     envConfig: EnvConfigType,
@@ -150,6 +174,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     options?: { skipSave?: boolean },
   ) => {
     if (!books?.length) return;
+    books = books.map(withoutSubjects);
 
     // Hardening: if a caller (e.g. /send, the inbox drainer) hits us before
     // `setLibrary` has populated the store, merging against the empty
@@ -164,21 +189,37 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         library,
         libraryLoaded: true,
         hashIndex: buildHashIndex(library),
-        visibleLibrary: library.filter((b) => !b.deletedAt),
+        visibleLibrary: getVisibleBooks(library),
       });
     }
 
+    const existingByHash = new Map(library.map((b) => [b.hash, b]));
+    books = books.map((b) =>
+      existingByHash.has(b.hash) ? protectBookRemoval(b, existingByHash.get(b.hash)!) : b,
+    );
     const newLibrary = Array.from(new Map([...library, ...books].map((b) => [b.hash, b])).values());
     set({
       library: newLibrary,
       hashIndex: buildHashIndex(newLibrary),
-      visibleLibrary: newLibrary.filter((b) => !b.deletedAt),
+      visibleLibrary: getVisibleBooks(newLibrary),
     });
     refreshGroups();
 
     if (!options?.skipSave) {
       const appService = await envConfig.getAppService();
-      await appService.saveLibraryBooks(newLibrary);
+      const persisted = await appService.saveLibraryBooks(newLibrary);
+      if (persisted) {
+        const lifecycles = new Map(
+          persisted.filter((b) => b.removal || b.localRemoval).map((b) => [b.hash, b]),
+        );
+        if (lifecycles.size)
+          get().setLibrary(
+            get().library.map((b) => {
+              const current = lifecycles.get(b.hash);
+              return current ? protectBookRemoval(b, current) : b;
+            }),
+          );
+      }
     }
   },
 

@@ -4,6 +4,8 @@ import { useAuth } from '@/context/AuthContext';
 import { deleteUser } from '@/libs/user';
 import { deleteAllBooks } from '@/services/deleteLibraryService';
 import { useLibraryStore } from '@/store/libraryStore';
+import { useSettingsStore } from '@/store/settingsStore';
+import { getEnabledFileSyncBackends } from '@/services/sync/cloudSyncProvider';
 import { eventDispatcher } from '@/utils/event';
 import { saveSysSettings } from '@/helpers/settings';
 import { navigateToLibrary, navigateToResetPassword, navigateToUpdatePassword } from '@/utils/nav';
@@ -43,8 +45,14 @@ export const useUserActions = () => {
   const handleDeleteAllBooks = async (successMessage: string, errorMessage: string) => {
     if (!appService) return;
     try {
-      await deleteAllBooks(appService);
-      useLibraryStore.getState().setLibrary([]);
+      const result = await deleteAllBooks(
+        appService,
+        getEnabledFileSyncBackends(useSettingsStore.getState().settings),
+      );
+      if (result) {
+        useLibraryStore.getState().setLibrary(result.books);
+        if (result.failed.length || result.pending.length) throw new Error('Removal unfinished');
+      }
       eventDispatcher.dispatch('toast', {
         type: 'success',
         message: successMessage,

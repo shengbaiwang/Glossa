@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { withBookDataWrite } from '@/services/bookDataLifecycle';
+import type { BookDataOwner } from '@/glossa/harness/derivedStore';
 import { validateProviderConfig, type ProviderConfig } from '@/glossa/ai/provider';
 import { tokenUsageSchema } from '@/glossa/ai/usage';
 import { PassageError, throwIfAborted } from '@/glossa/passages/types';
@@ -93,12 +95,13 @@ export interface CheckpointEntry {
   checkpoint: MapCheckpoint | null;
 }
 export interface MapCheckpointStore {
-  load(key: string): Promise<CheckpointEntry>;
+  load(key: string, owner?: BookDataOwner): Promise<CheckpointEntry>;
   save(
     key: string,
     expected: string | null,
     checkpoint: MapCheckpoint,
     signal: AbortSignal,
+    owner?: BookDataOwner,
   ): Promise<string>;
 }
 
@@ -152,6 +155,8 @@ const envelopeSchema = z
     updatedAt: z.number().finite(),
     checksum: digestSchema,
     checkpoint: z.unknown(),
+    bookId: z.string().min(1).max(200).optional(),
+    dataRevision: z.number().int().nonnegative().optional(),
   })
   .strict();
 
@@ -173,8 +178,8 @@ function open(): Promise<IDBDatabase> {
 }
 
 /** Small, disposable derived inventories; raw book text remains in the reading adapter. */
-export const mapCheckpointStore: MapCheckpointStore = {
-  async load(key) {
+const checkpointStore = {
+  async load(key: string, owner?: BookDataOwner, cutoff = 0): Promise<CheckpointEntry> {
     const db = await open().catch(() => {
       throw storageError();
     });
@@ -187,14 +192,42 @@ export const mapCheckpointStore: MapCheckpointStore = {
       });
       const saved = envelopeSchema.safeParse(raw);
       if (!saved.success || saved.data.key !== key) return { revision: null, checkpoint: null };
+      if (owner && saved.data.bookId && saved.data.bookId !== owner.bookId)
+        return { revision: null, checkpoint: null };
+      if ((saved.data.dataRevision ?? 0) < cutoff)
+        return { revision: saved.data.revision, checkpoint: null };
       const parsed = mapCheckpointSchema.safeParse(saved.data.checkpoint);
       const valid = parsed.success && (await digest(parsed.data)) === saved.data.checksum;
+      if (valid && owner && !saved.data.bookId) {
+        let adopted = false;
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction('checkpoints', 'readwrite');
+          const store = tx.objectStore('checkpoints'),
+            request = store.get(key);
+          request.onsuccess = () => {
+            const current = envelopeSchema.safeParse(request.result);
+            if (current.success && JSON.stringify(request.result) === JSON.stringify(raw)) {
+              store.put({ ...current.data, bookId: owner.bookId, dataRevision: owner.revision });
+              adopted = true;
+            }
+          };
+          tx.oncomplete = () => resolve();
+          tx.onerror = tx.onabort = () => reject(storageError());
+        });
+        if (!adopted) return { revision: null, checkpoint: null };
+      }
       return { revision: saved.data.revision, checkpoint: valid ? parsed.data : null };
     } finally {
       db.close();
     }
   },
-  async save(key, expected, checkpoint, signal) {
+  async save(
+    key: string,
+    expected: string | null,
+    checkpoint: MapCheckpoint,
+    signal: AbortSignal,
+    owner?: BookDataOwner,
+  ): Promise<string> {
     throwIfAborted(signal);
     const valid = mapCheckpointSchema.parse(checkpoint);
     const entry = {
@@ -203,6 +236,7 @@ export const mapCheckpointStore: MapCheckpointStore = {
       updatedAt: Date.now(),
       checksum: await digest(valid),
       checkpoint: valid,
+      ...(owner ? { bookId: owner.bookId, dataRevision: owner.revision } : {}),
     };
     // The schema limits each entry well below 1 MB; keep only eight recent jobs.
     if (new TextEncoder().encode(JSON.stringify(entry)).length > 1000000) throw storageError();
@@ -256,4 +290,18 @@ export const mapCheckpointStore: MapCheckpointStore = {
       db.close();
     }
   },
+};
+export const mapCheckpointStore: MapCheckpointStore = {
+  load: (key, owner) =>
+    owner
+      ? withBookDataWrite(owner.bookId, owner.revision, (cutoff) =>
+          checkpointStore.load(key, owner, cutoff),
+        )
+      : checkpointStore.load(key),
+  save: (key, expected, checkpoint, signal, owner) =>
+    owner
+      ? withBookDataWrite(owner.bookId, owner.revision, () =>
+          checkpointStore.save(key, expected, checkpoint, signal, owner),
+        )
+      : checkpointStore.save(key, expected, checkpoint, signal),
 };

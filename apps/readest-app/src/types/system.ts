@@ -66,6 +66,8 @@ export interface FileSystem {
   removeDir(path: string, base: BaseDir, recursive?: boolean): Promise<void>;
   exists(path: string, base: BaseDir): Promise<boolean>;
   stats(path: string, base: BaseDir): Promise<FileInfo>;
+  /** Inspect a local path without following symbolic links. */
+  lstat?(path: string, base: BaseDir): Promise<FileInfo & { isSymlink: boolean }>;
   getPrefix(base: BaseDir): Promise<string>;
 }
 
@@ -228,7 +230,7 @@ export interface AppService {
   loadFeeds(): Promise<RssFeed[]>;
   saveFeeds(feeds: RssFeed[]): Promise<void>;
   loadLibraryBooks(): Promise<Book[]>;
-  saveLibraryBooks(books: Book[], options?: SaveLibraryBooksOptions): Promise<void>;
+  saveLibraryBooks(books: Book[], options?: SaveLibraryBooksOptions): Promise<Book[] | void>;
   getCoverImageUrl(book: Book): string;
   getCoverImageBlobUrl(book: Book): Promise<string>;
   generateCoverImageUrl(book: Book): Promise<string>;

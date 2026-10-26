@@ -29,7 +29,10 @@ export async function prepareContents(
     const source = await host.resolveNativeBookFilePath(book);
     if (signal.aborted || !source) return { result: signal.aborted ? 'cancelled' : 'unavailable' };
     if (!document) {
-      const cache = await openPDFCache(source);
+      const cache = await openPDFCache(source, false, {
+        bookId: book.hash,
+        revision: book.removal?.revision ?? 0,
+      });
       if (signal.aborted) return { result: 'cancelled' };
       if (
         cache &&
@@ -51,9 +54,10 @@ export async function prepareContents(
       report = value;
       options.onReport?.(value);
     };
-    result = options.regenerate
-      ? await preparePDFContents(source, document, signal, receive, { regenerate: true })
-      : await preparePDFContents(source, document, signal, receive);
+    result = await preparePDFContents(source, document, signal, receive, {
+      regenerate: options.regenerate,
+      owner: { bookId: book.hash, revision: book.removal?.revision ?? 0 },
+    });
   } catch {
     // The preparation report holds only safe phase/error codes. Preserve the
     // imported book and all native checkpoints for the next explicit retry.

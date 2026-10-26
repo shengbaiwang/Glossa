@@ -1,6 +1,14 @@
 import { z } from 'zod';
+import { withBookDataWrite } from '@/services/bookDataLifecycle';
+import type { BookDataEdit } from '@/services/bookDataConflicts';
 import { validateProviderConfig } from '@/glossa/ai/provider';
-import { ConversationError, turnSchema, validBlockSources, type ConversationTurn } from './schema';
+import {
+  ConversationError,
+  turnSchema,
+  validBlockSources,
+  MAX_QUESTION_CHARS,
+  type ConversationTurn,
+} from './schema';
 import { stubTranslation as _ } from '@/utils/misc';
 import { conversationReadingScopeSchema } from '@/glossa/harness/scope';
 
@@ -14,6 +22,7 @@ const sessionSchema = z
           .object({
             id: z.string().min(1),
             title: z.string().trim().min(1).max(120).optional(),
+            draft: z.string().max(MAX_QUESTION_CHARS).optional(),
             readingScope: conversationReadingScopeSchema.optional(),
             citationsEnabled: z.boolean().optional(),
             turns: z.array(turnSchema).max(40),
@@ -27,6 +36,7 @@ const sessionSchema = z
 export type ConversationHistory = z.infer<typeof sessionSchema>;
 let database: Promise<IDBDatabase> | undefined;
 const pending = new Map<string, ConversationHistory>();
+const pendingRevisions = new Map<string, number>();
 const queues = new Map<string, Promise<void>>();
 const storageError = () =>
   new ConversationError(_('Conversations could not be saved or read on this device.'));
@@ -93,24 +103,30 @@ function openDatabase(): Promise<IDBDatabase> {
     });
   return database;
 }
-export async function loadConversations(bookId: string): Promise<ConversationHistory | null> {
-  if (pending.has(bookId)) return structuredClone(pending.get(bookId)!);
-  try {
-    const db = await openDatabase();
-    const raw = await new Promise<unknown>((resolve, reject) => {
-      const tx = db.transaction('books', 'readonly');
-      const request = tx.objectStore('books').get(bookId);
-      tx.oncomplete = () => resolve(request.result);
-      tx.onerror = tx.onabort = () => reject(storageError());
-    });
+export async function loadConversations(
+  bookId: string,
+  revision = 0,
+): Promise<ConversationHistory | null> {
+  return withBookDataWrite(bookId, revision, async (cutoff) => {
+    if ((pendingRevisions.get(bookId) ?? 0) < cutoff) forgetPurgedConversations(bookId);
     if (pending.has(bookId)) return structuredClone(pending.get(bookId)!);
-    if (raw === undefined) return null;
-    const history = validateHistory(raw);
-    if (history.bookId !== bookId) throw storageError();
-    return history;
-  } catch {
-    throw storageError();
-  }
+    try {
+      const db = await openDatabase();
+      const raw = await new Promise<unknown>((resolve, reject) => {
+        const tx = db.transaction('books', 'readonly');
+        const request = tx.objectStore('books').get(bookId);
+        tx.oncomplete = () => resolve(request.result);
+        tx.onerror = tx.onabort = () => reject(storageError());
+      });
+      if (pending.has(bookId)) return structuredClone(pending.get(bookId)!);
+      if (raw === undefined) return null;
+      const history = validateHistory(raw);
+      if (history.bookId !== bookId) throw storageError();
+      return history;
+    } catch {
+      throw storageError();
+    }
+  });
 }
 export function hasUnsavedConversations(bookId: string): boolean {
   return pending.has(bookId);
@@ -119,25 +135,41 @@ export function hasUnsavedConversations(bookId: string): boolean {
 export function waitForConversationSave(bookId: string): Promise<void> {
   return queues.get(bookId) ?? Promise.resolve();
 }
-export function saveConversations(input: ConversationHistory): Promise<void> {
+export function forgetPurgedConversations(bookId: string): void {
+  pending.delete(bookId);
+  pendingRevisions.delete(bookId);
+}
+export function saveConversations(
+  input: ConversationHistory,
+  revision = 0,
+  edit?: BookDataEdit,
+): Promise<void> {
   const history = structuredClone(validateHistory(input));
   pending.set(history.bookId, history);
+  pendingRevisions.set(history.bookId, revision);
   const save = (queues.get(history.bookId) ?? Promise.resolve())
     .catch(() => {})
-    .then(async () => {
-      try {
-        const db = await openDatabase();
-        await new Promise<void>((resolve, reject) => {
-          const tx = db.transaction('books', 'readwrite');
-          tx.oncomplete = () => resolve();
-          tx.onerror = tx.onabort = () => reject(storageError());
-          tx.objectStore('books').put(history);
-        });
-        if (pending.get(history.bookId) === history) pending.delete(history.bookId);
-      } catch {
-        throw storageError();
-      }
-    });
+    .then(() =>
+      withBookDataWrite(
+        history.bookId,
+        revision,
+        async () => {
+          try {
+            const db = await openDatabase();
+            await new Promise<void>((resolve, reject) => {
+              const tx = db.transaction('books', 'readwrite');
+              tx.oncomplete = () => resolve();
+              tx.onerror = tx.onabort = () => reject(storageError());
+              tx.objectStore('books').put(history);
+            });
+            if (pending.get(history.bookId) === history) forgetPurgedConversations(history.bookId);
+          } catch {
+            throw storageError();
+          }
+        },
+        edit ? { ...edit, kind: 'conversations', data: history } : undefined,
+      ),
+    );
   queues.set(history.bookId, save);
   void save
     .finally(() => {

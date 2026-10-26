@@ -31,6 +31,7 @@
 //
 // Avoids ferrying multi-MB blobs across the JS<->Rust IPC boundary
 // and is a no-op on the web platform.
+import { removeBookSubjectMetadata } from '@/utils/bookMetadata';
 import { invoke } from '@tauri-apps/api/core';
 import { isTauriAppPlatform } from '@/services/environment';
 import type { BookDoc, BookMetadata } from '@/libs/document';
@@ -98,7 +99,7 @@ export interface NativeParsedEpub {
  */
 const buildBookDocStub = (metadata: BookMetadata, coverBlob: Blob | null): BookDoc => {
   const stub = {
-    metadata,
+    metadata: removeBookSubjectMetadata(metadata),
     rendition: {},
     dir: 'ltr',
     toc: [],

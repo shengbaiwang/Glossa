@@ -33,6 +33,7 @@ import useShortcuts from '@/hooks/useShortcuts';
 import OfficialModulePanel from '@/glossa/modules/OfficialModulePanel';
 import {
   PANEL_MODULES,
+  pluginSupportsFormat,
   isOfficialModuleEnabled,
   resolveNotebookTab,
 } from '@/glossa/modules/registry';
@@ -187,7 +188,7 @@ const Notebook: React.FC = ({}) => {
         if (placeholder) {
           const views = getViewsById(bookKey.split('-')[0]!);
           views.forEach((view) => removeBookNoteOverlays(view, placeholder));
-          const updatedConfig = updateBooknotes(bookKey, annotations);
+          const updatedConfig = updateBooknotes(bookKey, annotations, false);
           if (updatedConfig) {
             // Read settings fresh: this callback has stable identity (empty deps)
             // so a captured `settings` would go stale across saves.
@@ -359,11 +360,13 @@ const Notebook: React.FC = ({}) => {
   }
   const { book, bookDoc } = bookData;
   const languageDir = getBookDirFromLanguage(bookDoc.metadata.language);
-  const supportsReadingAssistant = book.format === 'EPUB';
+  const supportsConversation = book.format === 'EPUB' || book.format === 'MD';
+  const supportsMindmap = book.format === 'EPUB';
   const activeTab = availableTab;
   const tabs = [
     ...PANEL_MODULES.filter(
-      (module) => module.format === book.format && isOfficialModuleEnabled(settings, module.id),
+      (module) =>
+        pluginSupportsFormat(module, book.format) && isOfficialModuleEnabled(settings, module.id),
     ).map((module) => ({
       id: module.id,
       label: _(module.id === 'pdfAutoContents' ? 'Contents generator' : module.labelKey),
@@ -509,7 +512,7 @@ const Notebook: React.FC = ({}) => {
             />
           </div>
         </div>
-        {supportsReadingAssistant && activeTab === 'conversation' && (
+        {supportsConversation && activeTab === 'conversation' && (
           <div
             className='glossa-notebook-content min-h-0 flex-1 overflow-hidden'
             role='tabpanel'
@@ -526,7 +529,7 @@ const Notebook: React.FC = ({}) => {
             />
           </div>
         )}
-        {supportsReadingAssistant && activeTab === 'mindmap' && (
+        {supportsMindmap && activeTab === 'mindmap' && (
           <div
             className='glossa-notebook-content min-h-0 flex-1 overflow-hidden'
             role='tabpanel'

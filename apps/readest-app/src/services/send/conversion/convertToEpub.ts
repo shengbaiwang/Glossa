@@ -26,7 +26,7 @@ export type ConvertInput =
   /** Self-contained page clip: like `article` but fetches every referenced
    *  image and embeds it in the EPUB. Only safe from a CORS-free context
    *  (Tauri webview, browser-extension content script). */
-  | { kind: 'page'; html: string; url: string };
+  | { kind: 'page'; html: string; url: string; signal?: AbortSignal };
 
 const MIME_TO_KIND: Record<ConvertibleMime, ConvertInput['kind']> = {
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
@@ -358,6 +358,7 @@ async function buildArticleCover(
   title: string,
   author: string,
   rule: SiteRule | null,
+  signal?: AbortSignal,
 ): Promise<EpubImage | undefined> {
   let doc: Document;
   try {
@@ -389,7 +390,7 @@ async function buildArticleCover(
   const candidateImageUrl = [ruleImageUrl, metaImageUrl].find((u) => u && /^https?:/i.test(u));
   if (candidateImageUrl) {
     authorImage =
-      (await fetchAuthorImage(candidateImageUrl, pageUrl).catch(() => null)) ?? undefined;
+      (await fetchAuthorImage(candidateImageUrl, pageUrl, signal).catch(() => null)) ?? undefined;
   }
 
   // Favicon is only fetched when we don't already have an author image —
@@ -397,7 +398,7 @@ async function buildArticleCover(
   // sets `authorImage`).
   const favicon = authorImage
     ? undefined
-    : ((await fetchBestFavicon(doc, pageUrl).catch(() => null)) ?? undefined);
+    : ((await fetchBestFavicon(doc, pageUrl, signal).catch(() => null)) ?? undefined);
 
   return generateCoverSvg({ title, author, siteName, authorImage, favicon });
 }
@@ -491,7 +492,12 @@ function baseName(fileName: string | undefined, fallback: string): string {
  * service worker with broad `host_permissions`). A plain web page hitting
  * this would fail on the image fetches.
  */
-export async function convertPageToEpub(html: string, url: string): Promise<ConvertedBook> {
+export async function convertPageToEpub(
+  html: string,
+  url: string,
+  signal?: AbortSignal,
+): Promise<ConvertedBook> {
+  signal?.throwIfAborted();
   console.log('[clip/page] input', {
     url,
     html_bytes: html.length,
@@ -513,8 +519,9 @@ export async function convertPageToEpub(html: string, url: string): Promise<Conv
     if (ruleResult && ruleText.length >= 400) {
       const title = ruleResult.title || extractHtmlTitle(html, titleFallback(url));
       const byline = ruleResult.byline || '';
-      const bundle = await bundleAssets(ruleResult.content, url);
-      const cover = await buildArticleCover(html, url, title, byline, rule);
+      const bundle = await bundleAssets(ruleResult.content, url, signal);
+      const cover = await buildArticleCover(html, url, title, byline, rule, signal);
+      signal?.throwIfAborted();
       return htmlToBook(
         composeArticleContent(title, byline, bundle.html),
         title,
@@ -588,8 +595,9 @@ export async function convertPageToEpub(html: string, url: string): Promise<Conv
     parsed.byline?.trim() ||
     (metaDoc ? pickMetaContent(metaDoc, META_FALLBACK.byline) : null) ||
     '';
-  const bundle = await bundleAssets(articleHtml, url);
-  const cover = await buildArticleCover(html, url, title, byline, rule);
+  const bundle = await bundleAssets(articleHtml, url, signal);
+  const cover = await buildArticleCover(html, url, title, byline, rule, signal);
+  signal?.throwIfAborted();
   return htmlToBook(
     composeArticleContent(title, byline, bundle.html),
     title,
@@ -673,7 +681,7 @@ export async function convertToEpub(input: ConvertInput): Promise<ConvertedBook>
       );
     }
     case 'page': {
-      return convertPageToEpub(input.html, input.url);
+      return convertPageToEpub(input.html, input.url, input.signal);
     }
     default: {
       throw new ConversionError(

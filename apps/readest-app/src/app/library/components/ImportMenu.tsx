@@ -3,6 +3,8 @@ import { FilePlus2, FolderOpen, Link } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';
+import { useSettingsStore } from '@/store/settingsStore';
+import { isPluginEnabled } from '@/glossa/plugins/registry';
 
 export interface ImportMenuProps {
   menuClassName?: string;
@@ -20,6 +22,9 @@ const ImportMenu: React.FC<ImportMenuProps> = ({
   onImportBookFromUrl,
 }) => {
   const _ = useTranslation();
+  const webImportEnabled = useSettingsStore((state) =>
+    isPluginEnabled(state.settings, 'webImport'),
+  );
 
   const handleImportFromFiles = () => {
     onImportBooksFromFiles();
@@ -45,20 +50,20 @@ const ImportMenu: React.FC<ImportMenuProps> = ({
       onCancel={() => setIsDropdownOpen?.(false)}
     >
       <MenuItem
-        label={_('From Local File')}
+        label={_('Import files')}
         Icon={<FilePlus2 className='h-5 w-5' aria-hidden='true' />}
         onClick={handleImportFromFiles}
       />
       {onImportBooksFromDirectory && (
         <MenuItem
-          label={_('From Directory')}
+          label={_('Import folder')}
           Icon={<FolderOpen className='h-5 w-5' aria-hidden='true' />}
           onClick={handleImportFromDirectory}
         />
       )}
-      {onImportBookFromUrl && (
+      {onImportBookFromUrl && webImportEnabled && (
         <MenuItem
-          label={_('From Web URL')}
+          label={_('Import webpage')}
           Icon={<Link className='h-5 w-5' aria-hidden='true' />}
           onClick={handleImportFromUrl}
         />

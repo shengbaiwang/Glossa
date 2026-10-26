@@ -1,4 +1,5 @@
 import { validateProviderConfig } from '@/glossa/ai/provider';
+import { withBookDataWrite } from '@/services/bookDataLifecycle';
 import { stubTranslation as _ } from '@/utils/misc';
 import { getMindmapIdentity } from './identity';
 import { getPassageId } from '@/glossa/passages/passages';
@@ -95,49 +96,55 @@ export async function loadMindmap(
   }
 }
 
-export async function saveMindmap(guide: ReadingMindmap, signal?: AbortSignal): Promise<void> {
+export async function saveMindmap(
+  guide: ReadingMindmap,
+  signal?: AbortSignal,
+  revision = 0,
+): Promise<void> {
   throwIfAborted(signal);
   const validated = await validateSavedMindmap(guide);
   throwIfAborted(signal);
   if (!validated) throw storageError();
-  try {
-    const db = await openDatabase();
-    throwIfAborted(signal);
-    await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction(GUIDES, 'readwrite');
-      const abort = () => {
-        try {
-          transaction.abort();
-        } catch {
-          /* Already committed. */
+  await withBookDataWrite(guide.bookId, revision, async () => {
+    try {
+      const db = await openDatabase();
+      throwIfAborted(signal);
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction(GUIDES, 'readwrite');
+        const abort = () => {
+          try {
+            transaction.abort();
+          } catch {
+            /* Already committed. */
+          }
+        };
+        const clean = () => signal?.removeEventListener('abort', abort);
+        transaction.oncomplete = () => {
+          clean();
+          resolve();
+        };
+        transaction.onerror = transaction.onabort = () => {
+          clean();
+          reject(
+            signal?.aborted
+              ? new DOMException('Generation cancelled.', 'AbortError')
+              : storageError(),
+          );
+        };
+        signal?.addEventListener('abort', abort, { once: true });
+        if (signal?.aborted) {
+          abort();
+          return;
         }
-      };
-      const clean = () => signal?.removeEventListener('abort', abort);
-      transaction.oncomplete = () => {
-        clean();
-        resolve();
-      };
-      transaction.onerror = transaction.onabort = () => {
-        clean();
-        reject(
-          signal?.aborted
-            ? new DOMException('Generation cancelled.', 'AbortError')
-            : storageError(),
-        );
-      };
-      signal?.addEventListener('abort', abort, { once: true });
-      if (signal?.aborted) {
-        abort();
-        return;
-      }
-      // IndexedDB commits the replacement atomically; abort leaves the prior result intact.
-      transaction.objectStore(GUIDES).put(validated);
-    });
-  } catch (error) {
-    throwIfAborted(signal);
-    if (error instanceof Error && error.name === 'AbortError') throw error;
-    throw storageError();
-  }
+        // IndexedDB commits the replacement atomically; abort leaves the prior result intact.
+        transaction.objectStore(GUIDES).put(validated);
+      });
+    } catch (error) {
+      throwIfAborted(signal);
+      if (error instanceof Error && error.name === 'AbortError') throw error;
+      throw storageError();
+    }
+  });
 }
 
 /** Read-only archive access; one book only, with the original validation intact. */

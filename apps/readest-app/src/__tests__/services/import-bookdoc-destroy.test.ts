@@ -40,12 +40,20 @@ vi.mock('@/libs/storage', () => ({
 
 import { BaseAppService } from '@/services/appService';
 import { refreshBookMetadata } from '@/services/bookService';
+import { fingerprintFile } from '@/services/bookIdentity';
 
 class TestAppService extends BaseAppService {
+  private files = new Map<string, File>();
   protected fs = {
-    openFile: vi.fn(),
+    openFile: vi.fn(async (path: string) => {
+      const file = this.files.get(path);
+      if (!file) throw new Error('Missing file');
+      return file;
+    }),
     readFile: vi.fn(),
-    writeFile: vi.fn(),
+    writeFile: vi.fn(async (path: string, _base: string, value: string | ArrayBuffer | File) => {
+      this.files.set(path, new File([value], path.split('/').pop()!));
+    }),
     copyFile: vi.fn(),
     removeFile: vi.fn(),
     readDir: vi.fn(),
@@ -131,7 +139,7 @@ describe('importBook BookDoc lifecycle', () => {
     const fs = service.getFs();
     fs.exists.mockResolvedValue(false);
     fs.createDir.mockResolvedValue(undefined);
-    fs.writeFile.mockResolvedValue(undefined);
+    fs.writeFile.mockClear();
     fs.removeDir.mockResolvedValue(undefined);
     fs.readFile.mockResolvedValue('{}');
     mockPartialMD5.mockResolvedValue('hash-abc');
@@ -175,7 +183,7 @@ describe('importBook BookDoc lifecycle', () => {
     for (const name of ['原书（初版）.epub', '原书（修订版）.epub']) {
       const doc = setupMockBookDoc();
       mockOpen.mockResolvedValue({ book: doc, format: 'EPUB' });
-      await service.importBook(new File(['edition'], name), books);
+      await service.importBook(new File([name], name), books);
     }
     expect(books.filter((book) => !book.deletedAt).map((book) => book.title)).toEqual([
       '原书（初版）',
@@ -200,11 +208,12 @@ describe('importBook BookDoc lifecycle', () => {
     expect(books.map((book) => book.title)).toEqual(['甲书', '乙书']);
   });
 
-  it('repairs a same-file reimport while retaining its stored filename and personal fields', async () => {
+  it('retains same-file metadata, stored filename and personal fields on reimport', async () => {
     const document = setupMockBookDoc();
     document.metadata = { title: 'ssreader', author: 'ssreader', language: 'zh', identifier: '' };
     const existing: Book = {
       hash: 'hash-abc',
+      contentFingerprint: await fingerprintFile(new File(['pdf'], 'book.pdf')),
       format: 'PDF',
       title: 'ssreader',
       sourceTitle: 'ssreader',
@@ -217,8 +226,8 @@ describe('importBook BookDoc lifecycle', () => {
     };
     const book = await service.importBook(new File(['pdf'], '马基雅维里主义.pdf'), [existing]);
     expect(book).toBe(existing);
-    expect(book?.title).toBe('马基雅维里主义');
-    expect(book?.author).toBe('');
+    expect(book?.title).toBe('ssreader');
+    expect(book?.author).toBe('ssreader');
     expect(book?.sourceTitle).toBe('ssreader');
     expect(book?.progress).toEqual([17, 200]);
     expect(book?.groupId).toBe('personal');
@@ -251,6 +260,7 @@ describe('importBook BookDoc lifecycle', () => {
     document.metadata = { title: 'ssreader', author: 'ssreader', language: 'zh', identifier: '' };
     const existing: Book = {
       hash: 'hash-abc',
+      contentFingerprint: await fingerprintFile(new File(['pdf'], 'book.pdf')),
       format: 'PDF',
       title: 'ssreader',
       sourceTitle: 'ssreader',
@@ -313,12 +323,13 @@ describe('importBook BookDoc lifecycle', () => {
       expect(mockDestroy).not.toHaveBeenCalled();
       return 'generated';
     });
-    await service.importBook(new File(['pdf content'], 'test.pdf'), []);
+    const imported = await service.importBook(new File(['pdf content'], 'test.pdf'), []);
     expect(pdf.prepare).toHaveBeenCalledWith(
       '/managed/original.pdf',
       document,
       expect.any(AbortSignal),
       expect.any(Function),
+      { owner: { bookId: imported!.hash, revision: 0 }, regenerate: undefined },
     );
     expect(mockDestroy).toHaveBeenCalledOnce();
   });
@@ -402,6 +413,7 @@ describe('importBook BookDoc lifecycle', () => {
       document,
       expect.any(AbortSignal),
       expect.any(Function),
+      { owner: { bookId: book.hash, revision: 0 }, regenerate: undefined },
     );
     expect(mockDestroy).toHaveBeenCalledOnce();
     expect(close).toHaveBeenCalledOnce();

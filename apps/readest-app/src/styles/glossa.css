@@ -5,6 +5,8 @@
 @import './glossa-foundations.css';
 @import './glossa-search.css';
 @import './glossa-metadata.css';
+@import './glossa-covers.css';
+@import './glossa-removal.css';
 /* Glossa: the icon's rounded ink strokes, carried through the application.
    All surfaces derive from the selected theme, including custom palettes. */
 :root {
@@ -807,7 +809,7 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
     opacity: 0.6;
     padding: 8px 10px;
   }
-  .glossa-application-workspace .glossa-settings-nav-button {
+  .glossa-application-workspace .glossa-settings-navigation .glossa-settings-nav-button {
     width: 100%;
     white-space: normal;
     text-align: start;
@@ -1087,4 +1089,31 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
 }
 [data-eink='true'] .glossa-map-options > summary {
   color: var(--glossa-ink);
+}
+
+.glossa-settings-sections {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-block-end: 12px;
+  border-bottom: 1px solid var(--glossa-border);
+}
+.glossa-settings-sections .glossa-settings-nav-button {
+  font-size: 13px;
+}
+.glossa-settings-scope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.glossa-settings-scope .glossa-button {
+  flex: 0 1 auto;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.glossa-settings-scope p {
+  flex-basis: 100%;
 }

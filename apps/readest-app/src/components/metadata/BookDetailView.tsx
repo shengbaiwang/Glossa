@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { useState } from 'react';
+import React from 'react';
 import {
   CloudDownload as MdOutlineCloudDownload,
   CloudUpload as MdOutlineCloudUpload,
@@ -12,8 +12,7 @@ import {
 
 import { Book } from '@/types/book';
 import { BookMetadata } from '@/libs/document';
-import { openExternalUrl } from '@/utils/open';
-import { getBookGoodreadsQuery, getGoodreadsSearchUrl } from '@/utils/goodreads';
+import InlineTextEditor from '@/components/InlineTextEditor';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useEnv } from '@/context/EnvContext';
@@ -25,7 +24,6 @@ import {
   formatLanguage,
   formatPublisher,
   formatTitle,
-  getContributorNames,
 } from '@/utils/book';
 import { isFeedBook } from '@/services/rss/feedBookUrl';
 import { saveSysSettings } from '@/helpers/settings';
@@ -39,14 +37,15 @@ interface BookDetailViewProps {
   fileSize: number | null;
   shareEnabled?: boolean;
   onEdit?: () => void;
+  onInlineEdit?: (field: 'title' | 'author' | 'tags', value: string) => Promise<boolean>;
+  onSend?: () => void;
   onDelete?: () => void;
-  onDeleteCloudBackup?: () => void;
   onDeleteLocalCopy?: () => void;
   onDownload?: () => void;
   onUpload?: () => void;
   onShare?: () => void;
   onExport?: () => void;
-  onMetadataValueClick?: (type: 'tag' | 'subject', value: string) => void;
+  onMetadataValueClick?: (type: 'tag', value: string) => void;
 }
 
 const BookDetailView: React.FC<BookDetailViewProps> = ({
@@ -55,8 +54,9 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
   fileSize,
   shareEnabled,
   onEdit,
+  onInlineEdit,
+  onSend,
   onDelete,
-  onDeleteCloudBackup,
   onDeleteLocalCopy,
   onDownload,
   onUpload,
@@ -67,11 +67,7 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
   const _ = useTranslation();
   const { envConfig } = useEnv();
   const { settings } = useSettingsStore();
-  const [subjectsExpanded, setSubjectsExpanded] = useState(false);
-  const subjects = getContributorNames(metadata?.subject);
-  const visibleSubjects = subjectsExpanded ? subjects : subjects.slice(0, 3);
-
-  const renderMetadataChip = (type: 'tag' | 'subject', value: string) => {
+  const renderMetadataChip = (type: 'tag', value: string) => {
     const className = 'badge badge-outline h-auto min-h-6 whitespace-normal px-2 py-1 text-xs';
     return onMetadataValueClick ? (
       <button
@@ -112,17 +108,37 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
   return (
     <div className='relative w-full rounded-lg'>
       <div className='mb-6 me-4 flex h-32 items-start'>
-        <div className='me-6 aspect-[28/41] h-32 shadow-lg sm:me-10'>
+        <div className='me-6 aspect-[28/41] h-32 sm:me-10'>
           <BookCover mode='list' book={book} showSpine={settings.librarySkeuomorphicCovers} />
         </div>
         <div className='title-author flex h-32 flex-col justify-between'>
           <div>
-            <p className='text-base-content mb-2 line-clamp-2 break-words text-lg font-bold'>
-              {formatTitle(book.title).replace(/\u00A0/g, ' ') || _('Untitled')}
-            </p>
-            <p className='text-neutral-content line-clamp-1'>
-              {formatAuthors(book.author, book.primaryLanguage) || _('Unknown')}
-            </p>
+            <div className='text-base-content mb-2 line-clamp-2 break-words text-lg font-bold'>
+              {onInlineEdit ? (
+                <InlineTextEditor
+                  value={book.title}
+                  label={_('Title')}
+                  activateOnClick
+                  onSave={(value) => onInlineEdit('title', value)}
+                  placeholder={_('Untitled')}
+                />
+              ) : (
+                formatTitle(book.title).replace(/\u00A0/g, ' ') || _('Untitled')
+              )}
+            </div>
+            <div className='text-neutral-content line-clamp-1'>
+              {onInlineEdit ? (
+                <InlineTextEditor
+                  value={book.author}
+                  label={_('Author')}
+                  activateOnClick
+                  onSave={(value) => onInlineEdit('author', value)}
+                  placeholder={_('Unknown')}
+                />
+              ) : (
+                formatAuthors(book.author, book.primaryLanguage) || _('Unknown')
+              )}
+            </div>
           </div>
           <div className='flex flex-nowrap items-center gap-3 sm:gap-x-4'>
             {onEdit && (
@@ -146,45 +162,14 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
               </button>
             )}
             {onDelete && (
-              <Dropdown
-                label={_('Delete Book Options')}
-                className='dropdown-bottom dropdown-center flex justify-center'
-                buttonClassName='btn btn-ghost h-8 min-h-8 w-8 p-0'
-                toggleButton={<MdOutlineDelete className='text-error' />}
+              <button
+                type='button'
+                title={_('Delete book')}
+                aria-label={_('Delete book')}
+                onClick={onDelete}
               >
-                <div
-                  className={clsx(
-                    'delete-menu dropdown-content no-triangle !relative',
-                    'border-base-300 !bg-base-200 z-20 mt-1 max-w-[90vw] shadow-2xl',
-                  )}
-                >
-                  <MenuItem
-                    noIcon
-                    transient
-                    label={_('Remove from Cloud & Device')}
-                    onClick={onDelete}
-                  />
-                  {/* Offered only where a cloud-only removal means something: a
-                      third-party provider mirrors the library, so it would just
-                      re-upload the still-local book on its next sync (#5084). */}
-                  {onDeleteCloudBackup && (
-                    <MenuItem
-                      noIcon
-                      transient
-                      label={_('Remove from Cloud Only')}
-                      onClick={onDeleteCloudBackup}
-                      disabled={!book.uploadedAt}
-                    />
-                  )}
-                  <MenuItem
-                    noIcon
-                    transient
-                    label={_('Remove from Device Only')}
-                    onClick={onDeleteLocalCopy}
-                    disabled={!book.downloadedAt}
-                  />
-                </div>
-              </Dropdown>
+                <MdOutlineDelete />
+              </button>
             )}
             <Dropdown
               label={_('More Actions')}
@@ -198,14 +183,18 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
                   'border-base-300 !bg-base-200 z-20 mt-1 max-w-[90vw] shadow-2xl',
                 )}
               >
-                <MenuItem
-                  noIcon
-                  transient
-                  label={_('Search on Goodreads')}
-                  onClick={() =>
-                    openExternalUrl(getGoodreadsSearchUrl(getBookGoodreadsQuery(book)))
-                  }
-                />
+                {onDeleteLocalCopy && (
+                  <MenuItem
+                    noIcon
+                    transient
+                    label={_('Clear local download')}
+                    onClick={onDeleteLocalCopy}
+                    disabled={!book.downloadedAt}
+                  />
+                )}
+                {onSend && hasLocalFile && (
+                  <MenuItem noIcon transient label={_('Send')} onClick={onSend} />
+                )}
                 {onShare && (
                   <MenuItem
                     noIcon
@@ -347,33 +336,19 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
                     </p>
                   </div>
                 )}
-                {/*
-                  Subjects and Tags are full-width chip lists, so they close out
-                  the section: leaving them mid-grid pushed every following cell
-                  onto a fresh row and left holes in the two-column layout.
-                */}
                 <div className='col-span-2 overflow-hidden sm:col-span-3'>
-                  <div className='flex items-center gap-1'>
-                    <span className='font-bold'>{_('Subjects')}</span>
-                    {subjects.length > 3 && (
-                      <button
-                        type='button'
-                        aria-label={_('Subjects')}
-                        aria-expanded={subjectsExpanded}
-                        onClick={() => setSubjectsExpanded((expanded) => !expanded)}
-                      >
-                        {subjectsExpanded ? <MdExpandLess /> : <MdExpandMore />}
-                      </button>
+                  <div className='flex items-center justify-between gap-2'>
+                    <span className='font-bold'>{_('Tags')}</span>
+                    {onInlineEdit && (
+                      <InlineTextEditor
+                        value={(book.tags ?? []).join(', ')}
+                        displayText={_('Edit')}
+                        label={_('Tags')}
+                        activateOnClick
+                        onSave={(value) => onInlineEdit('tags', value)}
+                      />
                     )}
                   </div>
-                  <div className='mt-1 flex flex-wrap gap-1'>
-                    {visibleSubjects.length
-                      ? visibleSubjects.map((subject) => renderMetadataChip('subject', subject))
-                      : _('Unknown')}
-                  </div>
-                </div>
-                <div className='col-span-2 overflow-hidden sm:col-span-3'>
-                  <span className='font-bold'>{_('Tags')}</span>
                   <div className='mt-1 flex flex-wrap gap-1'>
                     {book.tags?.length
                       ? book.tags.map((tag) => renderMetadataChip('tag', tag))

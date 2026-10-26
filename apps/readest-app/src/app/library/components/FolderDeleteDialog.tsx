@@ -1,7 +1,6 @@
-import { useEffect, useRef } from 'react';
 import { useTranslation } from '@/hooks/useTranslation';
 import ModalPortal from '@/components/ModalPortal';
-import Alert from '@/components/Alert';
+import DeleteConfirmAlert from '@/components/DeleteConfirmAlert';
 import { folderLabel } from '../utils/libraryFolders';
 
 export default function FolderDeleteDialog({
@@ -14,28 +13,17 @@ export default function FolderDeleteDialog({
   onClose: () => void;
 }) {
   const _ = useTranslation();
-  const confirm = useRef(false);
-  const close = useRef(onClose);
-  close.current = onClose;
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
-    return () => {
-      if (previous?.isConnected) previous.focus();
-    };
-  }, []);
   return (
     <ModalPortal>
-      <Alert
+      <DeleteConfirmAlert
         title={_('Delete “{{name}}”?', { name: folderLabel(path) })}
         message={_('Books and subgroups move up one level. Reading data is kept.')}
+        books={[{ hash: path, title: path }]}
         confirmLabel={_('Delete group')}
-        onCancel={() => {
-          if (!confirm.current) close.current();
-        }}
-        onConfirm={() => {
-          if (confirm.current) return;
-          confirm.current = true;
-          void onConfirm().finally(() => close.current());
+        onCancel={onClose}
+        onConfirm={async () => {
+          if (!(await onConfirm())) throw new Error('Group removal failed');
+          onClose();
         }}
       />
     </ModalPortal>

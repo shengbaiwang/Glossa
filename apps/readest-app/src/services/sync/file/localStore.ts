@@ -24,6 +24,8 @@ export interface LocalStore {
   loadConfig(book: Book): Promise<BookConfig | null>;
   /** Persist a (merged) config to local disk. */
   saveBookConfig(book: Book, config: BookConfig): Promise<void>;
+  /** A new download or retry must not overwrite a personal sidecar already on disk. */
+  saveDownloadedConfig?(book: Book, config: BookConfig): Promise<void>;
 
   /** Buffered upload source: the book file bytes, or null when not on disk. */
   loadBookFile(book: Book): Promise<BookBytes | null>;
@@ -46,8 +48,8 @@ export interface LocalStore {
   /** Write a freshly-pulled cover image to disk. */
   saveBookCover(book: Book, bytes: ArrayBuffer): Promise<void>;
 
-  /** Insert a brand-new book row (no-op on an existing hash). */
-  addBookToLibrary(book: Book): Promise<void>;
+  /** Verify downloaded bytes and register once; legacy duplicates retain archived personal records. */
+  addBookToLibrary(book: Book): Promise<Book | void>;
   /** Persist refreshed metadata for a book already in the local library. */
   updateBookMetadata(book: Book): Promise<void>;
   /**
@@ -66,5 +68,11 @@ export interface LocalStore {
    * off the shelf and stops being re-uploaded. External / in-place sources are
    * never touched — only the app-managed `Books/<hash>/` copy is removed.
    */
-  deleteBookLocally(book: Book): Promise<void>;
+  deleteBookLocally(book: Book): Promise<Book | void>;
+  /** Latest persisted lifecycle; sync snapshots cannot authorize a later deletion. */
+  getCurrentBook?(hash: string): Promise<Book | undefined>;
+  acknowledgeRemoval?(book: Book, backend: string, status: 'complete' | 'failed'): Promise<void>;
+  withCurrentRemoval?(book: Book, action: () => Promise<void>): Promise<boolean>;
+  /** Hold the book's lifecycle across the entire native streaming write. */
+  withBookFileWrite?<T>(book: Book, action: () => Promise<T>): Promise<T>;
 }

@@ -9,8 +9,13 @@
   height: var(--glossa-icon-chrome);
 }
 
-/* App-level navigation is one step larger than the per-book chrome. */
+/* Library and reader chrome share the same glyph size. */
 .glossa-library-header .glossa-icon-button > :is(.glossa-icon, .lucide),
+.glossa-library-header .glossa-button > :is(.glossa-icon, .lucide) {
+  width: var(--glossa-icon-chrome);
+  height: var(--glossa-icon-chrome);
+}
+
 .glossa-library-navigation button > .glossa-icon {
   width: var(--glossa-icon-navigation);
   height: var(--glossa-icon-navigation);
@@ -80,7 +85,7 @@
   height: var(--glossa-icon-detail);
 }
 .glossa-library-header .glossa-icon-button {
-  border-radius: var(--glossa-radius-navigation);
+  border-radius: var(--glossa-radius-control);
 }
 .glossa-library-header .glossa-library-search .glossa-icon-button > .glossa-icon {
   width: var(--glossa-icon-tool);
@@ -117,6 +122,10 @@
 }
 
 @media (pointer: coarse) {
+  .glossa-library-header {
+    --glossa-control-size: 44px;
+  }
+
   .glossa-icon-button.glossa-tool-icon,
   .glossa-icon-button.glossa-detail-icon,
   .glossa-viewer-tools > button {

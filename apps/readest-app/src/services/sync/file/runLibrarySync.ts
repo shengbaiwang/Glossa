@@ -122,6 +122,7 @@ const syncOneBackend = async (
     strategy: strategy === 'prompt' ? 'silent' : strategy,
     syncBooks: ps?.syncBooks ?? false,
     fullSync: false,
+    removalBackend: kind,
     concurrency: 6,
     deviceId,
     onProgress: ({ index, total, action }) => {

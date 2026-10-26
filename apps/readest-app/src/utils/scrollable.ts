@@ -8,11 +8,9 @@ export const SCROLL_WRAPPER_CLASS = 'scroll-wrapper';
 // (not a scroll container — never clips, never captures gestures). A wider table
 // keeps the default overflow:auto and scrolls. Toggled by updateTableFit.
 export const SCROLL_WRAPPER_FIT_CLASS = 'scroll-wrapper-fit';
-// Only the wrapper that applyScrollableStyle injects (around tables and display
-// equations) captures swipe/wheel gestures so scrolling it doesn't turn the page.
-// pre/code rely on native overflow scrolling and aren't routed; a bare <math> can't
-// scroll itself (its box reports no overflow) — it's wrapped instead.
-const SCROLLABLE_SELECTOR = `.${SCROLL_WRAPPER_CLASS}`;
+// Markdown code is a native scroll box; tables and display equations use CFI-safe
+// wrappers. Route gestures for both so a horizontal scroll cannot turn a page.
+const SCROLLABLE_SELECTOR = `.${SCROLL_WRAPPER_CLASS}, .glossa-markdown pre`;
 const SCROLL_WRAPPER_TOLERANCE_PX = 4;
 const SCROLL_WRAPPER_TOUCH_SCROLL_FLAG = 'data-readest-scroll-wrapper-touch-scroll';
 

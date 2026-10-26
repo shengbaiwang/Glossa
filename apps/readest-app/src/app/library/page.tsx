@@ -15,6 +15,10 @@ import {
   selectNewImportableFiles,
   toWatchedFolderImports,
 } from '@/services/bookService';
+import { bookRemovalIO, removeAppBooks, removalFeedback } from '@/services/appBookRemoval';
+import { restoreRemovedBooks, type RemovalResult } from '@/services/bookRemovalService';
+import { getEnabledFileSyncBackends } from '@/services/sync/cloudSyncProvider';
+import RecentlyDeleted from './components/RecentlyDeleted';
 import { debounce } from '@/utils/debounce';
 import { DEFAULT_NEARBY_WORDS } from '@/utils/searchConfig';
 import { clearLibrarySearchHistory, loadLibrarySearchHistory } from './utils/searchHistory';
@@ -26,8 +30,6 @@ import { ingestFile } from '@/services/ingestService';
 import { eventDispatcher } from '@/utils/event';
 import { ProgressPayload } from '@/utils/transfer';
 import { throttle } from '@/utils/throttle';
-import { transferManager } from '@/services/transferManager';
-import { isReadestCloudStorageActive } from '@/services/sync/cloudSyncProvider';
 import { getFilename, getFolderImportGroupName, joinScannedPath } from '@/utils/path';
 import { parseOpenWithFiles } from '@/helpers/openWith';
 import { isTauriAppPlatform, isWebAppPlatform } from '@/services/environment';
@@ -108,9 +110,11 @@ import ImportFromFolderDialog, {
   type ImportFromFolderResult,
   type FolderImportOptions,
 } from './components/ImportFromFolderDialog';
-import ImportFromUrlDialog from './components/ImportFromUrlDialog';
+import FileImportDialog, { type FileImportState } from './components/FileImportDialog';
+import { pluginLoaders } from '@/glossa/plugins/loaders';
+import { isPluginEnabled } from '@/glossa/plugins/registry';
 
-import { clipPageWithSignInFallback } from '@/services/send/clipSignIn';
+const ImportFromUrlDialog = React.lazy(() => import('./components/ImportFromUrlDialog'));
 import ClipSignInAlert from '@/components/ClipSignInAlert';
 import useShortcuts from '@/hooks/useShortcuts';
 import { useReplicaPull } from '@/hooks/useReplicaPull';
@@ -209,6 +213,14 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   useCustomFonts();
 
   const [showImportFromUrl, setShowImportFromUrl] = useState(false);
+  const webImportEnabled = isPluginEnabled(settings, 'webImport');
+  const [fileImportState, setFileImportState] = useState<FileImportState | null>(null);
+  const fileImportController = useRef<AbortController | null>(null);
+  const retryFileImport = useRef<(() => void) | null>(null);
+  useEffect(() => () => fileImportController.current?.abort(), []);
+  useEffect(() => {
+    if (!webImportEnabled) setShowImportFromUrl(false);
+  }, [webImportEnabled]);
 
   const [importMenuAnchor, setImportMenuAnchor] = useState<HTMLElement | null>(null);
   const [loading, setLoading] = useState(false);
@@ -253,8 +265,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     groupBy:
       | typeof LibraryGroupByType.Series
       | typeof LibraryGroupByType.Author
-      | typeof LibraryGroupByType.Tag
-      | typeof LibraryGroupByType.Subject;
+      | typeof LibraryGroupByType.Tag;
     groupName: string;
   } | null>(null);
   const [booksTransferProgress, setBooksTransferProgress] = useState<{
@@ -750,6 +761,16 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     restoreScrollPosition(group);
   }, [searchParams, restoreScrollPosition]);
 
+  // A retired subject link may contain a virtual group ID. Drop both so it
+  // cannot strand the user on an empty shelf after the category is removed.
+  useEffect(() => {
+    if (searchParams?.get('groupBy') !== 'subject') return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('groupBy', LibraryGroupByType.None);
+    params.set('group', '');
+    navigateToLibrary(router, params.toString());
+  }, [searchParams, router]);
+
   // Track the current virtual group for the navigation header.
   useEffect(() => {
     const groupId = searchParams?.get('group') || '';
@@ -760,8 +781,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       groupId &&
       (groupBy === LibraryGroupByType.Series ||
         groupBy === LibraryGroupByType.Author ||
-        groupBy === LibraryGroupByType.Tag ||
-        groupBy === LibraryGroupByType.Subject)
+        groupBy === LibraryGroupByType.Tag)
     ) {
       // Find the group to get its name
       const allGroups = createBookGroups(
@@ -803,8 +823,18 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const importBooks = async (
     files: SelectedFile[],
     groupId?: string,
-    options: FolderImportOptions & { silent?: boolean } = {},
+    options: FolderImportOptions & { silent?: boolean; throwOnFailure?: boolean } = {},
   ): Promise<{ failedPaths: string[] }> => {
+    const ownsProgress = !options.silent && !options.onProgress;
+    const controller = ownsProgress ? new AbortController() : null;
+    if (controller) {
+      fileImportController.current = controller;
+      retryFileImport.current = () => {
+        void importBooks(files, groupId);
+      };
+      options = { ...options, signal: controller.signal };
+      setFileImportState({ completed: 0, total: files.length });
+    }
     setLoading(true);
     const { library } = useLibraryStore.getState();
     // Build the lookup index ONCE per import batch so each book lookup is
@@ -820,6 +850,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     const failedImports: Array<{ filename: string; errorMessage: string }> = [];
     const failedPaths: string[] = [];
     const successfulImports: string[] = [];
+    let addedImports = 0;
+    let existingImports = 0;
 
     // Readest's own Books/ prefix is resolved once at app init and persisted
     // in `settings.localBooksDir`. We hand it to `ingestFile` so the in-place
@@ -864,21 +896,31 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         // `externalLibraryFolders` and incorrectly fall back to copy
         // mode. Pulling the latest snapshot from zustand fixes this.
         const liveSettings = useSettingsStore.getState().settings;
+        let importStatus: 'added' | 'existing' = 'added';
         const book = await ingestFile(
           {
             file,
+            markdownResourceRoot: selectedFile.resourceRoot ?? basePath,
             books: library,
             lookupIndex,
             retryPDFContents: !options.silent,
             groupId: resolvedGroupId,
             groupName: resolvedGroupName,
+            signal: options.signal,
+            onResult: (status) => {
+              importStatus = status;
+            },
           },
           { appService, settings: liveSettings, isLoggedIn: !!user, appBooksPrefix },
         );
         if (!book) return null;
         successfulImports.push(book.title);
+        if ((importStatus as string) === 'existing') existingImports++;
+        else addedImports++;
         return book;
       } catch (error) {
+        if (options.signal?.aborted && error instanceof Error && error.name === 'AbortError')
+          return null;
         const filename = typeof file === 'string' ? file : file.name;
         if (typeof file === 'string') failedPaths.push(file);
         const baseFilename = getFilename(filename);
@@ -895,23 +937,21 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         if (options.signal?.aborted) break;
         const batch = files.slice(i, i + concurrency);
         const importedBooks = (await Promise.all(batch.map(processFile))).filter((book) => !!book);
-        // Update store state per batch (so the UI can render imported books
-        // incrementally) but defer disk persistence until the entire batch is
-        // done — saving library.json once per batch of 4 books was the dominant
-        // cost for large imports.
+        // Each import has already committed its identity and initial group under
+        // the shared lock. Publish incrementally without saving a stale full snapshot.
         await updateBooks(envConfig, importedBooks, { skipSave: true });
-        options.onProgress?.(Math.min(i + batch.length, files.length), files.length);
-      }
-
-      // Persist the full library once after every file in the batch is done.
-      if (successfulImports.length > 0) {
-        const finalLibrary = useLibraryStore.getState().library;
-        const finalAppService = await envConfig.getAppService();
-        await finalAppService.saveLibraryBooks(finalLibrary);
+        const completed = Math.min(i + batch.length, files.length);
+        options.onProgress?.(completed, files.length);
+        if (controller) setFileImportState((state) => state && { ...state, completed });
       }
 
       pushLibrary();
 
+      if (options.throwOnFailure && failedImports.length) {
+        throw new Error(
+          failedImports[0]!.errorMessage || _('Couldn’t finish importing. Please try again.'),
+        );
+      }
       if (!options.silent && failedImports.length > 1) {
         setFailedImportsModal(failedImports);
       } else if (!options.silent && failedImports.length === 1) {
@@ -928,38 +968,51 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       // Surface the success toast when books were imported. In silent (auto-import)
       // mode failures are suppressed, so show success independently of them; in
       // interactive mode keep the original behaviour (only when nothing failed).
-      if (successfulImports.length > 0 && (options.silent || failedImports.length === 0)) {
+      if (
+        (!options.silent && successfulImports.length > 0) ||
+        (options.silent && addedImports > 0)
+      ) {
         eventDispatcher.dispatch('toast', {
-          message: _('Successfully imported {{count}} book(s)', {
-            count: successfulImports.length,
+          message: _('Added {{added}} · Already in library {{existing}} · Failed {{failed}}', {
+            added: addedImports,
+            existing: existingImports,
+            failed: failedImports.length,
           }),
           timeout: 2000,
           type: 'success',
         });
       }
 
+      if (controller) setFileImportState(null);
+      return { failedPaths };
+    } catch (error) {
+      if (!controller) throw error;
+      // Save failures keep selected files available for an explicit retry, even after Cancel.
+      setFileImportState(
+        (state) => state && { ...state, error: true, stopping: false, saving: false },
+      );
       return { failedPaths };
     } finally {
+      if (controller) fileImportController.current = null;
       setLoading(false);
     }
   };
 
   /**
    * Re-scan the given watched folders (the user's `autoImportFolders`) and
-   * import any newly-added books. Reuses the same in-place import + dedup as
-   * manual folder import, but stays quiet: unreadable folders are skipped (no
-   * toast), and `importBooks` runs only when genuinely-new files exist (its
-   * success toast then fires).
+   * verify current file contents using the same identity transaction as manual
+   * import. Existing records stay quiet; replaced editions can be imported.
    */
   const autoImportFromWatchedFolders = async (folders: string[]) => {
     if (!appService || loading || importFromFolderState) return;
     const { library } = useLibraryStore.getState();
     const osPlatform = appService.osPlatform;
-    // Known local source paths — live AND soft-deleted (files the user deleted
-    // but whose in-place source is still on disk), plus paths that already failed
-    // to import this session — so we neither resurrect a deleted book nor
-    // re-parse/re-toast a bad file on every focus.
-    const existingPaths = collectKnownSourcePaths(library, osPlatform);
+    // Deleted/archived paths stay suppressed. Active paths must be verified:
+    // their contents can change without a rename. Failed paths wait for retry.
+    const existingPaths = collectKnownSourcePaths(
+      library.filter((book) => !!book.deletedAt || !!book.duplicateOf),
+      osPlatform,
+    );
     for (const key of autoImportFailedPathsRef.current) existingPaths.add(key);
     const newFiles: SelectedFile[] = [];
     for (const folder of folders) {
@@ -989,7 +1042,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
             fresh,
             isFlattenedAutoImportFolder(folder),
             useSettingsStore.getState().settings.autoImportFolderGroups?.[normalizeRoot(folder)],
-          ),
+          ).map((file) => ({ ...file, resourceRoot: folder })),
         );
         for (const entry of fresh) {
           // Prevent the same file matching again via a later overlapping folder.
@@ -1042,72 +1095,92 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     updateBookTransferProgress,
   );
 
-  const handleBookDelete = (deleteAction: DeleteAction) => {
-    return async (book: Book, syncBooks = true) => {
-      const deletionMessages = {
-        both: _('Book deleted: {{title}}', { title: book.title }),
-        cloud: _('Deleted cloud backup of the book: {{title}}', { title: book.title }),
-        local: _('Deleted local copy of the book: {{title}}', { title: book.title }),
-        purge: _('Purged book data: {{title}}', { title: book.title }),
-      };
-      const deletionFailMessages = {
-        both: _('Failed to delete book: {{title}}', { title: book.title }),
-        cloud: _('Failed to delete cloud backup of the book: {{title}}', { title: book.title }),
-        local: _('Failed to delete local copy of the book: {{title}}', { title: book.title }),
-        purge: _('Failed to purge book data: {{title}}', { title: book.title }),
-      };
-
+  const removeBooks = async (
+    books: Book[],
+    options: {
+      signal?: AbortSignal;
+      onProgress?: (result: RemovalResult) => void;
+    } = {},
+    mode: 'trash' | 'purge' | 'local' = 'trash',
+  ) => {
+    if (!appService) throw new Error('Library unavailable');
+    const result = await removeAppBooks(appService, books, mode, {
+      ...options,
+      cloudTargets: getEnabledFileSyncBackends(settings),
+      onProgress: (progress) => {
+        useLibraryStore.getState().setLibrary(progress.books);
+        options.onProgress?.(progress);
+      },
+    });
+    useLibraryStore.getState().setLibrary(result.books);
+    const completed = result.completed;
+    eventDispatcher.dispatch('toast', {
+      type: result.failed.length ? 'error' : 'info',
+      timeout: 8000,
+      message: removalFeedback(result, mode, _),
+      ...(mode === 'trash' && completed.length
+        ? {
+            action: {
+              label: _('Undo'),
+              onClick: () => {
+                void restoreRemovedBooks(bookRemovalIO(appService), completed)
+                  .then((rows) => {
+                    useLibraryStore.getState().setLibrary(rows);
+                    void pushLibrary();
+                  })
+                  .catch(() =>
+                    eventDispatcher.dispatch('toast', {
+                      type: 'error',
+                      message: _('Could not restore books. Try again in Recently Deleted.'),
+                    }),
+                  );
+              },
+            },
+          }
+        : {}),
+    });
+    if (mode !== 'trash') for (const hash of completed) clearBookData(hash);
+    void pushLibrary();
+    return result;
+  };
+  const handleBookDelete =
+    (action: Exclude<DeleteAction, 'cloud'>) => async (book: Book, signal?: AbortSignal) => {
       try {
-        // Handle local deletion immediately. Purge mirrors 'both' (tombstone +
-        // queued cloud delete) but hands 'purge' to deleteBook, which also wipes
-        // the entire Books/<hash>/ folder (config/nav/cover) — issue #4615.
-        if (deleteAction === 'local' || deleteAction === 'both' || deleteAction === 'purge') {
-          await appService?.deleteBook(book, deleteAction === 'purge' ? 'purge' : 'local');
-          if (deleteAction === 'both' || deleteAction === 'purge') {
-            book.deletedAt = Date.now();
-            book.downloadedAt = null;
-            book.coverDownloadedAt = null;
-          }
-          await updateBook(envConfig, book);
-
-          clearBookData(book.hash);
-          if (syncBooks) pushLibrary();
-        }
-
-        // Cloud deletion. The transfer queue only speaks to Readest storage, so a
-        // book whose cloud copy lives on the selected third-party provider must
-        // not be routed through it — it would delete nothing. 'both' / 'purge'
-        // tombstoned the book above, and the file sync GCs a tombstoned book's
-        // remote directory on its next run, so the removal is already covered.
-        // ("Remove from Cloud Only" is not offered for those providers — see
-        // BookDetailModal.)
-        if (deleteAction === 'cloud' || deleteAction === 'both' || deleteAction === 'purge') {
-          if (isReadestCloudStorageActive(useSettingsStore.getState().settings)) {
-            const transferId = transferManager.queueDelete(book, 1, true);
-            if (!transferId) {
-              throw new Error('Failed to queue cloud deletion');
-            }
-          } else {
-            book.uploadedAt = null;
-            await updateBook(envConfig, book);
-          }
-        }
-
-        eventDispatcher.dispatch('toast', {
-          type: 'info',
-          timeout: 1000,
-          message: deletionMessages[deleteAction],
-        });
-        return true;
+        const result = await removeBooks(
+          [book],
+          { signal },
+          action === 'purge' ? 'purge' : action === 'local' ? 'local' : 'trash',
+        );
+        return result.failed.length === 0 && result.pending.length === 0;
       } catch {
         eventDispatcher.dispatch('toast', {
-          message: deletionFailMessages[deleteAction],
           type: 'error',
+          message: _('Removal failed. Your selection is kept. Try again.'),
         });
         return false;
       }
     };
-  };
+  useEffect(() => {
+    if (!appService) return;
+    let active = true;
+    const reload = () => {
+      void appService
+        .loadLibraryBooks()
+        .then((rows) => {
+          if (active) useLibraryStore.getState().setLibrary(rows);
+        })
+        .catch(() => {});
+    };
+    const channel =
+      typeof BroadcastChannel === 'undefined'
+        ? null
+        : new BroadcastChannel('glossa-library-removal');
+    if (channel) channel.onmessage = reload;
+    return () => {
+      active = false;
+      channel?.close();
+    };
+  }, [appService]);
 
   const handleUpdateMetadata = async (book: Book, metadata: BookMetadata, tags: string[]) => {
     // Build a NEW book object instead of mutating `book` in place. <BookCover>
@@ -1165,8 +1238,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     await updateBook(envConfig, updatedBook);
   };
 
-  const handleMetadataValueClick = (type: 'tag' | 'subject', value: string) => {
-    const groupBy = type === 'tag' ? LibraryGroupByType.Tag : LibraryGroupByType.Subject;
+  const handleMetadataValueClick = (_type: 'tag', value: string) => {
+    const groupBy = LibraryGroupByType.Tag;
     const targetGroup = createBookGroups(libraryBooks, groupBy).find(
       (item): item is BooksGroup => 'books' in item && item.name === value,
     );
@@ -1205,35 +1278,35 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     importBooks(files, getImportTargetGroupId());
   });
 
-  const handleImportBookFromUrl = async (url: string) => {
-    // Tauri-only. Routes through the Rust `clip_url` command which spawns
-    // a hidden Tauri webview, loads the URL with the real browser engine
-    // (correct TLS fingerprint, runs the page's JS, executes any
-    // Cloudflare challenge), then captures `document.documentElement
-    // .outerHTML` and returns it. On a login wall the helper offers an
-    // interactive sign-in + manual capture (mobile). End to end this is
-    // exactly the local-file path — no inbox, no upload-then-download, no
-    // server round-trip — `importBooks` is the same call drag-drop uses.
-    if (!isTauriAppPlatform()) return;
-    console.log('[clip] start', { url });
+  const handleImportBookFromUrl = async (
+    url: string,
+    signal: AbortSignal,
+    onStage: (stage: string) => void,
+  ) => {
+    if (
+      !isTauriAppPlatform() ||
+      !isPluginEnabled(useSettingsStore.getState().settings, 'webImport')
+    )
+      return;
     setIsSelectMode(false);
-    const t1 = performance.now();
-    const book = await clipPageWithSignInFallback(url, _, appService);
-    console.log('[clip] epub built', {
-      title: book.title,
-      author: book.author || undefined,
-      bytes: book.file.size,
-      ms: Math.round(performance.now() - t1),
+    const groupId = getImportTargetGroupId();
+    const { importWebPage } = await pluginLoaders.webImport();
+    signal.throwIfAborted();
+    await importWebPage({
+      url,
+      translate: _,
+      appService,
+      signal,
+      onStage,
+      save: async (file, activeSignal) => {
+        await importBooks([{ file }], groupId, {
+          signal: activeSignal,
+          onProgress: () => {},
+          throwOnFailure: true,
+        });
+      },
     });
-    const groupId = searchParams?.get('group') || '';
-    console.log('[clip] importing locally', { name: book.file.name, groupId: groupId || null });
-    await importBooks([{ file: book.file }], groupId);
-    console.log('[clip] done');
   };
-
-  // The dialog fetches the chapter list and assembles the EPUB itself
-  // (with its own progress/cancel UI) — from here on the built file takes
-  // exactly the local-file import path, same as a clipped page.
 
   const handleImportBooksFromDirectory = async (dirPath?: string, destination?: string) => {
     if (!appService || !isTauriAppPlatform()) return;
@@ -1517,6 +1590,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       root,
     );
     for (const file of toImportFiles) {
+      (file as SelectedFile).resourceRoot = result.directory;
       file.groupName = droppedFolderPath(file.groupName!, '');
     }
     if (!(await folders.ensure([root, ...toImportFiles.map((file) => file.groupName!)]))) {
@@ -1700,7 +1774,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           max='100'
         />
       </div>
-      {((loading && !importFromFolderState) || isSyncing) && (
+      {((loading && !importFromFolderState && !fileImportState && !showImportFromUrl) ||
+        isSyncing) && (
         <div className='fixed inset-0 z-50 flex items-center justify-center'>
           <Spinner loading />
         </div>
@@ -1747,7 +1822,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
               groupId={searchParams?.get('group')}
             />
           )}
+          {searchParams?.get('section') === 'recently-deleted' && <RecentlyDeleted />}
           {showBookshelf &&
+            searchParams?.get('section') !== 'recently-deleted' &&
             (libraryBooks.some((book) => !book.deletedAt) ||
             ensureLibraryGroupByType(searchParams?.get('groupBy'), settings.libraryGroupBy) ===
               LibraryGroupByType.Group ? (
@@ -1816,8 +1893,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
                     handleImportBooks={setImportMenuAnchor}
                     handleBookUpload={handleBookUpload}
                     handleBookDownload={handleBookDownload}
+                    onRemoveBooks={removeBooks}
                     handleBookDelete={handleBookDelete('both')}
-                    handleBookPurge={handleBookDelete('purge')}
                     handleSetSelectMode={handleSetSelectMode}
                     handleShowDetailsBook={handleShowDetailsBook}
                     handleLibraryNavigation={handleLibraryNavigation}
@@ -1849,7 +1926,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           onImportBooksFromDirectory={
             appService?.canReadExternalDir ? handleImportBooksFromDirectory : undefined
           }
-          onImportBookFromUrl={isTauriAppPlatform() ? () => setShowImportFromUrl(true) : undefined}
+          onImportBookFromUrl={
+            isTauriAppPlatform() && webImportEnabled ? () => setShowImportFromUrl(true) : undefined
+          }
         />
       )}
 
@@ -1861,12 +1940,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           handleBookUpload={handleBookUpload}
           handleBookDownload={handleBookDownload}
           handleBookDelete={handleBookDelete('both')}
-          // Readest storage only. A third-party provider mirrors the library, so
-          // removing just its cloud copy is not expressible: the next sync would
-          // upload the still-local book straight back (#5084).
-          handleBookDeleteCloudBackup={
-            isReadestCloudStorageActive(settings) ? handleBookDelete('cloud') : undefined
-          }
           handleBookDeleteLocalCopy={handleBookDelete('local')}
           handleBookPurge={handleBookDelete('purge')}
           handleBookMetadataUpdate={handleUpdateMetadata}
@@ -1915,11 +1988,27 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           }}
         />
       )}
-      <ImportFromUrlDialog
-        isOpen={showImportFromUrl}
-        onClose={() => setShowImportFromUrl(false)}
-        onSubmit={handleImportBookFromUrl}
-      />
+      {fileImportState && (
+        <FileImportDialog
+          state={fileImportState}
+          onRetry={() => retryFileImport.current?.()}
+          onCancel={() => {
+            if (fileImportController.current) {
+              fileImportController.current.abort();
+              setFileImportState((state) => state && { ...state, stopping: true });
+            } else setFileImportState(null);
+          }}
+        />
+      )}
+      {showImportFromUrl && webImportEnabled && (
+        <Suspense fallback={null}>
+          <ImportFromUrlDialog
+            isOpen
+            onClose={() => setShowImportFromUrl(false)}
+            onSubmit={handleImportBookFromUrl}
+          />
+        </Suspense>
+      )}
 
       <ClipSignInAlert />
       <Toast />

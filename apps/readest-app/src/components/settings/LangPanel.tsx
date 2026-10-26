@@ -11,7 +11,9 @@ import type { SettingsPanelPanelProp } from './SettingsDialog';
 import CustomDictionaries from './CustomDictionaries';
 import { BoxedList, SettingsRow, SettingsSelect, NavigationRow } from './primitives';
 
-const LangPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }) => {
+const LangPanel: React.FC<
+  SettingsPanelPanelProp & { section?: 'interface' | 'dictionaries' | 'all' }
+> = ({ bookKey, onRegisterReset, section = 'all' }) => {
   const _ = useTranslation();
   const [dictionariesOpen, setDictionariesOpen] = useState(false);
   const { envConfig } = useEnv();
@@ -45,19 +47,23 @@ const LangPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
 
   return (
     <div className='my-4 w-full'>
-      <BoxedList title={_('Language')} data-setting-id='settings.language.interfaceLanguage'>
-        <SettingsRow label={_('Language')}>
-          <SettingsSelect
-            value={uiLanguage}
-            onChange={(event) => setUILanguage(event.target.value)}
-            ariaLabel={_('Language')}
-            options={options}
-          />
-        </SettingsRow>
-      </BoxedList>
-      <BoxedList>
-        <NavigationRow title={_('Dictionaries')} onClick={() => setDictionariesOpen(true)} />
-      </BoxedList>
+      {section !== 'dictionaries' && (
+        <BoxedList title={_('Language')} data-setting-id='settings.language.interfaceLanguage'>
+          <SettingsRow label={_('Language')}>
+            <SettingsSelect
+              value={uiLanguage}
+              onChange={(event) => setUILanguage(event.target.value)}
+              ariaLabel={_('Language')}
+              options={options}
+            />
+          </SettingsRow>
+        </BoxedList>
+      )}
+      {section !== 'interface' && (
+        <BoxedList data-setting-id='settings.dictionaries.manage'>
+          <NavigationRow title={_('Dictionaries')} onClick={() => setDictionariesOpen(true)} />
+        </BoxedList>
+      )}
     </div>
   );
 };

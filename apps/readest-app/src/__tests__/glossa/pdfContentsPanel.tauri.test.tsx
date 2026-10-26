@@ -88,11 +88,13 @@ it('cancels real OCR from the panel, explicitly retries, saves and reopens nativ
   source = `${sandbox}/original.pdf`;
   await mkdir(sandbox, { recursive: true });
   await writeFile(source, new Uint8Array(await file.arrayBuffer()));
-  const initial = await openPDFCache(source, true);
+  const owner = { bookId: `contents-${id}`, revision: 0 };
+  const initial = await openPDFCache(source, true, owner);
+  cacheSandbox = await join(await appLocalDataDir(), 'pdf-local-v1', initial!.id);
   expect(initial).not.toBeNull();
   expect(initial!.pages).toEqual([]);
   expect(initial!.outline).toBeNull();
-  const bookID = initial!.id;
+  const bookID = owner.bookId;
   documentBook = (await new DocumentLoader(file).open()).book;
   view = document.createElement('foliate-view') as FoliateView;
   view.style.cssText = 'display:block;width:500px;height:600px';
@@ -130,7 +132,7 @@ it('cancels real OCR from the panel, explicitly retries, saves and reopens nativ
     timeout: 10000,
   });
   await expect.poll(async () => (await getPDFOCRStatus(initial!.id))?.state).not.toBe('running');
-  expect((await openPDFCache(source))?.outline).toBeNull();
+  expect((await openPDFCache(source, false, owner))?.outline).toBeNull();
   expect(view.renderer).toBe(renderer);
   diagnostics.outcome = undefined;
   await userEvent.click(generate);
@@ -140,7 +142,7 @@ it('cancels real OCR from the panel, explicitly retries, saves and reopens nativ
     report: { state: 'completed' },
   });
   await screen.findByText('Contents are ready.', {}, { timeout: 90000 });
-  const saved = await openPDFCache(source);
+  const saved = await openPDFCache(source, false, owner);
   expect(saved?.outline?.map((entry) => entry.pageIndex)).toEqual([1, 2]);
   expect(saved?.generator).toBe('glossa-contents-3');
   expect(view.renderer).toBe(renderer);
@@ -153,7 +155,9 @@ it('cancels real OCR from the panel, explicitly retries, saves and reopens nativ
   await documentBook.destroy?.();
   const persisted = await readFile(source);
   file = new File([persisted], 'original.pdf', { type: 'application/pdf' });
-  documentBook = (await new DocumentLoader(file, { nativeFilePath: source }).open()).book;
+  documentBook = (
+    await new DocumentLoader(file, { nativeFilePath: source, pdfOwner: owner }).open()
+  ).book;
   expect(documentBook.toc?.map((entry) => entry.label)).toEqual(
     saved?.outline?.map((entry) => entry.title),
   );

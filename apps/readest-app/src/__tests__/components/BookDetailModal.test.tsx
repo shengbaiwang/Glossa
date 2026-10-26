@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, cleanup, fireEvent, waitFor, screen } from '@testing-library/react';
 
+import { useLibraryStore } from '@/store/libraryStore';
+import type { BookMetadata } from '@/libs/document';
 import { Book } from '@/types/book';
 import BookDetailModal from '@/components/metadata/BookDetailModal';
 import { DropdownProvider } from '@/context/DropdownContext';
@@ -10,8 +12,13 @@ vi.mock('@/hooks/useTranslation', () => ({
 }));
 
 const appSvc = {
+  isMacOSApp: false,
+  saveLibraryBooks: vi.fn(async () => {}),
+  exists: vi.fn(async (_path: string, base: string) => base === 'None'),
+  resolveFilePath: vi.fn(async (path: string) => path),
+  saveFile: vi.fn(async () => {}),
   getBookFileSize: vi.fn(async () => 1024),
-  fetchBookDetails: vi.fn(async () => null),
+  fetchBookDetails: vi.fn(async (): Promise<BookMetadata | null> => null),
 };
 
 vi.mock('@/context/EnvContext', () => ({
@@ -26,15 +33,16 @@ vi.mock('@/store/themeStore', () => ({
   useThemeStore: () => ({ safeAreaInsets: { top: 0, bottom: 0, left: 0, right: 0 } }),
 }));
 
-vi.mock('@/store/settingsStore', () => ({
-  useSettingsStore: () => ({
+vi.mock('@/store/settingsStore', () => {
+  const state = {
     settings: {
       metadataSeriesCollapsed: true,
       metadataOthersCollapsed: true,
       metadataDescriptionCollapsed: true,
     },
-  }),
-}));
+  };
+  return { useSettingsStore: Object.assign(() => state, { getState: () => state }) };
+});
 
 vi.mock('@/hooks/useFileSelector', () => ({
   useFileSelector: () => ({ selectFiles: vi.fn() }),
@@ -47,7 +55,10 @@ vi.mock('@/hooks/useResponsiveSize', () => ({
 
 vi.mock('@/helpers/settings', () => ({ saveSysSettings: vi.fn() }));
 
-vi.mock('@/services/environment', () => ({ isWebAppPlatform: () => false }));
+vi.mock('@/services/environment', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/environment')>()),
+  isWebAppPlatform: () => false,
+}));
 
 vi.mock('@/libs/metadata', () => ({ searchMetadata: vi.fn(async () => []) }));
 
@@ -80,12 +91,15 @@ vi.mock('@/components/DeleteConfirmAlert', () => ({
   default: ({
     showPurgeToggle,
     onConfirm,
+    onStop,
   }: {
     showPurgeToggle?: boolean;
     onConfirm: (purgeData: boolean) => void;
+    onStop?: () => void;
   }) => (
     <div data-testid='delete-confirm' data-purge-toggle={String(!!showPurgeToggle)}>
       <button onClick={() => onConfirm(false)}>confirm-keep-data</button>
+      <button onClick={onStop}>stop-deletion</button>
       <button onClick={() => onConfirm(true)}>confirm-purge-data</button>
     </div>
   ),
@@ -93,7 +107,12 @@ vi.mock('@/components/DeleteConfirmAlert', () => ({
 vi.mock('@/components/metadata/SourceSelector', () => ({ __esModule: true, default: () => null }));
 vi.mock('@/components/Spinner', () => ({ __esModule: true, default: () => null }));
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  useLibraryStore.getState().setLibrary([]);
+  appSvc.isMacOSApp = false;
+  vi.clearAllMocks();
+});
 
 const makeBook = (): Book =>
   ({
@@ -182,7 +201,7 @@ describe('BookDetailModal cover refresh after save', () => {
   });
 });
 
-describe('BookDetailModal purge-on-delete routing', () => {
+describe('BookDetailModal recoverable deletion routing', () => {
   const renderModal = (handlers: { handleBookDelete: () => void; handleBookPurge: () => void }) =>
     render(
       <DropdownProvider>
@@ -191,7 +210,6 @@ describe('BookDetailModal purge-on-delete routing', () => {
           isOpen
           onClose={vi.fn()}
           handleBookDelete={handlers.handleBookDelete}
-          handleBookDeleteCloudBackup={vi.fn()}
           handleBookDeleteLocalCopy={vi.fn()}
           handleBookPurge={handlers.handleBookPurge}
         />
@@ -199,21 +217,20 @@ describe('BookDetailModal purge-on-delete routing', () => {
     );
 
   const openStandardDelete = (container: HTMLElement) => {
-    fireEvent.click(container.querySelector('button[aria-label="Delete Book Options"]')!);
-    fireEvent.click(screen.getByText('Remove from Cloud & Device'));
+    fireEvent.click(container.querySelector('button[aria-label="Delete book"]')!);
   };
 
-  it('shows the purge toggle on the standard delete and routes to purge when enabled', () => {
+  it('keeps ordinary deletion recoverable and never exposes a permanent-delete toggle', () => {
     const handleBookDelete = vi.fn();
     const handleBookPurge = vi.fn();
     const { container } = renderModal({ handleBookDelete, handleBookPurge });
 
     openStandardDelete(container);
-    expect(screen.getByTestId('delete-confirm').getAttribute('data-purge-toggle')).toBe('true');
+    expect(screen.getByTestId('delete-confirm').getAttribute('data-purge-toggle')).toBe('false');
 
     fireEvent.click(screen.getByText('confirm-purge-data'));
-    expect(handleBookPurge).toHaveBeenCalledTimes(1);
-    expect(handleBookDelete).not.toHaveBeenCalled();
+    expect(handleBookPurge).not.toHaveBeenCalled();
+    expect(handleBookDelete).toHaveBeenCalledTimes(1);
   });
 
   it('routes the standard delete to a plain delete when the toggle is off', () => {
@@ -226,4 +243,106 @@ describe('BookDetailModal purge-on-delete routing', () => {
     expect(handleBookDelete).toHaveBeenCalledTimes(1);
     expect(handleBookPurge).not.toHaveBeenCalled();
   });
+});
+
+describe('BookDetailModal direct actions', () => {
+  it('keeps a saved inline title when an earlier metadata read finishes later', async () => {
+    const book = { ...makeBook(), metadata: undefined, downloadedAt: 2 };
+    useLibraryStore.setState({ libraryLoaded: true, library: [book] });
+    let finish!: (value: null) => void;
+    appSvc.fetchBookDetails.mockReturnValueOnce(
+      new Promise<null>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    render(
+      <BookDetailModal book={book} isOpen onClose={vi.fn()} handleBookMetadataUpdate={vi.fn()} />,
+    );
+    await waitFor(() => expect(appSvc.fetchBookDetails).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: 'Title' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), {
+      target: { value: 'Saved in place' },
+    });
+    fireEvent.submit(screen.getByRole('textbox', { name: 'Title' }).closest('form')!);
+    await waitFor(() =>
+      expect(useLibraryStore.getState().library[0]?.title).toBe('Saved in place'),
+    );
+    finish(null);
+    await waitFor(() => expect(appSvc.getBookFileSize).toHaveBeenCalled());
+    fireEvent.click(screen.getByTitle('Edit Metadata'));
+    await waitFor(() =>
+      expect((screen.getByRole('textbox', { name: 'Title' }) as HTMLInputElement).value).toBe(
+        'Saved in place',
+      ),
+    );
+  });
+
+  it('sends the actual local book file from details through the system share sheet', async () => {
+    appSvc.isMacOSApp = true;
+    const book = { ...makeBook(), filePath: '/original/reader.epub', downloadedAt: 2 };
+    render(
+      <DropdownProvider>
+        <BookDetailModal book={book} isOpen onClose={vi.fn()} />
+      </DropdownProvider>,
+    );
+    await waitFor(() => expect(appSvc.getBookFileSize).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: 'More Actions' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Send' }));
+    await waitFor(() =>
+      expect(appSvc.saveFile).toHaveBeenCalledWith(
+        'Old Title.epub',
+        null,
+        expect.objectContaining({
+          share: true,
+          filePath: '/original/reader.epub',
+          mimeType: 'application/epub+zip',
+        }),
+      ),
+    );
+  });
+});
+
+it('retains metadata read from the original file while saving an inline title', async () => {
+  const book = { ...makeBook(), metadata: undefined, downloadedAt: 2 };
+  useLibraryStore.setState({ libraryLoaded: true, library: [book] });
+  appSvc.fetchBookDetails.mockResolvedValueOnce({
+    title: book.title,
+    author: book.author,
+    language: 'en',
+    publisher: 'Original publisher',
+  });
+  render(
+    <BookDetailModal book={book} isOpen onClose={vi.fn()} handleBookMetadataUpdate={vi.fn()} />,
+  );
+  await waitFor(() => expect(appSvc.getBookFileSize).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole('button', { name: 'Title' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), {
+    target: { value: 'Personal title' },
+  });
+  fireEvent.submit(screen.getByRole('textbox', { name: 'Title' }).closest('form')!);
+  await waitFor(() => expect(useLibraryStore.getState().library[0]?.title).toBe('Personal title'));
+  expect(useLibraryStore.getState().library[0]?.metadata?.publisher).toBe('Original publisher');
+});
+
+it('passes the detail Stop action to the running deletion signal', async () => {
+  let captured: AbortSignal | undefined;
+  let finish!: (result: boolean) => void;
+  const remove = vi.fn((_book: Book, signal?: AbortSignal) => {
+    captured = signal;
+    return new Promise<boolean>((resolve) => {
+      finish = resolve;
+    });
+  });
+  render(
+    <DropdownProvider>
+      <BookDetailModal book={makeBook()} isOpen onClose={vi.fn()} handleBookDelete={remove} />
+    </DropdownProvider>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Delete book' }));
+  fireEvent.click(screen.getByText('confirm-keep-data'));
+  expect(captured?.aborted).toBe(false);
+  fireEvent.click(screen.getByText('stop-deletion'));
+  expect(captured?.aborted).toBe(true);
+  finish(false);
+  await waitFor(() => expect(screen.queryByTestId('delete-confirm')).toBeNull());
 });

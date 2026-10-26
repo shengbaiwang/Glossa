@@ -512,6 +512,7 @@ it('cancels on model change and on close, preserving a question with no reply', 
   const panel = mount(readingBook);
   await typeQuestion();
   send();
+  await waitFor(() => expect(f.generate).toHaveBeenCalledTimes(1));
   await screen.findByRole('button', { name: 'Stop reply' });
   act(() => {
     f.model = 'changed';
@@ -523,11 +524,27 @@ it('cancels on model change and on close, preserving a question with no reply', 
   holdReply();
   await typeQuestion();
   send();
+  await waitFor(() => expect(f.generate).toHaveBeenCalledTimes(2));
   panel.unmount();
   expect(f.generate.mock.calls[1]![0].signal.aborted).toBe(true);
   mount(readingBook);
   await waitFor(() =>
     expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Explain this'),
+  );
+});
+it('cancels before the deletion check finishes without starting a model request or losing the question', async () => {
+  const readingBook = book();
+  const panel = mount(readingBook);
+  await typeQuestion('Question before close');
+  send();
+  panel.unmount();
+  await act(async () => {});
+  expect(f.generate).not.toHaveBeenCalled();
+  mount(readingBook);
+  await waitFor(() =>
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(
+      'Question before close',
+    ),
   );
 });
 it('regenerates the last reply without adding a duplicate or sending its old answer', async () => {
@@ -677,6 +694,10 @@ it('renames the active conversation and shows the name in the switcher', async (
     ),
   );
   expect(f.save.mock.calls.at(-1)![0].sessions[0].title).toBe('Reading notes');
+  expect(f.save.mock.calls.at(-1)![2]).toMatchObject({
+    id: expect.any(String),
+    editedAt: expect.any(Number),
+  });
 });
 it('searches the book history and switches to a matching conversation', async () => {
   mount();
@@ -1099,4 +1120,35 @@ it('aborts session naming on module unload and ignores a late title without chan
   await act(async () => resolveTitle('Late title'));
   expect(f.save).toHaveBeenCalledTimes(count);
   expect(f.save.mock.calls.at(-1)![0]).toEqual(saved);
+});
+
+it('lets Markdown use references only after sending and respects the off state', async () => {
+  const { makeMarkdownBook } = await import('@/utils/md');
+  const b = { ...book(), format: 'MD' as const };
+  const doc = await makeMarkdownBook(new File(['# 原创资料\n\n本地证据。'], 'original.md'));
+  const reads = doc.sections.map((section) => vi.spyOn(section, 'createDocument'));
+  render(<ConversationPanel book={b} bookDoc={doc} bookKey={b.hash} />);
+  const input = await screen.findByRole('textbox', { name: 'Message' });
+  const toggle = await screen.findByRole('switch', { name: 'Citations', checked: true });
+  expect(reads.every((read) => read.mock.calls.length === 0)).toBe(true);
+  expect(f.bookReading).not.toHaveBeenCalled();
+  fireEvent.change(input, { target: { value: '解释本地证据' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await waitFor(() => expect(f.bookReading).toHaveBeenCalledTimes(1));
+  expect(f.generate).not.toHaveBeenCalled();
+  await answer();
+  const access = f.bookReading.mock.calls[0]![0].access;
+  expect(
+    (await access.readAll(new AbortController().signal)).some((source: { text: string }) =>
+      source.text.includes('本地证据'),
+    ),
+  ).toBe(true);
+  fireEvent.click(toggle);
+  const count = reads.reduce((sum, read) => sum + read.mock.calls.length, 0);
+  fireEvent.change(input, { target: { value: '基础知识问题' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await waitFor(() => expect(f.generate).toHaveBeenCalledTimes(1));
+  expect(f.bookReading).toHaveBeenCalledTimes(1);
+  expect(reads.reduce((sum, read) => sum + read.mock.calls.length, 0)).toBe(count);
+  doc.destroy?.();
 });

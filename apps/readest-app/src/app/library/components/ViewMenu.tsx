@@ -2,14 +2,10 @@ import React from 'react';
 import {
   ArrowDown,
   ArrowUp,
-  BookClosed,
-  BookOpen,
+  Info,
   LayoutGrid,
   LayoutList,
   ListOrdered,
-  Minus,
-  Palette,
-  Plus,
 } from '@/components/GlossaIcons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEnv } from '@/context/EnvContext';
@@ -25,6 +21,7 @@ import {
 import { saveSysSettings } from '@/helpers/settings';
 import { navigateToLibrary } from '@/utils/nav';
 import MenuItem from '@/components/MenuItem';
+import { Toggle } from '@/components/primitives/toggle';
 import Menu from '@/components/Menu';
 import { SettingsSelect } from '@/components/settings/primitives';
 import { ensureLibraryGroupByType } from '../utils/libraryUtils';
@@ -38,34 +35,28 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { envConfig } = useEnv();
-  const { settings, openSettingsDialog } = useSettingsStore();
+  const { settings } = useSettingsStore();
 
   const viewMode = searchParams?.get('view') || settings.libraryViewMode;
   const coverFit = settings.libraryCoverFit;
   const autoColumns = settings.libraryAutoColumns;
-  const columns = settings.libraryColumns;
   const listScale = settings.libraryListScale ?? 100;
-  const minColumns = window.innerWidth < 640 ? 1 : window.innerWidth < 1024 ? 2 : 3;
-  const maxColumns = window.innerWidth < 640 ? 4 : window.innerWidth < 1024 ? 6 : 12;
-  const getGridColumns = () => {
-    if (!autoColumns) return columns;
-    const grid = document.querySelector('.glossa-collection-grid');
-    const tracks = grid && window.getComputedStyle(grid).gridTemplateColumns;
-    if (tracks && tracks !== 'none') return tracks.split(/\s+/).length;
-    const width = window.innerWidth;
-    return width < 640
-      ? 2
-      : width < 768
-        ? 3
-        : width < 1024
-          ? 4
-          : width < 1280
-            ? 5
-            : width < 1536
-              ? 6
-              : 8;
-  };
-  const gridColumns = getGridColumns();
+  // Read the rendered track so a legacy column preference starts at its visible size.
+  const grid = document.querySelector('.glossa-collection-grid');
+  const visibleWidth = grid ? parseFloat(window.getComputedStyle(grid).gridTemplateColumns) : NaN;
+  const coverWidth = Math.max(
+    112,
+    Math.min(
+      280,
+      Math.round(
+        (!autoColumns && settings.libraryCoverWidth
+          ? settings.libraryCoverWidth
+          : Number.isFinite(visibleWidth)
+            ? visibleWidth
+            : 156) / 4,
+      ) * 4,
+    ),
+  );
   const groupBy = ensureLibraryGroupByType(searchParams?.get('groupBy'), settings.libraryGroupBy);
   const sortBy = settings.librarySortBy;
   const isAscending = settings.librarySortAscending;
@@ -93,8 +84,8 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
   ];
 
   const coverFitOptions = [
-    { label: _('Crop'), value: 'crop' },
-    { label: _('Fit'), value: 'fit' },
+    { label: _('Fill cover'), value: 'crop' },
+    { label: _('Show full cover'), value: 'fit' },
   ];
 
   const sortByOptions = [
@@ -130,36 +121,13 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
     navigateToLibrary(router, `${params.toString()}`);
   };
 
-  const handleToggleAutoColumns = async () => {
-    if (autoColumns) await saveSysSettings(envConfig, 'libraryColumns', getGridColumns());
-    await saveSysSettings(envConfig, 'libraryAutoColumns', !autoColumns);
-  };
-
-  const handleToggleRecentShelf = async () => {
-    await saveSysSettings(
-      envConfig,
-      'libraryRecentShelfEnabled',
-      !settings.libraryRecentShelfEnabled,
-    );
-  };
-
-  const handleSetViewSize = async (mode: LibraryViewModeType, direction: number) => {
-    if (mode === 'list') {
-      await saveSysSettings(
-        envConfig,
-        'libraryListScale',
-        Math.max(80, Math.min(140, listScale + direction * 10)),
-      );
+  const handleSetViewSize = async (value: number) => {
+    if (viewMode === 'list') {
+      await saveSysSettings(envConfig, 'libraryListScale', value);
     } else {
-      // More columns make covers smaller; begin with the actual automatic layout.
-      await saveSysSettings(
-        envConfig,
-        'libraryColumns',
-        Math.max(minColumns, Math.min(maxColumns, getGridColumns() - direction)),
-      );
+      await saveSysSettings(envConfig, 'libraryCoverWidth', value);
       await saveSysSettings(envConfig, 'libraryAutoColumns', false);
     }
-    if (viewMode !== mode) await handleSetViewMode(mode);
   };
 
   const handleSetSortBy = async (value: LibrarySortByType) => {
@@ -208,7 +176,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
       className='view-menu glossa-menu-surface dropdown-content no-triangle z-20 mt-2'
       onCancel={() => setIsDropdownOpen?.(false)}
     >
-      <div className='glossa-library-display-title'>{_('Library Display')}</div>
       <div role='group' aria-label={_('Layout')} className='glossa-library-display-options'>
         {viewOptions.map(({ label, value, Icon }) => (
           <button
@@ -223,81 +190,116 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
           </button>
         ))}
       </div>
-      <div role='group' aria-label={sizeLabel} className='glossa-library-size-row'>
-        <span>{sizeLabel}</span>
-        <div className='glossa-library-size-controls'>
-          <button
-            type='button'
-            aria-label={_('Decrease')}
-            title={_('Decrease')}
-            className='glossa-icon-button'
-            disabled={viewMode === 'list' ? listScale <= 80 : gridColumns >= maxColumns}
-            onClick={() => handleSetViewSize(viewMode as LibraryViewModeType, -1)}
-          >
-            <Minus size={16} />
-          </button>
-          {viewMode === 'grid' ? (
+      <div role='group' aria-label={sizeLabel} className='glossa-library-size-section'>
+        <div className='glossa-library-size-heading'>
+          <span>{sizeLabel}</span>
+          {viewMode === 'grid' && (
             <button
               type='button'
               aria-label={_('Auto')}
               aria-pressed={autoColumns}
-              title={_('Auto')}
-              className='glossa-menu-item glossa-library-size-value'
-              onClick={handleToggleAutoColumns}
+              className='glossa-menu-item glossa-library-size-auto'
+              onClick={() => saveSysSettings(envConfig, 'libraryAutoColumns', true)}
             >
-              {autoColumns ? _('Auto') : _('{{count}} columns', { count: columns })}
+              {_('Auto')}
             </button>
-          ) : (
-            <span className='glossa-library-size-value'>{listScale}%</span>
           )}
-          <button
-            type='button'
-            aria-label={_('Increase')}
-            title={_('Increase')}
-            className='glossa-icon-button'
-            disabled={viewMode === 'list' ? listScale >= 140 : gridColumns <= minColumns}
-            onClick={() => handleSetViewSize(viewMode as LibraryViewModeType, 1)}
-          >
-            <Plus size={16} />
-          </button>
+        </div>
+        <div className='glossa-library-size-controls'>
+          <span>{_('Small')}</span>
+          <input
+            type='range'
+            aria-label={sizeLabel}
+            aria-valuetext={viewMode === 'list' ? `${listScale}%` : undefined}
+            min={viewMode === 'list' ? 80 : 112}
+            max={viewMode === 'list' ? 140 : 280}
+            step={viewMode === 'list' ? 10 : 4}
+            value={viewMode === 'list' ? listScale : coverWidth}
+            onChange={(event) => handleSetViewSize(Number(event.target.value))}
+          />
+          <span>{_('Large')}</span>
         </div>
       </div>
 
-      <hr aria-hidden='true' className='border-base-200 my-1' />
-      <div role='group' aria-label={_('Book Covers')}>
-        <div className='glossa-library-menu-heading'>{_('Book Covers')}</div>
-        <div className='glossa-library-display-options'>
-          {coverFitOptions.map((option) => (
-            <button
-              key={option.value}
-              type='button'
-              className='glossa-menu-item glossa-library-display-option'
-              aria-pressed={coverFit === option.value}
-              onClick={() => handleToggleCropCovers(option.value as LibraryCoverFitType)}
-            >
-              {option.label}
-            </button>
-          ))}
+      {viewMode === 'grid' && (
+        <div role='group' aria-label={_('Book Covers')} className='glossa-library-cover-options'>
+          <div className='glossa-library-menu-heading'>{_('Book Covers')}</div>
+          <div className='glossa-library-display-options'>
+            {coverFitOptions.map((option) => (
+              <button
+                key={option.value}
+                type='button'
+                className='glossa-menu-item glossa-library-display-option'
+                aria-pressed={coverFit === option.value}
+                onClick={() => handleToggleCropCovers(option.value as LibraryCoverFitType)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <label className='glossa-library-display-toggle'>
+            <span>{_('3D covers')}</span>
+            <Toggle
+              className='toggle-sm'
+              checked={settings.librarySkeuomorphicCovers}
+              onChange={() =>
+                saveSysSettings(
+                  envConfig,
+                  'librarySkeuomorphicCovers',
+                  !settings.librarySkeuomorphicCovers,
+                )
+              }
+            />
+          </label>
         </div>
-        <MenuItem
-          label={_('Skeuomorphic Book Covers')}
-          Icon={<BookClosed size={16} />}
-          toggled={settings.librarySkeuomorphicCovers}
-          onClick={() =>
+      )}
+      <hr aria-hidden='true' className='border-base-200 my-1' />
+      <MenuItem label={_('Book information')} Icon={<Info size={16} />} detailsOpen={false}>
+        <div className='glossa-library-info-options'>
+          <label className='glossa-library-display-toggle'>
+            <span>{_('Author')}</span>
+            <Toggle
+              className='toggle-sm'
+              checked={settings.libraryShowAuthor !== false}
+              onChange={() =>
+                saveSysSettings(
+                  envConfig,
+                  'libraryShowAuthor',
+                  settings.libraryShowAuthor === false,
+                )
+              }
+            />
+          </label>
+          <label className='glossa-library-display-toggle'>
+            <span>{_('Reading Progress')}</span>
+            <Toggle
+              className='toggle-sm'
+              checked={settings.libraryShowProgress !== false}
+              onChange={() =>
+                saveSysSettings(
+                  envConfig,
+                  'libraryShowProgress',
+                  settings.libraryShowProgress === false,
+                )
+              }
+            />
+          </label>
+        </div>
+      </MenuItem>
+      <label className='glossa-library-display-toggle'>
+        <span>{_('Show recent reading')}</span>
+        <Toggle
+          className='toggle-sm'
+          checked={settings.libraryRecentShelfEnabled}
+          onChange={() =>
             saveSysSettings(
               envConfig,
-              'librarySkeuomorphicCovers',
-              !settings.librarySkeuomorphicCovers,
+              'libraryRecentShelfEnabled',
+              !settings.libraryRecentShelfEnabled,
             )
           }
         />
-      </div>
-      <MenuItem
-        label={_('Continue reading')}
-        Icon={<BookOpen size={16} />}
-        toggled={settings.libraryRecentShelfEnabled}
-        onClick={handleToggleRecentShelf}
-      />
+      </label>
       <hr aria-hidden='true' className='border-base-200 my-1' />
       <MenuItem label={_('Sort by')} Icon={<ListOrdered size={16} />} detailsOpen={false}>
         <div className='glossa-library-sort-options'>
@@ -354,14 +356,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
           </div>
         </div>
       </MenuItem>
-      <MenuItem
-        label={_('Theme & Background')}
-        Icon={<Palette size={16} />}
-        onClick={() => {
-          setIsDropdownOpen?.(false);
-          openSettingsDialog('application', '', 'Theme');
-        }}
-      />
     </Menu>
   );
 };

@@ -1,3 +1,4 @@
+import { removeBookSubjectMetadata } from '@/utils/bookMetadata';
 import { BookFormat } from '@/types/book';
 import { Collection, Contributor, Identifier, LanguageMap } from '@/utils/book';
 import { configureZip } from '@/utils/zip';
@@ -74,7 +75,6 @@ export type BookMetadata = {
   publisher?: string;
   published?: string;
   description?: string;
-  subject?: string | string[] | Contributor | Contributor[];
   identifier?: string;
   isbn?: string;
   altIdentifier?: string | string[] | Identifier;
@@ -187,6 +187,7 @@ export interface DocumentLoaderOptions {
   pdfOCR?: (index: number) => Promise<OCRPage | null>;
   /** Only an active reader may automatically recognize loaded scan pages. */
   autoPDFOCR?: boolean;
+  pdfOwner?: import('@/services/pdfEnhancement').PDFCacheOwner;
 }
 
 export class DocumentLoader {
@@ -194,12 +195,14 @@ export class DocumentLoader {
   private nativeFilePath?: string;
   private pdfOCR?: (index: number) => Promise<OCRPage | null>;
   private autoPDFOCR: boolean;
+  private pdfOwner?: import('@/services/pdfEnhancement').PDFCacheOwner;
 
   constructor(file: File, options: DocumentLoaderOptions = {}) {
     this.file = file;
     this.nativeFilePath = options.nativeFilePath;
     this.pdfOCR = options.pdfOCR;
     this.autoPDFOCR = options.autoPDFOCR ?? false;
+    this.pdfOwner = options.pdfOwner;
   }
 
   private async isZip(): Promise<boolean> {
@@ -472,7 +475,9 @@ export class DocumentLoader {
         const pdf = await import('@/services/pdfEnhancement');
         const cache =
           this.nativeFilePath && pdf.supportsLocalPDF()
-            ? await pdf.openPDFCache(this.nativeFilePath, this.autoPDFOCR).catch(() => null)
+            ? await pdf
+                .openPDFCache(this.nativeFilePath, this.autoPDFOCR, this.pdfOwner)
+                .catch(() => null)
             : null;
         const available = new Set(cache?.pages);
         const loaded = new Map<number, Promise<OCRPage | null>>();
@@ -561,7 +566,9 @@ export class DocumentLoader {
       }
       throw e;
     }
-    return { book, format } as { book: BookDoc; format: BookFormat };
+    const bookDoc = book as unknown as BookDoc;
+    if (bookDoc?.metadata) bookDoc.metadata = removeBookSubjectMetadata(bookDoc.metadata);
+    return { book: bookDoc, format };
   }
 }
 

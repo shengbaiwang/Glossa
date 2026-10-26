@@ -21,8 +21,11 @@ vi.mock('@/services/ingestService', () => ({ ingestFile: vi.fn() }));
 
 import { useClipUrlIngress } from '@/hooks/useClipUrlIngress';
 import { eventDispatcher } from '@/utils/event';
+import { useSettingsStore } from '@/store/settingsStore';
+import type { SystemSettings } from '@/types/settings';
 
 beforeEach(() => {
+  useSettingsStore.setState({ settings: {} as SystemSettings });
   // Reject so clipAndImport short-circuits right after invoke('clip_url') —
   // we only need to observe whether the clip was attempted.
   invokeMock.mockReset().mockRejectedValue(new Error('stub'));
@@ -38,6 +41,11 @@ describe('useClipUrlIngress share-extension pending saves', () => {
 
   it('converts htmlFile saves directly without re-fetching via clip_url', async () => {
     const { convertToEpubWithWorker } = await import('@/services/send/conversion/conversionWorker');
+    vi.mocked(convertToEpubWithWorker).mockResolvedValueOnce({
+      file: new File(['original fixture'], 'article.epub'),
+      title: 'Article',
+      author: '',
+    });
     invokeMock.mockImplementation(async (cmd: unknown) => {
       if (cmd === 'plugin:native-bridge|read_share_clip_html') {
         return { html: '<html><body>captured from Safari</body></html>' };
@@ -99,9 +107,26 @@ describe('useClipUrlIngress deep-link routing', () => {
       urls: ['https://example.com/some-article'],
     });
     await Promise.resolve();
-    expect(invokeMock).toHaveBeenCalledWith(
-      'clip_url',
-      expect.objectContaining({ url: 'https://example.com/some-article' }),
+    await vi.waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith(
+        'clip_url',
+        expect.objectContaining({ url: 'https://example.com/some-article' }),
+      ),
     );
   });
+});
+
+it('does not consume queued shared HTML or capture deep links while the plugin is disabled', async () => {
+  useSettingsStore.setState({
+    settings: { officialModules: { webImport: false } } as SystemSettings,
+  });
+  const view = renderHook(() => useClipUrlIngress());
+  const pending = (
+    window as unknown as { __readestOnShareExtensionPending: (saves: unknown[]) => boolean }
+  ).__readestOnShareExtensionPending;
+  expect(pending([{ url: 'https://example.com/article', htmlFile: 'original.html' }])).toBe(false);
+  await eventDispatcher.dispatch('app-incoming-url', { urls: ['https://example.com/article'] });
+  await Promise.resolve();
+  expect(invokeMock).not.toHaveBeenCalled();
+  view.unmount();
 });

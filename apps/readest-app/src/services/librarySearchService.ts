@@ -333,6 +333,7 @@ export const createLibrarySearchSession = (appService: LibrarySearchAppService) 
         const bookDoc = (
           await new DocumentLoader(content.file, {
             nativeFilePath: nativeFilePath ?? undefined,
+            pdfOwner: { bookId: book.hash, revision: book.removal?.revision ?? 0 },
           }).open()
         ).book as SearchableBookDoc;
         return { file: content.file, bookDoc };
@@ -735,7 +736,10 @@ export async function* searchLibraryBooks(
           ]);
           file = content.file;
           bookDoc = (
-            await new DocumentLoader(file, { nativeFilePath: nativeFilePath ?? undefined }).open()
+            await new DocumentLoader(file, {
+              nativeFilePath: nativeFilePath ?? undefined,
+              pdfOwner: { bookId: book.hash, revision: book.removal?.revision ?? 0 },
+            }).open()
           ).book as SearchableBookDoc;
         }
         if (signal?.aborted) return;

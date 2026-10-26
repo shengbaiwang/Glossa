@@ -8,8 +8,6 @@ import { Menu } from '@tauri-apps/api/menu';
 import { LogicalPosition } from '@tauri-apps/api/dpi';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { eventDispatcher } from '@/utils/event';
-import { openExternalUrl } from '@/utils/open';
-import { getBookGoodreadsQuery, getGoodreadsSearchUrl } from '@/utils/goodreads';
 import { getOSPlatform } from '@/utils/misc';
 import { throttle } from '@/utils/throttle';
 import { LibraryCoverFitType, LibraryViewModeType } from '@/types/settings';
@@ -139,7 +137,7 @@ interface BookshelfItemProps {
   itemSelected: boolean;
   transferProgress: number | null;
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
-  toggleSelection: (hash: string) => void;
+  toggleSelection: (hash: string, range?: boolean) => void;
   handleGroupBooks: () => void;
   handleRenameFolder?: (path: string, name: string) => Promise<boolean>;
   handleRemoveFolder?: (path: string) => Promise<boolean>;
@@ -151,12 +149,15 @@ interface BookshelfItemProps {
     options?: { redownload?: boolean; queued?: boolean },
   ) => Promise<boolean>;
   handleBookUpload: (book: Book, syncBooks?: boolean) => Promise<boolean>;
-  handleBookDelete: (book: Book, syncBooks?: boolean) => Promise<boolean>;
+  handleBookDelete: (book: Book, signal?: AbortSignal) => Promise<boolean>;
   handleSetSelectMode: (selectMode: boolean) => void;
   handleShowDetailsBook: (book: Book) => void;
   handleLibraryNavigation: (targetGroup: string) => void;
   handleUpdateReadingStatus: (book: Book, status: ReadingStatus | undefined) => void;
   showTimeRemaining: boolean;
+  onOpenBook?: (book: Book) => void;
+  resume?: boolean;
+  handleRenameBook?: (book: Book, title: string) => Promise<boolean>;
 }
 
 const BookshelfItem: React.FC<BookshelfItemProps> = ({
@@ -181,10 +182,14 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   handleLibraryNavigation,
   handleUpdateReadingStatus,
   showTimeRemaining,
+  handleRenameBook,
+  onOpenBook,
+  resume,
 }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
+  const { selectedBooks } = useLibraryStore();
   const [renaming, setRenaming] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const { openBook } = useOpenBook({ setLoading, handleBookDownload });
@@ -200,9 +205,10 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
         toggleSelection(book.hash);
         return;
       }
-      await openBook(book);
+      if (onOpenBook) onOpenBook(book);
+      else await openBook(book);
     },
-    [isSelectMode, openBook, toggleSelection],
+    [isSelectMode, openBook, onOpenBook, toggleSelection],
   );
 
   const handleGroupClick = useCallback(
@@ -226,86 +232,35 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
     // un-awaited Menu.append() promises races on the Tauri IPC boundary and
     // shuffles the order on every open (issue #4389).
     const itemOptions: Record<BookContextMenuItemId, BookContextMenuItem> = {
-      select: {
-        text: itemSelected ? _('Deselect Book') : _('Select Book'),
-        action: async () => {
-          if (!isSelectMode) handleSetSelectMode(true);
-          toggleSelection(book.hash);
-        },
-      },
       group: {
-        text: _('Group Books'),
+        text: _('Move to…'),
         action: async () => {
           if (!isSelectMode) handleSetSelectMode(true);
-          if (!itemSelected) {
-            toggleSelection(book.hash);
-          }
+          if (!itemSelected) useLibraryStore.getState().setSelectedBooks([book.hash]);
           handleGroupBooks();
-        },
-      },
-      markFinished: {
-        text: _('Mark as Finished'),
-        action: async () => {
-          handleUpdateReadingStatus(book, 'finished');
-        },
-      },
-      markUnread: {
-        text: _('Mark as Unread'),
-        action: async () => {
-          handleUpdateReadingStatus(book, 'unread');
-        },
-      },
-      markAbandoned: {
-        text: _('Mark as On hold'),
-        action: async () => {
-          handleUpdateReadingStatus(book, 'abandoned');
-        },
-      },
-      clearStatus: {
-        text: _('Clear Status'),
-        action: async () => {
-          handleUpdateReadingStatus(book, undefined);
-        },
-      },
-      showDetails: {
-        text: _('Show Book Details'),
-        action: async () => {
-          showBookDetailsModal(book);
         },
       },
       showInFinder: {
         text: _(fileRevealLabel),
         action: async () => {
-          const folder = `${settings.localBooksDir}/${book.hash}`;
+          const folder = book.filePath || `${settings.localBooksDir}/${book.hash}`;
           revealItemInDir(folder);
-        },
-      },
-      searchGoodreads: {
-        text: _('Search on Goodreads'),
-        action: async () => {
-          openExternalUrl(getGoodreadsSearchUrl(getBookGoodreadsQuery(book)));
-        },
-      },
-      download: {
-        text: _('Download Book'),
-        action: async () => {
-          handleBookDownload(book, { queued: true });
-        },
-      },
-      upload: {
-        text: _('Upload Book'),
-        action: async () => {
-          handleBookUpload(book);
         },
       },
       delete: {
         text: _('Delete'),
         action: async () => {
-          eventDispatcher.dispatch('delete-books', { ids: [book.hash] });
+          eventDispatcher.dispatch('delete-books', {
+            ids: itemSelected ? useLibraryStore.getState().getSelectedBooks() : [book.hash],
+          });
         },
       },
     };
-    return getBookContextMenuItemIds(book).map((id) => itemOptions[id]);
+    return getBookContextMenuItemIds(book)
+      .filter(
+        (id) => id !== 'showInFinder' || (!!appService?.hasContextMenu && !appService.isMobileApp),
+      )
+      .map((id) => itemOptions[id]);
   };
 
   const buildGroupMenuItems = (group: BooksGroup): BookContextMenuItem[] => {
@@ -323,37 +278,16 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
           ]
         : []),
       {
-        text: itemSelected ? _('Deselect Group') : _('Select Group'),
-        action: async () => {
-          if (!isSelectMode) handleSetSelectMode(true);
-          toggleSelection(group.id);
-        },
-      },
-      {
         text: handleRenameFolder ? _('Move to…') : _('Group Books'),
         action: async () => {
           if (!isSelectMode) handleSetSelectMode(true);
-          if (!itemSelected) {
-            toggleSelection(group.id);
-          }
+          if (!itemSelected) useLibraryStore.getState().setSelectedBooks([group.id]);
           handleGroupBooks();
         },
       },
-      {
-        text: handleRemoveFolder ? _('Delete group') : _('Delete'),
-        action: async () => {
-          if (handleRemoveFolder) {
-            await handleRemoveFolder(group.name);
-            return;
-          }
-          // Dispatch the constituent book hashes — `group.books` is the
-          // rendered rollup and already includes books from nested sub-
-          // folders, so the deletion path doesn't need to re-derive what
-          // belongs to the group from the id alone.
-          const ids = group.books.filter((book) => !book.deletedAt).map((book) => book.hash);
-          eventDispatcher.dispatch('delete-books', { ids });
-        },
-      },
+      ...(handleRemoveFolder
+        ? [{ text: _('Delete group'), action: () => handleRemoveFolder(group.name) }]
+        : []),
       ...(handleUndoFolder && canUndoFolder
         ? [{ text: _('Undo'), disabled: !canUndoFolder, action: handleUndoFolder }]
         : []),
@@ -398,7 +332,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
       cachedMenuRef.current = null;
       if (cached) releaseMenu(cached);
     };
-  }, [item, itemSelected, isSelectMode, settings.localBooksDir, _]);
+  }, [item, itemSelected, isSelectMode, settings.localBooksDir, _, selectedBooks]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleSelectItem = useCallback(
@@ -434,7 +368,11 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleContextMenu = useCallback(
     throttle(async (position: { x: number; y: number }) => {
-      if (('books' in item && handleRenameFolder) || appService?.isLinuxApp) {
+      if (
+        ('books' in item && handleRenameFolder) ||
+        appService?.isLinuxApp ||
+        !appService?.hasContextMenu
+      ) {
         setInAppMenuPosition(position);
         return;
       }
@@ -447,7 +385,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
       // pass through unchanged.
       await trackPopup(menu.popup(new LogicalPosition(position.x, position.y)));
     }, 100),
-    [item, itemSelected, isSelectMode, settings.localBooksDir],
+    [item, itemSelected, isSelectMode, settings.localBooksDir, selectedBooks],
   );
 
   const { pressing, handlers } = useLongPress(
@@ -462,11 +400,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
         handleOpenItem();
       },
       onContextMenu: (e) => {
-        if (appService?.hasContextMenu || ('books' in item && handleRenameFolder)) {
-          handleContextMenu({ x: e.clientX, y: e.clientY });
-        } else if (appService?.isAndroidApp) {
-          handleSelectItem();
-        }
+        handleContextMenu({ x: e.clientX, y: e.clientY });
       },
     },
     [isSelectMode, handleSelectItem, handleOpenItem, handleContextMenu],
@@ -474,6 +408,13 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.target !== e.currentTarget) return;
+    if (e.key === 'F2' && 'format' in item && handleRenameBook && !isSelectMode) {
+      e.preventDefault();
+      cardRef.current
+        ?.querySelector('[data-inline-edit]')
+        ?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      return;
+    }
     if (e.key === 'F2' && 'books' in item && handleRenameFolder) {
       e.preventDefault();
       setRenaming(true);
@@ -504,6 +445,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
         ref={cardRef}
         className={clsx(
           'glossa-book-card group',
+          resume && 'glossa-resume-card',
           mode === 'grid' && 'glossa-book-card-grid flex h-full flex-col',
           mode === 'list' && 'glossa-book-card-list flex flex-col',
           appService?.isMobileApp && 'no-context-menu',
@@ -536,7 +478,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
           ) {
             event.preventDefault();
             if (!isSelectMode) handleSetSelectMode(true);
-            toggleSelection('format' in item ? item.hash : item.id);
+            toggleSelection('format' in item ? item.hash : item.id, event.shiftKey);
             return;
           }
           handlers.onPointerDown(event);
@@ -559,7 +501,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
           event.dataTransfer.effectAllowed = 'move';
         }}
       >
-        <div className='flex h-full flex-col justify-end'>
+        <div className='flex h-full flex-col justify-start'>
           {'format' in item ? (
             <BookItem
               mode={mode}
@@ -572,6 +514,8 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
               handleBookDownload={handleBookDownload}
               showBookDetailsModal={showBookDetailsModal}
               showTimeRemaining={showTimeRemaining}
+              onRename={handleRenameBook}
+              onUpdateStatus={handleUpdateReadingStatus}
             />
           ) : (
             <GroupItem

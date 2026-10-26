@@ -285,16 +285,13 @@ describe('cloudService', () => {
         expect(deleteCloudFile).toHaveBeenCalledTimes(2);
       });
 
-      test('does not throw when cloud delete fails', async () => {
+      test('awaits cloud deletion and preserves availability when it fails', async () => {
         const { deleteFile: deleteCloudFile } = await import('@/libs/storage');
-        vi.mocked(deleteCloudFile).mockImplementation(() => {
-          throw new Error('network error');
-        });
+        vi.mocked(deleteCloudFile).mockRejectedValue(new Error('network error'));
         const book = createMockBook({ uploadedAt: 1000 });
 
-        // Should not throw
-        await deleteBook(mockFs, book, 'cloud');
-        expect(book.uploadedAt).toBeNull();
+        await expect(deleteBook(mockFs, book, 'cloud')).rejects.toThrow('network error');
+        expect(book.uploadedAt).toBe(1000);
       });
     });
 

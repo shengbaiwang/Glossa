@@ -685,9 +685,9 @@ describe('OPDS feed checker', () => {
         title: 'Feed Title',
         author: 'Jane Doe',
         language: 'fr',
-        subject: ['Fantasy'],
         description: 'A summary.',
       });
+      expect(items[0]!.metadata).not.toHaveProperty('subject');
     });
 
     it('leaves coverHref unset when the entry advertises no artwork', () => {
