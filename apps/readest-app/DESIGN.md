@@ -26,10 +26,10 @@ border. Use CSS interaction states without per-book timers or pointer tracking.
 
 Keep layout, active-view size, cover presentation, book information / recent
 reading, and sorting in that order. Omit the repeated title and global appearance
-shortcut. Use a Small–Large slider; grid size becomes a preferred track width
-that adapts to the library container, preserving legacy columns until changed.
-Auto restores the original responsive sizing. Show Fill / Full cover and 3D
-covers only in grid mode. Use quiet labelled switches without row-wide selected
+shortcut. Use a Small–Large slider; grid size directly sets a fixed track width
+that wraps as the container changes without stretching the covers. Remove Auto
+and legacy column sizing; retain saved widths and use 156px otherwise. Show
+Fill / Full cover and 3D covers only in grid mode. Use quiet labelled switches without row-wide selected
 fills. Author and numeric progress live inside one collapsed disclosure and
 apply equally to grid, list and recent cards. Hiding numbers must retain direct
 reading-status editing. Keep 44px touch rows, visible keyboard focus, logical
@@ -113,7 +113,9 @@ visible focus, logical RTL alignment, safe areas and at least 44px touch control
 
 ### Account forms — 2026-10-15
 
-Keep the centered 384px form, a 48px app icon and one title; omit a repeated account
+Keep the centered 384px form, a 96px app icon (80px on narrow or short screens)
+and one title; balance the form vertically within the available viewport, with
+header clearance and scrolling when space is limited. Omit a repeated account
 subtitle. Use short field labels, an example email address and no repeated password
 placeholder. Place password recovery beside the password label, followed by one
 solid submit action, email-link sign-in and a registration link with matching
@@ -652,10 +654,11 @@ scrollable category list. Hide the duplicate toolbar gear only while that sideba
 is visible; restore it for normal browsing when collapsed or below 900px.
 Use the same application settings dialog and shortcut as the reader.
 
-Deletion and recovery (2026-10-26): use one compact paper confirmation with the
-book name, short consequence and explicit action. Ordinary deletion is reversible
-and uses neutral ink; only permanent deletion uses the destructive color. Details
-opens deletion directly, while clearing a download belongs in More. Recently
+Deletion and recovery (2026-10-27): use one compact paper confirmation with the
+book name, short consequence and explicit action. Ordinary deletion remains
+reversible; both ordinary and permanent deletion use red, with theme ink on e-ink.
+Place the labelled delete action below all details and last in in-app menus.
+Details opens deletion directly, while clearing a download belongs in More. Recently
 Deleted is a book list with Restore and Delete permanently on each row; selected
 rows expose batch actions in place. Unfinished operations and preserved drafts
 expand on demand. Legacy shared-data cleanup belongs in Settings / Library Data.
@@ -1843,11 +1846,13 @@ Click a sourced node to verify and navigate to local text, shown in a restrained
 Use logical spacing for RTL, visible keyboard focus, compact controls matching Conversation, touch targets on coarse pointers, and explicit e-ink borders. Keep canvas scrolling inside the workspace and source text selectable. Success saving status is announced accessibly; actionable errors remain visible. See `../../docs/design/mindmap.md` and `src/styles/glossa-mindmap.css`.
 
 
-### 15. Glossa menu scopes — updated 2026-10-24
+### 15. Glossa menu scopes — updated 2026-10-27
 
 Use direct content interactions for renaming, status changes, selection and moving. The library Display control manages shelf presentation, size and sorting; it does not repeat selection or application settings. Keep navigation at the leading side and local actions at the trailing side. Library and reader chrome share 18px glyphs, 32px controls, 11px corners and 2px peer gaps; coarse pointers use 20px glyphs and 44px touch targets. The reader retains its local Aa shortcut and one low-frequency application-settings entry in Book Actions. Remove duplicate selection and manual sync/diagnostic commands from that menu. The library settings row stays fixed below the scrolling sidebar; the toolbar fallback appears when the sidebar is unavailable.
 
-Application settings have exactly five destinations: General, Reading, Library & Sync, Plugins, About. Related sections switch inside the selected destination, with a native category selector on narrow screens. General holds startup/window, interface language and application appearance. Reading holds font, layout, colors/annotations, controls, dictionaries, speech and advanced styles. Library & Sync holds import/storage/backup and account/sync. Plugins own their existing internal settings. About reuses the same version, help and license content as the system About command and owns update preferences. Preserve legacy shortcuts, search IDs and remembered leaf panels; reveal collapsed targets before scrolling.
+Application settings have exactly six destinations: Account, General, Reading, Library & Sync, Plugins, About. Related sections switch inside the selected destination, with a native category selector on narrow screens. Account owns Glossa identity and profile actions, independently of cloud-provider authorization. General holds startup/window, interface language and application appearance. Reading holds font, layout, colors/annotations, controls, dictionaries, speech and advanced styles. Library & Sync holds import/storage/backup and cloud sync. Plugins own their existing internal settings. About reuses the same version, help and license content as the system About command and owns update preferences. Preserve legacy shortcuts, search IDs and remembered leaf panels; reveal collapsed targets before scrolling.
+
+On desktop, the application settings sheet moves from blank header areas and resizes from every edge and corner. Header controls never start a move. Keep at least 640×420 and a 16px viewport margin, preserve scrolling and focus behavior, and persist validated geometry locally across reopening. Re-clamp after viewport changes; narrow and coarse-pointer layouts use the existing adaptive sheet, while reader Aa and every other dialog retain their existing geometry.
 
 Aa exposes only Font / Layout / Theme and always edits the current book. A real book adjustment detaches that book from inherited defaults. Replace the ambiguous scope toggle with the quiet This Book Only label and an explicit Set as Reading Defaults action. Copy presentation preferences through a whitelist; never copy locations, private excerpts, proofreading records or application state. Persist before publishing the copied defaults; failure leaves the prior defaults and draft available for retry. Application reading sections edit the existing shared defaults, retaining explicit book overrides. Embedded panels do not repeat scope/reset controls.
 

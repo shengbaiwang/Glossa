@@ -1,4 +1,6 @@
 'use client';
+import { mergeLibraryDisplay } from '@/utils/libraryDisplaySettings';
+import { useLibraryRefresh } from '@/hooks/useLibraryRefresh';
 
 import clsx from 'clsx';
 import * as React from 'react';
@@ -26,7 +28,12 @@ import type { LibrarySearchTarget } from '@/types/book';
 import { navigateToLibrary, navigateToLogin, navigateToReader } from '@/utils/nav';
 import { getBookWithUpdatedMetadata, listFormater } from '@/utils/book';
 import { getImportErrorMessage } from '@/services/errors';
-import { ingestFile } from '@/services/ingestService';
+import {
+  ingestFile,
+  ingestFiles,
+  type IngestFileOptions,
+  type IngestFileResult,
+} from '@/services/ingestService';
 import { eventDispatcher } from '@/utils/event';
 import { ProgressPayload } from '@/utils/transfer';
 import { throttle } from '@/utils/throttle';
@@ -501,7 +508,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         const appService = await envConfig.getAppService();
         const settings = await appService.loadSettings();
         const library = await appService.loadLibraryBooks();
-        setSettings(settings);
+        setSettings(mergeLibraryDisplay(settings, useSettingsStore.getState().settings));
         setLibrary(library);
       });
       return () => {
@@ -862,87 +869,106 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     const appBooksPrefix: string | null =
       useSettingsStore.getState().settings.localBooksDir || null;
 
-    const processFile = async (selectedFile: SelectedFile): Promise<Book | null> => {
+    const prepareFile = (selectedFile: SelectedFile): IngestFileOptions | null => {
       const file = selectedFile.file || selectedFile.path;
       if (!file) return null;
-      if (!appService) return null;
-      try {
-        const { path, basePath } = selectedFile;
-        // `groupId` is treated as a tri-state:
-        //   - undefined  → caller didn't specify; derive grouping from
-        //                  basePath (Import-from-Folder "keep" mode).
-        //   - '' (empty) → caller explicitly wants the library root.
-        //   - any string → caller explicitly wants that group.
-        // Distinguishing '' from undefined matters for re-imports of an
-        // already-known book: without it, a falsy check would silently
-        // keep the existingBook's stale groupId/groupName from a prior
-        // import instead of moving the book to the root.
-        let resolvedGroupId = groupId;
-        let resolvedGroupName = groupId !== undefined ? getGroupName(groupId) : undefined;
-        if (resolvedGroupId === undefined && selectedFile.groupName !== undefined) {
-          resolvedGroupName = selectedFile.groupName;
-          resolvedGroupId = resolvedGroupName ? getGroupId(resolvedGroupName) : '';
-        } else if (resolvedGroupId === undefined && path && basePath) {
-          resolvedGroupName = getFolderImportGroupName(path, basePath);
-          resolvedGroupId = getGroupId(resolvedGroupName);
-        }
-        // Read settings from the store at call-time rather than the
-        // component closure. `runFolderImport` may have just registered
-        // the picked directory as an external library folder via
-        // `setSettings(...)`, but React state updates don't mutate the
-        // already-captured `settings` reference until the next render —
-        // by the time we get here, the closure still holds the *old*
-        // settings, so `shouldImportInPlace` would see an empty
-        // `externalLibraryFolders` and incorrectly fall back to copy
-        // mode. Pulling the latest snapshot from zustand fixes this.
-        const liveSettings = useSettingsStore.getState().settings;
-        let importStatus: 'added' | 'existing' = 'added';
-        const book = await ingestFile(
-          {
-            file,
-            markdownResourceRoot: selectedFile.resourceRoot ?? basePath,
-            books: library,
-            lookupIndex,
-            retryPDFContents: !options.silent,
-            groupId: resolvedGroupId,
-            groupName: resolvedGroupName,
-            signal: options.signal,
-            onResult: (status) => {
-              importStatus = status;
-            },
-          },
-          { appService, settings: liveSettings, isLoggedIn: !!user, appBooksPrefix },
-        );
-        if (!book) return null;
-        successfulImports.push(book.title);
-        if ((importStatus as string) === 'existing') existingImports++;
-        else addedImports++;
-        return book;
-      } catch (error) {
-        if (options.signal?.aborted && error instanceof Error && error.name === 'AbortError')
-          return null;
-        const filename = typeof file === 'string' ? file : file.name;
-        if (typeof file === 'string') failedPaths.push(file);
-        const baseFilename = getFilename(filename);
-        const errorMessage = error instanceof Error ? _(getImportErrorMessage(error.message)) : '';
-        failedImports.push({ filename: baseFilename, errorMessage });
-        console.error('Failed to import book:', filename, error);
-        return null;
+      const { path, basePath } = selectedFile;
+      let resolvedGroupId = groupId;
+      let resolvedGroupName = groupId !== undefined ? getGroupName(groupId) : undefined;
+      if (resolvedGroupId === undefined && selectedFile.groupName !== undefined) {
+        resolvedGroupName = selectedFile.groupName;
+        resolvedGroupId = resolvedGroupName ? getGroupId(resolvedGroupName) : '';
+      } else if (resolvedGroupId === undefined && path && basePath) {
+        resolvedGroupName = getFolderImportGroupName(path, basePath);
+        resolvedGroupId = getGroupId(resolvedGroupName);
       }
+      return {
+        file,
+        markdownResourceRoot: selectedFile.resourceRoot ?? basePath,
+        books: library,
+        lookupIndex,
+        retryPDFContents: !options.silent,
+        groupId: resolvedGroupId,
+        groupName: resolvedGroupName,
+        signal: options.signal,
+      };
+    };
+    let completed = 0;
+    let publication = Promise.resolve();
+    let publicationError: unknown;
+    const activities = new Map<number, string>();
+    const reportProgress = () => {
+      const activity = Array.from(activities.values()).at(-1);
+      options.onProgress?.(completed, files.length, activity);
+      if (controller) setFileImportState((state) => state && { ...state, completed, activity });
+    };
+    const receive = (index: number, file: string | File, result: IngestFileResult) => {
+      activities.delete(index);
+      publication = publication
+        .then(async () => {
+          if (result.error) {
+            const error = result.error;
+            if (options.signal?.aborted && error.name === 'AbortError') return;
+            const filename = typeof file === 'string' ? file : file.name;
+            if (typeof file === 'string') failedPaths.push(file);
+            failedImports.push({
+              filename: getFilename(filename),
+              errorMessage: _(getImportErrorMessage(error.message)),
+            });
+          } else if (result.book) {
+            successfulImports.push(result.book.title);
+            if (result.status === 'existing') existingImports++;
+            else addedImports++;
+            await updateBooks(envConfig, [result.book], { skipSave: true });
+          }
+          completed++;
+          reportProgress();
+        })
+        .catch((error: unknown) => {
+          publicationError ??= error;
+        });
     };
 
     try {
-      const concurrency = 4;
-      for (let i = 0; i < files.length; i += concurrency) {
-        if (options.signal?.aborted) break;
-        const batch = files.slice(i, i + concurrency);
-        const importedBooks = (await Promise.all(batch.map(processFile))).filter((book) => !!book);
-        // Each import has already committed its identity and initial group under
-        // the shared lock. Publish incrementally without saving a stale full snapshot.
-        await updateBooks(envConfig, importedBooks, { skipSave: true });
-        const completed = Math.min(i + batch.length, files.length);
-        options.onProgress?.(completed, files.length);
-        if (controller) setFileImportState((state) => state && { ...state, completed });
+      if (appService) {
+        const candidates = files.flatMap((selectedFile, index) => {
+          const item = prepareFile(selectedFile);
+          if (!item) return [];
+          return [
+            {
+              ...item,
+              onComplete: (result: IngestFileResult) => receive(index, item.file, result),
+              onProgress: (event: import('@/types/book').BookImportProgress) => {
+                if (
+                  options.signal?.aborted ||
+                  ['completed', 'failed', 'cancelled'].includes(event.stage)
+                )
+                  return;
+                const filename = getFilename(
+                  typeof item.file === 'string' ? item.file : item.file.name,
+                );
+                const stage =
+                  event.stage === 'fingerprinting'
+                    ? _('Checking local files…')
+                    : event.stage === 'committing'
+                      ? _('Saving to library…')
+                      : _('Importing…');
+                activities.set(index, `${stage} ${filename}`);
+                reportProgress();
+              },
+            },
+          ];
+        });
+        // Scheduling, bounded preparation and durable completion belong to the
+        // shared service. The page only publishes completed records and events.
+        await ingestFiles(candidates, {
+          appService,
+          settings: useSettingsStore.getState().settings,
+          isLoggedIn: !!user,
+          appBooksPrefix,
+        });
+        await publication;
+        if (publicationError) throw publicationError;
       }
 
       pushLibrary();
@@ -1069,6 +1095,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // per-folder in the Import-from-Folder dialog) and import newly-added books
   // on library open and app focus. Desktop + Android only (iOS security-scoped
   // bookmarks are out of scope).
+  useLibraryRefresh(appService);
+
   useAutoImportFolders({
     enabled:
       (settings.autoImportFolders?.length ?? 0) > 0 &&

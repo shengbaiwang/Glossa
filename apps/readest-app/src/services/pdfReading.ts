@@ -1,4 +1,10 @@
-import { needsOCRRecovery, readOCRPage, type OCRPage, type PDFCache } from './pdfEnhancement';
+import {
+  needsOCRRecovery,
+  readOCRPage,
+  releasePDFSourceSession,
+  type OCRPage,
+  type PDFCache,
+} from './pdfEnhancement';
 import { recognizePDFPages } from './pdfOCR';
 
 // Only loaded reader pages enter this queue. Search/import/thumbnail parsing
@@ -32,7 +38,17 @@ export function createPDFReadingOCR(source: string, cache: PDFCache) {
         const timer = setTimeout(abort, 30_000);
         try {
           if (controller.signal.aborted || !isCurrent()) return null;
-          const done = await recognizePDFPages(source, cache.id, [index], timeout.signal);
+          const done = await recognizePDFPages(
+            source,
+            cache.id,
+            [index],
+            timeout.signal,
+            undefined,
+            false,
+            false,
+            false,
+            cache.session ?? undefined,
+          );
           if (done.state !== 'completed') throw new Error(done.error ?? 'pdf_recognition_failed');
           const page = await readOCRPage(cache.id, index);
           if (!page || needsOCRRecovery(page)) throw new Error('pdf_recognition_failed');
@@ -56,6 +72,7 @@ export function createPDFReadingOCR(source: string, cache: PDFCache) {
     destroy() {
       controller.abort();
       attempts.clear();
+      void releasePDFSourceSession(cache).catch(() => {});
     },
   };
 }

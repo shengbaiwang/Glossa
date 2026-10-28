@@ -1,3 +1,4 @@
+import type { LibraryDisplayClocks } from '@/utils/libraryDisplaySettings';
 import { CustomTheme } from '@/styles/themes';
 import { CustomFont } from '@/styles/fonts';
 import { CustomTexture } from '@/styles/textures';
@@ -430,15 +431,18 @@ export interface SystemSettings {
    */
   librarySortByAuto: boolean;
   libraryThenSortBy: LibrarySecondarySortByType;
+  libraryThenSortByAuto?: boolean;
+  libraryDisplayUpdatedAt?: LibraryDisplayClocks;
   /** Sort order of the secondary ("Then by") key, independent of `librarySortAscending` (#5119). */
   libraryThenSortAscending: boolean;
   libraryGroupBy: LibraryGroupByType;
   /** Explicit manual folder paths, including empty folders; book group paths stay compatible. */
   libraryFolders?: string[];
   libraryCoverFit: LibraryCoverFitType;
+  /** Legacy only; automatic cover sizing is retired. */
   libraryAutoColumns: boolean;
   libraryColumns: number;
-  /** Preferred grid track width; unset keeps the legacy fixed-column preference. */
+  /** Manual grid track width in pixels; missing legacy values use 156. */
   libraryCoverWidth?: number;
   /** Missing values retain the existing author and progress display. */
   libraryShowAuthor?: boolean;

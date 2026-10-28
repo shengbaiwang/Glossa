@@ -14,6 +14,8 @@ import {
   cancelPDFExport,
   exportPDFCopy,
   openPDFCache,
+  releasePDFSourceSession,
+  type PDFCache,
   type PDFOCRStatus,
 } from '@/services/pdfEnhancement';
 import { recognizePDFPages } from '@/services/pdfOCR';
@@ -57,14 +59,20 @@ export default function PDFTools({ bookKey, bookDoc }: { bookKey: string; bookDo
     setWorking(kind);
     setStatus(null);
     setError('');
+    let cache: PDFCache | null = null;
     try {
       const book = useBookDataStore.getState().getBookData(bookKey)?.book;
       const source = book && (await appService?.resolveNativeBookFilePath(book));
       if (!source || controller.signal.aborted) return;
-      const cache = await openPDFCache(source, true, {
-        bookId: book.hash,
-        revision: book.removal?.revision ?? 0,
-      });
+      cache = await openPDFCache(
+        source,
+        true,
+        {
+          bookId: book.hash,
+          revision: book.removal?.revision ?? 0,
+        },
+        true,
+      );
       if (!cache || controller.signal.aborted) return;
       if (kind === 'export') {
         const { save } = await import('@tauri-apps/plugin-dialog');
@@ -88,6 +96,10 @@ export default function PDFTools({ bookKey, bookDoc }: { bookKey: string; bookDo
           bookDoc.sections.map((_, index) => index),
           controller.signal,
           setStatus,
+          false,
+          false,
+          false,
+          cache.session ?? undefined,
         );
         if (done.state !== 'completed') throw new Error(done.error ?? 'pdf_recognition_failed');
         if (controller.signal.aborted) return;
@@ -114,6 +126,7 @@ export default function PDFTools({ bookKey, bookDoc }: { bookKey: string; bookDo
         );
       }
     } finally {
+      await releasePDFSourceSession(cache).catch(() => {});
       if (operation.current === controller) {
         operation.current = null;
         active.current = null;

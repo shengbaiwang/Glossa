@@ -25,6 +25,7 @@ import {
   needsCoverRefresh,
   pickFresherCover,
   pickFresherMetadata,
+  pickFresherGroup,
 } from '@/app/library/utils/libraryUtils';
 import { getPrimaryLanguage } from '@/utils/book';
 
@@ -232,6 +233,8 @@ export const useBooksSync = () => {
         const cover = pickFresherCover(oldBook, matchingBook);
         mergedBook.coverHash = cover.coverHash;
         mergedBook.coverUpdatedAt = cover.coverUpdatedAt;
+        const group = pickFresherGroup(oldBook, matchingBook);
+        if (group) Object.assign(mergedBook, group);
         // The metadata group merges on its own metadataUpdatedAt clock so a
         // metadata edit survives losing whole-row LWW to page-turn progress
         // (issue #5438). Null means neither side is fresher — the row-level

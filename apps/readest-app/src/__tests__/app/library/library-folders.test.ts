@@ -22,6 +22,21 @@ const book = (hash: string, groupName = ''): Book => ({
 });
 
 describe('library group branches', () => {
+  it('stamps explicit moves, branch renames and removals independently of reading progress', () => {
+    const original = book('book', 'A');
+    expect(moveToFolder([original], ['A', 'B'], ['book'], 'B', 200).books[0]).toMatchObject({
+      groupUpdatedAt: 200,
+      groupName: 'B',
+    });
+    expect(renameFolder([original], ['A'], 'A', 'Renamed', 300).books[0]).toMatchObject({
+      groupUpdatedAt: 300,
+      groupName: 'Renamed',
+    });
+    expect(removeFolder([original], ['A'], 'A', 400).books[0]).toMatchObject({
+      groupUpdatedAt: 400,
+      groupName: '',
+    });
+  });
   it('supports four levels and rejects a fifth without splitting a branch', () => {
     const paths = ['A', 'A/B', 'A/B/C', 'A/B/C/D', 'Target'];
     expect(createFolderPath(paths, 'A/B', 'Third')).toBe('A/B/Third');

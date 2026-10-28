@@ -248,19 +248,6 @@
   font-size: var(--glossa-text-body);
 }
 
-.view-menu .glossa-library-size-auto {
-  min-height: 32px;
-  padding: 4px 8px;
-  color: var(--glossa-muted);
-  font-size: var(--glossa-text-caption);
-}
-
-.view-menu .glossa-library-size-auto[aria-pressed='true'] {
-  color: var(--glossa-ink);
-  text-decoration: underline;
-  text-underline-offset: 4px;
-}
-
 .glossa-library-size-controls {
   display: flex;
   align-items: center;
@@ -366,7 +353,6 @@ html[data-page='library'] .view-menu .glossa-menu-item:focus-visible {
 @media (pointer: coarse) {
   .view-menu .glossa-library-size-controls input,
   .view-menu .glossa-library-display-toggle,
-  .view-menu .glossa-library-size-auto,
   .view-menu .glossa-library-sort-direction,
   .view-menu .glossa-library-display-option {
     min-height: 44px;
@@ -379,6 +365,7 @@ html[data-page='library'] .view-menu .glossa-menu-item:focus-visible {
 
 .glossa-bookshelf {
   --glossa-library-inset: 36px;
+  --glossa-grid-inset: calc(var(--glossa-library-inset) - 12px);
 }
 
 .glossa-library-heading {
@@ -491,8 +478,16 @@ html[data-page='library'] .view-menu .glossa-menu-item:focus-visible {
 }
 
 .glossa-collection-grid {
-  padding-inline: calc(var(--glossa-library-inset) - 12px);
   gap: 10px 12px;
+}
+
+/* Virtuoso must measure the same usable width that CSS uses to count columns. */
+.glossa-library-grid-frame {
+  padding-inline: var(--glossa-grid-inset);
+}
+
+.glossa-library-grid-scroller .glossa-shelf-header {
+  --glossa-library-inset: 12px;
 }
 
 .glossa-book-card-grid {
@@ -785,6 +780,11 @@ html[data-page='library'] .view-menu .glossa-menu-item:focus-visible {
 
   .glossa-bookshelf {
     --glossa-library-inset: 20px;
+    --glossa-grid-inset: 12px;
+  }
+
+  .glossa-library-grid-scroller .glossa-shelf-header {
+    --glossa-library-inset: 8px;
   }
 
   .glossa-recent-slide {
@@ -793,7 +793,6 @@ html[data-page='library'] .view-menu .glossa-menu-item:focus-visible {
 
   .glossa-collection-grid {
     gap: 8px;
-    padding-inline: 12px;
   }
 
   .glossa-book-card-grid {
@@ -1117,7 +1116,7 @@ html[data-page='library'] .glossa-folder-name-editor input:focus-visible {
 
 /* Cover geometry belongs to a stable stage, so loaded aspect ratios never move titles. */
 .glossa-collection-grid {
-  grid-template-columns: repeat(auto-fill, minmax(min(156px, calc((100% - 12px) / 2)), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(0, min(156px, 100%)));
 }
 .glossa-book-cover-stage {
   display: flex;

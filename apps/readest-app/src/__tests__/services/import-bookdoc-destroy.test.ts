@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Book } from '@/types/book';
 import type { SystemSettings } from '@/types/settings';
 import { useSettingsStore } from '@/store/settingsStore';
+import { openTestLibraryDatabase } from './suites/library-test-database';
 
 const mockOpen = vi.hoisted(() => vi.fn());
 const mockPartialMD5 = vi.hoisted(() => vi.fn());
@@ -90,7 +91,7 @@ class TestAppService extends BaseAppService {
     return false;
   }
   async openDatabase() {
-    return {} as ReturnType<BaseAppService['openDatabase']>;
+    return openTestLibraryDatabase(this);
   }
   async createWindow() {}
   async getCacheDir() {
@@ -111,8 +112,8 @@ const TEST_METADATA = {
   identifier: 'isbn-123',
 };
 
-// Importing a PDF opens a full pdf.js document (worker + parsed structures +
-// retained range chunks). Dropping the reference does NOT release it — the
+// Validating a PDF opens a pdf.js document (worker + parsed structures + retained
+// range chunks). Dropping the reference does NOT release it — the
 // dedicated worker survives GC — so importBook must call destroy() or batch
 // imports accumulate ~60 MB per PDF until the WebView renderer OOMs (#5387).
 describe('importBook BookDoc lifecycle', () => {
@@ -189,7 +190,11 @@ describe('importBook BookDoc lifecycle', () => {
       '原书（初版）',
       '原书（修订版）',
     ]);
-    expect(service.getFs().removeDir).not.toHaveBeenCalled();
+    expect(
+      service
+        .getFs()
+        .removeDir.mock.calls.every(([path]) => String(path).startsWith('.importing/')),
+    ).toBe(true);
   });
 
   it('does not collapse distinct books that share invalid metadata', async () => {
@@ -283,7 +288,7 @@ describe('importBook BookDoc lifecycle', () => {
     const result = await service.importBook(mockFile, books);
 
     expect(result).not.toBeNull();
-    expect(mockDestroy).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(mockDestroy).toHaveBeenCalledTimes(1));
   });
 
   it('skips the PDF plugin before opening files when disabled', async () => {
@@ -314,24 +319,47 @@ describe('importBook BookDoc lifecycle', () => {
     }
   });
 
-  it('prepares the saved PDF automatically before releasing its parser and returning the import', async () => {
+  it('releases the import parser before separately opening the background document', async () => {
     const document = setupMockBookDoc();
+    const backgroundDestroy = vi.fn();
+    const background = { ...document, destroy: backgroundDestroy };
+    mockOpen.mockResolvedValueOnce({ book: document, format: 'PDF' });
+    mockOpen.mockResolvedValue({ book: background, format: 'PDF' });
     pdf.supported = true;
     vi.spyOn(service, 'resolveNativeBookFilePath').mockResolvedValue('/managed/original.pdf');
-    pdf.prepare.mockImplementation(async () => {
-      expect(service.getFs().writeFile).toHaveBeenCalled();
-      expect(mockDestroy).not.toHaveBeenCalled();
-      return 'generated';
+    vi.spyOn(service, 'loadBookContent').mockResolvedValue({
+      book: {} as Book,
+      file: new File(['pdf content'], 'test.pdf'),
     });
-    const imported = await service.importBook(new File(['pdf content'], 'test.pdf'), []);
-    expect(pdf.prepare).toHaveBeenCalledWith(
-      '/managed/original.pdf',
-      document,
-      expect.any(AbortSignal),
-      expect.any(Function),
-      { owner: { bookId: imported!.hash, revision: 0 }, regenerate: undefined },
+    let finish: ((value: string) => void) | undefined;
+    pdf.prepare.mockImplementation(
+      () =>
+        new Promise<string>((resolve) => {
+          finish = resolve;
+        }),
     );
-    expect(mockDestroy).toHaveBeenCalledOnce();
+
+    const importing = service.importBook(new File(['pdf content'], 'test.pdf'), []);
+    let imported: Book | null = null;
+    try {
+      imported = await importing;
+      expect(imported).not.toBeNull();
+      await vi.waitFor(() => expect(pdf.prepare).toHaveBeenCalled());
+      expect(pdf.prepare).toHaveBeenCalledWith(
+        '/managed/original.pdf',
+        background,
+        expect.any(AbortSignal),
+        expect.any(Function),
+        { owner: { bookId: imported!.hash, revision: 0 }, regenerate: undefined },
+      );
+      expect(mockDestroy).toHaveBeenCalledOnce();
+      expect(backgroundDestroy).not.toHaveBeenCalled();
+    } finally {
+      finish?.('generated');
+      await importing;
+    }
+    await vi.waitFor(() => expect(mockDestroy).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(backgroundDestroy).toHaveBeenCalledOnce());
   });
 
   it('discards a late path lookup after disable and immediate re-enable', async () => {
@@ -361,9 +389,19 @@ describe('importBook BookDoc lifecycle', () => {
   });
 
   it('cancels active preparation on disable and never restarts it on enable', async () => {
-    setupMockBookDoc();
+    const document = setupMockBookDoc();
+    const backgroundDestroy = vi.fn();
+    mockOpen.mockResolvedValueOnce({ book: document, format: 'PDF' });
+    mockOpen.mockResolvedValue({
+      book: { ...document, destroy: backgroundDestroy },
+      format: 'PDF',
+    });
     pdf.supported = true;
     vi.spyOn(service, 'resolveNativeBookFilePath').mockResolvedValue('/managed/original.pdf');
+    vi.spyOn(service, 'loadBookContent').mockResolvedValue({
+      book: {} as Book,
+      file: new File(['pdf content'], 'test.pdf'),
+    });
     let started!: () => void;
     const ready = new Promise<void>((resolve) => {
       started = resolve;
@@ -386,16 +424,28 @@ describe('importBook BookDoc lifecycle', () => {
     expect(signal.aborted).toBe(true);
     expect(await importing).not.toBeNull();
     expect(pdf.prepare).toHaveBeenCalledOnce();
-    expect(mockDestroy).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(mockDestroy).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(backgroundDestroy).toHaveBeenCalledOnce());
   });
 
   it('keeps the book and releases its parser if automatic contents preparation fails', async () => {
-    setupMockBookDoc();
+    const document = setupMockBookDoc();
+    const backgroundDestroy = vi.fn();
+    mockOpen.mockResolvedValueOnce({ book: document, format: 'PDF' });
+    mockOpen.mockResolvedValue({
+      book: { ...document, destroy: backgroundDestroy },
+      format: 'PDF',
+    });
     pdf.supported = true;
     vi.spyOn(service, 'resolveNativeBookFilePath').mockResolvedValue('/managed/original.pdf');
+    vi.spyOn(service, 'loadBookContent').mockResolvedValue({
+      book: {} as Book,
+      file: new File(['pdf content'], 'test.pdf'),
+    });
     pdf.prepare.mockRejectedValue(new Error('pdf_processing_limit'));
     expect(await service.importBook(new File(['pdf content'], 'test.pdf'), [])).not.toBeNull();
-    expect(mockDestroy).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(mockDestroy).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(backgroundDestroy).toHaveBeenCalledOnce());
   });
 
   it('retries an existing PDF without importing it again and releases its parser and file handle', async () => {
@@ -415,7 +465,7 @@ describe('importBook BookDoc lifecycle', () => {
       expect.any(Function),
       { owner: { bookId: book.hash, revision: 0 }, regenerate: undefined },
     );
-    expect(mockDestroy).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(mockDestroy).toHaveBeenCalledOnce());
     expect(close).toHaveBeenCalledOnce();
     expect(service.getFs().writeFile).not.toHaveBeenCalled();
   });
@@ -446,7 +496,7 @@ describe('importBook BookDoc lifecycle', () => {
     vi.spyOn(service, 'resolveNativeBookFilePath').mockRejectedValue(new Error('unavailable'));
     expect(await service.importBook(new File(['pdf content'], 'test.pdf'), [])).not.toBeNull();
     expect(pdf.prepare).not.toHaveBeenCalled();
-    expect(mockDestroy).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(mockDestroy).toHaveBeenCalledOnce());
   });
 
   it('does not run preparation for a transient preview', async () => {
@@ -455,7 +505,7 @@ describe('importBook BookDoc lifecycle', () => {
     service.getFs().openFile.mockResolvedValue(new File(['pdf content'], 'test.pdf'));
     await service.importBook('/original.pdf', [], { transient: true });
     expect(pdf.prepare).not.toHaveBeenCalled();
-    expect(mockDestroy).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(mockDestroy).toHaveBeenCalledOnce());
   });
 
   it('destroys the loaded BookDoc when the import fails after opening', async () => {

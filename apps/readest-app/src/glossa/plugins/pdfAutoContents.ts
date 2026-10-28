@@ -4,6 +4,7 @@ import type { BookDoc } from '@/libs/document';
 import type { ClosableFile } from '@/utils/file';
 import type { PDFContentsReport } from '@/services/pdfAutoContents';
 import { eventDispatcher } from '@/utils/event';
+import { enqueuePDFContentsTask } from '@/services/pdfContentsTaskQueue';
 
 // Only the existing document-access services are passed to this bundled plugin.
 type Host = Pick<AppService, 'resolveNativeBookFilePath' | 'loadBookContent'>;
@@ -19,6 +20,30 @@ export async function prepareContents(
   } = {},
 ): Promise<{ result: string; report?: PDFContentsReport }> {
   if (book.format !== 'PDF' || signal.aborted) return { result: 'cancelled' };
+  try {
+    return await enqueuePDFContentsTask(
+      () => prepareContentsNow(host, book, document, signal, options),
+      signal,
+    );
+  } catch (error) {
+    if (signal.aborted || (error instanceof DOMException && error.name === 'AbortError'))
+      return { result: 'cancelled' };
+    throw error;
+  }
+}
+
+async function prepareContentsNow(
+  host: Host,
+  book: Book,
+  document: BookDoc | undefined,
+  signal: AbortSignal,
+  options: {
+    regenerate?: boolean;
+    notify?: boolean;
+    onReport?: (report: PDFContentsReport) => void;
+  },
+): Promise<{ result: string; report?: PDFContentsReport }> {
+  if (signal.aborted) return { result: 'cancelled' };
   const { supportsLocalPDF, openPDFCache } = await import('@/services/pdfEnhancement');
   if (signal.aborted || !supportsLocalPDF()) return { result: 'unavailable' };
   let owned: BookDoc | undefined;

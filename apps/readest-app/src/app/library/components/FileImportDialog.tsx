@@ -8,6 +8,7 @@ export interface FileImportState {
   stopping?: boolean;
   saving?: boolean;
   error?: boolean;
+  activity?: string;
 }
 export default function FileImportDialog({
   state,
@@ -39,6 +40,7 @@ export default function FileImportDialog({
           })}
           completed={state.saving || state.error ? undefined : state.completed}
           total={state.total}
+          activity={state.activity}
         />
         {state.error && (
           <p role='alert' className='text-error text-sm'>

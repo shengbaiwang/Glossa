@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Book } from '@/types/book';
 import { getMetadataHash } from '@/utils/book';
 import { fingerprintFile } from '@/services/bookIdentity';
+import { openTestLibraryDatabase } from './suites/library-test-database';
 
 const mockOpen = vi.hoisted(() => vi.fn());
 const mockPartialMD5 = vi.hoisted(() => vi.fn());
@@ -84,7 +85,7 @@ class TestAppService extends BaseAppService {
     return false;
   }
   async openDatabase() {
-    return {} as ReturnType<BaseAppService['openDatabase']>;
+    return openTestLibraryDatabase(this);
   }
   async createWindow() {}
   async getCacheDir() {
@@ -232,7 +233,9 @@ describe('importBook metaHash deduplication', () => {
     expect(writtenConfig.location).toBeUndefined();
     expect(writtenConfig.readProgress).toBeUndefined();
     expect(existingBook.hash).toBe('old-hash-123');
-    expect(fs.removeDir).not.toHaveBeenCalled();
+    expect(fs.removeDir.mock.calls.every(([path]) => String(path).startsWith('.importing/'))).toBe(
+      true,
+    );
   });
 
   it('should prefer exact file hash match over metaHash match', async () => {
@@ -367,7 +370,9 @@ describe('importBook metaHash aggregation', () => {
     for (const hash of ['hash-1', 'hash-2', 'hash-3']) {
       expect(fs.readFile).not.toHaveBeenCalledWith(`${hash}/config.json`, 'Books', 'text');
     }
-    expect(fs.removeDir).not.toHaveBeenCalled();
+    expect(fs.removeDir.mock.calls.every(([path]) => String(path).startsWith('.importing/'))).toBe(
+      true,
+    );
   });
 
   it('does not resolve conflicting notes across versions by timestamp', async () => {
@@ -435,7 +440,9 @@ describe('importBook metaHash aggregation', () => {
     expect(fs.writeFile.mock.calls.filter((c) => String(c[0]).endsWith('/config.json'))).toEqual(
       [],
     );
-    expect(fs.removeDir).not.toHaveBeenCalled();
+    expect(fs.removeDir.mock.calls.every(([path]) => String(path).startsWith('.importing/'))).toBe(
+      true,
+    );
     expect(books.filter((b) => !b.deletedAt)).toHaveLength(3);
   });
 
@@ -517,7 +524,9 @@ describe('importBook metaHash aggregation', () => {
 
     expect(book2.deletedAt).toBeNull();
     expect(book3.deletedAt).toBeNull();
-    expect(fs.removeDir).not.toHaveBeenCalled();
+    expect(fs.removeDir.mock.calls.every(([path]) => String(path).startsWith('.importing/'))).toBe(
+      true,
+    );
   });
 
   it('reuses verified content without removing other metadata matches', async () => {
@@ -590,7 +599,9 @@ describe('importBook metaHash aggregation', () => {
     expect(fs.writeFile.mock.calls.filter((c) => String(c[0]).endsWith('/config.json'))).toEqual(
       [],
     );
-    expect(fs.removeDir).not.toHaveBeenCalled();
+    expect(fs.removeDir.mock.calls.every(([path]) => String(path).startsWith('.importing/'))).toBe(
+      true,
+    );
     expect(dup.deletedAt).toBeNull();
   });
 });

@@ -418,6 +418,7 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
               books={[displayBook]}
               scope={removalScope(settings, _, activeDeleteAction === 'local')}
               confirmLabel={currentDeleteConfig.confirmLabel}
+              destructive={activeDeleteAction === 'both'}
               onStop={() => deletionController.current?.abort()}
               onCancel={cancelDeleteAction}
               onConfirm={confirmDeleteAction}

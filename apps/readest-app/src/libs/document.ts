@@ -188,6 +188,10 @@ export interface DocumentLoaderOptions {
   /** Only an active reader may automatically recognize loaded scan pages. */
   autoPDFOCR?: boolean;
   pdfOwner?: import('@/services/pdfEnhancement').PDFCacheOwner;
+  /** Import parsing defers sidecar loading to the separate contents task. */
+  loadPDFCache?: boolean;
+  /** Validate import metadata without building reading navigation for a PDF. */
+  importOnly?: boolean;
 }
 
 export class DocumentLoader {
@@ -196,6 +200,8 @@ export class DocumentLoader {
   private pdfOCR?: (index: number) => Promise<OCRPage | null>;
   private autoPDFOCR: boolean;
   private pdfOwner?: import('@/services/pdfEnhancement').PDFCacheOwner;
+  private loadPDFCache: boolean;
+  private importOnly: boolean;
 
   constructor(file: File, options: DocumentLoaderOptions = {}) {
     this.file = file;
@@ -203,6 +209,8 @@ export class DocumentLoader {
     this.pdfOCR = options.pdfOCR;
     this.autoPDFOCR = options.autoPDFOCR ?? false;
     this.pdfOwner = options.pdfOwner;
+    this.loadPDFCache = options.loadPDFCache ?? true;
+    this.importOnly = options.importOnly ?? false;
   }
 
   private async isZip(): Promise<boolean> {
@@ -474,9 +482,9 @@ export class DocumentLoader {
         const { makePDF } = await import('foliate-js/pdf.js');
         const pdf = await import('@/services/pdfEnhancement');
         const cache =
-          this.nativeFilePath && pdf.supportsLocalPDF()
+          this.loadPDFCache && this.nativeFilePath && pdf.supportsLocalPDF()
             ? await pdf
-                .openPDFCache(this.nativeFilePath, this.autoPDFOCR, this.pdfOwner)
+                .openPDFCache(this.nativeFilePath, this.autoPDFOCR, this.pdfOwner, this.autoPDFOCR)
                 .catch(() => null)
             : null;
         const available = new Set(cache?.pages);
@@ -508,6 +516,7 @@ export class DocumentLoader {
             : undefined;
         const { default: i18n } = await import('i18next');
         book = await makePDF(this.file, {
+          importOnly: this.importOnly,
           loadOCR,
           recognizeOCR: reading
             ? async (index: number, current: () => boolean) => {

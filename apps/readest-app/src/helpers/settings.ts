@@ -1,3 +1,8 @@
+import {
+  LIBRARY_DISPLAY_KEYS,
+  editLibraryDisplay,
+  type LibraryDisplayKey,
+} from '@/utils/libraryDisplaySettings';
 import { ViewSettings } from '@/types/book';
 import { SystemSettings } from '@/types/settings';
 import { EnvConfigType } from '@/services/environment';
@@ -258,9 +263,22 @@ export const saveSysSettings = async <K extends keyof SystemSettings>(
   value: SystemSettings[K],
 ) => {
   const { settings, setSettings, saveSettings } = useSettingsStore.getState();
-  if (settings[key] !== value) {
-    settings[key] = value;
-    setSettings(settings);
-    await saveSettings(envConfig, settings);
+  const isDisplay = (LIBRARY_DISPLAY_KEYS as readonly string[]).includes(key);
+  if (isDisplay || settings[key] !== value) {
+    const next = isDisplay
+      ? editLibraryDisplay(
+          settings,
+          key as LibraryDisplayKey,
+          value as SystemSettings[LibraryDisplayKey],
+        )
+      : { ...settings, [key]: value };
+    setSettings(next);
+    try {
+      await saveSettings(envConfig, next);
+    } catch (error) {
+      // Revert this edit only if no later action has replaced it. The same value can retry.
+      if (useSettingsStore.getState().settings === next) setSettings(settings);
+      throw error;
+    }
   }
 };

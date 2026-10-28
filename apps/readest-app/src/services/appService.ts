@@ -15,7 +15,15 @@ import {
 } from '@/types/system';
 import { DatabaseOpts, DatabaseService } from '@/types/database';
 import { SchemaType } from '@/services/database/migrate';
-import { Book, BookConfig, BookContent, ImportBookOptions, ViewSettings } from '@/types/book';
+import {
+  Book,
+  BookConfig,
+  BookContent,
+  BookImportInput,
+  BookImportResult,
+  ImportBookOptions,
+  ViewSettings,
+} from '@/types/book';
 import { eventDispatcher } from '@/utils/event';
 import type { BookNav } from '@/services/nav';
 import { getLibraryFilename, getLibraryBackupFilename } from '@/utils/book';
@@ -38,6 +46,11 @@ import * as DictSvc from './dictionaries/dictionaryService';
 import * as FontSvc from './fontService';
 import * as ImageSvc from './imageService';
 import * as LibrarySvc from './libraryService';
+import {
+  getLibraryDatabasePath,
+  inheritLibraryDatabase,
+  registerLibraryDatabase,
+} from './libraryRepository';
 import * as Settings from './settingsService';
 import {
   loadFeeds as loadFeedsFromDisk,
@@ -179,10 +192,25 @@ export abstract class BaseAppService implements AppService {
 
   async prepareBooksDir() {
     this.localBooksDir = await this.fs.getPrefix('Books');
+    this.prepareLibraryRepository();
+  }
+
+  private prepareLibraryRepository() {
+    // Browser database engines need their own migration/OPFS acceptance before
+    // switching authority. Native and Node use the tested transactional adapter.
+    if (this.appPlatform === 'web') return;
+    const open = (prefix: string) =>
+      this.openDatabase('glossa-library', getLibraryDatabasePath(prefix), 'None');
+    registerLibraryDatabase(this.fs, open);
+    inheritLibraryDatabase(this.fs, this);
   }
 
   async openFile(path: string, base: BaseDir): Promise<File> {
     return await this.fs.openFile(path, base);
+  }
+
+  async fingerprint(path: string, base: BaseDir, signal?: AbortSignal) {
+    return this.fs.fingerprint?.(path, base, signal);
   }
 
   async copyFile(
@@ -326,6 +354,7 @@ export abstract class BaseAppService implements AppService {
     books: Book[],
     options: ImportBookOptions = {},
   ): Promise<Book | null> {
+    this.prepareLibraryRepository();
     return BookSvc.importBook(this.fs, file, books, {
       saveBookConfig: this.saveBookConfig.bind(this),
       generateCoverImageUrl: this.generateCoverImageUrl.bind(this),
@@ -338,15 +367,29 @@ export abstract class BaseAppService implements AppService {
     });
   }
 
-  async prepareBookContents(book: Book, document?: BookDoc): Promise<void> {
+  async importBooks(inputs: BookImportInput[], books: Book[]): Promise<BookImportResult[]> {
+    this.prepareLibraryRepository();
+    return BookSvc.importBooks(this.fs, inputs, books, {
+      saveBookConfig: this.saveBookConfig.bind(this),
+      generateCoverImageUrl: this.generateCoverImageUrl.bind(this),
+      preparePDF: this.prepareBookContents.bind(this),
+      osPlatform: this.osPlatform,
+    });
+  }
+
+  async prepareBookContents(book: Book, document?: BookDoc, signal?: AbortSignal): Promise<void> {
     if (book.format !== 'PDF' || useSettingsStore.getState().settings.pdfContentsOnImport === false)
       return;
     // A failed optional plugin must not fail a successful book import.
     try {
-      await runPluginTask('pdfAutoContents', async (signal) => {
-        const plugin = await pluginLoaders.pdfAutoContents();
-        if (!signal.aborted) await plugin.prepareContents(this, book, document, signal);
-      });
+      await runPluginTask(
+        'pdfAutoContents',
+        async (signal) => {
+          const plugin = await pluginLoaders.pdfAutoContents();
+          if (!signal.aborted) await plugin.prepareContents(this, book, document, signal);
+        },
+        signal,
+      );
     } catch {
       const { default: i18n } = await import('i18next');
       void eventDispatcher.dispatch('toast', {
@@ -519,6 +562,7 @@ export abstract class BaseAppService implements AppService {
   }
 
   async loadLibraryBooks(): Promise<Book[]> {
+    this.prepareLibraryRepository();
     return LibrarySvc.loadLibraryBooks(this.fs, this.generateCoverImageUrl.bind(this));
   }
 
@@ -526,6 +570,7 @@ export abstract class BaseAppService implements AppService {
   private storagePermissionRequested = false;
 
   async saveLibraryBooks(books: Book[], options?: SaveLibraryBooksOptions): Promise<Book[] | void> {
+    this.prepareLibraryRepository();
     try {
       return await LibrarySvc.saveLibraryBooks(this.fs, books, options);
     } catch (error) {

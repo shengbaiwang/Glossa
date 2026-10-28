@@ -6,12 +6,14 @@ export default function ImportProgress({
   completed,
   total,
   paused = false,
+  activity,
 }: {
   paused?: boolean;
   label: string;
   detail?: string;
   completed?: number;
   total?: number;
+  activity?: string;
 }) {
   const value =
     total && completed !== undefined
@@ -25,12 +27,23 @@ export default function ImportProgress({
       aria-atomic='true'
     >
       <LoaderCircle className='glossa-import-spinner' size={28} aria-hidden='true' />
-      <p className='text-sm font-medium'>{label}</p>
-      {detail && (
-        <p className='text-base-content/60 max-w-full truncate text-xs' dir='auto' title={detail}>
-          {detail}
-        </p>
-      )}
+      <div className='flex w-full min-w-0 flex-col items-center gap-1'>
+        <p className='text-sm font-medium'>{label}</p>
+        {detail && (
+          <p className='text-base-content/60 max-w-full truncate text-xs' dir='auto' title={detail}>
+            {detail}
+          </p>
+        )}
+        {activity && (
+          <p
+            className='text-base-content/60 max-w-full truncate text-xs'
+            dir='auto'
+            title={activity}
+          >
+            {activity}
+          </p>
+        )}
+      </div>
       <div
         className='glossa-import-track'
         role='progressbar'

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pdf-release-source-session"
+description = "Enables the pdf_release_source_session command without any pre-configured scope."
+commands.allow = ["pdf_release_source_session"]
+
+[[permission]]
+identifier = "deny-pdf-release-source-session"
+description = "Denies the pdf_release_source_session command without any pre-configured scope."
+commands.deny = ["pdf_release_source_session"]

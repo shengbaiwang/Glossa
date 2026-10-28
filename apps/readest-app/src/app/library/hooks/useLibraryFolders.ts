@@ -124,6 +124,7 @@ export function useLibraryFolders() {
                 ...latest.get(book.hash),
                 groupName: book.groupName,
                 groupId: book.groupId,
+                groupUpdatedAt: book.groupUpdatedAt,
                 updatedAt: book.updatedAt,
               })),
             );
@@ -152,6 +153,7 @@ export function useLibraryFolders() {
                   ...book,
                   groupName: updated.groupName,
                   groupId: updated.groupId,
+                  groupUpdatedAt: updated.groupUpdatedAt,
                   updatedAt: updated.updatedAt,
                 }
               : book;
@@ -246,6 +248,7 @@ export function useLibraryFolders() {
                   ...book,
                   groupName: path,
                   groupId: path ? md5Fingerprint(path) : '',
+                  groupUpdatedAt: Date.now(),
                   updatedAt: Date.now(),
                 };
           }),

@@ -1,6 +1,7 @@
 import {
   exists,
   mkdir,
+  open as openNativeFile,
   readTextFile,
   readFile,
   writeTextFile,
@@ -8,6 +9,7 @@ import {
   readDir,
   remove,
   copyFile,
+  rename,
   stat,
   lstat,
   BaseDirectory,
@@ -295,6 +297,30 @@ const getPathResolver = ({
   };
 };
 
+async function invokeImportIO<T>(
+  command: string,
+  args: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<T> {
+  signal?.throwIfAborted();
+  const operationId = crypto.randomUUID();
+  const abort = () => {
+    void invoke('cancel_import_io', { operationId }).catch(() => {});
+  };
+  signal?.addEventListener('abort', abort, { once: true });
+  try {
+    return await invoke<T>(command, { ...args, operationId });
+  } catch (error) {
+    signal?.throwIfAborted();
+    if (error === 'import_io_source_changed') {
+      throw new Error('Book file changed during import. Please retry.');
+    }
+    throw error;
+  } finally {
+    signal?.removeEventListener('abort', abort);
+  }
+}
+
 export const nativeFileSystem: FileSystem = {
   resolvePath: getPathResolver(),
 
@@ -373,6 +399,42 @@ export const nativeFileSystem: FileSystem = {
       }
     }
   },
+  async fingerprint(path: string, base: BaseDir, signal?: AbortSignal) {
+    if (isValidURL(path) || isContentURI(path) || (OS_TYPE === 'ios' && isFileURI(path))) {
+      return undefined;
+    }
+    const prefix = await this.getPrefix(base);
+    const source = prefix ? await join(prefix, path) : path;
+    return invokeImportIO<string>('import_fingerprint', { source }, signal);
+  },
+  async copyFileVerified(
+    srcPath: string,
+    srcBase: BaseDir,
+    dstPath: string,
+    dstBase: BaseDir,
+    expectedFingerprint: string,
+    signal?: AbortSignal,
+  ) {
+    await ensureDirExists(this, getDirPath(dstPath), dstBase);
+    const srcPrefix = await this.getPrefix(srcBase);
+    const dstPrefix = await this.getPrefix(dstBase);
+    const source = srcPrefix ? await join(srcPrefix, srcPath) : srcPath;
+    const destination = dstPrefix ? await join(dstPrefix, dstPath) : dstPath;
+    return invokeImportIO<string>(
+      'import_copy_verified',
+      { source, destination, expected: expectedFingerprint },
+      signal,
+    );
+  },
+  async moveFile(srcPath: string, srcBase: BaseDir, dstPath: string, dstBase: BaseDir) {
+    await ensureDirExists(this, getDirPath(dstPath), dstBase);
+    const { fp: srcFp, baseDir: srcBaseDir } = this.resolvePath(srcPath, srcBase);
+    const { fp: dstFp, baseDir: dstBaseDir } = this.resolvePath(dstPath, dstBase);
+    const opts: { oldPathBaseDir?: BaseDirectory; newPathBaseDir?: BaseDirectory } = {};
+    if (srcBaseDir) opts.oldPathBaseDir = srcBaseDir;
+    if (dstBaseDir) opts.newPathBaseDir = dstBaseDir;
+    await rename(srcFp, dstFp, Object.keys(opts).length > 0 ? opts : undefined);
+  },
   async copyFile(srcPath: string, srcBase: BaseDir, dstPath: string, dstBase: BaseDir) {
     try {
       // Uses the in-process dir cache (see `knownExistingDirs` above) so a
@@ -447,7 +509,23 @@ export const nativeFileSystem: FileSystem = {
         create: true,
         baseDir: baseDir ? baseDir : undefined,
       } as WriteFileOptions;
-      return await writeFile(fp, content.stream(), writeOptions);
+      const handle = await openNativeFile(fp, writeOptions);
+      const reader = content.stream().getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            await invoke<number>('plugin:fs|write', {
+              rid: handle.rid,
+              data: Array.from(value),
+            });
+          }
+        }
+      } finally {
+        reader.releaseLock();
+        await handle.close();
+      }
     } else {
       return await writeFile(fp, new Uint8Array(content), baseDir ? { baseDir } : undefined);
     }

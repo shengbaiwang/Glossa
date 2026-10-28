@@ -17,7 +17,7 @@ export interface ImportFromFolderResult {
 export interface FolderImportOptions {
   signal?: AbortSignal;
   onSaving?: () => void;
-  onProgress?: (completed: number, total: number) => void;
+  onProgress?: (completed: number, total: number, activity?: string) => void;
 }
 
 interface ImportFromFolderDialogProps {
@@ -29,7 +29,7 @@ interface ImportFromFolderDialogProps {
   onConfirm: (
     result: ImportFromFolderResult,
     signal: AbortSignal,
-    onProgress: (completed: number, total: number) => void,
+    onProgress: (completed: number, total: number, activity?: string) => void,
   ) => Promise<void>;
 }
 
@@ -53,7 +53,11 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
   const [picking, setPicking] = useState(false);
   const [pickError, setPickError] = useState(false);
   const [importError, setImportError] = useState(false);
-  const [progress, setProgress] = useState<{ completed: number; total: number } | null>(null);
+  const [progress, setProgress] = useState<{
+    completed: number;
+    total: number;
+    activity?: string;
+  } | null>(null);
   const [stopping, setStopping] = useState(false);
   const scanController = useRef<AbortController | null>(null);
   const importController = useRef<AbortController | null>(null);
@@ -138,8 +142,8 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
       await onConfirm(
         { directory, files, flatten: !hasSubfolders || !keepGroups },
         controller.signal,
-        (completed, total) => {
-          if (mounted.current) setProgress({ completed, total });
+        (completed, total, activity) => {
+          if (mounted.current) setProgress({ completed, total, activity });
         },
       );
       if (mounted.current) onCancelRef.current();
@@ -216,6 +220,7 @@ const ImportFromFolderDialog: React.FC<ImportFromFolderDialogProps> = ({
               detail={_('Importing {{completed}} of {{total}} books…', progress)}
               completed={progress.completed === progress.total ? undefined : progress.completed}
               total={progress.total}
+              activity={progress.activity}
             />
           ) : scan?.directory !== directory || scan.status === 'scanning' ? (
             <ImportProgress label={_('Scanning folder…')} />

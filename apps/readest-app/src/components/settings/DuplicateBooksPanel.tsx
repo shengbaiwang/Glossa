@@ -3,9 +3,7 @@ import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useLibraryStore } from '@/store/libraryStore';
 import { libraryIdentityIO } from '@/services/bookIdentity';
-import type { Book } from '@/types/book';
-import { safeLoadJSON } from '@/services/persistence';
-import { getLibraryFilename } from '@/utils/book';
+import { loadLibraryRows } from '@/services/libraryRepository';
 import {
   applyDuplicateChoice,
   previewDuplicateBooks,
@@ -30,7 +28,7 @@ export default function DuplicateBooksPanel({ onBack }: { onBack: () => void }) 
     setMessage(_('Checking local files…'));
     try {
       const io = libraryIdentityIO(appService);
-      const books = await safeLoadJSON<Book[]>(io, getLibraryFilename(), 'Books', []);
+      const books = await loadLibraryRows(io);
       const result = await previewDuplicateBooks(io, books, {
         signal: task.signal,
         onProgress: (current, total) => setMessage(`${current} / ${total}`),

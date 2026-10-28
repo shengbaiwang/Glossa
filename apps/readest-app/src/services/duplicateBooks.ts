@@ -1,11 +1,12 @@
 import type { Book } from '@/types/book';
 import type { FileSystem } from '@/types/system';
-import { getConfigFilename, getBookNavFilename, getLibraryFilename } from '@/utils/book';
+import { getConfigFilename, getBookNavFilename } from '@/utils/book';
 import { md5 } from '@/utils/md5';
 import { fingerprintBook, contentIdentity } from './bookIdentity';
 import { safeLoadJSON, safeSaveJSON } from './persistence';
 import { saveLibraryBooksUnlocked } from './libraryService';
 import { withLibraryLock } from './libraryLock';
+import { loadLibraryRows } from './libraryRepository';
 
 type DuplicateIO = Pick<
   FileSystem,
@@ -126,7 +127,7 @@ export async function applyDuplicateChoice(
   return withLibraryLock(io, async () => {
     if (!group.candidates.some(({ book }) => book.hash === keepHash))
       throw new Error('Invalid duplicate choice');
-    const library = await safeLoadJSON<Book[]>(io, getLibraryFilename(), 'Books', []);
+    const library = await loadLibraryRows(io);
     const changes: Book[] = [];
     const entries: UndoEntry[] = [];
     for (const preview of group.candidates) {
@@ -150,7 +151,7 @@ export async function applyDuplicateChoice(
       await safeSaveJSON(io, UNDO_FILE, 'Books', { version: 1, entries } satisfies UndoRecord);
       await saveLibraryBooksUnlocked(io, changes);
     }
-    return safeLoadJSON<Book[]>(io, getLibraryFilename(), 'Books', []);
+    return loadLibraryRows(io);
   });
 }
 
@@ -158,7 +159,7 @@ export async function applyDuplicateChoice(
 export async function undoDuplicateChoice(io: DuplicateIO): Promise<Book[]> {
   return withLibraryLock(io, async () => {
     const undo = await safeLoadJSON<UndoRecord | null>(io, UNDO_FILE, 'Books', null);
-    const library = await safeLoadJSON<Book[]>(io, getLibraryFilename(), 'Books', []);
+    const library = await loadLibraryRows(io);
     if (!undo || undo.version !== 1 || !Array.isArray(undo.entries)) return library;
     const changes: Book[] = [];
     for (const entry of undo.entries) {
@@ -174,6 +175,6 @@ export async function undoDuplicateChoice(io: DuplicateIO): Promise<Book[]> {
     }
     await saveLibraryBooksUnlocked(io, changes);
     await safeSaveJSON(io, UNDO_FILE, 'Books', null);
-    return safeLoadJSON<Book[]>(io, getLibraryFilename(), 'Books', []);
+    return loadLibraryRows(io);
   });
 }

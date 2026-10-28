@@ -23,6 +23,7 @@ import { requestStoragePermission } from '@/utils/permission';
 import Dialog from '@/components/Dialog';
 import Dropdown from '@/components/Dropdown';
 import MenuItem from '@/components/MenuItem';
+import { isLibraryDatabaseRegistered } from '@/services/libraryRepository';
 
 export const setMigrateDataDirDialogVisible = (visible: boolean) => {
   const dialog = document.getElementById('migrate_data_dir_window');
@@ -186,6 +187,18 @@ export const MigrateDataWindow = () => {
 
   const handleStartMigration = async () => {
     if (!appService || !currentDataDir || !newDataDir || !filesToMigrate.length) return;
+
+    // The native pool is shared across windows. Closing this window's handle
+    // cannot stop peer writes, so the old copy/delete flow cannot move this DB.
+    if (isLibraryDatabaseRegistered(appService)) {
+      setErrorMessage(
+        _(
+          'Changing this library’s data location is temporarily unsupported. Your current folder is kept.',
+        ),
+      );
+      setMigrationStatus('error');
+      return;
+    }
 
     setMigrationStatus('migrating');
     setErrorMessage('');

@@ -150,8 +150,7 @@ export const mergeBookMetadata = (local: Book, remote: Book): Book => {
   // The row's updatedAt is dominated by page-turn progress, so without this a
   // device that read the book after a peer's metadata edit keeps (and
   // re-publishes) its stale copy. An unstamped-vs-unstamped tie keeps the
-  // row-level result above (legacy behavior). Group membership and progress
-  // stay on the row clock (#4942, #5067).
+  // row-level result above (legacy behavior). Progress stays on the row clock.
   const localMetaMs = local.metadataUpdatedAt ?? 0;
   const remoteMetaMs = remote.metadataUpdatedAt ?? 0;
   if (localMetaMs !== remoteMetaMs) {
@@ -162,6 +161,14 @@ export const mergeBookMetadata = (local: Book, remote: Book): Book => {
     merged.metadata = winner.metadata ?? merged.metadata;
     merged.primaryLanguage = winner.primaryLanguage ?? merged.primaryLanguage;
     merged.metadataUpdatedAt = winner.metadataUpdatedAt;
+  }
+  const localGroupMs = local.groupUpdatedAt ?? 0;
+  const remoteGroupMs = remote.groupUpdatedAt ?? 0;
+  if (localGroupMs !== remoteGroupMs) {
+    const winner = remoteGroupMs > localGroupMs ? remote : local;
+    merged.groupId = winner.groupId;
+    merged.groupName = winner.groupName;
+    merged.groupUpdatedAt = winner.groupUpdatedAt;
   }
   return merged;
 };
@@ -189,4 +196,5 @@ export const shouldApplyRemoteBookMetadata = (local: Book, remote: Book): boolea
   ((remote.updatedAt ?? 0) > (local.updatedAt ?? 0) ||
     (remote.readingStatusUpdatedAt ?? 0) > (local.readingStatusUpdatedAt ?? 0) ||
     (remote.metadataUpdatedAt ?? 0) > (local.metadataUpdatedAt ?? 0) ||
+    (remote.groupUpdatedAt ?? 0) > (local.groupUpdatedAt ?? 0) ||
     (remote.duplicateUpdatedAt ?? 0) > (local.duplicateUpdatedAt ?? 0));

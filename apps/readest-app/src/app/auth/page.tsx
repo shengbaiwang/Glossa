@@ -222,9 +222,12 @@ export default function AuthPage() {
         </div>
         <div
           className={clsx(
-            'z-20 flex w-full flex-col items-center px-6 pb-12',
-            appService?.hasTrafficLight ? 'mt-24' : 'mt-16',
+            'glossa-auth-content flex w-full flex-1 shrink-0 flex-col items-center px-6',
+            appService?.hasTrafficLight ? 'pb-28 pt-28' : 'pb-20 pt-20',
           )}
+          style={{
+            paddingBottom: `max(${appService?.hasTrafficLight ? '7rem' : '5rem'}, ${safeAreaInsets?.bottom || 0}px)`,
+          }}
         >
           <AuthPanel
             supabaseClient={supabase}
@@ -236,7 +239,7 @@ export default function AuthPage() {
       </div>
     </div>
   ) : (
-    <div className='bg-base-100 flex min-h-screen flex-col items-center overflow-y-auto px-6 pb-12 pt-20'>
+    <div className='glossa-auth-content bg-base-100 flex min-h-screen flex-col items-center overflow-y-auto px-6 py-20'>
       <button
         aria-label={_('Go Back')}
         onClick={handleGoBack}

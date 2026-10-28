@@ -32,6 +32,29 @@ it('routes independent precise contents evidence through the shared worker queue
   expect(native.wait).toHaveBeenCalledOnce();
 });
 
+it('passes a verified source session through to the native worker', async () => {
+  await recognizePDFPages(
+    '/one.pdf',
+    'one',
+    [2],
+    new AbortController().signal,
+    undefined,
+    false,
+    false,
+    false,
+    'verified-session',
+  );
+  expect(native.start).toHaveBeenCalledWith(
+    '/one.pdf',
+    'one',
+    [2],
+    false,
+    false,
+    false,
+    'verified-session',
+  );
+});
+
 it('serializes reading, import and menu jobs without cancelling or stealing another job', async () => {
   let finish!: (value: unknown) => void;
   native.wait.mockImplementationOnce(

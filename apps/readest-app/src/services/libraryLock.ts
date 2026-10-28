@@ -60,9 +60,9 @@ async function withDatabaseLock<T>(
 export async function withLibraryLock<T>(
   fs: LockFileSystem,
   task: () => Promise<T>,
-  namespace: 'library' | 'book-data' = 'library',
+  namespace: 'library' | 'book-data' | 'settings' = 'library',
 ): Promise<T> {
-  const prefix = await fs.getPrefix('Books');
+  const prefix = (await fs.getPrefix?.(namespace === 'settings' ? 'Settings' : 'Books')) ?? '';
   const key = prefix ? `${namespace}:${prefix}` : fs;
   const previous = queues.get(key) ?? Promise.resolve();
   const next = previous

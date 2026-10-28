@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 export type DragKey = 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown';
 
@@ -21,9 +21,13 @@ export const useDrag = (
   const lastX = useRef(0);
   const lastY = useRef(0);
   const startTime = useRef(0);
+  const activeCleanup = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => activeCleanup.current?.(), []);
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
+      activeCleanup.current?.();
       isDragging.current = true;
 
       if ('touches' in e) {
@@ -86,12 +90,20 @@ export const useDrag = (
         }
       };
 
-      const handleEnd = (event: MouseEvent | TouchEvent) => {
+      const cleanupDrag = () => {
         isDragging.current = false;
-
         shield.remove();
         document.body.style.userSelect = '';
         document.documentElement.style.cursor = '';
+        window.removeEventListener('mousemove', handleMove);
+        window.removeEventListener('mouseup', handleEnd);
+        window.removeEventListener('touchmove', handleMove);
+        window.removeEventListener('touchend', handleEnd);
+        activeCleanup.current = null;
+      };
+
+      const handleEnd = (event: MouseEvent | TouchEvent) => {
+        cleanupDrag();
 
         let deltaX = 0;
         let deltaY = 0;
@@ -116,13 +128,9 @@ export const useDrag = (
         if (onDragEnd) {
           onDragEnd({ velocity, deltaT, clientX, clientY, deltaX, deltaY });
         }
-
-        window.removeEventListener('mousemove', handleMove);
-        window.removeEventListener('mouseup', handleEnd);
-        window.removeEventListener('touchmove', handleMove);
-        window.removeEventListener('touchend', handleEnd);
       };
 
+      activeCleanup.current = cleanupDrag;
       window.addEventListener('mousemove', handleMove, { passive: true });
       window.addEventListener('mouseup', handleEnd);
       window.addEventListener('touchmove', handleMove, { passive: true });

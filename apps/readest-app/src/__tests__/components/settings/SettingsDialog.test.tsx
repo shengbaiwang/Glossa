@@ -42,7 +42,11 @@ vi.mock('@/components/settings/FontPanel', () => ({
     <div data-testid='font-scope'>{bookKey || 'defaults'}</div>
   ),
 }));
-vi.mock('@/components/settings/ApplicationPanel', () => ({ default: () => null }));
+vi.mock('@/components/settings/ApplicationPanel', () => ({
+  default: ({ section }: { section: string }) => (
+    <div data-testid='application-panel'>{section}</div>
+  ),
+}));
 vi.mock('@/components/settings/PluginsPanel', () => ({
   default: ({ initialSettings }: { initialSettings?: string }) => (
     <p>Plugin controls {initialSettings}</p>
@@ -66,14 +70,16 @@ vi.mock('@/components/settings/ControlPanel', () => ({
   ),
 }));
 vi.mock('@/components/settings/LangPanel', () => ({ default: () => null }));
-vi.mock('@/components/settings/IntegrationsPanel', () => ({ default: () => null }));
+vi.mock('@/components/settings/IntegrationsPanel', () => ({
+  default: () => <div>Cloud sync providers</div>,
+}));
 vi.mock('@/components/settings/SpeechPanel', () => ({ default: () => <p>Speech preferences</p> }));
 vi.mock('@/components/AboutContent', () => ({ default: () => <p>Version and licenses</p> }));
 vi.mock('@/components/settings/MiscPanel', () => ({ default: () => null }));
 vi.mock('@/glossa/ui/ModelSettingsPanel', () => ({ default: () => null }));
 vi.mock('@/glossa/ui/PromptSettingsPanel', () => ({ default: () => null }));
 
-const panels = ['General', 'Reading', 'Library & Sync', 'Plugins', 'About'];
+const panels = ['Account', 'General', 'Reading', 'Library & Sync', 'Plugins', 'About'];
 beforeEach(() => {
   fixture.settings.officialModules = {};
   vi.stubGlobal(
@@ -107,14 +113,14 @@ it('keeps application categories in the global settings dialog', () => {
   }
 });
 
-it('offers five application categories with reading controls nested inside Reading', () => {
+it('offers six application categories with reading controls nested inside Reading', () => {
   render(<SettingsDialog bookKey='' />);
   const navigation = screen.getByRole('navigation', { name: 'Settings Panels' });
   expect(
     within(navigation)
       .getAllByRole('button')
       .map((button) => button.textContent),
-  ).toEqual(['General', 'Reading', 'Library & Sync', 'Plugins', 'About']);
+  ).toEqual(['Account', 'General', 'Reading', 'Library & Sync', 'Plugins', 'About']);
   expect(screen.queryByRole('button', { name: 'Font' })).toBeNull();
   fireEvent.click(within(navigation).getByRole('button', { name: 'Reading' }));
   fireEvent.click(screen.getByRole('button', { name: 'Layout' }));
@@ -122,6 +128,17 @@ it('offers five application categories with reading controls nested inside Readi
   expect(
     within(navigation).getByRole('button', { name: 'Reading' }).getAttribute('aria-pressed'),
   ).toBe('true');
+});
+
+it('separates account identity from cloud sync settings', () => {
+  render(<SettingsDialog bookKey='' />);
+  fireEvent.click(screen.getByRole('button', { name: 'Account' }));
+  expect(screen.getByTestId('application-panel').textContent).toBe('Account');
+  expect(screen.queryByText('Cloud sync providers')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Library & Sync' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Cloud Sync' }));
+  expect(screen.getByText('Cloud sync providers')).toBeTruthy();
+  expect(screen.queryByTestId('application-panel')).toBeNull();
 });
 
 it('clears book-specific panel state when switching to application defaults', () => {

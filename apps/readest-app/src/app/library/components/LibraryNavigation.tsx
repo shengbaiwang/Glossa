@@ -245,7 +245,6 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
                 disabled: folders.busy,
                 action: () => setMenu({ ...menu, moving: true }),
               },
-              { text: _('Delete group'), disabled: folders.busy, action: () => remove(menu.path) },
             ]
           : [{ text: _('New group'), disabled: folders.busy, action: () => begin('') }]),
         ...(folders.canUndo
@@ -254,6 +253,16 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
                 text: _('Undo'),
                 disabled: folders.busy,
                 action: () => void folders.undo(),
+              },
+            ]
+          : []),
+        ...(menu?.path
+          ? [
+              {
+                text: _('Delete group'),
+                destructive: true,
+                disabled: folders.busy,
+                action: () => remove(menu.path),
               },
             ]
           : []),

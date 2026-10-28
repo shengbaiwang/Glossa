@@ -45,7 +45,11 @@ it.each(
     const cancel = vi.fn();
     const view = render(
       type === 'files' ? (
-        <FileImportDialog state={{ completed: 2, total: 5 }} onCancel={cancel} onRetry={vi.fn()} />
+        <FileImportDialog
+          state={{ completed: 2, total: 5, activity: '正在核验 一本很长的原创资料名称.pdf' }}
+          onCancel={cancel}
+          onRetry={vi.fn()}
+        />
       ) : type === 'folder' ? (
         <ImportFromFolderDialog
           initialDirectory='/原创资料/本周阅读'
@@ -115,4 +119,36 @@ it.each(
     view.unmount();
   }
   expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(24);
+});
+
+it('updates individual completions and keeps an interrupted import available for retry', async () => {
+  const retry = vi.fn();
+  const cancel = vi.fn();
+  const view = render(
+    <FileImportDialog state={{ completed: 0, total: 5 }} onCancel={cancel} onRetry={retry} />,
+  );
+  for (const completed of [1, 2, 3]) {
+    view.rerender(
+      <FileImportDialog
+        state={{ completed, total: 5, activity: `正在保存 原创资料${completed}.epub` }}
+        onCancel={cancel}
+        onRetry={retry}
+      />,
+    );
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe(
+      String(completed * 20),
+    );
+    expect(screen.getByText(`正在保存 原创资料${completed}.epub`)).toBeVisible();
+  }
+  view.rerender(
+    <FileImportDialog
+      state={{ completed: 3, total: 5, error: true }}
+      onCancel={cancel}
+      onRetry={retry}
+    />,
+  );
+  expect(screen.getByRole('alert')).toBeVisible();
+  expect(screen.getByRole('progressbar').hasAttribute('aria-valuenow')).toBe(false);
+  await userEvent.click(screen.getByRole('button', { name: '重试' }));
+  expect(retry).toHaveBeenCalledOnce();
 });

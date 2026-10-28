@@ -23,6 +23,7 @@ import {
   BookOpen,
   Info,
   Volume,
+  CircleUserRound,
 } from '@/components/GlossaIcons';
 import { getDirFromUILanguage } from '@/utils/rtl';
 import { getCommandPaletteShortcut } from '@/services/environment';
@@ -42,6 +43,10 @@ import SettingsScopeControl from './SettingsScopeControl';
 import ReadingDisplayControls from './ReadingDisplayControls';
 import SpeechPanel from './SpeechPanel';
 import AboutContent from '@/components/AboutContent';
+import {
+  SettingsWindowResizeHandles,
+  useSettingsWindowGeometry,
+} from './useSettingsWindowGeometry';
 
 // Preserve existing reader shortcuts and remembered categories after consolidation.
 const pluginTarget = (panel: string | null): PluginSettingsTarget | null => {
@@ -51,6 +56,7 @@ const pluginTarget = (panel: string | null): PluginSettingsTarget | null => {
 };
 
 export type SettingsPanelType =
+  | 'Account'
   | 'General'
   | 'Data'
   | 'Plugins'
@@ -110,6 +116,7 @@ const SettingsDialog: React.FC<{
   const scope = explicitScope ?? settingsDialogScope ?? 'application';
   const reading = scope === 'reading';
   const panelBookKey = reading ? bookKey : '';
+  const windowGeometry = useSettingsWindowGeometry(!reading && !appService?.isMobile);
   const [pluginSettingsTarget, setPluginSettingsTarget] = useState<PluginSettingsTarget | null>(
     () =>
       pluginTarget(
@@ -119,6 +126,7 @@ const SettingsDialog: React.FC<{
       ),
   );
   const tabConfig: TabConfig[] = [
+    { tab: 'Account', icon: CircleUserRound, label: _('Account') },
     { tab: 'General', icon: Settings2, label: _('Startup & Window') },
     { tab: 'Data', icon: Database, label: _('Library Data') },
     { tab: 'Plugins', icon: Puzzle, label: _('Plugins') },
@@ -167,6 +175,7 @@ const SettingsDialog: React.FC<{
   }) as TabConfig[];
 
   const categories = [
+    { id: 'Account', label: _('Account'), icon: CircleUserRound, tabs: ['Account'] },
     { id: 'General', label: _('General'), icon: Settings2, tabs: ['General', 'Language', 'Theme'] },
     {
       id: 'Reading',
@@ -254,6 +263,7 @@ const SettingsDialog: React.FC<{
   const [resetFunctions, setResetFunctions] = useState<
     Record<SettingsPanelType, (() => void) | null>
   >({
+    Account: null,
     General: null,
     ReadingTheme: null,
     Dictionaries: null,
@@ -306,6 +316,7 @@ const SettingsDialog: React.FC<{
           : 'ReadingTheme',
         speech: 'Speech',
         dictionaries: 'Dictionaries',
+        account: 'Account',
         general: 'General',
         plugins: 'Plugins',
         data: 'Data',
@@ -438,6 +449,8 @@ const SettingsDialog: React.FC<{
         reading ? 'glossa-reader-settings' : 'glossa-application-settings',
       )}
       contentClassName='!px-4 sm:!px-5'
+      boxRef={windowGeometry.boxRef}
+      boxAddons={<SettingsWindowResizeHandles controller={windowGeometry} />}
       bgClassName={reading ? 'sm:!bg-black/20' : 'sm:!bg-black/50'}
       boxClassName={clsx(
         'overflow-hidden not-eink:bg-base-200',
@@ -449,7 +462,11 @@ const SettingsDialog: React.FC<{
       // to keep a visible, theme-aware track on every platform.
       useOverlayScroll
       header={
-        <div className='glossa-settings-heading'>
+        <div
+          className='glossa-settings-heading'
+          data-settings-drag-handle={!reading ? 'move' : undefined}
+          onMouseDown={windowGeometry.handleMoveStart}
+        >
           <div className='glossa-dialog-title'>
             {reading ? _('Reading Appearance') : _('Settings')}
           </div>
@@ -557,7 +574,7 @@ const SettingsDialog: React.FC<{
               )}
             </>
           )}
-          {(activePanel === 'General' || activePanel === 'Data') && (
+          {(activePanel === 'Account' || activePanel === 'General' || activePanel === 'Data') && (
             <ApplicationPanel section={activePanel} />
           )}
           {activePanel === 'Plugins' && (
@@ -624,12 +641,7 @@ const SettingsDialog: React.FC<{
               <AboutContent />
             </>
           )}
-          {activePanel === 'Integrations' && (
-            <>
-              <ApplicationPanel section='Account' />
-              <IntegrationsPanel onSyncLibrary={onSyncLibrary} />
-            </>
-          )}
+          {activePanel === 'Integrations' && <IntegrationsPanel onSyncLibrary={onSyncLibrary} />}
           {activePanel === 'Custom' && (
             <MiscPanel
               key={panelBookKey}

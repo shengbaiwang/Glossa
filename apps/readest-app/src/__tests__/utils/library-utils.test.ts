@@ -11,6 +11,8 @@ import {
   ensureLibraryGroupByType,
   resolveEffectivePrimarySort,
   resolveEffectiveSecondarySort,
+  resolveLibraryDisplay,
+  pickFresherGroup,
   findGroupById,
   getGroupDisplayName,
   expandBookshelfSelection,
@@ -20,8 +22,45 @@ import {
   withTimeRemainingLast,
 } from '../../app/library/utils/libraryUtils';
 import { Book, BooksGroup } from '../../types/book';
-import { LibraryGroupByType, LibrarySortByType } from '../../types/settings';
+import { LibraryGroupByType, LibrarySortByType, SystemSettings } from '../../types/settings';
+import { DEFAULT_SYSTEM_SETTINGS } from '@/services/constants';
 import { BookMetadata } from '@/libs/document';
+
+it('selects the independently fresher group and preserves unstamped legacy ties', () => {
+  expect(
+    pickFresherGroup(
+      { groupId: 'new', groupUpdatedAt: 200 },
+      { groupId: 'old', groupUpdatedAt: 100 },
+    ),
+  ).toEqual({ groupId: 'new', groupName: undefined, groupUpdatedAt: 200 });
+  expect(
+    pickFresherGroup({ groupId: 'old', groupUpdatedAt: 100 }, { groupUpdatedAt: 300 }),
+  ).toEqual({ groupId: undefined, groupName: undefined, groupUpdatedAt: 300 });
+  expect(pickFresherGroup({ groupId: 'a' }, { groupId: 'b' })).toBeNull();
+});
+
+describe('effective library display state', () => {
+  it('ignores invalid URL sort values without disabling the stored automatic defaults', () => {
+    const settings = { ...DEFAULT_SYSTEM_SETTINGS } as SystemSettings;
+    expect(
+      resolveLibraryDisplay(settings, new URLSearchParams('groupBy=series&sort=obsolete')).sortBy,
+    ).toBe(LibrarySortByType.Series);
+    expect(
+      resolveLibraryDisplay(settings, new URLSearchParams('groupBy=author&thenSort=obsolete'))
+        .thenSortBy,
+    ).toBe(LibrarySortByType.Series);
+  });
+
+  it('keeps valid URL choices explicit, including no secondary sort', () => {
+    const settings = { ...DEFAULT_SYSTEM_SETTINGS } as SystemSettings;
+    expect(
+      resolveLibraryDisplay(
+        settings,
+        new URLSearchParams('groupBy=series&sort=title&thenSort=none'),
+      ),
+    ).toMatchObject({ sortBy: LibrarySortByType.Title, thenSortBy: 'none' });
+  });
+});
 
 // Helper to create mock books with minimal required fields
 const createMockBook = (

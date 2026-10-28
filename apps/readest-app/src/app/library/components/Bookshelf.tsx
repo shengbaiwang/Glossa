@@ -1,3 +1,5 @@
+import { getLibraryCoverWidth } from '@/utils/libraryDisplaySettings';
+import { resolveLibraryDisplay } from '../utils/libraryUtils';
 import clsx from 'clsx';
 import { Plus, SearchCheck, SearchX } from '@/components/GlossaIcons';
 import * as React from 'react';
@@ -40,16 +42,11 @@ import {
   createBookSorter,
   createGroupSorter,
   createWithinGroupSorter,
-  ensureLibraryGroupByType,
-  ensureLibrarySortByType,
-  ensureLibrarySecondarySortByType,
   expandBookshelfSelection,
   getBookSortValue,
   getGroupSortValue,
   getLibraryCategoryLabel,
   compareSortValues,
-  resolveEffectivePrimarySort,
-  resolveEffectiveSecondarySort,
   resolveCurrentShelfBooks,
   selectDownloadableBooks,
   selectRecentShelfBooks,
@@ -108,9 +105,7 @@ interface BookshelfProps {
  * every Bookshelf render (which would break Virtuoso's component identity).
  */
 type BookshelfListContext = {
-  autoColumns: boolean;
-  fixedColumns: number;
-  coverWidth?: number;
+  coverWidth: number;
   listScale: number;
   /**
    * The recently-read shelf, rendered in the Virtuoso header so it scrolls with
@@ -153,12 +148,7 @@ const BookshelfGridList: GridComponents<BookshelfListContext>['List'] = React.fo
     className={clsx(BOOKSHELF_GRID_CLASSES, className)}
     style={{
       ...style,
-      gridTemplateColumns:
-        context && !context.autoColumns
-          ? context.coverWidth
-            ? `repeat(auto-fill, minmax(min(${context.coverWidth}px, 100%), 1fr))`
-            : `repeat(${context.fixedColumns}, minmax(0, 1fr))`
-          : undefined,
+      gridTemplateColumns: `repeat(auto-fill, minmax(0, min(${context?.coverWidth ?? 156}px, 100%)))`,
     }}
   >
     {children}
@@ -185,7 +175,7 @@ const BookshelfLinearList: Components<unknown, BookshelfListContext>['List'] = R
 BookshelfLinearList.displayName = 'BookshelfLinearList';
 
 const BookshelfHeader = ({ context }: { context?: BookshelfListContext }) => (
-  <div className='transform-wrapper'>
+  <div className='glossa-shelf-header transform-wrapper'>
     {context?.libraryTitle && (
       <div className='glossa-library-heading'>
         <h1>{context.libraryTitle}</h1>
@@ -254,23 +244,12 @@ const Bookshelf: React.FC<BookshelfProps> = ({
 
   const groupId = searchParams?.get('group') || '';
   const queryTerm = searchParams?.get('q')?.trim() || null;
-  const viewMode = searchParams?.get('view') || settings.libraryViewMode;
-  const storedSortBy = ensureLibrarySortByType(searchParams?.get('sort'), settings.librarySortBy);
-  const sortOrder = searchParams?.get('order') || (settings.librarySortAscending ? 'asc' : 'desc');
-  const groupBy = ensureLibraryGroupByType(searchParams?.get('groupBy'), settings.libraryGroupBy);
-  const sortByAuto = settings.librarySortByAuto ?? true;
-  const sortBy = resolveEffectivePrimarySort(storedSortBy, groupBy, sortByAuto);
-  const thenSortByRaw = ensureLibrarySecondarySortByType(
-    searchParams?.get('thenSort'),
-    settings.libraryThenSortBy ?? 'none',
-  );
-  const thenSortBy = resolveEffectiveSecondarySort(thenSortByRaw, groupBy);
-  const thenSortOrder =
-    searchParams?.get('thenOrder') ||
-    ((settings.libraryThenSortAscending ?? true) ? 'asc' : 'desc');
+  const { viewMode, sortBy, groupBy, thenSortBy, isAscending, isThenAscending, coverFit } =
+    resolveLibraryDisplay(settings, searchParams);
+  const sortOrder = isAscending ? 'asc' : 'desc';
+  const thenSortOrder = isThenAscending ? 'asc' : 'desc';
   const showTimeRemaining =
     sortBy === LibrarySortByType.TimeRemaining || thenSortBy === LibrarySortByType.TimeRemaining;
-  const coverFit = searchParams?.get('cover') || settings.libraryCoverFit;
 
   const [loading, setLoading] = useState(false);
   const [bookIdsToDelete, setBookIdsToDelete] = useState<string[]>([]);
@@ -332,13 +311,6 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           params.set(key, value);
         }
       });
-
-      if (params.get('sort') === LibrarySortByType.Updated) params.delete('sort');
-      if (params.get('order') === 'desc') params.delete('order');
-      if (params.get('thenOrder') === 'asc') params.delete('thenOrder');
-      if (params.get('groupBy') === settings.libraryGroupBy) params.delete('groupBy');
-      if (params.get('cover') === 'crop') params.delete('cover');
-      if (params.get('view') === 'grid') params.delete('view');
 
       const newParamString = params.toString();
       const currentParamString = window.location.search.slice(1);
@@ -676,6 +648,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   // OverlayScrollbars + Virtuoso integration: Virtuoso manages its own
   // scroller; OverlayScrollbars wraps it for overlay scrollbar rendering.
   const osRootRef = useRef<HTMLDivElement>(null);
+  const selectionRootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLElement | null>(null);
   const [scroller, setScroller] = useState<HTMLElement | null>(null);
   const [initialize, osInstance] = useOverlayScrollbars({
@@ -833,9 +806,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
 
   const listContext = useMemo<BookshelfListContext>(
     () => ({
-      autoColumns: settings.libraryAutoColumns,
-      fixedColumns: settings.libraryColumns,
-      coverWidth: settings.libraryCoverWidth,
+      coverWidth: getLibraryCoverWidth(settings),
       listScale: settings.libraryListScale ?? 100,
       recentShelfHeader,
       collectionTitle: queryTerm
@@ -867,8 +838,6 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           : undefined,
     }),
     [
-      settings.libraryAutoColumns,
-      settings.libraryColumns,
       settings.libraryCoverWidth,
       settings.libraryListScale,
       recentShelfHeader,
@@ -956,7 +925,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   );
 
   const marquee = useLibraryMarquee({
-    root: osRootRef,
+    root: selectionRootRef,
     scroller: scrollRef,
     selected: selectedBooks,
     selecting: isSelectMode,
@@ -1152,58 +1121,62 @@ const Bookshelf: React.FC<BookshelfProps> = ({
         // React swap children inside it caused NotFoundError crashes on
         // WebKit when a search was cleared.
         <div
-          ref={osRootRef}
+          ref={selectionRootRef}
           {...marquee.handlers}
-          data-overlayscrollbars-initialize=''
-          className='min-h-0 flex-1'
+          className={clsx('min-h-0 flex-1', hasItems && isGridMode && 'glossa-library-grid-frame')}
         >
-          {!hasItems && (
-            <>
-              <BookshelfHeader context={listContext} />
-              <div className='glossa-library-no-results' role='status'>
-                <SearchX size={28} aria-hidden='true' />
-                <h2>
-                  {_(
-                    groupBy === LibraryGroupByType.Group && !queryTerm
-                      ? 'This folder is empty'
-                      : 'No books found',
+          <div ref={osRootRef} data-overlayscrollbars-initialize='' className='h-full'>
+            {!hasItems && (
+              <>
+                <BookshelfHeader context={listContext} />
+                <div className='glossa-library-no-results' role='status'>
+                  <SearchX size={28} aria-hidden='true' />
+                  <h2>
+                    {_(
+                      groupBy === LibraryGroupByType.Group && !queryTerm
+                        ? 'This folder is empty'
+                        : 'No books found',
+                    )}
+                  </h2>
+                  {groupBy === LibraryGroupByType.Group && !queryTerm && (
+                    <button
+                      type='button'
+                      className='glossa-folder-action'
+                      onClick={(event) => handleImportBooks(event.currentTarget)}
+                    >
+                      <Plus size={18} />
+                      {_('Import Books')}
+                    </button>
                   )}
-                </h2>
-                {groupBy === LibraryGroupByType.Group && !queryTerm && (
-                  <button
-                    type='button'
-                    className='glossa-folder-action'
-                    onClick={(event) => handleImportBooks(event.currentTarget)}
-                  >
-                    <Plus size={18} />
-                    {_('Import Books')}
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-          {!contentSearch?.query.trim() && hasItems && isGridMode && (
-            <VirtuosoGrid<unknown, BookshelfListContext>
-              overscan={200}
-              totalCount={sortedBookshelfItems.length}
-              components={GRID_VIRTUOSO_COMPONENTS}
-              context={listContext}
-              computeItemKey={computeItemKey}
-              itemContent={renderBookshelfItem}
-              scrollerRef={handleScrollerRef}
-            />
-          )}
-          {!contentSearch?.query.trim() && hasItems && !isGridMode && (
-            <Virtuoso<unknown, BookshelfListContext>
-              overscan={200}
-              totalCount={sortedBookshelfItems.length}
-              components={LIST_VIRTUOSO_COMPONENTS}
-              context={listContext}
-              computeItemKey={computeItemKey}
-              itemContent={renderBookshelfItem}
-              scrollerRef={handleScrollerRef}
-            />
-          )}
+                </div>
+              </>
+            )}
+            {!contentSearch?.query.trim() && hasItems && isGridMode && (
+              <VirtuosoGrid<unknown, BookshelfListContext>
+                className='glossa-library-grid-scroller'
+                // Keep a fixed render buffer while resizing changes the column count.
+                // Directional overscan can alternate bounds during Virtuoso's size update.
+                increaseViewportBy={200}
+                totalCount={sortedBookshelfItems.length}
+                components={GRID_VIRTUOSO_COMPONENTS}
+                context={listContext}
+                computeItemKey={computeItemKey}
+                itemContent={renderBookshelfItem}
+                scrollerRef={handleScrollerRef}
+              />
+            )}
+            {!contentSearch?.query.trim() && hasItems && !isGridMode && (
+              <Virtuoso<unknown, BookshelfListContext>
+                overscan={200}
+                totalCount={sortedBookshelfItems.length}
+                components={LIST_VIRTUOSO_COMPONENTS}
+                context={listContext}
+                computeItemKey={computeItemKey}
+                itemContent={renderBookshelfItem}
+                scrollerRef={handleScrollerRef}
+              />
+            )}
+          </div>
         </div>
       )}
       {marquee.rect && (
@@ -1237,6 +1210,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       {showDeleteAlert && (
         <ModalPortal>
           <DeleteConfirmAlert
+            destructive
             title={_(groupPathsToDelete.length ? 'Delete selection?' : 'Delete books?')}
             message={
               groupPathsToDelete.length

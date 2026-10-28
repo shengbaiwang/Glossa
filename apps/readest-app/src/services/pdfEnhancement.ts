@@ -47,6 +47,7 @@ const cacheSchema = z.object({
   outline: z.array(outlineEntrySchema).max(1000).nullable(),
   revision: z.number().int().nonnegative(),
   generator: z.string().max(80).nullable().optional(),
+  session: z.string().max(80).nullish(),
 });
 export type PDFCache = z.infer<typeof cacheSchema>;
 const statusSchema = z.object({
@@ -78,9 +79,18 @@ export const openPDFCache = async (
   source: string,
   create = false,
   owner?: PDFCacheOwner,
+  withSession = false,
 ): Promise<PDFCache | null> => {
-  const value = await call('pdf_open_cache', { source, create, ...(owner ? { owner } : {}) });
+  const value = await call('pdf_open_cache', {
+    source,
+    create,
+    withSession,
+    ...(owner ? { owner } : {}),
+  });
   return value === null ? null : cacheSchema.parse(value);
+};
+export const releasePDFSourceSession = async (cache: PDFCache | null) => {
+  if (cache?.session) await call('pdf_release_source_session', { session: cache.session });
 };
 export const parseOCRPage = (value: unknown, index: number): OCRPage | null => {
   const parsed = pageSchema.safeParse(value);
@@ -110,15 +120,19 @@ export const startPDFOCR = async (
   detect = false,
   contents = false,
   heading = false,
+  session?: string,
 ) =>
   statusSchema.parse(
     await call('pdf_start_ocr', {
       source,
       cacheId,
       pages,
-      ...(detect ? { detect } : {}),
-      ...(contents ? { contents } : {}),
-      ...(heading ? { heading } : {}),
+      options: {
+        ...(detect ? { detect } : {}),
+        ...(contents ? { contents } : {}),
+        ...(heading ? { heading } : {}),
+        ...(session ? { session } : {}),
+      },
     }),
   );
 export const getPDFOCRStatus = async (cacheId: string): Promise<PDFOCRStatus | null> => {

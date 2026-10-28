@@ -10,6 +10,7 @@ import type { RemovalMode } from './bookRemovalState';
 import type { SystemSettings } from '@/types/settings';
 import type { TranslationFunc } from '@/hooks/useTranslation';
 import { getEnabledFileSyncBackends, cloudProvidersDisplayName } from './sync/cloudSyncProvider';
+import { inheritLibraryDatabase } from './libraryRepository';
 
 export function removalScope(settings: SystemSettings, _: TranslationFunc, local = false): string {
   if (local) return _('External originals are kept.');
@@ -43,11 +44,16 @@ export function removalFeedback(
   return parts.join(' · ');
 }
 
-export const bookRemovalIO = (app: AppService) => ({
-  getPrefix: () => app.resolveFilePath('', 'Books'),
-  readFile: app.readFile.bind(app),
-  writeFile: app.writeFile.bind(app),
-});
+export const bookRemovalIO = (app: AppService) => {
+  const io = {
+    getPrefix: () => app.resolveFilePath('', 'Books'),
+    exists: app.exists?.bind(app),
+    readFile: app.readFile.bind(app),
+    writeFile: app.writeFile.bind(app),
+  };
+  inheritLibraryDatabase(app, io);
+  return io;
+};
 export const cleanRemovedBook =
   (app: AppService) => async (book: Book, mode: 'purge' | 'local') => {
     if (mode === 'purge') {

@@ -580,6 +580,7 @@
   "The new data directory must be different from the current one.": "新的數據目錄必須與當前目錄不同。",
   "Migration failed: {{error}}": "遷移失敗: {{error}}",
   "Change Data Location": "更改數據位置",
+  "Changing this library’s data location is temporarily unsupported. Your current folder is kept.": "目前暫不支援更改書庫資料位置，原目錄已保留。",
   "Current Data Location": "當前數據位置",
   "Total size: {{size}}": "總大小: {{size}}",
   "Calculating file info...": "正在計算文件信息...",

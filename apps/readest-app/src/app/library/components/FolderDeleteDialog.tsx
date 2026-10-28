@@ -16,6 +16,7 @@ export default function FolderDeleteDialog({
   return (
     <ModalPortal>
       <DeleteConfirmAlert
+        destructive
         title={_('Delete “{{name}}”?', { name: folderLabel(path) })}
         message={_('Books and subgroups move up one level. Reading data is kept.')}
         books={[{ hash: path, title: path }]}

@@ -1,3 +1,8 @@
+import {
+  mergeLibraryDisplay,
+  pickLibraryDisplay,
+  type LibraryDisplaySettings,
+} from './libraryDisplaySettings';
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { isTauriAppPlatform } from '@/services/environment';
@@ -17,8 +22,7 @@ import { OFFICIAL_MODULES, type OfficialModulePreferences } from '@/glossa/modul
  *
  * To keep windows consistent, the persisting window broadcasts its global
  * setting blobs and every other window adopts them, so a later save no longer
- * carries stale globals. Only `globalViewSettings` / `globalReadSettings` —
- * the truly-global objects edited in the Settings dialog — are synced; every
+ * carries stale globals. Reading globals and clocked library display preferences are synced; every
  * device/window-local field (filesystem paths, `lastOpenBooks`, sync cursors,
  * screen brightness, ...) is left untouched on the receiving window. Explicit
  * module switches broadcast only the edited boolean flags; explicit
@@ -55,6 +59,7 @@ export interface CloudSyncProviderFlags {
 }
 
 export interface SettingsSyncPayload {
+  libraryDisplay?: LibraryDisplaySettings;
   /** Label of the window that persisted the change, so receivers ignore their own echo. */
   sourceLabel: string;
   globalViewSettings: SystemSettings['globalViewSettings'];
@@ -83,6 +88,7 @@ export const mergeSyncedGlobalSettings = (
   local: SystemSettings,
   payload: Pick<
     SettingsSyncPayload,
+    | 'libraryDisplay'
     | 'globalViewSettings'
     | 'globalReadSettings'
     | 'cloudSyncProviders'
@@ -128,7 +134,7 @@ export const mergeSyncedGlobalSettings = (
       };
     }
   }
-  return merged;
+  return payload.libraryDisplay ? mergeLibraryDisplay(merged, payload.libraryDisplay) : merged;
 };
 
 /**
@@ -149,6 +155,7 @@ export const broadcastGlobalSettings = async (
   try {
     const payload: SettingsSyncPayload = {
       sourceLabel: getCurrentWindow().label,
+      libraryDisplay: pickLibraryDisplay(settings),
       globalViewSettings: settings.globalViewSettings,
       globalReadSettings: settings.globalReadSettings,
     };

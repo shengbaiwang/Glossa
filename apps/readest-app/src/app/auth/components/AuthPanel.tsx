@@ -29,10 +29,19 @@ export default function AuthPanel({
   const names = { google: 'Google', apple: 'Apple', azure: 'Microsoft' };
 
   return (
-    <div className='text-base-content flex w-full max-w-sm flex-col items-center gap-6'>
-      <div className='flex flex-col items-center gap-3 text-center'>
-        <Image src='/icon.png' alt='' width={48} height={48} className='eink-bordered rounded-xl' />
-        <h1 className='text-xl font-semibold tracking-tight'>{_('Sign in to Glossa')}</h1>
+    <div className='glossa-auth-panel text-base-content my-auto flex w-full max-w-sm flex-col items-center gap-7'>
+      <div className='flex flex-col items-center gap-5 pb-1 text-center'>
+        <span className='glossa-auth-icon eink-bordered inline-flex h-20 w-20 overflow-hidden rounded-[20px] sm:h-24 sm:w-24'>
+          <Image
+            src='/icon.png'
+            alt=''
+            width={136}
+            height={136}
+            priority
+            className='h-full w-full scale-[1.42]'
+          />
+        </span>
+        <h1 className='text-2xl font-semibold tracking-tight'>{_('Sign in to Glossa')}</h1>
       </div>
       {!configured ? (
         <div className='w-full space-y-4 text-center'>

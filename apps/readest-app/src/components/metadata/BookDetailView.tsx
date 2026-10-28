@@ -161,16 +161,6 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
                 <MdOutlineCloudUpload className='text-base-content' />
               </button>
             )}
-            {onDelete && (
-              <button
-                type='button'
-                title={_('Delete book')}
-                aria-label={_('Delete book')}
-                onClick={onDelete}
-              >
-                <MdOutlineDelete />
-              </button>
-            )}
             <Dropdown
               label={_('More Actions')}
               className='dropdown-bottom dropdown-center flex justify-center'
@@ -424,6 +414,19 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
           )}
         </div>
       </div>
+      {onDelete && (
+        <div className='border-base-300/60 mt-6 border-t pt-4'>
+          <button
+            type='button'
+            aria-label={_('Delete book')}
+            className='glossa-delete-action btn btn-ghost min-h-11 w-full gap-2'
+            onClick={onDelete}
+          >
+            <MdOutlineDelete aria-hidden='true' />
+            {_('Delete book')}
+          </button>
+        </div>
+      )}
     </div>
   );
 };

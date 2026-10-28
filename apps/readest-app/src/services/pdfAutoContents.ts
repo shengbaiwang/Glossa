@@ -6,6 +6,7 @@ import {
   isPDFSizeAtLeast,
   OCRPageText,
   openPDFCache,
+  releasePDFSourceSession,
   readOCRPage,
   savePDFOutline,
   needsOCRRecovery,
@@ -723,10 +724,12 @@ async function prepareContents(
     await report('completed');
     return result;
   };
+  let openedCache: Awaited<ReturnType<typeof openPDFCache>> = null;
   try {
     await report('running');
     check();
-    const cache = await bounded(openPDFCache(source, true, options.owner));
+    const cache = await bounded(openPDFCache(source, true, options.owner, true));
+    openedCache = cache;
     check();
     if (!cache || !book.getPDFText) return unavailable('pdf_contents_unavailable');
     // A user's saved outline always wins, including a deliberately empty one.
@@ -778,6 +781,27 @@ async function prepareContents(
     };
     await report('running');
     const available = new Set(cache.pages);
+    const recognizeNative = (
+      sourcePath: string,
+      cacheId: string,
+      indices: number[],
+      taskSignal: AbortSignal,
+      onStatus: Parameters<typeof recognizePDFPages>[4] = () => {},
+      detect = false,
+      contents = false,
+      heading = false,
+    ) =>
+      recognizePDFPages(
+        sourcePath,
+        cacheId,
+        indices,
+        taskSignal,
+        onStatus,
+        detect,
+        contents,
+        heading,
+        cache.session ?? undefined,
+      );
     const matchers = new Map<string, ReturnType<typeof headingMatcher>>();
     const matchesHeading = (text: string, title: string, ocr = false) => {
       let matcher = matchers.get(text);
@@ -812,7 +836,7 @@ async function prepareContents(
         const previousStage = stage;
         await phase('ocr');
         const done = await perform('fine_ocr', index, () =>
-          recognizePDFPages(source, cache.id, [index], controller.signal, undefined, false, true),
+          recognizeNative(source, cache.id, [index], controller.signal, undefined, false, true),
         );
         check();
         if (done.state !== 'completed') throw new Error(done.error ?? 'pdf_recognition_failed');
@@ -846,7 +870,7 @@ async function prepareContents(
         const previousStage = stage;
         await phase('ocr');
         const done = await perform('heading_ocr', index, () =>
-          recognizePDFPages(
+          recognizeNative(
             source,
             cache.id,
             [index],
@@ -926,7 +950,7 @@ async function prepareContents(
       const previousStage = stage;
       await phase('ocr');
       const done = await perform('fine_ocr', missing[0]!, () =>
-        recognizePDFPages(source, cache.id, missing, controller.signal),
+        recognizeNative(source, cache.id, missing, controller.signal),
       );
       check();
       if (done.state !== 'completed') throw new Error(done.error ?? 'pdf_recognition_failed');
@@ -967,7 +991,7 @@ async function prepareContents(
         const previousStage = stage;
         await phase('ocr');
         const done = await perform('detection_ocr', batch[0]!, () =>
-          recognizePDFPages(source, cache.id, batch, controller.signal, undefined, true),
+          recognizeNative(source, cache.id, batch, controller.signal, undefined, true),
         );
         check();
         if (done.state !== 'completed') throw new Error(done.error ?? 'pdf_recognition_failed');
@@ -1741,5 +1765,6 @@ async function prepareContents(
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', abort);
+    await releasePDFSourceSession(openedCache).catch(() => {});
   }
 }

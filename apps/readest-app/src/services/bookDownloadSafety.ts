@@ -15,6 +15,8 @@ const unavailable = () =>
   );
 
 async function fingerprint(app: AppService, path: string, base: BaseDir) {
+  const native = await app.fingerprint?.(path, base);
+  if (native) return native;
   const file = await app.openFile(path, base);
   try {
     return await fingerprintFile(file);

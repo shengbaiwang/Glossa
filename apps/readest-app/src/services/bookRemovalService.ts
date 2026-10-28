@@ -2,7 +2,7 @@ import type { Book } from '@/types/book';
 import { activateBookData } from './bookDataLifecycle';
 import type { FileSystem } from '@/types/system';
 import { mergeBookMetadata } from './sync/file/merge';
-import { getLibraryFilename } from '@/utils/book';
+import { loadLibraryRows } from './libraryRepository';
 import { withLibraryLock } from './libraryLock';
 import { saveLibraryBooksUnlocked } from './libraryService';
 import {
@@ -27,7 +27,7 @@ export interface RemovalResult {
 export async function loadRemovalBooks(io: RemovalIO): Promise<Book[]> {
   let raw: unknown;
   try {
-    raw = JSON.parse((await io.readFile(getLibraryFilename(), 'Books', 'text')) as string);
+    raw = await loadLibraryRows(io, { strict: true });
   } catch {
     throw new Error('Could not verify the library. Reload before removing books.');
   }
@@ -180,6 +180,7 @@ export async function runRemoval(
                 tags: undefined,
                 groupId: undefined,
                 groupName: undefined,
+                groupUpdatedAt: Math.max(Date.now(), (book.groupUpdatedAt ?? 0) + 1),
                 metadata: undefined,
                 readingStatus: undefined,
               }

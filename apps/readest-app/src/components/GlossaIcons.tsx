@@ -35,8 +35,9 @@ export function LibraryBig(props: GlossaIconProps) {
 export function BookSeries(props: GlossaIconProps) {
   return (
     <Icon {...props}>
-      <rect x='4' y='7' width='12' height='13' rx='2' />
-      <path d='M8 4h10a2 2 0 0 1 2 2v10M8 7v13' />
+      <path d='M8 4.5h9a2.5 2.5 0 0 1 2.5 2.5v9' />
+      <rect x='4.5' y='7.5' width='12' height='12' rx='2.5' />
+      <path d='M8.5 8v11' />
     </Icon>
   );
 }
@@ -420,8 +421,8 @@ export function Folder(props: GlossaIconProps) {
 export function Users(props: GlossaIconProps) {
   return (
     <Icon {...props}>
-      <circle cx='9.5' cy='8' r='3' />
-      <path d='M3.5 19v-1a6 6 0 0 1 12 0v1M16 5.5a3 3 0 0 1 0 5.5m2 3a5 5 0 0 1 2.5 4.5v.5' />
+      <circle cx='9' cy='7.5' r='3' />
+      <path d='M3.5 19v-1.5a5.5 5.5 0 0 1 11 0V19M15.5 4.8a2.8 2.8 0 0 1 0 5.4M17 12.5c2.3.7 3.5 2.5 3.5 5V19' />
     </Icon>
   );
 }
@@ -429,7 +430,8 @@ export function Users(props: GlossaIconProps) {
 export function Tags(props: GlossaIconProps) {
   return (
     <Icon {...props}>
-      <path d='M4 5h7l9 9-7 7-9-9V5ZM8 9h.01' />
+      <path d='M6.5 4.5h3.7a2.5 2.5 0 0 1 1.8.7l7 7a2 2 0 0 1 0 2.8l-4 4a2 2 0 0 1-2.8 0l-7-7a2.5 2.5 0 0 1-.7-1.8V6.5a2 2 0 0 1 2-2Z' />
+      <circle cx='8' cy='8' r='1' fill='currentColor' stroke='none' />
     </Icon>
   );
 }

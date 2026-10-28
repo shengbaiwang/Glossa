@@ -1,6 +1,7 @@
 import { Book, BooksGroup, ReadingStatus } from '@/types/book';
 import {
   LibraryGroupByType,
+  SystemSettings,
   LibrarySecondarySortByType,
   LibrarySortByType,
 } from '@/types/settings';
@@ -88,13 +89,16 @@ export const resolveEffectivePrimarySort = (
  * - groupBy=Author and stored='none'     -> Series
  * - everything else                      -> 'none'
  *
+ * An explicit selection (isAuto=false) preserves even "none".
  * groupBy=Series doesn't default to anything because `createWithinGroupSorter`
  * already orders by `seriesIndex` for series groups.
  */
 export const resolveEffectiveSecondarySort = (
   secondary: LibrarySecondarySortByType,
   groupBy: LibraryGroupByType,
+  isAuto = true,
 ): LibrarySecondarySortByType => {
+  if (!isAuto) return secondary;
   if (secondary !== 'none') return secondary;
   if (groupBy === LibraryGroupByType.Author) return LibrarySortByType.Series;
   return 'none';
@@ -921,6 +925,21 @@ export const pickFresherCover = (local: CoverFields, synced: CoverFields): Cover
 
 type MetadataFields = Pick<Book, 'title' | 'author' | 'tags' | 'metadata' | 'metadataUpdatedAt'>;
 
+type GroupFields = Pick<Book, 'groupId' | 'groupName' | 'groupUpdatedAt'>;
+
+/** Reading activity must not undo a newer explicit move or group rename. */
+export const pickFresherGroup = (local: GroupFields, synced: GroupFields): GroupFields | null => {
+  const localMs = local.groupUpdatedAt ?? 0;
+  const syncedMs = synced.groupUpdatedAt ?? 0;
+  if (localMs === syncedMs) return null;
+  const winner = localMs > syncedMs ? local : synced;
+  return {
+    groupId: winner.groupId,
+    groupName: winner.groupName,
+    groupUpdatedAt: winner.groupUpdatedAt,
+  };
+};
+
 /**
  * Field-level last-writer-wins for the metadata group (title, author, tags,
  * metadata), by `metadataUpdatedAt` (issue #5438). Mirrors
@@ -962,3 +981,37 @@ export const getBookContextMenuItemIds = (book: Book): BookContextMenuItemId[] =
   ids.push('delete');
   return ids;
 };
+
+/** URL shortcuts and restored pages share exactly the same effective display state as the menu. */
+export function resolveLibraryDisplay(
+  settings: SystemSettings,
+  params: Pick<URLSearchParams, 'get'> | null,
+) {
+  const groupBy = ensureLibraryGroupByType(params?.get('groupBy'), settings.libraryGroupBy);
+  const rawSort = ensureLibrarySortByType(params?.get('sort'), settings.librarySortBy);
+  const rawSecondary = ensureLibrarySecondarySortByType(
+    params?.get('thenSort'),
+    settings.libraryThenSortBy ?? 'none',
+  );
+  const hasSort = VALID_SORT_TYPES.some((type) => type === params?.get('sort'));
+  const hasSecondary =
+    params?.get('thenSort') === 'none' ||
+    VALID_SORT_TYPES.some((type) => type === params?.get('thenSort'));
+  const sortByAuto = !hasSort && (settings.librarySortByAuto ?? true);
+  const thenSortByAuto = !hasSecondary && (settings.libraryThenSortByAuto ?? true);
+  const order = (value: string | null | undefined, fallback: boolean) =>
+    value === 'asc' ? true : value === 'desc' ? false : fallback;
+  const view = params?.get('view');
+  const cover = params?.get('cover');
+  return {
+    groupBy,
+    viewMode: view === 'list' || view === 'grid' ? view : settings.libraryViewMode,
+    coverFit: cover === 'crop' || cover === 'fit' ? cover : settings.libraryCoverFit,
+    sortBy: resolveEffectivePrimarySort(rawSort, groupBy, sortByAuto),
+    thenSortBy: resolveEffectiveSecondarySort(rawSecondary, groupBy, thenSortByAuto),
+    sortByAuto,
+    thenSortByAuto,
+    isAscending: order(params?.get('order'), settings.librarySortAscending),
+    isThenAscending: order(params?.get('thenOrder'), settings.libraryThenSortAscending ?? true),
+  };
+}

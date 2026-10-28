@@ -1,6 +1,6 @@
 import { Fzf, FzfResultItem, byLengthAsc } from 'fzf';
 import { OFFICIAL_MODULES } from '@/glossa/modules/registry';
-import { SettingsPanelType } from '@/components/settings/SettingsDialog';
+import type { SettingsPanelType } from '@/components/settings/SettingsDialog';
 import {
   Type as RiFontSize,
   Settings2,
@@ -10,6 +10,7 @@ import {
   Languages as RiTranslate,
   Share2 as RiShareLine,
   MessageCircle as RiChat1Line,
+  CircleUserRound,
 } from '@/components/GlossaIcons';
 import { Palette as VscSymbolColor } from '@/components/GlossaIcons';
 import { Hand as LiaHandPointerSolid } from '@/components/GlossaIcons';
@@ -157,6 +158,7 @@ export const groupResultsByCategory = (
 
 // settings panel icon map
 const panelIcons: Record<SettingsPanelType, IconType> = {
+  Account: CircleUserRound,
   General: Settings2,
   Plugins: Puzzle,
   Data: Database,

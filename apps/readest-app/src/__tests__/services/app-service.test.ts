@@ -80,6 +80,7 @@ import { BaseAppService } from '@/services/appService';
 import * as Settings from '@/services/settingsService';
 import * as BookSvc from '@/services/bookService';
 import * as LibrarySvc from '@/services/libraryService';
+import { isLibraryDatabaseRegistered, loadLibraryRows } from '@/services/libraryRepository';
 import { requestStoragePermission } from '@/utils/permission';
 
 // Concrete test implementation of BaseAppService
@@ -201,6 +202,16 @@ describe('BaseAppService', () => {
       await service.prepareBooksDir();
       expect(mockFs.getPrefix).toHaveBeenCalledWith('Books');
       expect(service.localBooksDir).toBe('/base/books');
+    });
+
+    test('registers authority before the database exists and opens a sampled absolute path', async () => {
+      const open = vi.spyOn(service, 'openDatabase').mockRejectedValue(new Error('open stopped'));
+      expect(isLibraryDatabaseRegistered(service)).toBe(false);
+      await service.prepareBooksDir();
+      expect(isLibraryDatabaseRegistered(service)).toBe(true);
+      expect(isLibraryDatabaseRegistered(mockFs)).toBe(true);
+      await expect(loadLibraryRows(mockFs)).rejects.toThrow('open stopped');
+      expect(open).toHaveBeenCalledWith('glossa-library', '/base/books/.glossa-library.db', 'None');
     });
   });
 

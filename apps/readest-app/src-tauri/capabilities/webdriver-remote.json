@@ -18,6 +18,9 @@
     "allow-is-updater-disabled",
     "allow-allow-paths-in-scopes",
     "allow-read-dir",
+    "allow-import-fingerprint",
+    "allow-import-copy-verified",
+    "allow-cancel-import-io",
     "allow-parse-epub-metadata",
     "allow-extract-epub-cover-full",
     "allow-parse-epub-full",
@@ -42,7 +45,19 @@
     "fs:allow-read",
     "fs:allow-write",
     "fs:allow-stat",
+    "fs:allow-open",
+    "fs:allow-rename",
+    "fs:allow-copy-file",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        {
+          "path": "**"
+        }
+      ]
+    },
     "allow-pdf-open-cache",
+    "allow-pdf-release-source-session",
     "allow-pdf-read-ocr-page",
     "allow-pdf-start-ocr",
     "allow-pdf-ocr-status",

@@ -7,9 +7,9 @@ vi.mock('@/services/transferManager', () => ({
   transferManager: { queueUpload: vi.fn() },
 }));
 
-import { ingestFile } from '@/services/ingestService';
+import { ingestFile, ingestFiles } from '@/services/ingestService';
 import { transferManager } from '@/services/transferManager';
-import type { Book, ImportBookOptions } from '@/types/book';
+import type { Book, BookImportInput, ImportBookOptions } from '@/types/book';
 import type { AppService, OsPlatform } from '@/types/system';
 import type { SystemSettings } from '@/types/settings';
 
@@ -581,6 +581,7 @@ describe('ingestFile', () => {
     // what `normalizeFilePathForIndex` produces in production.
     const lookupIndex = {
       byHash: new Map(),
+      byContentFingerprint: new Map(),
       byMetaKey: new Map(),
       byFilePath: new Map([[sourcePath.toLowerCase(), existing]]),
     } as unknown as Parameters<typeof ingestFile>[0]['lookupIndex'];
@@ -622,6 +623,7 @@ describe('ingestFile', () => {
     });
     const lookupIndex = {
       byHash: new Map([[existing.hash, existing]]),
+      byContentFingerprint: new Map(),
       byMetaKey: new Map(),
       byFilePath: new Map([[sourcePath, existing]]),
     };
@@ -657,6 +659,7 @@ describe('ingestFile', () => {
     };
     const lookupIndex = {
       byHash: new Map(),
+      byContentFingerprint: new Map(),
       byMetaKey: new Map(),
       byFilePath: new Map([[sourcePath, existing]]),
     } as unknown as Parameters<typeof ingestFile>[0]['lookupIndex'];
@@ -731,6 +734,7 @@ test('delegates explicit PDF retry to the unified importer and preserves existin
   deps.appService.prepareBookContents = prepare;
   const lookupIndex = {
     byHash: new Map(),
+    byContentFingerprint: new Map(),
     byMetaKey: new Map(),
     byFilePath: new Map([['/Library/book.pdf', existing]]),
   };
@@ -751,4 +755,68 @@ test('delegates explicit PDF retry to the unified importer and preserves existin
   );
   expect(prepare).not.toHaveBeenCalled();
   expect(deps.importBook.mock.calls[1]?.[2]).toMatchObject({ retryPDFContents: false });
+});
+
+describe('incremental durable ingest events', () => {
+  beforeEach(() => vi.mocked(transferManager.queueUpload).mockClear());
+
+  test('publishes fast books before slow inputs, keeping ordered final results without duplicate uploads', async () => {
+    const deps = makeDeps({ isLoggedIn: true });
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const completed = vi.fn();
+    const fast = makeBook({ hash: 'fast' });
+    const slow = makeBook({ hash: 'slow' });
+    deps.appService.importBooks = vi.fn(async (inputs: BookImportInput[]) => {
+      inputs[1]!.options!.onResult?.('added');
+      inputs[1]!.options!.onComplete?.({ book: fast });
+      await blocked;
+      inputs[0]!.options!.onResult?.('added');
+      inputs[0]!.options!.onComplete?.({ book: slow });
+      return [{ book: slow }, { book: fast }];
+    });
+    const pending = ingestFiles(
+      [
+        { file: 'slow.epub', books: [], onComplete: completed },
+        { file: 'fast.epub', books: [], onComplete: completed },
+      ],
+      deps,
+    );
+    expect(completed).toHaveBeenCalledTimes(1);
+    expect(completed.mock.calls[0]![0].book).toBe(fast);
+    expect(transferManager.queueUpload).toHaveBeenCalledTimes(1);
+    release();
+    expect((await pending).map((result) => result.book?.hash)).toEqual(['slow', 'fast']);
+    expect(completed).toHaveBeenCalledTimes(2);
+    expect(transferManager.queueUpload).toHaveBeenCalledTimes(2);
+  });
+
+  test('reports existing and failed outcomes once and preserves personal metadata', async () => {
+    const deps = makeDeps({ isLoggedIn: true });
+    const existing = makeBook({ title: 'Personal title', groupId: 'personal' });
+    const completed = vi.fn();
+    const error = new Error('copy failed');
+    deps.appService.importBooks = vi.fn(async (inputs: BookImportInput[]) => {
+      inputs[0]!.options!.onResult?.('existing');
+      inputs[0]!.options!.onComplete?.({ book: existing });
+      inputs[1]!.options!.onComplete?.({ book: null, error });
+      return [{ book: existing }, { book: null, error }];
+    });
+    const result = await ingestFiles(
+      [
+        { file: 'same.epub', books: [existing], groupId: 'incoming', onComplete: completed },
+        { file: 'bad.epub', books: [existing], onComplete: completed },
+      ],
+      deps,
+    );
+    expect(result[0]).toMatchObject({
+      status: 'existing',
+      book: { title: 'Personal title', groupId: 'personal' },
+    });
+    expect(result[1]).toMatchObject({ book: null, error });
+    expect(completed).toHaveBeenCalledTimes(2);
+    expect(transferManager.queueUpload).not.toHaveBeenCalled();
+  });
 });

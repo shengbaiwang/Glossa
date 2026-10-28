@@ -4,13 +4,14 @@ import { afterEach, expect, it } from 'vitest';
 import { useLibraryMarquee } from '@/app/library/hooks/useLibraryMarquee';
 
 afterEach(cleanup);
-function Shelf() {
+function Shelf({ inset = false }: { inset?: boolean }) {
   const root = useRef<HTMLDivElement>(null);
+  const viewport = useRef<HTMLDivElement>(null);
   const [ids, setIds] = useState<string[]>(['old']);
   const [mode, setMode] = useState(false);
   const marquee = useLibraryMarquee({
     root,
-    scroller: root,
+    scroller: inset ? viewport : root,
     selected: ids,
     selecting: mode,
     enabled: true,
@@ -19,16 +20,18 @@ function Shelf() {
   });
   return (
     <div ref={root} {...marquee.handlers} data-testid='shelf'>
-      <div data-book-hash='a' data-testid='a' />
-      <div data-book-hash='b' data-testid='b' />
+      <div ref={viewport} data-testid='viewport'>
+        <div data-book-hash='a' data-testid='a' />
+        <div data-book-hash='b' data-testid='b' />
+      </div>
       <button type='button'>Import</button>
       <output>{`${mode}:${ids.join(',')}`}</output>
       {marquee.rect && <div data-testid='rectangle' />}
     </div>
   );
 }
-function setup() {
-  render(<Shelf />);
+function setup(inset = false) {
+  render(<Shelf inset={inset} />);
   for (const [id, left] of [
     ['a', 20],
     ['b', 120],
@@ -67,6 +70,21 @@ it('selects intersecting books from blank space and preserves the set after rele
   expect(screen.getByText('true:a,b')).toBeTruthy();
   up();
   expect(screen.queryByTestId('rectangle')).toBeNull();
+  expect(screen.getByText('true:a,b')).toBeTruthy();
+});
+it('includes blank shelf insets outside the scroll viewport without capturing its scrollbar', () => {
+  const shelf = setup(true);
+  const viewport = screen.getByTestId('viewport');
+  shelf.getBoundingClientRect = () => new DOMRect(0, 0, 240, 160);
+  viewport.getBoundingClientRect = () => new DOMRect(20, 0, 200, 160);
+  Object.defineProperty(viewport, 'clientWidth', { value: 184 });
+  down(shelf, { clientX: 210 });
+  move(30, 130);
+  up();
+  expect(screen.getByText('false:old')).toBeTruthy();
+  down(shelf);
+  move(210, 130);
+  up();
   expect(screen.getByText('true:a,b')).toBeTruthy();
 });
 it('adds to the previous set with a modifier and shrinks selection when dragging back', () => {

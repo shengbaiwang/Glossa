@@ -1,6 +1,14 @@
 import { SystemSettings } from './settings';
 import type { RssFeed } from '@/types/rss';
-import { Book, BookConfig, BookContent, ImportBookOptions, ViewSettings } from './book';
+import {
+  Book,
+  BookConfig,
+  BookContent,
+  BookImportInput,
+  BookImportResult,
+  ImportBookOptions,
+  ViewSettings,
+} from './book';
 import { BookMetadata, type BookDoc } from '@/libs/document';
 import type { BookNav } from '@/services/nav';
 import { ProgressHandler } from '@/utils/transfer';
@@ -57,7 +65,17 @@ export interface FileSystem {
   getBlobURL(path: string, base: BaseDir): Promise<string>;
   getImageURL(path: string): Promise<string>;
   openFile(path: string, base: BaseDir, filename?: string): Promise<File>;
+  fingerprint?(path: string, base: BaseDir, signal?: AbortSignal): Promise<string | undefined>;
   copyFile(srcPath: string, srcBase: BaseDir, dstPath: string, dstBase: BaseDir): Promise<void>;
+  copyFileVerified?(
+    srcPath: string,
+    srcBase: BaseDir,
+    dstPath: string,
+    dstBase: BaseDir,
+    expectedFingerprint: string,
+    signal?: AbortSignal,
+  ): Promise<string>;
+  moveFile?(srcPath: string, srcBase: BaseDir, dstPath: string, dstBase: BaseDir): Promise<void>;
   readFile(path: string, base: BaseDir, mode: 'text' | 'binary'): Promise<string | ArrayBuffer>;
   writeFile(path: string, base: BaseDir, content: string | ArrayBuffer | File): Promise<void>;
   removeFile(path: string, base: BaseDir): Promise<void>;
@@ -120,6 +138,7 @@ export interface AppService {
 
   init(): Promise<void>;
   openFile(path: string, base: BaseDir): Promise<File>;
+  fingerprint?(path: string, base: BaseDir, signal?: AbortSignal): Promise<string | undefined>;
   copyFile(srcPath: string, srcBase: BaseDir, dstPath: string, dstBase: BaseDir): Promise<void>;
   readFile(path: string, base: BaseDir, mode: 'text' | 'binary'): Promise<string | ArrayBuffer>;
   writeFile(path: string, base: BaseDir, content: string | ArrayBuffer | File): Promise<void>;
@@ -179,6 +198,7 @@ export interface AppService {
   ): Promise<ImportDictionariesResult>;
   deleteDictionary(dict: ImportedDictionary): Promise<void>;
   importBook(file: string | File, books: Book[], options?: ImportBookOptions): Promise<Book | null>;
+  importBooks(inputs: BookImportInput[], books: Book[]): Promise<BookImportResult[]>;
   refreshBookMetadata(book: Book): Promise<boolean>;
   deleteBook(book: Book, deleteAction: DeleteAction): Promise<void>;
   uploadBook(book: Book, onProgress?: ProgressHandler): Promise<void>;
@@ -226,7 +246,7 @@ export interface AppService {
   saveBookNav(book: Book, nav: BookNav): Promise<void>;
   loadBookContent(book: Book): Promise<BookContent>;
   resolveNativeBookFilePath(book: Book): Promise<string | null>;
-  prepareBookContents?(book: Book, document?: BookDoc): Promise<void>;
+  prepareBookContents?(book: Book, document?: BookDoc, signal?: AbortSignal): Promise<void>;
   loadFeeds(): Promise<RssFeed[]>;
   saveFeeds(feeds: RssFeed[]): Promise<void>;
   loadLibraryBooks(): Promise<Book[]>;

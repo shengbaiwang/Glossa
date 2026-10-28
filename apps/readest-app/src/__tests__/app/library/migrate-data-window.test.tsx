@@ -1,10 +1,11 @@
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   MigrateDataWindow,
   setMigrateDataDirDialogVisible,
 } from '@/app/library/components/MigrateDataWindow';
+import { registerLibraryDatabase } from '@/services/libraryRepository';
 
 vi.mock('@/hooks/useTranslation', () => ({
   useTranslation: () => (key: string, options?: Record<string, string | number>) => {
@@ -20,9 +21,10 @@ const appService = {
   resolveFilePath: vi.fn(async () => '/current/data/dir'),
   readDirectory: vi.fn(async () => []),
 };
+let envService: object = appService;
 
 vi.mock('@/context/EnvContext', () => ({
-  useEnv: () => ({ appService, envConfig: {} }),
+  useEnv: () => ({ appService: envService, envConfig: {} }),
 }));
 
 vi.mock('@/store/settingsStore', () => ({
@@ -59,6 +61,7 @@ vi.mock('@/components/Dialog', () => ({
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  envService = appService;
 });
 
 describe('MigrateDataWindow e-ink button hierarchy', () => {
@@ -80,5 +83,36 @@ describe('MigrateDataWindow e-ink button hierarchy', () => {
     // indistinguishable (see issue #4396). It must be a borderless ghost instead.
     expect(cancelButton.className).not.toContain('btn-outline');
     expect(cancelButton.className).toContain('btn-ghost');
+  });
+
+  it('keeps the current directory when a registered database backend has not created a file yet', async () => {
+    const service = {
+      ...appService,
+      readDirectory: vi.fn(async () => [{ path: 'book.epub', size: 10 }]),
+      selectDirectory: vi.fn(async () => '/new'),
+      createDir: vi.fn(),
+      copyFile: vi.fn(),
+      deleteDir: vi.fn(),
+      setCustomRootDir: vi.fn(),
+    };
+    const openDatabase = vi.fn();
+    registerLibraryDatabase(service, openDatabase);
+    envService = service;
+    render(<MigrateDataWindow />);
+    await act(async () => setMigrateDataDirDialogVisible(true));
+    await waitFor(() => expect(service.readDirectory).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: 'Choose New Folder' }));
+    const start = screen.getByRole('button', { name: 'Start Migration' });
+    await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(start);
+    expect(
+      await screen.findByText(
+        'Changing this library’s data location is temporarily unsupported. Your current folder is kept.',
+      ),
+    ).not.toBeNull();
+    expect(service.copyFile).not.toHaveBeenCalled();
+    expect(service.deleteDir).not.toHaveBeenCalled();
+    expect(service.setCustomRootDir).not.toHaveBeenCalled();
+    expect(openDatabase).not.toHaveBeenCalled();
   });
 });

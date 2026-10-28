@@ -175,6 +175,26 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
   border-radius: var(--glossa-radius-nested);
 }
 
+.glossa-delete-action.glossa-delete-action {
+  color: theme('colors.error');
+}
+
+[data-eink='true'] .glossa-delete-action.glossa-delete-action {
+  color: var(--glossa-ink);
+}
+
+@media (max-height: 700px) {
+  .glossa-auth-content {
+    padding-top: 5rem;
+    padding-bottom: 2rem;
+  }
+
+  .glossa-auth-icon {
+    width: 80px;
+    height: 80px;
+  }
+}
+
 .glossa-settings .dialog-tabs .btn {
   border-radius: var(--glossa-radius-control);
   font-weight: 500;
@@ -655,6 +675,92 @@ html:is([data-page='library'], [data-page='reader']) .modal-box {
   justify-content: space-between;
   gap: 12px;
   padding-block: 6px;
+}
+.glossa-settings-resize-handle {
+  display: none;
+  position: absolute;
+  z-index: 30;
+  touch-action: none;
+}
+.glossa-settings-resize-n,
+.glossa-settings-resize-s {
+  left: 12px;
+  right: 12px;
+  height: 8px;
+  cursor: ns-resize;
+}
+.glossa-settings-resize-n {
+  top: 0;
+}
+.glossa-settings-resize-s {
+  bottom: 0;
+}
+.glossa-settings-resize-e,
+.glossa-settings-resize-w {
+  top: 12px;
+  bottom: 12px;
+  width: 8px;
+  cursor: ew-resize;
+}
+.glossa-settings-resize-e {
+  right: 0;
+}
+.glossa-settings-resize-w {
+  left: 0;
+}
+.glossa-settings-resize-ne,
+.glossa-settings-resize-se,
+.glossa-settings-resize-sw,
+.glossa-settings-resize-nw {
+  width: 16px;
+  height: 16px;
+}
+.glossa-settings-resize-ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+.glossa-settings-resize-se {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+.glossa-settings-resize-sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+.glossa-settings-resize-nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+.glossa-settings-resize-grip {
+  display: none;
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 8px;
+  height: 8px;
+  border-right: 1px solid var(--glossa-muted);
+  border-bottom: 1px solid var(--glossa-muted);
+  opacity: 0.55;
+  pointer-events: none;
+}
+[data-eink='true'] .glossa-settings-resize-grip {
+  opacity: 1;
+}
+@media (min-width: 800px) and (min-height: 640px) and (pointer: fine) {
+  .glossa-application-settings [data-settings-drag-handle] {
+    cursor: move;
+  }
+  .glossa-application-settings [data-settings-drag-handle] button {
+    cursor: pointer;
+  }
+  .glossa-application-settings .glossa-settings-resize-handle,
+  .glossa-application-settings .glossa-settings-resize-grip {
+    display: block;
+  }
 }
 .glossa-settings-workspace {
   min-width: 0;

@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
+import { getLibraryCoverWidth } from '@/utils/libraryDisplaySettings';
 import {
   ArrowDown,
   ArrowUp,
@@ -12,9 +13,9 @@ import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import {
+  SystemSettings,
   LibraryCoverFitType,
   LibraryViewModeType,
-  LibraryGroupByType,
   LibrarySecondarySortByType,
   LibrarySortByType,
 } from '@/types/settings';
@@ -24,7 +25,7 @@ import MenuItem from '@/components/MenuItem';
 import { Toggle } from '@/components/primitives/toggle';
 import Menu from '@/components/Menu';
 import { SettingsSelect } from '@/components/settings/primitives';
-import { ensureLibraryGroupByType } from '../utils/libraryUtils';
+import { resolveLibraryDisplay } from '../utils/libraryUtils';
 
 interface ViewMenuProps {
   setIsDropdownOpen?: (isOpen: boolean) => void;
@@ -37,46 +38,48 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
   const { envConfig } = useEnv();
   const { settings } = useSettingsStore();
 
-  const viewMode = searchParams?.get('view') || settings.libraryViewMode;
-  const coverFit = settings.libraryCoverFit;
-  const autoColumns = settings.libraryAutoColumns;
+  const {
+    viewMode,
+    coverFit,
+    sortBy: primaryEffective,
+    thenSortBy: secondaryEffective,
+    isAscending,
+    isThenAscending,
+    sortByAuto,
+    thenSortByAuto,
+  } = resolveLibraryDisplay(settings, searchParams);
   const listScale = settings.libraryListScale ?? 100;
-  // Read the rendered track so a legacy column preference starts at its visible size.
-  const grid = document.querySelector('.glossa-collection-grid');
-  const visibleWidth = grid ? parseFloat(window.getComputedStyle(grid).gridTemplateColumns) : NaN;
-  const coverWidth = Math.max(
-    112,
-    Math.min(
-      280,
-      Math.round(
-        (!autoColumns && settings.libraryCoverWidth
-          ? settings.libraryCoverWidth
-          : Number.isFinite(visibleWidth)
-            ? visibleWidth
-            : 156) / 4,
-      ) * 4,
-    ),
-  );
-  const groupBy = ensureLibraryGroupByType(searchParams?.get('groupBy'), settings.libraryGroupBy);
-  const sortBy = settings.librarySortBy;
-  const isAscending = settings.librarySortAscending;
-  const sortByAuto = settings.librarySortByAuto ?? true;
-  // Primary smart default: when auto is on, grouping by Series implies Series as
-  // the primary sort. The stored value is left alone — that way turning auto off
-  // later restores the user's previous explicit pick.
-  const primaryEffective: LibrarySortByType =
-    sortByAuto && groupBy === LibraryGroupByType.Series ? LibrarySortByType.Series : sortBy;
-  const primaryIsImplicit = sortByAuto && primaryEffective !== sortBy;
-  const thenSortBy: LibrarySecondarySortByType = settings.libraryThenSortBy ?? 'none';
-  // Smart default: when grouping by Author and the user hasn't picked an explicit
-  // secondary, Series is implied. Surface this in the menu so the highlighted row
-  // matches the actual sort behavior.
-  const secondaryEffective: LibrarySecondarySortByType =
-    thenSortBy === 'none' && groupBy === LibraryGroupByType.Author
-      ? LibrarySortByType.Series
-      : thenSortBy;
-  const secondaryIsImplicit = thenSortBy === 'none' && secondaryEffective !== 'none';
-  const isThenAscending = settings.libraryThenSortAscending ?? true;
+  const coverWidth = getLibraryCoverWidth(settings);
+  const primaryIsImplicit = sortByAuto && primaryEffective !== settings.librarySortBy;
+  const secondaryIsImplicit =
+    thenSortByAuto && secondaryEffective !== (settings.libraryThenSortBy ?? 'none');
+  const [retry, setRetry] = useState<(() => Promise<void>) | null>(null);
+  const editSequence = useRef(0);
+  const submit = async (action: () => Promise<void>) => {
+    const sequence = ++editSequence.current;
+    setRetry(null);
+    try {
+      await action();
+    } catch {
+      if (sequence === editSequence.current) setRetry(() => action);
+    }
+  };
+  const setPreference = <K extends keyof SystemSettings>(
+    key: K,
+    value: SystemSettings[K],
+    query?: Record<string, string>,
+    extra?: () => Promise<void>,
+  ) => {
+    if (query) {
+      const params = new URLSearchParams(window.location.search);
+      Object.entries(query).forEach(([name, v]) => params.set(name, v));
+      navigateToLibrary(router, params.toString());
+    }
+    return submit(async () => {
+      await saveSysSettings(envConfig, key, value);
+      await extra?.();
+    });
+  };
 
   const viewOptions = [
     { label: _('Grid'), value: 'grid' as const, Icon: LayoutGrid },
@@ -105,69 +108,26 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
     ...sortByOptions,
   ];
 
-  const handleSetViewMode = async (value: LibraryViewModeType) => {
-    await saveSysSettings(envConfig, 'libraryViewMode', value);
-
-    const params = new URLSearchParams(window.location.search);
-    params.set('view', value);
-    navigateToLibrary(router, `${params.toString()}`);
-  };
-
-  const handleToggleCropCovers = async (value: LibraryCoverFitType) => {
-    await saveSysSettings(envConfig, 'libraryCoverFit', value);
-
-    const params = new URLSearchParams(window.location.search);
-    params.set('cover', value);
-    navigateToLibrary(router, `${params.toString()}`);
-  };
-
-  const handleSetViewSize = async (value: number) => {
-    if (viewMode === 'list') {
-      await saveSysSettings(envConfig, 'libraryListScale', value);
-    } else {
-      await saveSysSettings(envConfig, 'libraryCoverWidth', value);
-      await saveSysSettings(envConfig, 'libraryAutoColumns', false);
-    }
-  };
-
-  const handleSetSortBy = async (value: LibrarySortByType) => {
-    await saveSysSettings(envConfig, 'librarySortBy', value);
-    // Any explicit primary pick locks in the choice and disables the auto
-    // smart-default so future groupBy changes don't override the user.
-    await saveSysSettings(envConfig, 'librarySortByAuto', false);
-
-    const params = new URLSearchParams(window.location.search);
-    params.set('sort', value);
-    navigateToLibrary(router, `${params.toString()}`);
-  };
-
-  const handleSetSortAscending = async (value: boolean) => {
-    await saveSysSettings(envConfig, 'librarySortAscending', value);
-
-    const params = new URLSearchParams(window.location.search);
-    params.set('order', value ? 'asc' : 'desc');
-    navigateToLibrary(router, `${params.toString()}`);
-  };
-
-  const handleSetThenSortBy = async (value: LibrarySecondarySortByType) => {
-    await saveSysSettings(envConfig, 'libraryThenSortBy', value);
-
-    const params = new URLSearchParams(window.location.search);
-    if (value === 'none') {
-      params.delete('thenSort');
-    } else {
-      params.set('thenSort', value);
-    }
-    navigateToLibrary(router, `${params.toString()}`);
-  };
-
-  const handleSetThenSortAscending = async (value: boolean) => {
-    await saveSysSettings(envConfig, 'libraryThenSortAscending', value);
-
-    const params = new URLSearchParams(window.location.search);
-    params.set('thenOrder', value ? 'asc' : 'desc');
-    navigateToLibrary(router, `${params.toString()}`);
-  };
+  const handleSetViewMode = (value: LibraryViewModeType) =>
+    setPreference('libraryViewMode', value, { view: value });
+  const handleToggleCropCovers = (value: LibraryCoverFitType) =>
+    setPreference('libraryCoverFit', value, { cover: value });
+  const handleSetViewSize = (value: number) =>
+    viewMode === 'list'
+      ? setPreference('libraryListScale', value)
+      : setPreference('libraryCoverWidth', value);
+  const handleSetSortBy = (value: LibrarySortByType) =>
+    setPreference('librarySortBy', value, { sort: value }, () =>
+      saveSysSettings(envConfig, 'librarySortByAuto', false),
+    );
+  const handleSetSortAscending = (value: boolean) =>
+    setPreference('librarySortAscending', value, { order: value ? 'asc' : 'desc' });
+  const handleSetThenSortBy = (value: LibrarySecondarySortByType) =>
+    setPreference('libraryThenSortBy', value, { thenSort: value }, () =>
+      saveSysSettings(envConfig, 'libraryThenSortByAuto', false),
+    );
+  const handleSetThenSortAscending = (value: boolean) =>
+    setPreference('libraryThenSortAscending', value, { thenOrder: value ? 'asc' : 'desc' });
 
   const sizeLabel = viewMode === 'list' ? _('List Size') : _('Cover Size');
 
@@ -176,6 +136,18 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
       className='view-menu glossa-menu-surface dropdown-content no-triangle z-20 mt-2'
       onCancel={() => setIsDropdownOpen?.(false)}
     >
+      {retry && (
+        <div role='alert' className='px-3 py-2 text-sm'>
+          <span>{_('Failed to save settings')}</span>
+          <button
+            type='button'
+            className='glossa-menu-item eink-bordered'
+            onClick={() => submit(retry)}
+          >
+            {_('Retry')}
+          </button>
+        </div>
+      )}
       <div role='group' aria-label={_('Layout')} className='glossa-library-display-options'>
         {viewOptions.map(({ label, value, Icon }) => (
           <button
@@ -193,17 +165,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
       <div role='group' aria-label={sizeLabel} className='glossa-library-size-section'>
         <div className='glossa-library-size-heading'>
           <span>{sizeLabel}</span>
-          {viewMode === 'grid' && (
-            <button
-              type='button'
-              aria-label={_('Auto')}
-              aria-pressed={autoColumns}
-              className='glossa-menu-item glossa-library-size-auto'
-              onClick={() => saveSysSettings(envConfig, 'libraryAutoColumns', true)}
-            >
-              {_('Auto')}
-            </button>
-          )}
         </div>
         <div className='glossa-library-size-controls'>
           <span>{_('Small')}</span>
@@ -243,11 +204,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
               className='toggle-sm'
               checked={settings.librarySkeuomorphicCovers}
               onChange={() =>
-                saveSysSettings(
-                  envConfig,
-                  'librarySkeuomorphicCovers',
-                  !settings.librarySkeuomorphicCovers,
-                )
+                setPreference('librarySkeuomorphicCovers', !settings.librarySkeuomorphicCovers)
               }
             />
           </label>
@@ -262,11 +219,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
               className='toggle-sm'
               checked={settings.libraryShowAuthor !== false}
               onChange={() =>
-                saveSysSettings(
-                  envConfig,
-                  'libraryShowAuthor',
-                  settings.libraryShowAuthor === false,
-                )
+                setPreference('libraryShowAuthor', settings.libraryShowAuthor === false)
               }
             />
           </label>
@@ -276,11 +229,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
               className='toggle-sm'
               checked={settings.libraryShowProgress !== false}
               onChange={() =>
-                saveSysSettings(
-                  envConfig,
-                  'libraryShowProgress',
-                  settings.libraryShowProgress === false,
-                )
+                setPreference('libraryShowProgress', settings.libraryShowProgress === false)
               }
             />
           </label>
@@ -292,11 +241,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
           className='toggle-sm'
           checked={settings.libraryRecentShelfEnabled}
           onChange={() =>
-            saveSysSettings(
-              envConfig,
-              'libraryRecentShelfEnabled',
-              !settings.libraryRecentShelfEnabled,
-            )
+            setPreference('libraryRecentShelfEnabled', !settings.libraryRecentShelfEnabled)
           }
         />
       </label>

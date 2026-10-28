@@ -47,6 +47,7 @@ export const FIXED_LAYOUT_FORMATS: Set<BookFormat> = new Set(['PDF', 'CBZ']);
  */
 export interface BookLookupIndex {
   byHash: Map<string, Book>;
+  byContentFingerprint: Map<string, Book[]>;
   byMetaKey: Map<string, Book[]>; // key = `${metaHash}:${format}`
   // Local path hint only; actual bytes must still be verified on import.
   byFilePath: Map<string, Book>;
@@ -57,7 +58,24 @@ export interface BookLookupIndex {
  * extends this with required callbacks (saveBookConfig / generateCoverImageUrl)
  * that are bound by the AppService instance.
  */
+export interface BookImportProgress {
+  stage:
+    | 'fingerprinting'
+    | 'parsing'
+    | 'staging'
+    | 'waiting'
+    | 'committing'
+    | 'completed'
+    | 'failed'
+    | 'cancelled';
+  /** Cumulative elapsed time only; no source paths or book contents. */
+  elapsedMs: number;
+}
+
 export interface ImportBookOptions {
+  onProgress?: (progress: BookImportProgress) => void;
+  /** Fires once after persistence and cleanup, or a terminal failure. */
+  onComplete?: (result: BookImportResult) => void;
   /** Explicitly selected folder allowed for Markdown image snapshots. */
   markdownResourceRoot?: string;
   /** Report the durable result without adding transient flags to Book records. */
@@ -86,6 +104,16 @@ export interface ImportBookOptions {
   inPlace?: boolean;
   /** Pre-built lookup index for O(1) dedup during batch imports. */
   lookupIndex?: BookLookupIndex;
+}
+
+export interface BookImportInput {
+  file: string | File;
+  options?: ImportBookOptions;
+}
+
+export interface BookImportResult {
+  book: Book | null;
+  error?: Error;
 }
 
 export interface Book {
@@ -119,6 +147,8 @@ export interface Book {
   group?: string; // deprecated in favor of groupId and groupName
   groupId?: string;
   groupName?: string;
+  /** Updated only by explicit moves; reading progress cannot overwrite grouping. */
+  groupUpdatedAt?: number;
   tags?: string[];
   coverImageUrl?: string | null;
   // Partial MD5 of the local cover.png. Content-addressed cover-change signal:

@@ -278,3 +278,29 @@ test('syncs the PDF plugin switch without altering AI plugins or accepting malfo
     settings.officialModules,
   );
 });
+
+describe('clocked library display broadcasts', () => {
+  test('adopts display edits and ignores a later stale broadcast', async () => {
+    const { editLibraryDisplay } = await import('@/utils/libraryDisplaySettings');
+    const owner = editLibraryDisplay(
+      { ...local, libraryCoverWidth: 156 },
+      'libraryCoverWidth',
+      260,
+    );
+    await broadcastGlobalSettings(owner);
+    const payload = vi.mocked(emit).mock.calls.at(-1)?.[1] as SettingsSyncPayload;
+    const reader = mergeSyncedGlobalSettings({ ...local, libraryCoverWidth: 156 }, payload);
+    expect(reader.libraryCoverWidth).toBe(260);
+    expect(payload.libraryDisplay).not.toHaveProperty('webdav');
+    expect(
+      mergeSyncedGlobalSettings(reader, {
+        ...globals,
+        libraryDisplay: {
+          ...payload.libraryDisplay!,
+          libraryCoverWidth: 156,
+          libraryDisplayUpdatedAt: {},
+        },
+      }).libraryCoverWidth,
+    ).toBe(260);
+  });
+});

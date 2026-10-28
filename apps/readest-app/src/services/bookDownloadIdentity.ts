@@ -1,10 +1,9 @@
 import type { Book } from '@/types/book';
 import type { FileSystem } from '@/types/system';
-import { getLibraryFilename } from '@/utils/book';
 import { contentIdentity, fingerprintBook } from './bookIdentity';
 import { withLibraryLock } from './libraryLock';
-import { safeLoadJSON } from './persistence';
-import { saveLibraryBooksUnlocked } from './libraryService';
+import { loadLibraryRows } from './libraryRepository';
+import { mergeLibraryBook, saveLibraryBooksUnlocked } from './libraryService';
 
 type DownloadIO = Pick<
   FileSystem,
@@ -16,12 +15,11 @@ export async function registerBookDownload(io: DownloadIO, book: Book, live: Boo
   return withLibraryLock(io, async () => {
     const actual = await fingerprintBook(io, book);
     if (!actual) throw new Error('Downloaded book file is unavailable');
-    const disk = await safeLoadJSON<Book[]>(io, getLibraryFilename(), 'Books', []);
+    const disk = await loadLibraryRows(io);
     const current = new Map(live.map((row) => [row.hash, row]));
     for (const row of Array.isArray(disk) ? disk : []) {
       const previous = current.get(row.hash);
-      const latest =
-        !previous || row.updatedAt >= previous.updatedAt ? { ...previous, ...row } : previous;
+      const latest = previous ? mergeLibraryBook(row, previous) : row;
       current.set(row.hash, {
         ...latest,
         ...((row.duplicateUpdatedAt ?? 0) > (latest.duplicateUpdatedAt ?? 0)
@@ -66,8 +64,10 @@ export async function registerBookDownload(io: DownloadIO, book: Book, live: Boo
           }
         : {}),
     };
-    await saveLibraryBooksUnlocked(io, [incoming]);
-    current.set(incoming.hash, incoming);
-    return { book: incoming, books: [...current.values()] };
+    const saved = await saveLibraryBooksUnlocked(io, [incoming], undefined, disk);
+    const persisted = saved.find((row) => row.hash === incoming.hash)!;
+    const downloaded = { ...persisted, coverImageUrl: incoming.coverImageUrl };
+    current.set(downloaded.hash, downloaded);
+    return { book: downloaded, books: [...current.values()] };
   });
 }

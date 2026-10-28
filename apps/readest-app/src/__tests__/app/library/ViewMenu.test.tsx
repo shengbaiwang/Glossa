@@ -107,9 +107,8 @@ it('starts from visible cover width and saves size independently of column count
   try {
     render(<ViewMenu />);
     const slider = screen.getByRole('slider', { name: 'Cover Size' });
-    expect((slider as HTMLInputElement).value).toBe('200');
+    expect((slider as HTMLInputElement).value).toBe('156');
     fireEvent.change(slider, { target: { value: '220' } });
-    await waitFor(() => expect(save).toHaveBeenCalledWith({}, 'libraryAutoColumns', false));
     expect(save).toHaveBeenCalledWith({}, 'libraryCoverWidth', 220);
     expect(save).not.toHaveBeenCalledWith({}, 'libraryColumns', expect.anything());
   } finally {
@@ -117,13 +116,12 @@ it('starts from visible cover width and saves size independently of column count
   }
 });
 
-it('restores automatic sizing and reuses existing cover and recent reading fields', async () => {
+it('removes automatic sizing and reuses cover and recent reading fields', async () => {
   settings.libraryViewMode = 'grid';
   settings.libraryAutoColumns = false;
   settings.libraryCoverWidth = 220;
   render(<ViewMenu />);
-  fireEvent.click(screen.getByRole('button', { name: 'Auto', pressed: false }));
-  await waitFor(() => expect(save).toHaveBeenCalledWith({}, 'libraryAutoColumns', true));
+  expect(screen.queryByRole('button', { name: 'Auto' })).toBeNull();
   fireEvent.click(screen.getByRole('checkbox', { name: '3D covers' }));
   await waitFor(() => expect(save).toHaveBeenCalledWith({}, 'librarySkeuomorphicCovers', true));
   fireEvent.click(screen.getByRole('checkbox', { name: 'Show recent reading' }));

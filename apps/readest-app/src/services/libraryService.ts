@@ -1,9 +1,10 @@
+import { notifyLibraryUpdated } from '@/utils/libraryEvents';
 import { FileSystem, SaveLibraryBooksOptions } from '@/types/system';
 import { Book } from '@/types/book';
-import { getLibraryFilename } from '@/utils/book';
 import { removeBookSubjectMetadata } from '@/utils/bookMetadata';
 import { repairImportedMetadata } from '@/utils/importMetadata';
-import { safeLoadJSON, safeSaveJSON, type JSONFileSystem } from './persistence';
+import type { JSONFileSystem } from './persistence';
+import { loadLibraryRows, writeLibraryRows } from './libraryRepository';
 import { withLibraryLock } from './libraryLock';
 import { protectBookRemoval } from './bookRemovalState';
 import { contentIdentity } from './bookIdentity';
@@ -24,13 +25,11 @@ export async function loadLibraryBooks(
   fs: FileSystem,
   generateCoverImageUrl: (book: Book) => Promise<string>,
 ): Promise<Book[]> {
-  const libraryFilename = getLibraryFilename();
-
   if (!(await fs.exists('', 'Books'))) {
     await fs.createDir('', 'Books', true);
   }
 
-  const books = await safeLoadJSON<Book[]>(fs, libraryFilename, 'Books', []);
+  const books = await loadLibraryRows(fs);
 
   let removedSubjects = false;
   await processInBatches(books, COVER_CONCURRENCY, async (book) => {
@@ -63,7 +62,9 @@ export async function saveLibraryBooks(
   books: Book[],
   options?: SaveLibraryBooksOptions,
 ): Promise<Book[]> {
-  return withLibraryLock(fs, () => saveLibraryBooksUnlocked(fs, books, options));
+  const saved = await withLibraryLock(fs, () => saveLibraryBooksUnlocked(fs, books, options));
+  notifyLibraryUpdated();
+  return saved;
 }
 
 /** Caller must hold withLibraryLock; import commits share this transaction boundary. */
@@ -71,6 +72,7 @@ export async function saveLibraryBooksUnlocked(
   fs: JSONFileSystem,
   books: Book[],
   options?: SaveLibraryBooksOptions,
+  diskSnapshot?: Book[],
 ): Promise<Book[]> {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const incoming = books.map(({ coverImageUrl, ...rest }) => ({
@@ -79,7 +81,7 @@ export async function saveLibraryBooksUnlocked(
   }));
 
   if (options?.replace) {
-    await safeSaveJSON(fs, getLibraryFilename(), 'Books', incoming);
+    await writeLibraryRows(fs, incoming, diskSnapshot);
     return incoming;
   }
 
@@ -89,13 +91,11 @@ export async function saveLibraryBooksUnlocked(
   // This stops a stale or partially-loaded in-memory library (e.g. the
   // cold-start "Open with" race) from wiping library.json. Deliberate removals
   // must go through `{ replace: true }`.
-  const existing = await safeLoadJSON<Book[]>(fs, getLibraryFilename(), 'Books', []);
+  const existing = diskSnapshot ?? (await loadLibraryRows(fs));
   const merged = new Map<string, Book>();
   for (const book of Array.isArray(existing) ? existing : []) {
-    merged.set(
-      book.hash,
-      book.metadata ? { ...book, metadata: removeBookSubjectMetadata(book.metadata) } : book,
-    );
+    const metadata = book.metadata && removeBookSubjectMetadata(book.metadata);
+    merged.set(book.hash, metadata !== book.metadata ? { ...book, metadata } : book);
   }
   for (const book of incoming) {
     const previous = merged.get(book.hash);
@@ -108,7 +108,7 @@ export async function saveLibraryBooksUnlocked(
       throw new Error('Book content identity conflict');
     }
     merged.set(book.hash, {
-      ...(previous ? protectBookRemoval(book, previous) : book),
+      ...(previous ? mergeLibraryBook(previous, book) : book),
       contentFingerprint: book.contentFingerprint ?? previous?.contentFingerprint,
       storedContentFingerprint: book.storedContentFingerprint ?? previous?.storedContentFingerprint,
       ...((previous?.duplicateUpdatedAt ?? 0) > (book.duplicateUpdatedAt ?? 0)
@@ -117,6 +117,52 @@ export async function saveLibraryBooksUnlocked(
     });
   }
   const persisted = Array.from(merged.values());
-  await safeSaveJSON(fs, getLibraryFilename(), 'Books', persisted);
+  await writeLibraryRows(fs, persisted, existing);
   return persisted;
+}
+
+/** Preserve independently newer personal edits when a reader saves an old row. */
+export function mergeLibraryBook(current: Book, incoming: Book): Book {
+  const result: Book = { ...current, ...incoming };
+  if (current.updatedAt > incoming.updatedAt) {
+    result.updatedAt = current.updatedAt;
+    result.progress = current.progress;
+  } else {
+    result.progress ??= current.progress;
+  }
+  // Reading progress uses updatedAt, but cannot authorize a move from a
+  // window whose group snapshot predates the latest explicit library move.
+  const currentGroup = current.groupUpdatedAt ?? 0;
+  const incomingGroup = incoming.groupUpdatedAt ?? 0;
+  const group =
+    currentGroup > incomingGroup ||
+    (currentGroup === incomingGroup && current.updatedAt >= incoming.updatedAt)
+      ? current
+      : incoming;
+  result.groupId = group.groupId;
+  result.groupName = group.groupName;
+  result.group = group.group;
+  result.groupUpdatedAt = group.groupUpdatedAt;
+  const currentMeta = current.metadataUpdatedAt ?? 0;
+  const incomingMeta = incoming.metadataUpdatedAt ?? 0;
+  const metadata =
+    currentMeta > incomingMeta ||
+    (currentMeta === incomingMeta && current.updatedAt >= incoming.updatedAt)
+      ? current
+      : incoming;
+  result.title = metadata.title;
+  result.author = metadata.author;
+  result.tags = metadata.tags;
+  result.metadata = metadata.metadata ?? result.metadata;
+  result.primaryLanguage = metadata.primaryLanguage;
+  result.metadataUpdatedAt = metadata.metadataUpdatedAt;
+  if ((current.readingStatusUpdatedAt ?? 0) > (incoming.readingStatusUpdatedAt ?? 0)) {
+    result.readingStatus = current.readingStatus;
+    result.readingStatusUpdatedAt = current.readingStatusUpdatedAt;
+  }
+  if ((current.coverUpdatedAt ?? 0) > (incoming.coverUpdatedAt ?? 0)) {
+    result.coverHash = current.coverHash;
+    result.coverUpdatedAt = current.coverUpdatedAt;
+  }
+  return protectBookRemoval(result, current);
 }

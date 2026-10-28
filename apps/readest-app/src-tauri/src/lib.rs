@@ -27,6 +27,7 @@ mod dir_scanner;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 mod discord_rpc;
 mod epub_parser;
+mod import_io;
 #[cfg(target_os = "macos")]
 mod macos;
 mod mobi_parser;
@@ -432,12 +433,16 @@ pub fn run() {
             is_updater_disabled,
             allow_paths_in_scopes,
             dir_scanner::read_dir,
+            import_io::import_fingerprint,
+            import_io::import_copy_verified,
+            import_io::cancel_import_io,
             epub_parser::parse_epub_metadata,
             epub_parser::extract_epub_cover_full,
             epub_parser::parse_epub_full,
             mobi_parser::parse_mobi_metadata,
             mobi_parser::extract_mobi_cover_full,
             pdf_enhancement::pdf_open_cache,
+            pdf_enhancement::pdf_release_source_session,
             pdf_enhancement::pdf_purge_book,
             pdf_enhancement::pdf_legacy_caches,
             pdf_enhancement::pdf_clear_legacy_caches,

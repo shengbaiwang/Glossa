@@ -76,7 +76,13 @@ function replaceFolders(
     books: books.map((book) => {
       const path = !book.deletedAt && book.groupName ? replacements.get(book.groupName) : undefined;
       return path !== undefined && path !== book.groupName
-        ? { ...book, groupName: path, groupId: path ? md5Fingerprint(path) : '', updatedAt: now }
+        ? {
+            ...book,
+            groupName: path,
+            groupId: path ? md5Fingerprint(path) : '',
+            groupUpdatedAt: now,
+            updatedAt: now,
+          }
         : book;
     }),
   };
@@ -138,6 +144,7 @@ export function moveToFolder(
           ...book,
           groupName: destination,
           groupId: destination ? md5Fingerprint(destination) : '',
+          groupUpdatedAt: now,
           updatedAt: now,
         }
       : book,

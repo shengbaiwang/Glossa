@@ -152,20 +152,27 @@ export function useLibraryMarquee(options: Options) {
           event.button !== 0 ||
           event.pointerType !== 'mouse' ||
           (event.target as HTMLElement).closest(
-            '[data-book-hash], [data-group-name], button, a, input, select, textarea, [role="button"], [contenteditable="true"], .glossa-bookshelf-header, [data-overlayscrollbars-viewport] > [data-overlayscrollbars-padding]',
+            '[data-book-hash], [data-group-name], button, a, input, select, textarea, [role="button"], [contenteditable="true"], .glossa-bookshelf-header, .os-scrollbar, [data-overlayscrollbars-viewport] > [data-overlayscrollbars-padding]',
           )
         )
           return;
         const scroll = options.scroller.current;
-        const bounds = scroll?.getBoundingClientRect();
-        // Leave native/custom scrollbars outside the content area alone.
+        const viewport = scroll?.getBoundingClientRect();
+        const bounds = options.root.current?.getBoundingClientRect() ?? viewport;
+        // Include the shelf's blank insets, leaving native/custom scrollbars alone.
         if (
           bounds &&
           bounds.width &&
-          (event.clientX >= bounds.left + scroll!.clientWidth ||
+          (event.clientX >= bounds.right ||
             event.clientX < bounds.left ||
             event.clientY < bounds.top ||
             event.clientY >= bounds.bottom)
+        )
+          return;
+        if (
+          viewport &&
+          event.clientX >= viewport.left + scroll!.clientWidth &&
+          event.clientX < viewport.right
         )
           return;
         gesture.current = {

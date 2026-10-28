@@ -31,6 +31,42 @@ const envelope = (over: Partial<RemoteBookConfig> = {}): RemoteBookConfig => ({
   ...over,
 });
 
+test('a newer reading position cannot undo an explicit group move, in either sync direction', () => {
+  const moved = {
+    hash: 'h',
+    title: 'T',
+    author: 'A',
+    groupId: 'new',
+    groupName: 'New',
+    groupUpdatedAt: 200,
+    updatedAt: 200,
+  } as Book;
+  const reading = {
+    ...moved,
+    groupId: 'old',
+    groupName: 'Old',
+    groupUpdatedAt: 100,
+    updatedAt: 300,
+    progress: [60, 100],
+  } as Book;
+  for (const [local, remote] of [
+    [moved, reading],
+    [reading, moved],
+  ] as const) {
+    expect(mergeBookMetadata(local, remote)).toMatchObject({
+      groupId: 'new',
+      groupName: 'New',
+      groupUpdatedAt: 200,
+      progress: [60, 100],
+      updatedAt: 300,
+    });
+  }
+  expect(shouldApplyRemoteBookMetadata(reading, moved)).toBe(true);
+  expect(
+    mergeBookMetadata(reading, { ...moved, groupId: undefined, groupName: undefined }),
+  ).toMatchObject({ groupId: undefined, groupName: undefined, groupUpdatedAt: 200 });
+});
+
 describe('mergeNotes (element-set CRDT)', () => {
   test('union keeps ids from both sides', () => {
     const out = mergeNotes([note('a', 1)], [note('b', 1)])

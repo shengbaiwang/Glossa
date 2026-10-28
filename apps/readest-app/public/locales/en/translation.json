@@ -662,6 +662,7 @@
   "Restore Defaults": "Restore Defaults",
   "Failed to save settings": "Failed to save settings",
   "Change Data Location": "Change Data Location",
+  "Changing this library’s data location is temporarily unsupported. Your current folder is kept.": "Changing this library’s data location is temporarily unsupported. Your current folder is kept.",
   "Cloud File Transfers": "Cloud File Transfers",
   "{{count}} books refreshed": "{{count}} books refreshed",
   "Failed to refresh metadata": "Failed to refresh metadata",

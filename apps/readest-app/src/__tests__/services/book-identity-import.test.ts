@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import type { Book } from '@/types/book';
 import type { FileSystem } from '@/types/system';
 import { fingerprintFile } from '@/services/bookIdentity';
+import * as libraryEvents from '@/utils/libraryEvents';
 import { partialMD5 } from '@/utils/md5';
 import {
   getConfigFilename,
@@ -19,6 +20,12 @@ import {
   undoDuplicateChoice,
 } from '@/services/duplicateBooks';
 
+const importParser = vi.hoisted(() => ({
+  count: 0,
+  destroyed: 0,
+  beforeOpen: undefined as undefined | (() => Promise<void>),
+}));
+
 vi.mock('@/utils/tauriEpubBridge', () => ({ tryNativeParseEpub: vi.fn() }));
 vi.mock('@/utils/tauriMobiBridge', () => ({ tryNativeParseMobi: vi.fn() }));
 vi.mock('@/libs/document', async (original) => {
@@ -27,12 +34,16 @@ vi.mock('@/libs/document', async (original) => {
     ...actual,
     DocumentLoader: class {
       async open() {
+        importParser.count++;
+        await importParser.beforeOpen?.();
         return {
           format: 'EPUB',
           book: {
             metadata: { title: 'Same title', author: 'Same author', language: 'en' },
             getCover: async () => null,
-            destroy: vi.fn(),
+            destroy: vi.fn(() => {
+              importParser.destroyed++;
+            }),
           },
         };
       }
@@ -40,8 +51,21 @@ vi.mock('@/libs/document', async (original) => {
   };
 });
 
-import { importBook } from '@/services/bookService';
+import { buildBookLookupIndex, importBook, importBooks } from '@/services/bookService';
 import { loadLibraryBooks, saveLibraryBooks } from '@/services/libraryService';
+
+it('indexes complete content fingerprints for import candidate lookup', () => {
+  const book = {
+    hash: 'book',
+    format: 'EPUB',
+    title: 'Book',
+    contentFingerprint: `sha256:${'a'.repeat(64)}`,
+    createdAt: 1,
+    updatedAt: 1,
+  } as Book;
+  const index = buildBookLookupIndex([book]);
+  expect(index.byContentFingerprint.get(book.contentFingerprint!)).toEqual([book]);
+});
 
 function memoryFileSystem() {
   const files = new Map<string, File>();
@@ -75,6 +99,9 @@ describe('content identity import contract', () => {
   let memory: ReturnType<typeof memoryFileSystem>;
   beforeEach(() => {
     memory = memoryFileSystem();
+    importParser.count = 0;
+    importParser.destroyed = 0;
+    importParser.beforeOpen = undefined;
   });
   const options = () => ({
     saveCover: false,
@@ -144,6 +171,27 @@ describe('content identity import contract', () => {
     expect(await fingerprintFile(new File([bytes], 'renamed.epub'))).toBe(expected);
   });
 
+  it('uses the file stream instead of issuing independent ranged reads', async () => {
+    const bytes = new Uint8Array(3 * 1024 * 1024).fill(7);
+    const file = new File([bytes], 'stream.epub');
+    const stream = vi.fn(
+      () =>
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(bytes);
+            controller.close();
+          },
+        }),
+    );
+    Object.defineProperty(file, 'stream', { value: stream });
+    const slice = vi.spyOn(file, 'slice');
+
+    await fingerprintFile(file);
+
+    expect(stream).toHaveBeenCalledOnce();
+    expect(slice).not.toHaveBeenCalled();
+  });
+
   it('yields during a large fingerprint so cancellation stops before completion', async () => {
     const controller = new AbortController();
     const file = new File([new Uint8Array(8 * 1024 * 1024)], 'large.epub');
@@ -168,7 +216,11 @@ describe('content identity import contract', () => {
     const two = await importBook(memory.fs, b, books, options());
     expect(books).toHaveLength(2);
     expect(one?.hash).not.toBe(two?.hash);
-    expect(memory.fs.removeDir).not.toHaveBeenCalled();
+    expect(
+      vi
+        .mocked(memory.fs.removeDir)
+        .mock.calls.every(([path]) => String(path).startsWith('.importing/')),
+    ).toBe(true);
   });
 
   it('commits concurrent renamed copies once, then reuses the record after restart', async () => {
@@ -198,6 +250,460 @@ describe('content identity import contract', () => {
       )?.hash,
     ).toBe(books[0]?.hash);
     expect(restored).toHaveLength(1);
+  });
+
+  it('commits a four-file batch with one disk snapshot and one logical save', async () => {
+    const books: Book[] = [];
+    const statuses: string[] = [];
+    const reads = vi.spyOn(memory.fs, 'readFile');
+    const inputs = ['one', 'two', 'three', 'three'].map((content, index) => ({
+      file: new File([content], `${index}.epub`),
+      options: {
+        ...options(),
+        onResult: (status: 'added' | 'existing') => statuses.push(status),
+      },
+    }));
+
+    const results = await importBooks(memory.fs, inputs, books, options());
+
+    expect(results.every((result) => result.book && !result.error)).toBe(true);
+    expect(books).toHaveLength(3);
+    expect(statuses).toEqual(['added', 'added', 'added', 'existing']);
+    expect(reads.mock.calls.filter(([path]) => path === 'library.json')).toHaveLength(1);
+    expect(
+      vi.mocked(memory.fs.writeFile).mock.calls.filter(([path]) => path === 'library.json'),
+    ).toHaveLength(1);
+  });
+
+  it('reuses an available complete identity before invoking a format parser', async () => {
+    const books: Book[] = [];
+    const first = (await importBook(
+      memory.fs,
+      new File(['known bytes'], 'first.epub'),
+      books,
+      options(),
+    ))!;
+    first.title = 'Personal title';
+    first.progress = [17, 100];
+    first.metadataUpdatedAt = first.updatedAt + 1;
+    first.updatedAt++;
+    await saveLibraryBooks(memory.fs, [first]);
+    const parses = importParser.count;
+    const reused = await importBook(
+      memory.fs,
+      new File(['known bytes'], 'renamed.epub'),
+      books,
+      options(),
+    );
+    expect(importParser.count).toBe(parses);
+    expect(reused).toMatchObject({
+      hash: first.hash,
+      title: 'Personal title',
+      progress: [17, 100],
+    });
+  });
+
+  it('publishes ready peers and starts the fifth input while the first is still reading', async () => {
+    const books: Book[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    memory.fs.fingerprint = async (path, base, signal) => {
+      if (path === '/0.epub') await gate;
+      return fingerprintFile(await memory.fs.openFile(path, base), signal);
+    };
+    for (let index = 0; index < 6; index++)
+      await memory.fs.writeFile(`/${index}.epub`, 'None', `content ${index}`);
+    const completed: number[] = [];
+    const importing = importBooks(
+      memory.fs,
+      Array.from({ length: 6 }, (_, index) => ({
+        file: `/${index}.epub`,
+        options: { onComplete: () => completed.push(index) },
+      })),
+      books,
+      options(),
+    );
+    try {
+      await vi.waitFor(() => expect(completed).toContain(4));
+      expect(completed).not.toContain(0);
+      expect(books.length).toBeGreaterThanOrEqual(4);
+      expect((await loadLibraryBooks(memory.fs, async () => '')).length).toBeGreaterThanOrEqual(4);
+    } finally {
+      release();
+    }
+    const results = await importing;
+    expect(results.every((result) => result.book && !result.error)).toBe(true);
+    expect(completed).toHaveLength(6);
+  });
+
+  it('completes a saved peer before a newly discovered legacy candidate finishes hashing', async () => {
+    const legacy = new File(['slow legacy bytes'], 'legacy.epub');
+    const old = {
+      hash: await partialMD5(legacy),
+      format: 'EPUB',
+      title: 'Legacy',
+      sourceTitle: 'Legacy',
+      author: '',
+      createdAt: 1,
+      updatedAt: 1,
+    } as Book;
+    await memory.fs.writeFile(getLocalBookFilename(old), 'Books', legacy);
+    await saveLibraryBooks(memory.fs, [old]);
+    let release!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started!: () => void;
+    const hashing = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    memory.fs.fingerprint = async (path, base, signal) => {
+      if (path === getLocalBookFilename(old)) {
+        started();
+        await reading;
+      }
+      return fingerprintFile(await memory.fs.openFile(path, base), signal);
+    };
+    const books: Book[] = [];
+    const completed: number[] = [];
+    let legacyCommitting = false;
+    let sharedBatch = false;
+    const importing = importBooks(
+      memory.fs,
+      [
+        {
+          file: new File(['ready peer'], 'ready.epub'),
+          options: {
+            onComplete: () => {
+              sharedBatch = legacyCommitting;
+              completed.push(0);
+            },
+          },
+        },
+        {
+          file: legacy,
+          options: {
+            onProgress: ({ stage }) => {
+              if (stage === 'committing') legacyCommitting = true;
+            },
+            onComplete: () => completed.push(1),
+          },
+        },
+      ],
+      books,
+      options(),
+    );
+    try {
+      await hashing;
+      expect(completed).toEqual([0]);
+      expect(sharedBatch).toBe(true);
+      expect(importParser.destroyed).toBe(1);
+      expect(
+        (await loadLibraryBooks(memory.fs, async () => '')).some((book) => book.title === 'ready'),
+      ).toBe(true);
+    } finally {
+      release();
+    }
+    const results = await importing;
+    expect(results.every((result) => result.book && !result.error)).toBe(true);
+    expect(completed).toEqual([0, 1]);
+    expect(results[1]?.book?.hash).toBe(old.hash);
+  });
+
+  it('isolates observers and only reports completion after the saved record is readable', async () => {
+    const books: Book[] = [];
+    const calls: string[] = [];
+    const result = await importBook(memory.fs, new File(['observer'], 'observer.epub'), books, {
+      ...options(),
+      onResult: () => {
+        throw new Error('UI observer failed');
+      },
+      onProgress: ({ stage }) => {
+        calls.push(stage);
+      },
+      onComplete: (result) => {
+        expect(result.book?.hash).toBe(books[0]?.hash);
+        expect(memory.files.has('Books/library.json')).toBe(true);
+        throw new Error('Completion observer failed');
+      },
+    });
+    expect(result).toBe(books[0]);
+    expect(calls.at(-1)).toBe('completed');
+  });
+
+  it('notifies other windows only after a successful durable publication', async () => {
+    const books: Book[] = [];
+    const observed: Array<{ count: number; persisted: boolean }> = [];
+    const notify = vi.spyOn(libraryEvents, 'notifyLibraryUpdated').mockImplementation(() => {
+      observed.push({ count: books.length, persisted: memory.files.has('Books/library.json') });
+    });
+    try {
+      const write = memory.fs.writeFile.bind(memory.fs);
+      memory.fs.writeFile = async (path, base, value) => {
+        if (path === 'library.json') throw new Error('disk full');
+        return write(path, base, value);
+      };
+      const file = new File(['notification'], 'notification.epub');
+      await expect(importBook(memory.fs, file, books, options())).rejects.toThrow('disk full');
+      expect(notify).not.toHaveBeenCalled();
+      memory.fs.writeFile = write;
+      await importBook(memory.fs, file, books, options());
+      expect(observed).toEqual([{ count: 1, persisted: true }]);
+    } finally {
+      notify.mockRestore();
+    }
+  });
+
+  it('cancels a globally queued import before parsing and releases all permits for retry', async () => {
+    let release!: () => void;
+    const parsing = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    importParser.beforeOpen = () => parsing;
+    const books: Book[] = [];
+    const active = Array.from({ length: 4 }, (_, index) =>
+      importBook(memory.fs, new File([`active ${index}`], `${index}.epub`), books, options()),
+    );
+    const controller = new AbortController();
+    const onComplete = vi.fn();
+    try {
+      await vi.waitFor(() => expect(importParser.count).toBe(4));
+      const queued = importBook(memory.fs, new File(['queued'], 'queued.epub'), books, {
+        ...options(),
+        signal: controller.signal,
+        onComplete,
+      });
+      controller.abort();
+      await expect(queued).rejects.toMatchObject({ name: 'AbortError' });
+      expect(importParser.count).toBe(4);
+      expect(onComplete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          book: null,
+          error: expect.objectContaining({ name: 'AbortError' }),
+        }),
+      );
+    } finally {
+      release();
+    }
+    await Promise.all(active);
+    expect(importParser.destroyed).toBe(4);
+    importParser.beforeOpen = undefined;
+    await importBook(memory.fs, new File(['queued'], 'queued.epub'), books, options());
+    expect(books).toHaveLength(5);
+  });
+
+  it('discards a parser result arriving after cancellation without publishing a book', async () => {
+    let release!: () => void;
+    const parsing = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    importParser.beforeOpen = () => parsing;
+    const controller = new AbortController();
+    const books: Book[] = [];
+    const completed = vi.fn();
+    const importing = importBooks(memory.fs, [{ file: new File(['late'], 'late.epub') }], books, {
+      ...options(),
+      signal: controller.signal,
+      onComplete: completed,
+    });
+    await vi.waitFor(() => expect(importParser.count).toBe(1));
+    controller.abort();
+    release();
+    const [result] = await importing;
+    expect(result?.error?.name).toBe('AbortError');
+    expect(result?.book).toBeNull();
+    expect(books).toHaveLength(0);
+    expect(memory.files.has('Books/library.json')).toBe(false);
+    expect(importParser.destroyed).toBe(1);
+    expect(completed).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects cancellation while generating the cover URL before starting a durable save', async () => {
+    const controller = new AbortController();
+    const books: Book[] = [];
+    const onResult = vi.fn();
+    const onComplete = vi.fn();
+    const [result] = await importBooks(
+      memory.fs,
+      [{ file: new File(['cancel cover'], 'cancel.epub') }],
+      books,
+      {
+        ...options(),
+        signal: controller.signal,
+        onResult,
+        onComplete,
+        generateCoverImageUrl: async () => {
+          controller.abort();
+          return '';
+        },
+      },
+    );
+    expect(result?.error?.name).toBe('AbortError');
+    expect(result?.book).toBeNull();
+    expect(books).toHaveLength(0);
+    expect(memory.files.has('Books/library.json')).toBe(false);
+    expect(onResult).not.toHaveBeenCalled();
+    expect(onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        book: null,
+        error: expect.objectContaining({ name: 'AbortError' }),
+      }),
+    );
+    expect(importParser.destroyed).toBe(1);
+  });
+
+  it('publishes a successful atomic save when cancellation arrives after persistence starts', async () => {
+    const controller = new AbortController();
+    const write = memory.fs.writeFile.bind(memory.fs);
+    memory.fs.writeFile = async (path, base, value) => {
+      if (path === 'library.json') controller.abort();
+      return write(path, base, value);
+    };
+    const books: Book[] = [];
+    const [result] = await importBooks(
+      memory.fs,
+      [{ file: new File(['atomic'], 'atomic.epub') }],
+      books,
+      {
+        ...options(),
+        signal: controller.signal,
+      },
+    );
+    expect(controller.signal.aborted).toBe(true);
+    expect(result?.error).toBeUndefined();
+    expect(result?.book).toBe(books[0]);
+    expect(await loadLibraryBooks(memory.fs, async () => '')).toHaveLength(1);
+    expect(importParser.destroyed).toBe(1);
+  });
+
+  it('rejects an early duplicate cancelled while generating its cover URL', async () => {
+    const books: Book[] = [];
+    const file = new File(['known cancelled'], 'known.epub');
+    await importBook(memory.fs, file, books, options());
+    const writes = vi.mocked(memory.fs.writeFile);
+    writes.mockClear();
+    const controller = new AbortController();
+    const onResult = vi.fn();
+    const [result] = await importBooks(memory.fs, [{ file }], books, {
+      ...options(),
+      signal: controller.signal,
+      onResult,
+      generateCoverImageUrl: async () => {
+        controller.abort();
+        return '';
+      },
+    });
+    expect(result?.error?.name).toBe('AbortError');
+    expect(result?.book).toBeNull();
+    expect(books).toHaveLength(1);
+    expect(writes.mock.calls.some(([path]) => path === 'library.json')).toBe(false);
+    expect(onResult).not.toHaveBeenCalled();
+    expect(importParser.count).toBe(1);
+  });
+
+  it.each([
+    false,
+    true,
+  ])('keeps an independently active peer when an earlier ready item is cancelled before save (same bytes: %s)', async (sameBytes) => {
+    const controller = new AbortController();
+    const books: Book[] = [];
+    let firstCoverPrepared = false;
+    const results = await importBooks(
+      memory.fs,
+      [
+        {
+          file: new File(['checkpoint first'], 'first.epub'),
+          options: { signal: controller.signal },
+        },
+        { file: new File([sameBytes ? 'checkpoint first' : 'checkpoint second'], 'second.epub') },
+      ],
+      books,
+      {
+        ...options(),
+        generateCoverImageUrl: async () => {
+          if (firstCoverPrepared) controller.abort();
+          else firstCoverPrepared = true;
+          return '';
+        },
+      },
+    );
+    expect(results[0]?.error?.name).toBe('AbortError');
+    expect(results[0]?.book).toBeNull();
+    expect(results[1]?.error).toBeUndefined();
+    expect(results[1]?.book).toBeTruthy();
+    expect(books).toHaveLength(1);
+    expect(await loadLibraryBooks(memory.fs, async () => '')).toHaveLength(1);
+    expect(importParser.destroyed).toBe(2);
+  });
+
+  it('reuses an exclusive admission lease when an early duplicate needs its file restaged', async () => {
+    const books: Book[] = [];
+    const file = new File(['restage bytes'], 'first.epub');
+    const first = (await importBook(memory.fs, file, books, options()))!;
+    const largeSource = new File(['restage bytes'], 'source.epub');
+    Object.defineProperty(largeSource, 'size', { value: 300 * 1024 * 1024 });
+    memory.files.set('None//source.epub', largeSource);
+    memory.fs.fingerprint = async () => first.contentFingerprint;
+    let waiting = 0;
+    const result = await importBook(memory.fs, '/source.epub', books, {
+      ...options(),
+      onProgress: ({ stage }) => {
+        if (stage === 'waiting' && ++waiting === 2)
+          memory.files.delete(`Books/${getLocalBookFilename(first)}`);
+      },
+    });
+    expect(result?.hash).toBe(first.hash);
+    expect(books).toHaveLength(1);
+    expect(importParser.count).toBe(2);
+    expect(await memory.fs.exists(getLocalBookFilename(first), 'Books')).toBe(true);
+  });
+
+  it('verifies legacy bytes outside the library lock so unrelated saves can continue', async () => {
+    const file = new File(['legacy outside lock'], 'legacy.epub');
+    const old = {
+      hash: await partialMD5(file),
+      format: 'EPUB',
+      title: 'Mine',
+      sourceTitle: 'Mine',
+      author: '',
+      createdAt: 1,
+      updatedAt: 1,
+    } as Book;
+    await memory.fs.writeFile(getLocalBookFilename(old), 'Books', file);
+    await saveLibraryBooks(memory.fs, [old]);
+    let release!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started!: () => void;
+    const hashing = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    memory.fs.fingerprint = async (path, base, signal) => {
+      if (path === getLocalBookFilename(old)) {
+        started();
+        await reading;
+      }
+      return fingerprintFile(await memory.fs.openFile(path, base), signal);
+    };
+    const importing = importBook(memory.fs, file, [], options());
+    try {
+      await hashing;
+      let saved = false;
+      const saving = saveLibraryBooks(memory.fs, [
+        { ...old, title: 'Later title', metadataUpdatedAt: 2, updatedAt: 2 },
+      ]).then(() => {
+        saved = true;
+      });
+      await vi.waitFor(() => expect(saved).toBe(true));
+      await saving;
+    } finally {
+      release();
+    }
+    const result = await importing;
+    expect(result).toMatchObject({ hash: old.hash, title: 'Later title' });
   });
 
   it('verifies a legacy record, retains its identity and every personal field and sidecar', async () => {
@@ -282,7 +788,17 @@ describe('content identity import contract', () => {
       return write(path, base, value);
     };
     const books: Book[] = [];
-    await expect(importBook(memory.fs, file, books, failing)).rejects.toThrow('disk full');
+    const completed = vi.fn();
+    await expect(
+      importBook(memory.fs, file, books, { ...failing, onComplete: completed }),
+    ).rejects.toThrow('disk full');
+    expect(books).toHaveLength(0);
+    expect(completed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        book: null,
+        error: expect.objectContaining({ message: expect.stringContaining('disk full') }),
+      }),
+    );
     const { md5 } = await import('@/utils/md5');
     const hash = md5(await fingerprintFile(file));
     await write(`${hash}/config.json`, 'Books', '{"booknotes":[{"id":"saved"}]}');
@@ -316,6 +832,32 @@ describe('content identity import contract', () => {
     expect(books).toHaveLength(2);
     expect(old.title).toBe('Personal title');
     expect(old.filePath).toBeUndefined();
+  });
+
+  it('uses a verified streaming copy when the filesystem provides one', async () => {
+    const file = new File(['verified bytes'], 'source.epub');
+    await memory.fs.writeFile('/source.epub', 'None', file);
+    const expected = await fingerprintFile(file);
+    const copyFileVerified = vi.fn(
+      async (src: string, srcBase: 'None', dest: string, destBase: 'Books') => {
+        await memory.fs.copyFile(src, srcBase, dest, destBase);
+        return expected;
+      },
+    );
+    Object.assign(memory.fs, { copyFileVerified });
+
+    const books: Book[] = [];
+    await importBook(memory.fs, '/source.epub', books, options());
+
+    expect(copyFileVerified).toHaveBeenCalledWith(
+      '/source.epub',
+      'None',
+      expect.stringMatching(/^\.importing\/.+\/book$/),
+      'Books',
+      expected,
+      undefined,
+    );
+    expect(books[0]?.contentFingerprint).toBe(expected);
   });
 
   it('rejects a source changed during copying, then repairs its unregistered file on retry', async () => {
@@ -539,7 +1081,11 @@ describe('content identity import contract', () => {
         `{"title":"${book.hash}"}`,
       );
     }
-    expect(memory.fs.removeDir).not.toHaveBeenCalled();
+    expect(
+      vi
+        .mocked(memory.fs.removeDir)
+        .mock.calls.every(([path]) => String(path).startsWith('.importing/')),
+    ).toBe(true);
   });
 
   it('undoes after restart without overwriting later reading or metadata edits', async () => {

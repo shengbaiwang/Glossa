@@ -12,8 +12,8 @@ const setup = (onMove = vi.fn(), onEnd = vi.fn()) => {
     api = useDrag(onMove, vi.fn(), onEnd);
     return null;
   }
-  render(<Wrapper />);
-  return { getApi: () => api, onMove, onEnd };
+  const view = render(<Wrapper />);
+  return { getApi: () => api, onMove, onEnd, unmount: view.unmount };
 };
 
 const startMouseDrag = (api: Api, clientX = 100) => {
@@ -66,5 +66,19 @@ describe('useDrag', () => {
     // No further resizing after release.
     fireWindowMouse('mousemove', 200);
     expect(onMove).toHaveBeenCalledTimes(1);
+  });
+
+  it('cleans up an active drag when its owner unmounts', () => {
+    const { getApi, onMove, onEnd, unmount } = setup();
+    startMouseDrag(getApi());
+    unmount();
+    try {
+      expect(getShield()).toBeNull();
+      fireWindowMouse('mousemove', 180);
+      expect(onMove).not.toHaveBeenCalled();
+      expect(onEnd).not.toHaveBeenCalled();
+    } finally {
+      fireWindowMouse('mouseup', 180);
+    }
   });
 });

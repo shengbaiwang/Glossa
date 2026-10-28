@@ -84,10 +84,23 @@ const indexedDBFileSystem: FileSystem = {
   async openFile(path: string, base: BaseDir, filename?: string) {
     if (isValidURL(path)) {
       return await new RemoteFile(path, filename).open();
-    } else {
-      const content = await this.readFile(path, base, 'binary');
-      return new File([content], filename || path);
     }
+    const { fp } = this.resolvePath(path, base);
+    const db = await openIndexedDB();
+    return new Promise<File>((resolve, reject) => {
+      const request = db.transaction('files', 'readonly').objectStore('files').get(fp);
+      request.onsuccess = () => {
+        const data = request.result;
+        if (!data) {
+          reject(new Error(`File not found: ${fp}`));
+          return;
+        }
+        const content = data.content as string | ArrayBuffer | Blob;
+        const type = content instanceof Blob ? content.type : '';
+        resolve(new File([content], filename || path, { type }));
+      };
+      request.onerror = () => reject(request.error);
+    });
   },
   async copyFile(srcPath: string, srcBase: BaseDir, dstPath: string, dstBase: BaseDir) {
     const { fp: srcFp } = this.resolvePath(srcPath, srcBase);
@@ -103,13 +116,35 @@ const indexedDBFileSystem: FileSystem = {
         const data = getRequest.result;
         if (data) {
           store.put({ path: dstFp, content: data.content });
-          resolve();
         } else {
           reject(new Error(`File not found: ${srcFp}`));
         }
       };
 
       getRequest.onerror = () => reject(getRequest.error);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  },
+  async moveFile(srcPath: string, srcBase: BaseDir, dstPath: string, dstBase: BaseDir) {
+    const { fp: srcFp } = this.resolvePath(srcPath, srcBase);
+    const { fp: dstFp } = this.resolvePath(dstPath, dstBase);
+    const db = await openIndexedDB();
+    return new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction('files', 'readwrite');
+      const store = transaction.objectStore('files');
+      const request = store.get(srcFp);
+      request.onsuccess = () => {
+        if (!request.result) {
+          reject(new Error(`File not found: ${srcFp}`));
+          return;
+        }
+        store.put({ path: dstFp, content: request.result.content });
+        store.delete(srcFp);
+      };
+      request.onerror = () => reject(request.error);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
     });
   },
   async readFile(path: string, base: BaseDir, mode: 'text' | 'binary') {
@@ -149,9 +184,6 @@ const indexedDBFileSystem: FileSystem = {
     const { fp } = this.resolvePath(path, base);
     const db = await openIndexedDB();
 
-    if (content instanceof File) {
-      content = await content.arrayBuffer();
-    }
     return new Promise<void>((resolve, reject) => {
       const transaction = db.transaction('files', 'readwrite');
       const store = transaction.objectStore('files');

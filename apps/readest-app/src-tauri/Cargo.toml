@@ -84,6 +84,7 @@ tauri-plugin-webdriver = { version = "0.2", optional = true }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 quick-xml = "0.36"
 md-5 = "0.10"
+sha2 = "0.10"
 # Used by `epub_parser::read_zip_entry` as a fallback when an OPF/manifest
 # href is percent-encoded (e.g. spaces as %20, CJK paths) but the zip stores
 # the raw decoded bytes — or vice versa. Already in our transitive dep graph

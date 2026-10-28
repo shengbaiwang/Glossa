@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-import-copy-verified"
+description = "Enables the import_copy_verified command without any pre-configured scope."
+commands.allow = ["import_copy_verified"]
+
+[[permission]]
+identifier = "deny-import-copy-verified"
+description = "Denies the import_copy_verified command without any pre-configured scope."
+commands.deny = ["import_copy_verified"]

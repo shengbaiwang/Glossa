@@ -64,6 +64,6 @@ describe('NativeAppService', () => {
   });
 
   fsTests(() => service);
-  libraryTests(() => service);
+  libraryTests(() => service, 'database');
   bookTests(() => service, getBookFile);
 });

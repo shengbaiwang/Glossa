@@ -43,6 +43,7 @@ import {
   getLibraryViewSettings,
   saveViewSettings,
   saveReadingDefaults,
+  saveSysSettings,
 } from '@/helpers/settings';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { EnvConfigType } from '@/services/environment';
@@ -376,4 +377,25 @@ describe('saveReadingDefaults', () => {
     await saveReadingDefaults(envConfig, 'current');
     expect(useSettingsStore.getState().settings.globalViewSettings.fontWeight).toBe(650);
   });
+});
+
+test('failed display edits retain retry and cannot revert a later preference', async () => {
+  const save = vi.mocked(useSettingsStore.getState().saveSettings);
+  save.mockRejectedValueOnce(new Error('disk'));
+  await expect(saveSysSettings(envConfig, 'libraryCoverWidth', 220)).rejects.toThrow('disk');
+  await saveSysSettings(envConfig, 'libraryCoverWidth', 220);
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(useSettingsStore.getState().settings.libraryCoverWidth).toBe(220);
+  let reject!: (error: Error) => void;
+  save.mockImplementationOnce(
+    () =>
+      new Promise((_, fail) => {
+        reject = fail;
+      }),
+  );
+  const earlier = saveSysSettings(envConfig, 'libraryCoverWidth', 200);
+  await saveSysSettings(envConfig, 'libraryCoverWidth', 240);
+  reject(new Error('late failure'));
+  await expect(earlier).rejects.toThrow();
+  expect(useSettingsStore.getState().settings.libraryCoverWidth).toBe(240);
 });

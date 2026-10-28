@@ -8,6 +8,9 @@ import {
   BookConfig,
   BookContent,
   BookFormat,
+  BookImportInput,
+  BookImportProgress,
+  BookImportResult,
   BookLookupIndex,
   FIXED_LAYOUT_FORMATS,
   ImportBookOptions,
@@ -42,24 +45,33 @@ import { normalizeMetadataIsbn } from '@/utils/isbn';
 import { resolveImportedMetadata } from '@/utils/importMetadata';
 import { BookFileNotFoundError } from './errors';
 import { snapshotMarkdownImport } from './markdownImport';
-import { fingerprintFile, fingerprintBook, contentIdentity } from './bookIdentity';
+import { fingerprintFile, fingerprintPath, contentIdentity } from './bookIdentity';
 import { withLibraryLock } from './libraryLock';
-import { saveLibraryBooksUnlocked } from './libraryService';
-import { safeLoadJSON } from './persistence';
-import { getLibraryFilename } from '@/utils/book';
+import { notifyLibraryUpdated } from '@/utils/libraryEvents';
+import { mergeLibraryBook, saveLibraryBooksUnlocked } from './libraryService';
+import { loadLibraryRows } from './libraryRepository';
+import { importResourceGate, runImportTasks, type ImportResourceLease } from './importTaskQueue';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import {
   isBookFileContentSource,
   resolveBookContentSource,
   type BookFileContentSource,
+  type BookContentSource,
 } from './bookContent';
 
 export function buildBookLookupIndex(books: Book[], osPlatform?: OsPlatform): BookLookupIndex {
   const byHash = new Map<string, Book>();
+  const byContentFingerprint = new Map<string, Book[]>();
   const byMetaKey = new Map<string, Book[]>();
   const byFilePath = new Map<string, Book>();
   for (const book of books) {
     byHash.set(book.hash, book);
+    const identity = contentIdentity(book);
+    if (identity) {
+      const list = byContentFingerprint.get(identity);
+      if (list) list.push(book);
+      else byContentFingerprint.set(identity, [book]);
+    }
     if (book.metaHash && !book.deletedAt) {
       const key = `${book.metaHash}:${book.format}`;
       const list = byMetaKey.get(key);
@@ -72,7 +84,7 @@ export function buildBookLookupIndex(books: Book[], osPlatform?: OsPlatform): Bo
       if (key) byFilePath.set(key, book);
     }
   }
-  return { byHash, byMetaKey, byFilePath };
+  return { byHash, byContentFingerprint, byMetaKey, byFilePath };
 }
 
 /**
@@ -319,12 +331,86 @@ export async function computeCoverHash(fs: FileSystem, book: Book): Promise<stri
 export interface ImportBookInternalOptions extends ImportBookOptions {
   saveBookConfig: (book: Book, config: BookConfig) => Promise<void>;
   generateCoverImageUrl: (book: Book) => Promise<string>;
-  preparePDF?: (book: Book, document: BookDoc) => Promise<void>;
+  preparePDF?: (book: Book, document: BookDoc | undefined, signal?: AbortSignal) => Promise<void>;
+  /** Only used to fall back when an early duplicate changes before commit. */
+  skipKnownContent?: boolean;
   /** Normalizes device-local source path hints consistently with the lookup index. */
   osPlatform?: OsPlatform;
 }
 
-export async function importBook(
+interface ImportCommitContext {
+  disk: Book[];
+  current: Map<string, Book>;
+  index: BookLookupIndex;
+  changes: Book[];
+  publish: Array<() => Book>;
+}
+
+class ImportNeedsStage extends Error {}
+
+function mergeImportSnapshot(disk: Book, live: Book): Book {
+  return {
+    ...mergeLibraryBook(disk, live),
+    contentFingerprint: live.contentFingerprint ?? disk.contentFingerprint,
+    storedContentFingerprint: live.storedContentFingerprint ?? disk.storedContentFingerprint,
+    ...((disk.duplicateUpdatedAt ?? 0) > (live.duplicateUpdatedAt ?? 0)
+      ? { duplicateOf: disk.duplicateOf, duplicateUpdatedAt: disk.duplicateUpdatedAt }
+      : {}),
+  };
+}
+
+interface LegacyImportProof {
+  rowVersion: string;
+  source: BookContentSource;
+  sourceVersion: string;
+  identity?: string;
+}
+
+function legacyRowVersion(book: Book): string {
+  return JSON.stringify([
+    book.hash,
+    book.format,
+    book.updatedAt,
+    book.filePath,
+    book.url,
+    book.contentFingerprint,
+    book.storedContentFingerprint,
+    book.deletedAt,
+    book.duplicateOf,
+    book.duplicateUpdatedAt,
+    book.removal,
+    book.localRemoval,
+  ]);
+}
+
+/** Metadata-only validation is safe inside the short publication transaction. */
+async function legacySourceVersion(fs: FileSystem, source: BookContentSource): Promise<string> {
+  if (source.kind !== 'managed') return JSON.stringify(source);
+  try {
+    if (typeof fs.stats === 'function') {
+      const stat = await fs.stats(source.path, source.base);
+      return JSON.stringify([source, stat.isFile, stat.size, stat.mtime, stat.birthtime]);
+    }
+    const file = await fs.openFile(source.path, source.base);
+    try {
+      return JSON.stringify([source, file.size, file.lastModified]);
+    } finally {
+      await (file as Partial<ClosableFile>).close?.();
+    }
+  } catch {
+    return JSON.stringify([source, 'unavailable']);
+  }
+}
+
+interface PreparedBookImport {
+  stage: (force?: boolean) => Promise<void>;
+  commit: (context?: ImportCommitContext) => Promise<Book>;
+  discardStaging: () => Promise<void>;
+  release: () => Promise<void>;
+  schedule: (book: Book) => Promise<void>;
+}
+
+async function prepareBookImport(
   fs: FileSystem,
   // file might be:
   // 1.1 absolute path for local file on Desktop
@@ -335,7 +421,8 @@ export async function importBook(
   file: string | File,
   books: Book[],
   options: ImportBookInternalOptions,
-): Promise<Book | null> {
+  sharedLease?: ImportResourceLease,
+): Promise<PreparedBookImport> {
   const {
     saveBookConfig: saveBookConfigFn,
     generateCoverImageUrl: generateCoverImageUrlFn,
@@ -354,6 +441,40 @@ export async function importBook(
   let fileobj: File | undefined;
   let originalFile: File | undefined;
   let contentFingerprint: string | undefined;
+  const stageDirectory = `.importing/${crypto.randomUUID()}`;
+  let stagedBookPath: string | undefined;
+  let stagedCover: Blob | null | undefined;
+  let coverPrepared = false;
+  let inPlaceVerified = false;
+  let released = false;
+  let resourceLease = sharedLease;
+  const reserveResources = async (size?: number) => {
+    if (resourceLease) return;
+    options.onProgress?.({ stage: 'waiting', elapsedMs: 0 });
+    resourceLease = await importResourceGate.acquire(size, options.signal);
+    options.onProgress?.({ stage: 'fingerprinting', elapsedMs: 0 });
+  };
+  const releaseResources = async () => {
+    if (released) return;
+    released = true;
+    try {
+      await loadedBook?.destroy?.();
+    } catch (error) {
+      console.warn('Error destroying book document:', error);
+    }
+    if (originalFile && originalFile !== fileobj) {
+      try {
+        await (originalFile as Partial<ClosableFile>).close?.();
+      } catch {}
+    }
+    const current = fileobj as ClosableFile | undefined;
+    if (current?.close) {
+      try {
+        await current.close();
+      } catch {}
+    }
+    resourceLease?.release();
+  };
   try {
     let format: BookFormat;
     let filename: string;
@@ -368,6 +489,7 @@ export async function importBook(
 
     try {
       if (isPseStream) {
+        await reserveResources();
         const data = parsePseStreamFileName(file as string);
         ({ book: loadedBook, format } = await openPseStreamBook(data));
         filename = file as string;
@@ -380,6 +502,8 @@ export async function importBook(
           filename = file.name;
         }
         originalFile = fileobj;
+        await reserveResources(fileobj.size);
+        options.signal?.throwIfAborted();
         if (/\.(?:md|markdown)$/i.test(filename)) {
           // Markdown is an immutable reading snapshot, even in a watched folder.
           inPlace = false;
@@ -392,7 +516,115 @@ export async function importBook(
               options.signal,
             );
         }
-        contentFingerprint = await fingerprintFile(fileobj, options.signal);
+        contentFingerprint =
+          fileobj === originalFile && typeof file === 'string'
+            ? await fingerprintPath(fs, file, 'None', options.signal)
+            : await fingerprintFile(fileobj, options.signal);
+        // Full identity is known before conversion, unpacking or cover work.
+        // Missing, removed and in-place books retain the normal recovery path.
+        if (!transient && !inPlace && !overwrite && saveBook && !options.skipKnownContent) {
+          const known = (
+            lookupIndex?.byContentFingerprint.get(contentFingerprint) ??
+            books.filter((book) => contentIdentity(book) === contentFingerprint)
+          )
+            .filter(
+              (book) =>
+                !book.deletedAt &&
+                !book.duplicateOf &&
+                ![book.removal, book.localRemoval].some(
+                  (intent) => intent && intent.local !== 'complete',
+                ),
+            )
+            .sort((a, b) => a.createdAt - b.createdAt || a.hash.localeCompare(b.hash));
+          for (const candidate of known) {
+            if (!(await fs.exists(getLocalBookFilename(candidate), 'Books'))) continue;
+            let replacement: PreparedBookImport | undefined;
+            const stageKnown = async (force = false) => {
+              if (!force) return;
+              replacement ??= await prepareBookImport(
+                fs,
+                file,
+                books,
+                { ...options, skipKnownContent: true },
+                resourceLease,
+              );
+              await replacement.stage(true);
+            };
+            return {
+              stage: stageKnown,
+              commit: async (context) => {
+                if (replacement) return replacement.commit(context);
+                options.signal?.throwIfAborted();
+                const latest = context?.current.get(candidate.hash);
+                if (
+                  !context ||
+                  !latest ||
+                  latest.deletedAt ||
+                  latest.duplicateOf ||
+                  contentIdentity(latest) !== contentFingerprint ||
+                  [latest.removal, latest.localRemoval].some(
+                    (intent) => intent && intent.local !== 'complete',
+                  ) ||
+                  !(await fs.exists(getLocalBookFilename(latest), 'Books'))
+                )
+                  throw new ImportNeedsStage();
+                const target = { ...latest };
+                if (typeof file === 'string') {
+                  if (isValidURL(file)) target.url ??= file;
+                  else target.altFilePaths = [...new Set([...(target.altFilePaths ?? []), file])];
+                }
+                target.coverImageUrl = await generateCoverImageUrlFn(target);
+                options.signal?.throwIfAborted();
+                context.current.set(target.hash, target);
+                context.index.byHash.set(target.hash, target);
+                context.changes.push(target);
+                context.publish.push(() => {
+                  const live = books.find((book) => book.hash === target.hash);
+                  const result = live ? Object.assign(live, target) : target;
+                  if (!live) books.push(result);
+                  if (lookupIndex) {
+                    lookupIndex.byHash.set(result.hash, result);
+                    lookupIndex.byContentFingerprint.set(
+                      contentFingerprint!,
+                      (lookupIndex.byContentFingerprint.get(contentFingerprint!) ?? [result]).map(
+                        (row) => (row.hash === result.hash ? result : row),
+                      ),
+                    );
+                  }
+                  try {
+                    options.onResult?.('existing');
+                  } catch {
+                    /* Isolate observers. */
+                  }
+                  return result;
+                });
+                return target;
+              },
+              discardStaging: async () => {
+                await replacement?.discardStaging();
+              },
+              release: async () => {
+                await replacement?.release();
+                await releaseResources();
+              },
+              schedule: async (result) => {
+                if (replacement) await replacement.schedule(result);
+                await releaseResources();
+                if (replacement) return;
+                if (
+                  result.format === 'PDF' &&
+                  options.retryPDFContents !== false &&
+                  options.preparePDF
+                )
+                  try {
+                    void options.preparePDF(result, undefined, options.signal).catch(() => {});
+                  } catch {
+                    /* Optional task. */
+                  }
+              },
+            };
+          }
+        }
         if (/\.txt$/i.test(filename)) {
           const txt2epub = new TxtToEpubConverter();
           ({ file: fileobj } = await txt2epub.convert({ file: fileobj }));
@@ -419,6 +651,7 @@ export async function importBook(
         // tests.
         let nativeBookDoc: BookDoc | undefined;
         let nativeFormat: BookFormat | undefined;
+        options.onProgress?.({ stage: 'parsing', elapsedMs: 0 });
         if (typeof file === 'string' && !/\.txt$/i.test(filename)) {
           const nativeEpub = await tryNativeParseEpub(file);
           if (nativeEpub) {
@@ -439,7 +672,10 @@ export async function importBook(
           format = nativeFormat;
           usedNativeParser = true;
         } else {
-          ({ book: loadedBook, format } = await new DocumentLoader(fileobj).open());
+          ({ book: loadedBook, format } = await new DocumentLoader(fileobj, {
+            loadPDFCache: false,
+            importOnly: true,
+          }).open());
         }
       }
       if (!loadedBook) {
@@ -476,39 +712,167 @@ export async function importBook(
       format === 'PDF' ? getBaseFilename(filename) : undefined,
     );
     const parsedBook = loadedBook;
+    const storedContentFingerprint =
+      originalFile && fileobj !== originalFile
+        ? await fingerprintFile(fileobj!, options.signal)
+        : contentFingerprint;
+    const legacyProofs = new Map<string, LegacyImportProof>();
+    const pendingLegacy = new Map<string, Book>();
+    for (const candidate of books) {
+      if (
+        !contentIdentity(candidate) &&
+        (candidate.hash === legacyHash ||
+          (metaHash && candidate.metaHash === metaHash && candidate.format === format))
+      )
+        pendingLegacy.set(candidate.hash, structuredClone(candidate));
+    }
+    const stage = async (force = false) => {
+      // A newly discovered legacy candidate exits commit before any full read.
+      // Recheck its row/source metadata when the next short transaction resumes.
+      for (const [hash, candidate] of pendingLegacy) {
+        options.signal?.throwIfAborted();
+        const source = await resolveBookContentSource(fs, candidate);
+        const before = await legacySourceVersion(fs, source);
+        let identity: string | undefined;
+        if (source.kind === 'managed') {
+          options.onProgress?.({ stage: 'fingerprinting', elapsedMs: 0 });
+          try {
+            identity = await fingerprintPath(fs, source.path, source.base, options.signal);
+          } catch {
+            options.signal?.throwIfAborted();
+            // Missing or unreadable original bytes cannot establish identity.
+          }
+        }
+        const after = await legacySourceVersion(fs, source);
+        if (before !== after) throw new Error('Book file changed during import. Please retry.');
+        legacyProofs.set(hash, {
+          rowVersion: legacyRowVersion(candidate),
+          source,
+          sourceVersion: after,
+          identity,
+        });
+        pendingLegacy.delete(hash);
+      }
+      const likelyExisting =
+        !!lookupIndex?.byContentFingerprint?.get(contentFingerprint ?? '')?.length ||
+        books.some((book) => contentIdentity(book) === contentFingerprint);
+      if (inPlace && originalFile && contentFingerprint && !inPlaceVerified) {
+        const current = await fingerprintPath(fs, file as string, 'None', options.signal);
+        if (current !== contentFingerprint)
+          throw new Error('Book file changed during import. Please retry.');
+        inPlaceVerified = true;
+      }
+      if (
+        saveBook &&
+        !transient &&
+        !inPlace &&
+        fileobj &&
+        storedContentFingerprint &&
+        (force || !likelyExisting) &&
+        !stagedBookPath
+      ) {
+        await fs.createDir(stageDirectory, 'Books', true);
+        const staged = `${stageDirectory}/book`;
+        let verifiedDuringCopy = false;
+        if (
+          fileobj === originalFile &&
+          typeof file === 'string' &&
+          !isValidURL(file) &&
+          !isContentURI(file) &&
+          fs.copyFileVerified
+        ) {
+          const actual = await fs.copyFileVerified(
+            file,
+            'None',
+            staged,
+            'Books',
+            storedContentFingerprint,
+            options.signal,
+          );
+          if (actual !== storedContentFingerprint)
+            throw new Error('Book file changed during import. Please retry.');
+          verifiedDuringCopy = true;
+        } else if (/\.txt$/i.test(filename)) {
+          await fs.writeFile(staged, 'Books', fileobj);
+        } else if (fileobj === originalFile && typeof file === 'string' && isContentURI(file)) {
+          await fs.copyFile(file, 'None', staged, 'Books');
+        } else if (fileobj === originalFile && typeof file === 'string' && !isValidURL(file)) {
+          try {
+            await fs.copyFile(file, 'None', staged, 'Books');
+          } catch {
+            options.signal?.throwIfAborted();
+            await fs.writeFile(staged, 'Books', await fileobj.arrayBuffer());
+          }
+        } else {
+          await fs.writeFile(staged, 'Books', fileobj);
+        }
+        if (!verifiedDuringCopy) {
+          const actual = await fingerprintPath(fs, staged, 'Books', options.signal);
+          if (actual !== storedContentFingerprint)
+            throw new Error('Book file changed during import. Please retry.');
+        }
+        stagedBookPath = staged;
+      }
+      if (saveCover && (force || !likelyExisting) && !coverPrepared) {
+        stagedCover = await parsedBook.getCover();
+        if (stagedCover?.type === 'image/svg+xml') {
+          try {
+            stagedCover = await svg2png(stagedCover);
+          } catch {}
+        }
+        coverPrepared = true;
+      }
+    };
+    const discardStaging = async () => {
+      await Promise.resolve(fs.removeDir(stageDirectory, 'Books', true)).catch(() => {});
+    };
     let returnedExisting = false;
-    const commit = async (): Promise<Book> => {
+    const commit = async (context?: ImportCommitContext): Promise<Book> => {
       options.signal?.throwIfAborted();
-      const disk = transient
-        ? []
-        : await safeLoadJSON<Book[]>(fs, getLibraryFilename(), 'Books', []);
-      const current = new Map(books.map((book) => [book.hash, book]));
-      if (Array.isArray(disk))
+      const disk = context ? context.disk : transient ? [] : await loadLibraryRows(fs);
+      const current = context?.current ?? new Map(books.map((book) => [book.hash, book]));
+      if (!context && Array.isArray(disk))
         for (const book of disk) {
           const live = current.get(book.hash);
-          const latest = !live || book.updatedAt >= live.updatedAt ? { ...live, ...book } : live;
-          current.set(book.hash, {
-            ...latest,
-            ...((book.duplicateUpdatedAt ?? 0) > (latest.duplicateUpdatedAt ?? 0)
-              ? { duplicateOf: book.duplicateOf, duplicateUpdatedAt: book.duplicateUpdatedAt }
-              : {}),
-          });
+          current.set(book.hash, live ? mergeImportSnapshot(book, live) : book);
         }
       const candidates = transient ? [] : [...current.values()];
+      const commitIndex = context?.index ?? buildBookLookupIndex(candidates, osPlatform);
+      const nominated = new Map<string, Book>();
+      const nominate = (book: Book | undefined) => {
+        if (book) nominated.set(book.hash, book);
+      };
+      if (contentFingerprint) {
+        for (const book of commitIndex.byContentFingerprint.get(contentFingerprint) ?? [])
+          nominate(book);
+      }
+      nominate(commitIndex.byHash.get(legacyHash));
+      if (metaHash) {
+        for (const book of commitIndex.byMetaKey.get(`${metaHash}:${format}`) ?? []) nominate(book);
+      }
+      const identityCandidates = transient ? [] : [...nominated.values()];
       let existingBook: Book | undefined;
       if (contentFingerprint) {
         const matches: Book[] = [];
-        for (const candidate of candidates) {
+        for (const candidate of identityCandidates) {
           let identity = contentIdentity(candidate);
           if (
             !identity &&
             (candidate.hash === legacyHash || (metaHash && candidate.metaHash === metaHash))
           ) {
-            try {
-              identity = await fingerprintBook(fs, candidate, options.signal, false);
-            } catch {
-              // Unavailable bytes cannot establish identity; never fall back to metadata.
+            const proof = legacyProofs.get(candidate.hash);
+            const source = await resolveBookContentSource(fs, candidate);
+            const sourceVersion = await legacySourceVersion(fs, source);
+            if (
+              !proof ||
+              proof.rowVersion !== legacyRowVersion(candidate) ||
+              proof.sourceVersion !== sourceVersion ||
+              JSON.stringify(proof.source) !== JSON.stringify(source)
+            ) {
+              pendingLegacy.set(candidate.hash, structuredClone(candidate));
+              throw new ImportNeedsStage();
             }
+            identity = proof.identity;
           }
           if (identity === contentFingerprint) matches.push(candidate);
         }
@@ -537,10 +901,7 @@ export async function importBook(
         originalFilename: isPseStream ? undefined : getFilename(filename),
         sourceTitle: existingBook ? storedSourceTitle : importedMetadata.title,
         contentFingerprint,
-        storedContentFingerprint:
-          originalFile && fileobj !== originalFile
-            ? await fingerprintFile(fileobj!, options.signal)
-            : contentFingerprint,
+        storedContentFingerprint,
         primaryLanguage,
         author: importedMetadata.author,
         // Cached here because the library list never opens the book: it is a
@@ -554,6 +915,7 @@ export async function importBook(
         metadata: parsedBook.metadata,
         groupId: options.initialGroup?.id,
         groupName: options.initialGroup?.name,
+        groupUpdatedAt: options.initialGroup ? Date.now() : undefined,
         tags: options.initialTags,
         createdAt: existingBook ? existingBook.createdAt : Date.now(),
         uploadedAt: existingBook ? existingBook.uploadedAt : null,
@@ -587,6 +949,21 @@ export async function importBook(
         )
       )
         throw new Error('Finish or retry the existing removal before importing this book.');
+      const bookFilename = getLocalBookFilename(target);
+      const willWriteBookFile =
+        saveBook &&
+        !transient &&
+        !inPlace &&
+        !!fileobj &&
+        (!existingBook || overwrite || !(await fs.exists(bookFilename, 'Books')));
+      const coverRequired =
+        saveCover &&
+        !existingBook &&
+        (!(await fs.exists(getCoverFilename(target), 'Books')) || overwrite);
+      if ((willWriteBookFile && !stagedBookPath) || (coverRequired && !coverPrepared))
+        throw new ImportNeedsStage();
+      if (inPlace && originalFile && contentFingerprint && !inPlaceVerified)
+        throw new ImportNeedsStage();
       if (existingBook?.deletedAt && !transient) {
         target.deletedAt = null;
         target.updatedAt = Date.now();
@@ -617,61 +994,19 @@ export async function importBook(
       // the loser fails with "Cannot create a file when that file already exists"
       // (Sentry READEST-H). create_dir_all is a no-op when the dir exists.
       await fs.createDir(getDir(target), 'Books', true);
-      const bookFilename = getLocalBookFilename(target);
-      const willWriteBookFile =
-        saveBook &&
-        !transient &&
-        !inPlace &&
-        !!fileobj &&
-        (!(await fs.exists(bookFilename, 'Books')) ||
-          overwrite ||
-          (!existingBook &&
-            (await fingerprintBook(fs, target, options.signal, false)) !==
-              book.storedContentFingerprint));
-      if (willWriteBookFile && fileobj) {
-        if (/\.txt$/i.test(filename)) {
-          await fs.writeFile(bookFilename, 'Books', fileobj);
-        } else if (fileobj === originalFile && typeof file === 'string' && isContentURI(file)) {
-          await fs.copyFile(file, 'None', bookFilename, 'Books');
-        } else if (fileobj === originalFile && typeof file === 'string' && !isValidURL(file)) {
-          try {
-            // try to copy the file directly first in case of large files to avoid memory issues
-            // on desktop when reading recursively from selected directory the direct copy will fail
-            // due to permission issues, then fallback to read and write files
-            await fs.copyFile(file, 'None', bookFilename, 'Books');
-          } catch {
-            await fs.writeFile(bookFilename, 'Books', await fileobj.arrayBuffer());
-          }
+      if (willWriteBookFile && stagedBookPath) {
+        if (fs.moveFile) {
+          await fs.moveFile(stagedBookPath, 'Books', bookFilename, 'Books');
         } else {
-          await fs.writeFile(bookFilename, 'Books', fileobj);
+          await fs.copyFile(stagedBookPath, 'Books', bookFilename, 'Books');
+          await fs.removeDir(stageDirectory, 'Books', true);
         }
-        // Native path copies may race a source replacement after the first read.
-        // Publish only the identity of the bytes actually stored for reading.
-        const stored = await fs.openFile(bookFilename, 'Books');
-        try {
-          if ((await fingerprintFile(stored, options.signal)) !== book.storedContentFingerprint)
-            throw new Error('Book file changed during import. Please retry.');
-        } finally {
-          await (stored as Partial<ClosableFile>).close?.();
-        }
+        stagedBookPath = undefined;
         target.storedContentFingerprint = book.storedContentFingerprint;
       }
-      if (
-        saveCover &&
-        !existingBook &&
-        (!(await fs.exists(getCoverFilename(target), 'Books')) || overwrite)
-      ) {
-        let cover = await parsedBook.getCover();
-        if (cover?.type === 'image/svg+xml') {
-          try {
-            console.log('Converting SVG cover to PNG...');
-            cover = await svg2png(cover);
-          } catch {}
-        }
-        if (cover) {
-          const coverBytes = await cover.arrayBuffer();
-          await fs.writeFile(getCoverFilename(target), 'Books', coverBytes);
-        }
+      if (coverRequired && stagedCover) {
+        const coverBytes = await stagedCover.arrayBuffer();
+        await fs.writeFile(getCoverFilename(target), 'Books', coverBytes);
       }
       // Maintain coverHash === partialMD5(cover.png) so cross-device cover sync
       // can detect changes (issue #4544). Read from disk regardless of whether we
@@ -701,15 +1036,6 @@ export async function importBook(
           target.altFilePaths = [...new Set([...(target.altFilePaths ?? []), file])];
         }
       }
-      if (inPlace && originalFile && contentFingerprint) {
-        const currentSource = await fs.openFile(file as string, 'None');
-        try {
-          if ((await fingerprintFile(currentSource, options.signal)) !== contentFingerprint)
-            throw new Error('Book file changed during import. Please retry.');
-        } finally {
-          await (currentSource as Partial<ClosableFile>).close?.();
-        }
-      }
       target.coverImageUrl = await generateCoverImageUrlFn(target);
       if (willWriteBookFile || inPlace || transient) target.downloadedAt ??= Date.now();
       const detachedSources: Book[] = [];
@@ -736,64 +1062,272 @@ export async function importBook(
           }
         }
       }
-      if (!transient) await saveLibraryBooksUnlocked(fs, [...detachedSources, target]);
-      for (const detached of detachedSources) {
-        const previous = books.find((candidate) => candidate.hash === detached.hash);
-        if (previous) Object.assign(previous, detached);
-      }
-      const inMemory = books.find((candidate) => candidate.hash === target.hash);
-      const result = inMemory ? Object.assign(inMemory, target) : target;
-      if (!inMemory) books.push(result);
-      if (lookupIndex) {
-        lookupIndex.byHash.set(result.hash, result);
+      options.signal?.throwIfAborted();
+      const updateIndex = (index: BookLookupIndex, result: Book) => {
+        index.byHash.set(result.hash, result);
+        const identity = contentIdentity(result);
+        if (identity && index.byContentFingerprint) {
+          const rows = index.byContentFingerprint.get(identity) ?? [];
+          if (!rows.some((candidate) => candidate.hash === result.hash)) rows.push(result);
+          index.byContentFingerprint.set(identity, rows);
+        }
         if (result.metaHash) {
           const key = `${result.metaHash}:${result.format}`;
-          const rows = lookupIndex.byMetaKey.get(key) ?? [];
+          const rows = index.byMetaKey.get(key) ?? [];
           if (!rows.some((candidate) => candidate.hash === result.hash)) rows.push(result);
-          lookupIndex.byMetaKey.set(key, rows);
+          index.byMetaKey.set(key, rows);
         }
         if (result.filePath) {
           const key = normalizeFilePathForIndex(result.filePath, osPlatform);
-          if (key) lookupIndex.byFilePath.set(key, result);
+          if (key) index.byFilePath.set(key, result);
         }
+      };
+      const publish = () => {
+        for (const detached of detachedSources) {
+          const previous = books.find((candidate) => candidate.hash === detached.hash);
+          if (previous) Object.assign(previous, detached);
+        }
+        const inMemory = books.find((candidate) => candidate.hash === target.hash);
+        const result = inMemory ? Object.assign(inMemory, target) : target;
+        if (!inMemory) books.push(result);
+        if (lookupIndex) updateIndex(lookupIndex, result);
+        try {
+          options.onResult?.(wasExisting ? 'existing' : 'added');
+        } catch {
+          /* Isolate observers. */
+        }
+        return result;
+      };
+      if (context) {
+        for (const detached of detachedSources) {
+          current.set(detached.hash, detached);
+          updateIndex(context.index, detached);
+        }
+        current.set(target.hash, target);
+        updateIndex(context.index, target);
+        context.changes.push(...detachedSources, target);
+        context.publish.push(publish);
+      } else {
+        if (!transient) await saveLibraryBooksUnlocked(fs, [...detachedSources, target]);
+        const result = publish();
+        returnedExisting = wasExisting;
+        return result;
       }
       returnedExisting = wasExisting;
-      options.onResult?.(wasExisting ? 'existing' : 'added');
-      return result;
+      return target;
     };
-    const result = transient ? await commit() : await withLibraryLock(fs, commit);
-    if (
-      format === 'PDF' &&
-      !transient &&
-      (saveBook || inPlace) &&
-      (!returnedExisting || options.retryPDFContents !== false)
-    ) {
-      await options.preparePDF?.(result, loadedBook);
-    }
-    return result;
+    const schedule = async (result: Book) => {
+      // Background work owns its own document and opens it only when scheduled.
+      await releaseResources();
+      if (
+        format === 'PDF' &&
+        !transient &&
+        (saveBook || inPlace) &&
+        (!returnedExisting || options.retryPDFContents !== false) &&
+        options.preparePDF
+      ) {
+        try {
+          void options.preparePDF(result, undefined, options.signal).catch(() => {});
+          return;
+        } catch {}
+      }
+    };
+    return { stage, commit, discardStaging, release: releaseResources, schedule };
   } catch (error) {
+    await Promise.resolve(fs.removeDir(stageDirectory, 'Books', true)).catch(() => {});
+    await releaseResources();
     console.error('Error importing book:', error);
     throw error;
-  } finally {
-    // Release the parsed document (a PDF leaks its pdf.js worker otherwise,
-    // ~60 MB per imported file — #5387) and the opened file handle.
-    try {
-      await loadedBook?.destroy?.();
-    } catch (error) {
-      console.warn('Error destroying book document:', error);
-    }
-    if (originalFile && originalFile !== fileobj) {
-      try {
-        await (originalFile as Partial<ClosableFile>).close?.();
-      } catch {}
-    }
-    const f = fileobj as ClosableFile | undefined;
-    if (f?.close) {
-      try {
-        await f.close();
-      } catch {}
-    }
   }
+}
+
+export async function importBooks(
+  fs: FileSystem,
+  inputs: BookImportInput[],
+  books: Book[],
+  options: ImportBookInternalOptions,
+): Promise<BookImportResult[]> {
+  const results: BookImportResult[] = inputs.map(() => ({ book: null }));
+  const prepared: Array<PreparedBookImport | undefined> = inputs.map(() => undefined);
+  const started = inputs.map(() => performance.now());
+  const effective = inputs.map((input) => ({ ...options, ...input.options }));
+  const asError = (error: unknown) => (error instanceof Error ? error : new Error(String(error)));
+  const report = (index: number, stage: BookImportProgress['stage']) => {
+    try {
+      effective[index]!.onProgress?.({ stage, elapsedMs: performance.now() - started[index]! });
+    } catch {
+      /* Observers cannot invalidate a durable import. */
+    }
+  };
+  await runImportTasks(
+    inputs.length,
+    async (index) => {
+      try {
+        effective[index]!.signal?.throwIfAborted();
+        report(index, 'fingerprinting');
+        const item = await prepareBookImport(fs, inputs[index]!.file, books, {
+          ...effective[index]!,
+          onProgress: (event) => report(index, event.stage),
+        });
+        prepared[index] = item;
+        report(index, 'staging');
+        await item.stage();
+        report(index, 'waiting');
+      } catch (error) {
+        results[index]!.error = asError(error);
+      }
+      return index;
+    },
+    async (ready) => {
+      for (const { index } of ready) report(index, 'committing');
+      const finalized = new Set<number>();
+      const finalize = async (index: number) => {
+        if (finalized.has(index)) return;
+        finalized.add(index);
+        const item = prepared[index];
+        if (item) {
+          await item.discardStaging();
+          if (results[index]!.book) await item.schedule(results[index]!.book!);
+          else await item.release();
+          prepared[index] = undefined;
+        }
+        const result = results[index]!;
+        report(
+          index,
+          result.error
+            ? result.error.name === 'AbortError'
+              ? 'cancelled'
+              : 'failed'
+            : 'completed',
+        );
+        try {
+          effective[index]!.onComplete?.(result);
+        } catch {
+          /* Isolate UI observers. */
+        }
+      };
+      const completed = new Set<number>();
+      for (const { index } of ready) {
+        const item = prepared[index];
+        if (!item || !effective[index]!.transient || results[index]!.error) continue;
+        try {
+          results[index]!.book = await item.commit();
+          completed.add(index);
+          await finalize(index);
+        } catch (error) {
+          results[index]!.error = asError(error);
+        }
+      }
+
+      while (true) {
+        let retry: number | undefined;
+        let restart = false;
+        const committed = new Map<number, Book>();
+        let publish: Array<() => Book> = [];
+        try {
+          await withLibraryLock(fs, async () => {
+            const disk = await loadLibraryRows(fs);
+            const current = new Map(books.map((book) => [book.hash, book]));
+            if (Array.isArray(disk)) {
+              for (const book of disk) {
+                const live = current.get(book.hash);
+                current.set(book.hash, live ? mergeImportSnapshot(book, live) : book);
+              }
+            }
+            const context: ImportCommitContext = {
+              disk,
+              current,
+              index: buildBookLookupIndex([...current.values()], options.osPlatform),
+              changes: [],
+              publish: [],
+            };
+            for (const { index } of ready) {
+              const item = prepared[index];
+              if (
+                !item ||
+                effective[index]!.transient ||
+                completed.has(index) ||
+                results[index]!.error
+              )
+                continue;
+              try {
+                committed.set(index, await item.commit(context));
+              } catch (error) {
+                if (error instanceof ImportNeedsStage) {
+                  retry = index;
+                  break;
+                }
+                results[index]!.error = asError(error);
+              }
+            }
+            // A peer may have been cancelled while a later item awaited I/O.
+            // Rebuild only the still-active intents before starting persistence;
+            // their identity decisions may have depended on the cancelled row.
+            for (const index of committed.keys()) {
+              try {
+                effective[index]!.signal?.throwIfAborted();
+              } catch (error) {
+                results[index]!.error = asError(error);
+                restart = true;
+              }
+            }
+            if (restart) return;
+            if (context.changes.length) {
+              // Once this atomic save starts, its successful publication remains
+              // authoritative even if cancellation arrives during persistence.
+              await saveLibraryBooksUnlocked(fs, context.changes, undefined, context.disk);
+            }
+            publish = context.publish;
+          });
+        } catch (error) {
+          for (const [index, item] of ready.map(({ index }) => [index, prepared[index]] as const)) {
+            if (item && !completed.has(index) && !results[index]!.error) {
+              results[index]!.error = asError(error);
+            }
+          }
+          break;
+        }
+        if (restart) continue;
+        const published = publish.map((publishBook) => publishBook());
+        let publishedIndex = 0;
+        for (const [index, book] of committed) {
+          results[index]!.book = published[publishedIndex] ?? book;
+          publishedIndex++;
+          completed.add(index);
+        }
+        if (published.length) {
+          try {
+            notifyLibraryUpdated();
+          } catch {
+            /* A peer notification cannot invalidate already persisted books. */
+          }
+        }
+        // Release and report durable peers before a newly discovered legacy
+        // candidate performs another potentially slow prepare outside the lock.
+        for (const index of committed.keys()) await finalize(index);
+        if (retry === undefined) break;
+        try {
+          await prepared[retry]!.stage(true);
+        } catch (error) {
+          results[retry]!.error = asError(error);
+        }
+      }
+
+      for (const { index } of ready) await finalize(index);
+    },
+  );
+  return results;
+}
+
+export async function importBook(
+  fs: FileSystem,
+  file: string | File,
+  books: Book[],
+  options: ImportBookInternalOptions,
+): Promise<Book | null> {
+  const [result] = await importBooks(fs, [{ file, options }], books, options);
+  if (result?.error) throw result.error;
+  return result?.book ?? null;
 }
 
 // --- Book Content & Config ---

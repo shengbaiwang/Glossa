@@ -42,6 +42,7 @@ export interface BookContextMenuItem {
   text: string;
   action: () => void;
   disabled?: boolean;
+  destructive?: boolean;
 }
 
 interface BookContextMenuPopupProps {
@@ -109,12 +110,13 @@ const BookContextMenuPopup: React.FC<BookContextMenuPopupProps> = ({
           className='dropdown-content no-triangle bg-base-100 rounded-box !relative z-[1] !mt-0 p-2 shadow'
           onCancel={onClose}
         >
-          {items.map(({ text, action, disabled }) => (
+          {items.map(({ text, action, disabled, destructive }) => (
             <MenuItem
               key={text}
               noIcon
               disabled={disabled}
               label={text}
+              buttonClass={destructive ? 'glossa-delete-action' : undefined}
               onClick={() => {
                 onClose();
                 action();

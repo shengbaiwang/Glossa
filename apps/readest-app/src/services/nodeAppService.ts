@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import * as fsp from 'node:fs/promises';
 import * as nodePath from 'node:path';
 import * as os from 'node:os';
@@ -234,6 +235,16 @@ export const nodeFileSystem: FileSystem = {
     return new File([buffer], fileName);
   },
 
+  async fingerprint(filePath: string, base: BaseDir, signal?: AbortSignal) {
+    const fullPath = await toAbsolute(this.resolvePath(filePath, base));
+    const hash = createHash('sha256');
+    const stream = fs.createReadStream(fullPath, { signal });
+    for await (const chunk of stream) {
+      hash.update(chunk as Buffer);
+    }
+    return `sha256:${hash.digest('hex')}`;
+  },
+
   async copyFile(
     srcPath: string,
     srcBase: BaseDir,
@@ -244,6 +255,13 @@ export const nodeFileSystem: FileSystem = {
     const fullDst = await toAbsolute(this.resolvePath(dstPath, dstBase));
     await fsp.mkdir(nodePath.dirname(fullDst), { recursive: true });
     await fsp.copyFile(fullSrc, fullDst);
+  },
+
+  async moveFile(srcPath: string, srcBase: BaseDir, dstPath: string, dstBase: BaseDir) {
+    const fullSrc = await toAbsolute(this.resolvePath(srcPath, srcBase));
+    const fullDst = await toAbsolute(this.resolvePath(dstPath, dstBase));
+    await fsp.mkdir(nodePath.dirname(fullDst), { recursive: true });
+    await fsp.rename(fullSrc, fullDst);
   },
 
   async readFile(

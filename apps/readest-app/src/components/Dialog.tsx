@@ -33,6 +33,8 @@ interface DialogProps {
   bgClassName?: string;
   boxClassName?: string;
   contentClassName?: string;
+  boxRef?: React.Ref<HTMLDivElement>;
+  boxAddons?: ReactNode;
   /**
    * Replace the body's native `overflow-y-auto` with OverlayScrollbars so
    * the scrollbar is the floating, theme-aware kind instead of the host's
@@ -57,6 +59,8 @@ const Dialog: React.FC<DialogProps> = ({
   bgClassName,
   boxClassName,
   contentClassName,
+  boxRef,
+  boxAddons,
   useOverlayScroll = false,
   onClose,
 }) => {
@@ -218,6 +222,7 @@ const Dialog: React.FC<DialogProps> = ({
         onDismiss={onClose}
       />
       <div
+        ref={boxRef}
         className={clsx(
           'glossa-dialog-surface modal-box settings-content absolute z-20 flex flex-col rounded-none rounded-tl-2xl rounded-tr-2xl p-0 sm:rounded-2xl',
           'h-full max-h-full w-full max-w-full',
@@ -313,6 +318,7 @@ const Dialog: React.FC<DialogProps> = ({
             {children}
           </div>
         )}
+        {boxAddons}
       </div>
     </dialog>
   );

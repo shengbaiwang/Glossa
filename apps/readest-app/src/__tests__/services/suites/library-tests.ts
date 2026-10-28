@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { Book } from '@/types/book';
 import { AppService } from '@/types/system';
+import { libraryIdentityIO } from '@/services/bookIdentity';
+import { LIBRARY_DATABASE_FILENAME, loadLibraryRows } from '@/services/libraryRepository';
 
 function makeBook(overrides: Partial<Book> = {}): Book {
   return {
@@ -14,7 +16,7 @@ function makeBook(overrides: Partial<Book> = {}): Book {
   };
 }
 
-export function libraryTests(getService: () => AppService) {
+export function libraryTests(getService: () => AppService, backend: 'json' | 'database' = 'json') {
   describe('Library', () => {
     it('should return empty array when no library file exists', async () => {
       const books = await getService().loadLibraryBooks();
@@ -53,17 +55,21 @@ export function libraryTests(getService: () => AppService) {
       const book = makeBook({ coverImageUrl: 'http://example.com/cover.jpg' });
       await service.saveLibraryBooks([book]);
 
-      const raw = (await service.readFile('library.json', 'Books', 'text')) as string;
-      const parsed = JSON.parse(raw) as Book[];
+      const parsed = await loadLibraryRows(libraryIdentityIO(service));
       expect(parsed[0]!.coverImageUrl).toBeUndefined();
     });
 
-    it('should create backup file alongside main file', async () => {
+    it('should persist through the configured storage backend', async () => {
       const service = getService();
       await service.saveLibraryBooks([makeBook()]);
 
-      expect(await service.exists('library.json', 'Books')).toBe(true);
-      expect(await service.exists('library.json.bak', 'Books')).toBe(true);
+      if (backend === 'json') {
+        expect(await service.exists('library.json', 'Books')).toBe(true);
+        expect(await service.exists('library.json.bak', 'Books')).toBe(true);
+      } else {
+        expect(await service.exists(LIBRARY_DATABASE_FILENAME, 'Books')).toBe(true);
+        expect(await service.exists('library.json', 'Books')).toBe(false);
+      }
     });
 
     it('should fall back to backup when main file is corrupted', async () => {
@@ -79,7 +85,7 @@ export function libraryTests(getService: () => AppService) {
       expect(loaded[0]!.hash).toBe('good');
     });
 
-    it('should return empty array when both main and backup are corrupted', async () => {
+    it('uses the sole authority when both legacy JSON files are corrupted', async () => {
       const service = getService();
       await service.saveLibraryBooks([makeBook()]);
 
@@ -87,7 +93,8 @@ export function libraryTests(getService: () => AppService) {
       await service.writeFile('library.json.bak', 'Books', 'bad');
 
       const loaded = await service.loadLibraryBooks();
-      expect(loaded).toEqual([]);
+      if (backend === 'json') expect(loaded).toEqual([]);
+      else expect(loaded.map((row) => row.hash)).toEqual(['abc123']);
     });
 
     it('should overwrite (and shrink) the library only when replace is set', async () => {
@@ -165,7 +172,9 @@ export function libraryTests(getService: () => AppService) {
       ]);
 
       // A later save that only knows about 'a' must not erase 'b' and 'c'.
-      await service.saveLibraryBooks([makeBook({ hash: 'a', title: 'A2' })]);
+      await service.saveLibraryBooks([
+        makeBook({ hash: 'a', title: 'A2', metadataUpdatedAt: 3000 }),
+      ]);
 
       const loaded = await service.loadLibraryBooks();
       const byHash = Object.fromEntries(loaded.map((b) => [b.hash, b.title]));
@@ -199,10 +208,12 @@ export function libraryTests(getService: () => AppService) {
       expect(tomb?.deletedAt).toBe(1234);
     });
 
-    it('should let the incoming row win on a hash conflict (modify in place)', async () => {
+    it('should apply a newer explicit metadata edit in place', async () => {
       const service = getService();
       await service.saveLibraryBooks([makeBook({ hash: 'a', title: 'old' })]);
-      await service.saveLibraryBooks([makeBook({ hash: 'a', title: 'new' })]);
+      await service.saveLibraryBooks([
+        makeBook({ hash: 'a', title: 'new', metadataUpdatedAt: 3000 }),
+      ]);
 
       const loaded = await service.loadLibraryBooks();
       expect(loaded).toHaveLength(1);

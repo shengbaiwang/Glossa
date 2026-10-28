@@ -186,7 +186,7 @@ const ApplicationPanel: React.FC<{ section: 'General' | 'Data' | 'About' | 'Acco
   if (section === 'Account')
     return (
       <div className='my-4'>
-        <BoxedList title={_('Account')}>
+        <BoxedList>
           <NavigationRow
             title={user ? _('Account') : _('Sign In')}
             status={user?.email}

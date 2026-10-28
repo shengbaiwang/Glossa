@@ -249,6 +249,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
       },
       delete: {
         text: _('Delete'),
+        destructive: true,
         action: async () => {
           eventDispatcher.dispatch('delete-books', {
             ids: itemSelected ? useLibraryStore.getState().getSelectedBooks() : [book.hash],
@@ -285,11 +286,17 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
           handleGroupBooks();
         },
       },
-      ...(handleRemoveFolder
-        ? [{ text: _('Delete group'), action: () => handleRemoveFolder(group.name) }]
-        : []),
       ...(handleUndoFolder && canUndoFolder
         ? [{ text: _('Undo'), disabled: !canUndoFolder, action: handleUndoFolder }]
+        : []),
+      ...(handleRemoveFolder
+        ? [
+            {
+              text: _('Delete group'),
+              destructive: true,
+              action: () => handleRemoveFolder(group.name),
+            },
+          ]
         : []),
     ];
   };

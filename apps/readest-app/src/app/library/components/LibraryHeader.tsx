@@ -208,6 +208,7 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
                   noIcon
                   transient
                   label={_('Delete')}
+                  buttonClass='glossa-delete-action'
                   disabled={!selectedCount}
                   onClick={() => {
                     void eventDispatcher.dispatch('library-delete-selection');

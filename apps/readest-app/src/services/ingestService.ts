@@ -1,4 +1,4 @@
-import type { Book, BookLookupIndex } from '@/types/book';
+import type { Book, BookImportProgress, BookLookupIndex } from '@/types/book';
 import type { AppService, OsPlatform } from '@/types/system';
 import type { SystemSettings } from '@/types/settings';
 import { transferManager } from '@/services/transferManager';
@@ -47,6 +47,9 @@ export interface IngestFileOptions {
   /** Explicit re-imports may resume PDF contents; background folder scans opt out. */
   retryPDFContents?: boolean;
   onResult?: (status: 'added' | 'existing') => void;
+  onProgress?: (progress: BookImportProgress) => void;
+  /** Called as soon as this input has durably completed, independently of other inputs. */
+  onComplete?: (result: IngestFileResult) => void;
   signal?: AbortSignal;
 }
 
@@ -148,16 +151,14 @@ function shouldImportInPlace(
  * import, the /send page, the inbox drainer — calls this so a sent book behaves
  * exactly like a locally-imported one.
  *
- * Persistence (`updateBooks` / `saveLibraryBooks`) and the sync push stay with
- * the caller on purpose: batch importers save once per batch, single-item
- * callers save per item. The shared logic that must NOT diverge — importing,
- * group/tag metadata, the upload decision — lives here.
+ * The importer owns durable registration, including initial group/tag values.
+ * Callers publish committed results to their views and request synchronization.
  */
 export async function ingestFile(
   opts: IngestFileOptions,
   deps: IngestFileDeps,
 ): Promise<Book | null> {
-  const { appService, settings, isLoggedIn, appBooksPrefix } = deps;
+  const { appService, settings, appBooksPrefix } = deps;
 
   const inPlaceRoots = settings.externalLibraryFolders ?? [];
   const inPlace = shouldImportInPlace(
@@ -177,6 +178,7 @@ export async function ingestFile(
     inPlace,
     signal: opts.signal,
     retryPDFContents: opts.retryPDFContents,
+    onProgress: opts.onProgress,
     initialGroup:
       opts.groupId !== undefined ? { id: opts.groupId, name: opts.groupName } : undefined,
     initialTags: opts.subjectTag?.trim() ? [opts.subjectTag.trim()] : undefined,
@@ -186,51 +188,140 @@ export async function ingestFile(
   });
   if (!book) return null;
   opts.onResult?.(outcome.status);
-  if (outcome.status === 'existing') return book;
+  return finalizeIngest(book, opts, deps, outcome.status);
+}
 
-  // Mirror the newly committed metadata for callers using an AppService adapter.
-  // Existing records returned above retain their personal group and tags.
+export interface IngestFileResult {
+  book: Book | null;
+  status: 'added' | 'existing';
+  error?: Error;
+}
+
+function notifyComplete(opts: IngestFileOptions, result: IngestFileResult): void {
+  try {
+    opts.onComplete?.(result);
+  } catch {
+    // An observer cannot turn a committed book into a failed import.
+  }
+}
+
+function finalizeIngest(
+  book: Book,
+  opts: IngestFileOptions,
+  deps: IngestFileDeps,
+  status: 'added' | 'existing',
+): Book {
+  if (status === 'existing') return book;
   if (opts.groupId !== undefined) {
+    if (book.groupId !== opts.groupId || book.groupName !== opts.groupName)
+      book.groupUpdatedAt = Date.now();
     book.groupId = opts.groupId;
     book.groupName = opts.groupName;
   }
-
   const tag = opts.subjectTag?.trim();
   if (tag) {
     const tags = book.tags ?? [];
     if (!tags.includes(tag)) {
       book.tags = [...tags, tag];
       book.updatedAt = Date.now();
-      // Tags merge on the metadata clock (#5438); stamp it or a peer's older
-      // stamped metadata edit would win the group and drop this tag.
       book.metadataUpdatedAt = book.updatedAt;
     }
   }
-
-  // Sent books force the upload so they reach the user's other devices even
-  // when book sync is off; normal library imports honor the Manage Sync
-  // "book" toggle, which defaults on — upload unless the user turns it off.
-  // Transient imports are never uploaded — they're short-lived previews
-  // (e.g. /send view) and shouldn't pollute the user's cloud library.
-  // In-place imports (book.filePath set, content under one of the user's
-  // external library folders) DO get uploaded: from a backup/sync standpoint
-  // they are equivalent to a hash-copy book — only the local storage
-  // location differs. uploadBook reads straight from book.filePath in that
-  // case; downloads on other devices land in Books/<hash>/ as a normal copy.
-  // Readest Cloud storage is written only when Readest Cloud is one of the
-  // enabled providers (#5062 lets several run at once). When it is unchecked,
-  // this gate is false and the file-sync engine mirrors the import instead
-  // (including Sent books, which reach other devices via each enabled backend
-  // whose syncBooks toggle is on).
   if (
     !opts.transient &&
-    isLoggedIn &&
+    deps.isLoggedIn &&
     !book.uploadedAt &&
-    (opts.forceUpload || settings.syncCategories?.book !== false) &&
-    isReadestCloudStorageActive(settings)
+    (opts.forceUpload || deps.settings.syncCategories?.book !== false) &&
+    isReadestCloudStorageActive(deps.settings)
   ) {
     transferManager.queueUpload(book);
   }
-
   return book;
+}
+
+export async function ingestFiles(
+  items: IngestFileOptions[],
+  deps: IngestFileDeps,
+): Promise<IngestFileResult[]> {
+  if (!items.length) return [];
+  if (typeof deps.appService.importBooks !== 'function') {
+    return Promise.all(
+      items.map(async (opts) => {
+        let status: 'added' | 'existing' = 'added';
+        try {
+          const book = await ingestFile(
+            {
+              ...opts,
+              onResult: (result) => {
+                status = result;
+                opts.onResult?.(result);
+              },
+            },
+            deps,
+          );
+          const result = { book, status };
+          notifyComplete(opts, result);
+          return result;
+        } catch (error) {
+          const result = {
+            book: null,
+            status,
+            error: error instanceof Error ? error : new Error(String(error)),
+          };
+          notifyComplete(opts, result);
+          return result;
+        }
+      }),
+    );
+  }
+  const outcomes = items.map(() => ({ status: 'added' as 'added' | 'existing' }));
+  const delivered = new Map<number, IngestFileResult>();
+  const deliver = (
+    index: number,
+    result: Awaited<ReturnType<AppService['importBooks']>>[number],
+  ) => {
+    const previous = delivered.get(index);
+    if (previous) return previous;
+    const opts = items[index]!;
+    const status = outcomes[index]!.status;
+    const completed: IngestFileResult = {
+      book: result.book ? finalizeIngest(result.book, opts, deps, status) : null,
+      status,
+      ...(result.error ? { error: result.error } : {}),
+    };
+    delivered.set(index, completed);
+    notifyComplete(opts, completed);
+    return completed;
+  };
+  const inPlaceRoots = deps.settings.externalLibraryFolders ?? [];
+  const inputs = items.map((opts, index) => ({
+    file: opts.file,
+    options: {
+      lookupIndex: opts.lookupIndex,
+      markdownResourceRoot: opts.markdownResourceRoot,
+      transient: opts.transient,
+      inPlace: shouldImportInPlace(
+        opts.file,
+        opts,
+        inPlaceRoots,
+        deps.appService.osPlatform,
+        deps.appBooksPrefix ?? null,
+      ),
+      signal: opts.signal,
+      retryPDFContents: opts.retryPDFContents,
+      onProgress: opts.onProgress,
+      onComplete: (result: Awaited<ReturnType<AppService['importBooks']>>[number]) =>
+        deliver(index, result),
+      initialGroup:
+        opts.groupId !== undefined ? { id: opts.groupId, name: opts.groupName } : undefined,
+      initialTags: opts.subjectTag?.trim() ? [opts.subjectTag.trim()] : undefined,
+      onResult: (result: 'added' | 'existing') => {
+        outcomes[index]!.status = result;
+        opts.onResult?.(result);
+      },
+    },
+  }));
+  const imported = await deps.appService.importBooks(inputs, items[0]!.books);
+  // Compatibility adapters may return results without emitting events.
+  return imported.map((result, index) => deliver(index, result));
 }

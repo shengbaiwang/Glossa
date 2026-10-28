@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Book, BookNote } from '@/types/book';
 import { AppService } from '@/types/system';
+import { zipSync } from 'fflate';
 
 function makeFakeBook(overrides: Partial<Book> = {}): Book {
   return {
@@ -59,6 +60,64 @@ export function bookTests(
       expect(book!.title).toBeTruthy();
       expect(book!.author).toBeTruthy();
       expect(books).toHaveLength(1);
+    });
+
+    it.each([
+      ['sample-alice.epub', 'EPUB'],
+      ['sample-metadata.pdf', 'PDF'],
+      ['sample-war-peace.mobi', 'MOBI'],
+      ['sample-alice.txt', 'EPUB'],
+      ['sample-metadata.cbz', 'CBZ'],
+      ['sample-metadata.fb2', 'FB2'],
+    ])('imports %s through the shared content-identity pipeline', async (filename, format) => {
+      const service = getService();
+      const books: Book[] = [];
+      const file = await getBookFile(filename);
+      const book = (await service.importBook(file, books, { saveCover: false }))!;
+      expect(book.format).toBe(format);
+      expect(book.contentFingerprint).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(book.storedContentFingerprint).toMatch(/^sha256:[a-f0-9]{64}$/);
+      const content = await service.loadBookContent(book);
+      expect(content.file.size).toBeGreaterThan(0);
+      if (filename.endsWith('.txt')) {
+        expect(book.originalFilename).toBe(filename);
+        expect(book.contentFingerprint).not.toBe(book.storedContentFingerprint);
+      }
+      const duplicate = await service.importBook(file, books, { saveCover: false });
+      expect(duplicate?.hash).toBe(book.hash);
+      expect(books).toHaveLength(1);
+    });
+
+    it.each(['azw', 'azw3'])('preserves the Kindle %s container format', async (extension) => {
+      const service = getService();
+      const source = await getBookFile('sample-war-peace.mobi');
+      const file = typeof source === 'string' ? await service.openFile(source, 'None') : source;
+      const bytes = await file.arrayBuffer();
+      const books: Book[] = [];
+      const book = (await service.importBook(new File([bytes], `kindle.${extension}`), books, {
+        saveCover: false,
+      }))!;
+      expect(book.format).toBe(extension.toUpperCase());
+      expect(book.contentFingerprint).toMatch(/^sha256:/);
+      expect(books).toHaveLength(1);
+    });
+
+    it('imports FBZ without changing the compressed source identity', async () => {
+      const service = getService();
+      const source = await getBookFile('sample-metadata.fb2');
+      const file = typeof source === 'string' ? await service.openFile(source, 'None') : source;
+      const compressed = zipSync({ 'book.fb2': new Uint8Array(await file.arrayBuffer()) });
+      const bytes = compressed.buffer.slice(
+        compressed.byteOffset,
+        compressed.byteOffset + compressed.byteLength,
+      ) as ArrayBuffer;
+      const books: Book[] = [];
+      const book = (await service.importBook(new File([bytes], 'metadata.fbz'), books, {
+        saveCover: false,
+      }))!;
+      expect(book.format).toBe('FBZ');
+      expect(book.contentFingerprint).toMatch(/^sha256:/);
+      expect((await service.loadBookContent(book)).file.size).toBe(compressed.byteLength);
     });
 
     it('should deduplicate when importing the same file twice', async () => {

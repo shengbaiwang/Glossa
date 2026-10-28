@@ -1,3 +1,5 @@
+import { mergeLibraryDisplay, getLibraryCoverWidth } from '@/utils/libraryDisplaySettings';
+import { withLibraryLock } from './libraryLock';
 import { FileSystem } from '@/types/system';
 import {
   LibraryGroupByType,
@@ -166,6 +168,8 @@ export async function loadSettings(ctx: Context): Promise<SystemSettings> {
   settings.localBooksDir = await ctx.fs.getPrefix('Books');
 
   migrateLibraryThenSort(settings);
+  settings.libraryCoverWidth = getLibraryCoverWidth(settings);
+  settings.libraryAutoColumns = false;
   if (!Object.values(LibraryGroupByType).includes(settings.libraryGroupBy)) {
     settings.libraryGroupBy = LibraryGroupByType.None;
     try {
@@ -184,5 +188,15 @@ export async function loadSettings(ctx: Context): Promise<SystemSettings> {
 }
 
 export async function saveSettings(fs: FileSystem, settings: SystemSettings): Promise<void> {
-  await safeSaveJSON(fs, SETTINGS_FILENAME, 'Settings', settings);
+  await withLibraryLock(
+    fs,
+    async () => {
+      const disk = await safeLoadJSON<SystemSettings>(fs, SETTINGS_FILENAME, 'Settings', settings);
+      const merged = mergeLibraryDisplay(settings, disk);
+      // Incoming explicit edits win only on their own newer clocks.
+      const next = mergeLibraryDisplay(merged, settings);
+      await safeSaveJSON(fs, SETTINGS_FILENAME, 'Settings', next);
+    },
+    'settings',
+  );
 }

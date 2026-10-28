@@ -268,6 +268,9 @@ const LIBRARY_META_FILES = new Set([
   'library.db',
   'library.db-shm',
   'library.db-wal',
+  '.glossa-library.db',
+  '.glossa-library.db-shm',
+  '.glossa-library.db-wal',
 ]);
 
 function isLibraryMetaFile(path: string): boolean {

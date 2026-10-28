@@ -98,9 +98,7 @@ it('keeps display hierarchy and functional icons legible in light and dark', asy
   const { container, select } = renderToolbar();
   const trigger = screen.getByRole('button', { name: 'Library Display' });
   expect(trigger.textContent).toBe('Display');
-  expect(
-    screen.getByRole('button', { name: 'Settings' }).querySelector('.lucide-settings'),
-  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Settings' }).querySelector('svg')).toBeTruthy();
   for (const theme of ['default-light', 'default-dark']) {
     document.documentElement.setAttribute('data-theme', theme);
     await userEvent.click(trigger);
@@ -116,11 +114,9 @@ it('keeps display hierarchy and functional icons legible in light and dark', asy
     expect(
       screen.getByRole('button', { name: 'List', pressed: false }).querySelector('svg'),
     ).toBeTruthy();
-    expect(
-      screen
-        .getByRole('menuitemcheckbox', { name: 'Skeuomorphic Book Covers - OFF' })
-        .querySelector('.glossa-menu-icon svg'),
-    ).toBeTruthy();
+    expect((screen.getByRole('checkbox', { name: '3D covers' }) as HTMLInputElement).checked).toBe(
+      false,
+    );
     await page.screenshot({
       path: `../../../../../../.glossa-dev/qa/library-display-${theme}.png`,
     });
@@ -157,16 +153,14 @@ it('supports keyboard display choices and Escape at 320px in RTL and e-ink', asy
   expect(select).not.toHaveBeenCalled();
 });
 
-it('updates cover and sort preferences in place and reaches global appearance from a short window', async () => {
+it('updates cover and sort preferences in place and reaches global settings from a short window', async () => {
   await page.viewport(390, 520);
   renderToolbar();
   await userEvent.click(screen.getByRole('button', { name: 'Library Display' }));
-  await userEvent.click(
-    screen.getByRole('menuitemcheckbox', { name: 'Skeuomorphic Book Covers - OFF' }),
+  await userEvent.click(screen.getByRole('checkbox', { name: '3D covers' }));
+  expect((screen.getByRole('checkbox', { name: '3D covers' }) as HTMLInputElement).checked).toBe(
+    true,
   );
-  expect(
-    screen.getByRole('menuitemcheckbox', { name: 'Skeuomorphic Book Covers - ON' }),
-  ).toBeTruthy();
   await userEvent.click(screen.getByRole('button', { name: 'Sort by' }));
   await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'author');
   expect(useSettingsStore.getState().settings.librarySortBy).toBe('author');
@@ -175,8 +169,11 @@ it('updates cover and sort preferences in place and reaches global appearance fr
   expect(
     screen.getByRole('button', { name: 'Then by... / Ascending' }).hasAttribute('disabled'),
   ).toBe(true);
-  await userEvent.click(screen.getByRole('menuitem', { name: 'Theme & Background' }));
-  expect(useSettingsStore.getState().requestedPanel).toBe('Theme');
+  expect(screen.queryByRole('menuitem', { name: 'Theme & Background' })).toBeNull();
+  await userEvent.keyboard('{Escape}');
+  await userEvent.click(screen.getByRole('button', { name: 'Settings' }));
+  expect(useSettingsStore.getState().requestedPanel).toBe('General');
+  expect(useSettingsStore.getState().settingsDialogScope).toBe('application');
   expect(useSettingsStore.getState().isSettingsDialogOpen).toBe(true);
   expect(
     screen.getByRole('button', { name: 'Library Display' }).getAttribute('aria-expanded'),
@@ -196,8 +193,7 @@ it('keeps Chinese controls aligned with touch targets and takes a localized prev
     for (const control of [
       grid,
       list,
-      screen.getByRole('button', { name: '增加' }),
-      screen.getByRole('button', { name: '减少' }),
+      screen.getByRole('slider', { name: zh['Cover Size'] ?? 'Cover Size' }),
     ]) {
       expect(control.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
     }

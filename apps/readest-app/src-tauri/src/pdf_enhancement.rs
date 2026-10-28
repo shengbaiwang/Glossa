@@ -3,6 +3,7 @@ use crate::pdf_cache_ownership::{self as ownership, LegacyCache, Owner};
 use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     fs::{self, File},
     io::Read,
     path::{Path, PathBuf},
@@ -27,6 +28,15 @@ const PAGE_LIMIT: u64 = 4 * 1024 * 1024;
 #[cfg(target_os = "macos")]
 const CACHE_LIMIT: u64 = 512 * 1024 * 1024;
 
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OcrOptions {
+    detect: Option<bool>,
+    contents: Option<bool>,
+    heading: Option<bool>,
+    session: Option<String>,
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OutlineEntry {
@@ -48,6 +58,7 @@ pub struct CacheInfo {
     outline: Option<Vec<OutlineEntry>>,
     revision: u64,
     generator: Option<String>,
+    session: Option<String>,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -68,8 +79,18 @@ struct Job {
     status: JobStatus,
     child: Arc<Mutex<Child>>,
 }
+#[derive(Clone)]
+struct SourceSession {
+    path: PathBuf,
+    fingerprint: String,
+    cache_id: String,
+    size: u64,
+    modified: Option<std::time::SystemTime>,
+}
 static JOB: OnceLock<Mutex<Option<Job>>> = OnceLock::new();
+static SOURCE_SESSIONS: OnceLock<Mutex<HashMap<String, SourceSession>>> = OnceLock::new();
 static NEXT_JOB: AtomicU64 = AtomicU64::new(1);
+static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
 static CACHE_LOCK: Mutex<()> = Mutex::new(());
 fn jobs() -> &'static Mutex<Option<Job>> {
     JOB.get_or_init(|| Mutex::new(None))
@@ -239,6 +260,7 @@ fn info(dir: &Path, id: String) -> Result<CacheInfo, String> {
         outline: outline.outline,
         revision: outline.revision,
         generator: outline.generator,
+        session: None,
     })
 }
 #[cfg(target_os = "macos")]
@@ -262,21 +284,102 @@ fn cache_size(path: &Path) -> u64 {
         .sum()
 }
 
+fn source_sessions() -> &'static Mutex<HashMap<String, SourceSession>> {
+    SOURCE_SESSIONS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn issue_source_session(
+    path: PathBuf,
+    fingerprint: String,
+    cache_id: String,
+) -> Result<String, String> {
+    let metadata = path.metadata().map_err(error)?;
+    let session = SourceSession {
+        path,
+        fingerprint,
+        cache_id,
+        size: metadata.len(),
+        modified: metadata.modified().ok(),
+    };
+    let token = format!(
+        "{}-{}",
+        std::process::id(),
+        NEXT_SESSION.fetch_add(1, Ordering::Relaxed)
+    );
+    let mut sessions = source_sessions().lock().map_err(error)?;
+    if sessions.len() >= 64 {
+        if let Some(oldest) = sessions.keys().next().cloned() {
+            sessions.remove(&oldest);
+        }
+    }
+    sessions.insert(token.clone(), session);
+    Ok(token)
+}
+
+fn cached_source(
+    source: &str,
+    cache_id: &str,
+    token: Option<&str>,
+) -> Option<Result<(PathBuf, String), String>> {
+    let session = source_sessions().lock().ok()?.get(token?)?.clone();
+    if session.cache_id != cache_id {
+        return None;
+    }
+    Some((|| {
+        let path = PathBuf::from(source)
+            .canonicalize()
+            .map_err(|_| "pdf_source_changed")?;
+        let metadata = path.metadata().map_err(|_| "pdf_source_changed")?;
+        if path == session.path
+            && metadata.len() == session.size
+            && metadata.modified().ok() == session.modified
+        {
+            Ok((path, session.fingerprint))
+        } else {
+            Err("pdf_source_changed".into())
+        }
+    })())
+}
+
+fn verified_source(
+    app: &AppHandle,
+    source: &str,
+    cache_id: &str,
+    token: Option<&str>,
+) -> Result<(PathBuf, String), String> {
+    if let Some(result) = cached_source(source, cache_id, token) {
+        return result;
+    }
+    fingerprint(app, source)
+}
+
+#[tauri::command]
+pub fn pdf_release_source_session(session: String) {
+    if let Ok(mut sessions) = source_sessions().lock() {
+        sessions.remove(&session);
+    }
+}
+
 #[tauri::command]
 pub async fn pdf_open_cache(
     app: AppHandle,
     source: String,
     create: bool,
     owner: Option<Owner>,
+    with_session: bool,
 ) -> Result<Option<CacheInfo>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = CACHE_LOCK.lock().map_err(error)?;
-        let (_, fingerprint) = fingerprint(&app, &source)?;
+        let (path, fingerprint) = fingerprint(&app, &source)?;
         let Some(id) = ownership::open(&root(&app)?, &fingerprint, owner.as_ref(), create)? else {
             return Ok(None);
         };
         let dir = cache_dir(&app, &id)?;
-        info(&dir, id).map(Some)
+        let mut cache = info(&dir, id.clone())?;
+        if with_session {
+            cache.session = Some(issue_source_session(path, fingerprint, id)?);
+        }
+        Ok(Some(cache))
     })
     .await
     .map_err(error)?
@@ -336,19 +439,23 @@ pub async fn pdf_start_ocr(
     source: String,
     cache_id: String,
     pages: Vec<usize>,
-    detect: Option<bool>,
-    contents: Option<bool>,
-    heading: Option<bool>,
+    options: OcrOptions,
 ) -> Result<JobStatus, String> {
     tauri::async_runtime::spawn_blocking(move || {
         #[cfg(not(target_os = "macos"))]
         {
-            let _ = (app, source, cache_id, pages, detect, contents, heading);
+            let _ = (app, source, cache_id, pages, options);
             Err("pdf_ocr_unsupported".into())
         }
         #[cfg(target_os = "macos")]
         {
             let mut pages = pages;
+            let OcrOptions {
+                detect,
+                contents,
+                heading,
+                session,
+            } = options;
             let detect = detect.unwrap_or(false);
             let contents = contents.unwrap_or(false);
             let heading = heading.unwrap_or(false);
@@ -363,7 +470,7 @@ pub async fn pdf_start_ocr(
             if pages.is_empty() || pages.len() > 5000 || pages.iter().any(|i| *i >= 5000) {
                 return Err("pdf_page_limit".into());
             }
-            let (path, source_id) = fingerprint(&app, &source)?;
+            let (path, source_id) = verified_source(&app, &source, &cache_id, session.as_deref())?;
             ownership::access(&root(&app)?, &cache_id, Some(&source_id))?;
             let id = cache_id;
             let dir = cache_dir(&app, &id)?;
@@ -666,6 +773,41 @@ mod tests {
         assert!(!status.owned_by("other", Some("second")));
         assert!(status.owned_by("book", Some("second")));
     }
+    #[test]
+    fn verified_sessions_reuse_identity_and_reject_changed_sources() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("glossa-source-session-{unique}"));
+        fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("source.pdf");
+        fs::write(&source, b"source").unwrap();
+        let canonical = source.canonicalize().unwrap();
+        let fingerprint = "a".repeat(32);
+        let cache_id = "b".repeat(32);
+        let token = issue_source_session(canonical, fingerprint.clone(), cache_id.clone()).unwrap();
+
+        for _ in 0..3 {
+            let (_, actual) = cached_source(source.to_str().unwrap(), &cache_id, Some(&token))
+                .unwrap()
+                .unwrap();
+            assert_eq!(actual, fingerprint);
+        }
+        assert!(cached_source(source.to_str().unwrap(), "other", Some(&token)).is_none());
+        fs::write(&source, b"changed-size").unwrap();
+        assert_eq!(
+            cached_source(source.to_str().unwrap(), &cache_id, Some(&token))
+                .unwrap()
+                .unwrap_err(),
+            "pdf_source_changed"
+        );
+        pdf_release_source_session(token.clone());
+        fs::write(&source, b"source").unwrap();
+        assert!(cached_source(source.to_str().unwrap(), &cache_id, Some(&token)).is_none());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn legacy_outlines_remain_personal_and_automatic_provenance_round_trips() {
         let old: OutlineFile = serde_json::from_str(r#"{"revision":3,"outline":[]}"#).unwrap();

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Book } from '@/types/book';
+import { openTestLibraryDatabase } from './suites/library-test-database';
 
 const mockOpen = vi.hoisted(() => vi.fn());
 const mockPartialMD5 = vi.hoisted(() => vi.fn());
@@ -80,7 +81,7 @@ class TestAppService extends BaseAppService {
     return false;
   }
   async openDatabase() {
-    return {} as ReturnType<BaseAppService['openDatabase']>;
+    return openTestLibraryDatabase(this);
   }
   async createWindow() {}
   async getCacheDir() {

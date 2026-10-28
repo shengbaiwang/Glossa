@@ -839,7 +839,7 @@ it('selects all visible groups with the keyboard', async () => {
   );
 });
 
-it('keeps legacy column counts until resized, then adapts cover sizing to the shelf width', async () => {
+it('retires legacy columns and retains manual cover width as the shelf wraps', async () => {
   await page.viewport(1100, 780);
   mocks.search = 'groupBy=none';
   window.history.replaceState(null, '', '?groupBy=none');
@@ -867,7 +867,7 @@ it('keeps legacy column counts until resized, then adapts cover sizing to the sh
     return element!;
   });
   const columns = () => getComputedStyle(grid).gridTemplateColumns.split(' ').length;
-  expect(columns()).toBe(4);
+  expect(parseFloat(getComputedStyle(grid).gridTemplateColumns)).toBe(156);
   fireEvent.change(screen.getByRole('slider', { name: 'Cover Size' }), {
     target: { value: '220' },
   });
@@ -876,7 +876,9 @@ it('keeps legacy column counts until resized, then adapts cover sizing to the sh
   await page.viewport(390, 780);
   await waitFor(() => expect(columns()).toBeLessThan(wideColumns));
   expect(grid.scrollWidth).toBeLessThanOrEqual(grid.clientWidth);
-  fireEvent.click(screen.getByRole('button', { name: 'Auto' }));
-  await waitFor(() => expect(grid.style.gridTemplateColumns).toBe(''));
+  expect(screen.queryByRole('button', { name: 'Auto' })).toBeNull();
+  expect((screen.getByRole('slider', { name: 'Cover Size' }) as HTMLInputElement).value).toBe(
+    '220',
+  );
   expect(mocks.saveSettings).toHaveBeenCalled();
 });

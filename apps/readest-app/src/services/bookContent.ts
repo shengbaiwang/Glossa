@@ -6,7 +6,10 @@ import { isContentURI, isValidURL } from '@/utils/misc';
 import { isPseStreamFileName } from './opds/pseStream';
 import { isFeedBookUrl } from '@/services/rss/feedBookUrl';
 
-export type BookContentFileSystem = Pick<FileSystem, 'exists' | 'openFile' | 'readDir'>;
+export type BookContentFileSystem = Pick<
+  FileSystem,
+  'exists' | 'openFile' | 'readDir' | 'fingerprint'
+>;
 
 export type BookContentSource =
   | { kind: 'managed'; path: string; base: 'Books'; legacy?: boolean }
