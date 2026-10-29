@@ -100,11 +100,9 @@ describe('convertToEpub — article', () => {
   });
 });
 
-describe('convertToEpub — page (quality floor)', () => {
-  test('rejects bot-detection / verification-page output (extracted text too short)', async () => {
-    // Bot-detection / verification screen: just enough markup for
-    // Readability to find a sliver of content, but well under the 400-
-    // char quality floor.
+describe('convertToEpub — page (access evidence)', () => {
+  test('rejects bot-detection / verification-page output', async () => {
+    // Explicit access challenge evidence; article length is not a login test.
     const html = `<html><head><title></title></head><body>
       <h1>Verify you are human</h1>
       <p>Please complete the check to continue.</p>

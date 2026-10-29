@@ -4,16 +4,17 @@
  * Blobs, Files, or non-plain objects across boundaries.
  *
  * The content script's job has been reduced to a page snapshot: it grabs
- * the rendered `outerHTML` + canonical URL and hands those off to the SW,
+ * the rendered `outerHTML`, current URL, and document base URI and hands those off to the SW,
  * which delegates everything (Readability, asset bundle, cover, TOC, EPUB
  * build) to the shared `convertPageToEpub` in `src/services/send/conversion/`.
- * That keeps the extension's EPUB output byte-identical with the desktop /
- * mobile `/send` clipping paths.
+ * The extension and application use the same extraction and packaging rules;
+ * their captured page content may differ.
  */
 
 export interface PageSnapshot {
-  /** Canonical URL when present, falling back to `location.href`. */
+  /** Current page URL. Canonical metadata must not change relative asset resolution. */
   sourceUrl: string;
+  baseUrl?: string;
   /** `document.title` — used only as a popup display fallback; the
    *  shared converter re-extracts the real title from the captured HTML. */
   pageTitle: string;
@@ -25,7 +26,8 @@ export type ClipProgress =
   | { phase: 'capturing' }
   | { phase: 'converting' }
   | { phase: 'uploading' }
-  | { phase: 'done'; missingAssets?: number }
+  | { phase: 'downloading' }
+  | { phase: 'done'; delivery?: 'download' | 'cloud'; missingAssets?: number }
   | { phase: 'error'; code: ClipErrorCode; message: string };
 
 export type ClipErrorCode =
@@ -44,6 +46,8 @@ export type ClipErrorCode =
 export interface ClipRequest {
   type: 'send-to-readest:clip';
   tabId: number;
+  /** Legacy requests retain explicit cloud behavior. Popup defaults to local download. */
+  delivery?: 'download' | 'cloud';
 }
 
 /** service worker → popup (broadcast updates) */

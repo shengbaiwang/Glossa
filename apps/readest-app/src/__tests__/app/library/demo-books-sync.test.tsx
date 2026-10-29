@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 import type { Book } from '@/types/book';
 
@@ -92,10 +92,13 @@ describe('demo books and the cloud book channel (issue #5049)', () => {
   it('never pushes a demo book to the cloud', async () => {
     useLibraryStore
       .getState()
-      .setLibrary([
-        makeBook({ hash: 'demo-1', url: DEMO_URL, title: 'The Great Gatsby' }),
-        makeBook({ hash: 'mine-1', title: 'My Own Book' }),
-      ]);
+      .setLibrary(
+        [
+          makeBook({ hash: 'demo-1', url: DEMO_URL, title: 'The Great Gatsby' }),
+          makeBook({ hash: 'mine-1', title: 'My Own Book' }),
+        ],
+        true,
+      );
 
     const { result } = renderHook(() => useBooksSync());
     await result.current.pushLibrary();
@@ -115,17 +118,20 @@ describe('demo books and the cloud book channel (issue #5049)', () => {
     // Local: the user deleted the demo book. Cloud: the row this device pushed
     // before the delete — same updatedAt, no tombstone. The user's own book
     // rides along in the same pull, so the merge really runs.
-    useLibraryStore.getState().setLibrary([
-      makeBook({
-        hash: 'demo-1',
-        url: DEMO_URL,
-        title: 'The Great Gatsby',
-        deletedAt: 2000,
-        downloadedAt: null,
-        coverDownloadedAt: null,
-      }),
-      makeBook({ hash: 'mine-1', title: 'My Own Book', uploadedAt: 1000 }),
-    ]);
+    useLibraryStore.getState().setLibrary(
+      [
+        makeBook({
+          hash: 'demo-1',
+          url: DEMO_URL,
+          title: 'The Great Gatsby',
+          deletedAt: 2000,
+          downloadedAt: null,
+          coverDownloadedAt: null,
+        }),
+        makeBook({ hash: 'mine-1', title: 'My Own Book', uploadedAt: 1000 }),
+      ],
+      true,
+    );
     syncState.syncedBooks = [
       makeBook({
         hash: 'demo-1',
@@ -152,5 +158,33 @@ describe('demo books and the cloud book channel (issue #5049)', () => {
     expect(coverRefreshed.map((book) => book.hash)).not.toContain('demo-1');
     // The user's own book still merges as before.
     expect(library.find((book) => book.hash === 'mine-1')?.updatedAt).toBe(3000);
+  });
+
+  it('queues cloud rows until the complete local library is loaded', async () => {
+    const deletedDemo = makeBook({ hash: 'demo-1', url: DEMO_URL, deletedAt: 2000 });
+    const personalBook = makeBook({ hash: 'mine-1', uploadedAt: 1000 });
+    const localOnlyBook = makeBook({ hash: 'local-only' });
+    useLibraryStore.getState().setLibrary([deletedDemo]);
+    syncState.syncedBooks = [
+      makeBook({ hash: 'demo-1', deletedAt: null, uploadedAt: 1000 }),
+      makeBook({ hash: 'mine-1', uploadedAt: 1000, updatedAt: 3000 }),
+    ];
+
+    renderHook(() => useBooksSync());
+    await act(async () => {});
+
+    expect(useLibraryStore.getState().libraryLoaded).toBe(false);
+    expect(useLibraryStore.getState().library).toEqual([deletedDemo]);
+    expect(appService.saveLibraryBooks).not.toHaveBeenCalled();
+
+    await act(async () => {
+      useLibraryStore.getState().setLibrary([deletedDemo, personalBook, localOnlyBook], true);
+    });
+    await waitFor(() => expect(appService.saveLibraryBooks).toHaveBeenCalled());
+
+    const library = useLibraryStore.getState().library;
+    expect(library.find((book) => book.hash === 'demo-1')?.deletedAt).toBe(2000);
+    expect(library.find((book) => book.hash === 'mine-1')?.updatedAt).toBe(3000);
+    expect(library.find((book) => book.hash === 'local-only')).toEqual(localOnlyBook);
   });
 });

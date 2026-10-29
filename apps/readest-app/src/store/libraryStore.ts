@@ -6,6 +6,7 @@ import { md5Fingerprint } from '@/utils/md5';
 import { useSettingsStore } from '@/store/settingsStore';
 import { collectFolderPaths } from '@/app/library/utils/libraryFolders';
 import { protectBookRemoval } from '@/services/bookRemovalState';
+import { mergeLibraryBook } from '@/utils/libraryMerge';
 import { getVisibleBooks } from '@/utils/book';
 
 interface LibraryState {
@@ -29,7 +30,7 @@ interface LibraryState {
   getBookByHash: (hash: string) => Book | undefined;
   setCheckOpenWithBooks: (check: boolean) => void;
   setCheckLastOpenBooks: (check: boolean) => void;
-  setLibrary: (books: Book[]) => void;
+  setLibrary: (books: Book[], complete?: boolean) => void;
   // The third parameter is required (no `?`) so a future caller cannot
   // accidentally clear `readingStatus` by omitting it. Pass the desired final
   // value explicitly: the existing `readingStatus`, `undefined` to clear, or
@@ -98,11 +99,21 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   setCheckOpenWithBooks: (check) => set({ checkOpenWithBooks: check }),
   setCheckLastOpenBooks: (check) => set({ checkLastOpenBooks: check }),
-  setLibrary: (books) => {
+  // Mutations may replace only the subset loaded for a reader. Complete reads
+  // establish readiness and membership, while preserving newer personal edits
+  // made in memory while disk rows and cover URLs were loading.
+  setLibrary: (books, complete = false) => {
+    if (complete) {
+      const current = new Map(get().library.map((book) => [book.hash, book]));
+      books = books.map((book) => {
+        const previous = current.get(book.hash);
+        return previous ? mergeLibraryBook(previous, book) : book;
+      });
+    }
     books = books.map(withoutSubjects);
     set({
       library: books,
-      libraryLoaded: true,
+      libraryLoaded: complete || get().libraryLoaded,
       hashIndex: buildHashIndex(books),
       visibleLibrary: getVisibleBooks(books),
     });
@@ -185,17 +196,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     if (!libraryLoaded) {
       const appService = await envConfig.getAppService();
       library = await appService.loadLibraryBooks();
-      set({
-        library,
-        libraryLoaded: true,
-        hashIndex: buildHashIndex(library),
-        visibleLibrary: getVisibleBooks(library),
-      });
+      get().setLibrary(library, true);
+      library = get().library;
     }
 
     const existingByHash = new Map(library.map((b) => [b.hash, b]));
     books = books.map((b) =>
-      existingByHash.has(b.hash) ? protectBookRemoval(b, existingByHash.get(b.hash)!) : b,
+      existingByHash.has(b.hash) ? mergeLibraryBook(existingByHash.get(b.hash)!, b) : b,
     );
     const newLibrary = Array.from(new Map([...library, ...books].map((b) => [b.hash, b])).values());
     set({

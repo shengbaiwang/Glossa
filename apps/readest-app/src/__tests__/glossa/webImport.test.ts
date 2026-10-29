@@ -4,6 +4,8 @@ import type { SystemSettings } from '@/types/settings';
 import { importWebPage } from '@/glossa/plugins/webImport';
 const f = vi.hoisted(() => ({ clip: vi.fn() }));
 vi.mock('@/services/send/clipSignIn', () => ({ clipPageWithSignInFallback: f.clip }));
+vi.mock('@/services/send/pageAcquisition', () => ({ fetchWebPage: vi.fn() }));
+import { fetchWebPage } from '@/services/send/pageAcquisition';
 const book = { file: new File(['original fixture'], 'article.epub'), title: 'Article', author: '' };
 beforeEach(() => {
   useSettingsStore.setState({ settings: {} as SystemSettings });
@@ -88,4 +90,75 @@ it('does not disguise a persistence failure as cancellation', async () => {
   controller.abort();
   fail(new Error('disk full'));
   expect(await result).toMatchObject({ message: 'disk full' });
+});
+
+it('reports resource warnings only after a successful persistent import', async () => {
+  const options = setup();
+  const onWarnings = vi.fn();
+  const warnings = [{ code: 'missing_assets' as const, count: 2 }];
+  f.clip.mockResolvedValue({ ...book, warnings });
+  options.save.mockRejectedValueOnce(new Error('disk full'));
+  await expect(importWebPage({ ...options, onWarnings })).rejects.toThrow('disk full');
+  expect(onWarnings).not.toHaveBeenCalled();
+  await importWebPage({ ...options, onWarnings });
+  expect(onWarnings).toHaveBeenCalledExactlyOnceWith(warnings);
+});
+
+it('reuses prepared bytes after save failure, and invalidates them when settings change', async () => {
+  const retryToken = {};
+  const options = { ...setup(), retryToken };
+  options.save.mockRejectedValueOnce(new Error('disk full'));
+  await expect(importWebPage(options)).rejects.toThrow('disk full');
+  await importWebPage(options);
+  expect(f.clip).toHaveBeenCalledOnce();
+  options.save.mockRejectedValueOnce(new Error('disk full'));
+  await expect(importWebPage(options)).rejects.toThrow('disk full');
+  useSettingsStore.setState({
+    settings: { officialModules: { webImport: false } } as SystemSettings,
+  });
+  useSettingsStore.setState({
+    settings: { officialModules: { webImport: true } } as SystemSettings,
+  });
+  await importWebPage(options);
+  expect(f.clip).toHaveBeenCalledTimes(3);
+});
+
+it('offers a full-text PDF only for an identified abstract and fetches it after explicit choice', async () => {
+  const pdf = new File(['%PDF-1.7'], 'paper.pdf', { type: 'application/pdf' });
+  f.clip.mockResolvedValueOnce({
+    ...book,
+    source: {
+      scope: 'abstract',
+      originalUrl: 'https://example.com/article',
+      url: 'https://example.org/abstract',
+      pdfUrl: 'https://example.org/paper.pdf',
+    },
+  });
+  vi.mocked(fetchWebPage).mockResolvedValueOnce({
+    kind: 'file',
+    file: pdf,
+    title: 'paper',
+    url: 'https://cdn.example.org/full-paper.pdf',
+  });
+  const options = setup();
+  const onFullText = vi.fn().mockResolvedValueOnce(true);
+  await importWebPage({ ...options, onFullText });
+  expect(onFullText).toHaveBeenCalledWith('https://example.org/paper.pdf', expect.any(AbortSignal));
+  expect(options.save).toHaveBeenCalledExactlyOnceWith(pdf, expect.any(AbortSignal), {
+    originalUrl: 'https://example.com/article',
+    referrerUrl: 'https://example.org/abstract',
+    url: 'https://cdn.example.org/full-paper.pdf',
+  });
+});
+
+it('keeps the abstract when the user declines the PDF', async () => {
+  vi.mocked(fetchWebPage).mockClear();
+  f.clip.mockResolvedValueOnce({
+    ...book,
+    source: { scope: 'abstract', pdfUrl: 'https://example.org/paper.pdf' },
+  });
+  const options = setup();
+  await importWebPage({ ...options, onFullText: vi.fn().mockResolvedValueOnce(false) });
+  expect(fetchWebPage).not.toHaveBeenCalled();
+  expect(options.save).toHaveBeenCalledWith(book.file, expect.any(AbortSignal));
 });

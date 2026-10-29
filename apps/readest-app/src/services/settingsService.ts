@@ -124,6 +124,13 @@ export function migrateLibraryThenSort(settings: SystemSettings): void {
   delete legacy.librarySortBy2;
 }
 
+function removeRetiredCoverSettings(settings: SystemSettings): void {
+  Reflect.deleteProperty(settings, 'librarySkeuomorphicCovers');
+  if (settings.libraryDisplayUpdatedAt) {
+    Reflect.deleteProperty(settings.libraryDisplayUpdatedAt, 'librarySkeuomorphicCovers');
+  }
+}
+
 export async function loadSettings(ctx: Context): Promise<SystemSettings> {
   const defaultSettings: SystemSettings = {
     ...DEFAULT_SYSTEM_SETTINGS,
@@ -167,6 +174,7 @@ export async function loadSettings(ctx: Context): Promise<SystemSettings> {
 
   settings.localBooksDir = await ctx.fs.getPrefix('Books');
 
+  removeRetiredCoverSettings(settings);
   migrateLibraryThenSort(settings);
   settings.libraryCoverWidth = getLibraryCoverWidth(settings);
   settings.libraryAutoColumns = false;
@@ -195,6 +203,7 @@ export async function saveSettings(fs: FileSystem, settings: SystemSettings): Pr
       const merged = mergeLibraryDisplay(settings, disk);
       // Incoming explicit edits win only on their own newer clocks.
       const next = mergeLibraryDisplay(merged, settings);
+      removeRetiredCoverSettings(next);
       await safeSaveJSON(fs, SETTINGS_FILENAME, 'Settings', next);
     },
     'settings',

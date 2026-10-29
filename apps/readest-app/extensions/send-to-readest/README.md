@@ -4,11 +4,30 @@ One-click capture of the current web page into your Readest library as a
 **self-contained EPUB**. Built for Chromium-based browsers (Chrome, Edge,
 Arc, Brave). Manifest V3.
 
+## Local delivery for Glossa
+
+**Download EPUB** is the primary action and works without an account. It captures
+only after a click, converts the rendered page locally, and opens the browser's
+save dialog. Import the downloaded `.epub` through Glossa's existing file import.
+No capture or EPUB is sent to the Readest inbox in this mode. Images are still
+fetched from the page's resource hosts to make the EPUB readable offline.
+
+**Send to Readest cloud** remains an explicit secondary action for signed-in
+users and uses the existing Readest inbox endpoint. Signing in is optional for
+local download. There is no native messaging registration or automatic opening
+of Glossa in this release.
+
+Download completion is reported only when the browser confirms it; cancelled,
+interrupted and expired downloads allow retry. Temporary EPUB object URLs are
+released on completion/failure and expire if the background worker is reclaimed.
+Only content present in the captured DOM is available. This does not unlock
+subscriptions, bypass a login, or materialize content that the page has not loaded.
+
 ## What it captures
 
 For every page the user clips, the extension produces a single `.epub`:
 
-- Article body via [@mozilla/readability](https://github.com/mozilla/readability)
+- Article body via the shared Defuddle-first extractor with Readability fallback
   on the live, fully-rendered DOM — so paywalled / authenticated pages
   capture the content the user can actually see.
 - Lazy-loaded images surfaced by walking the DOM and resolving `srcset`,
@@ -16,16 +35,15 @@ For every page the user clips, the extension produces a single `.epub`:
   `data-lazy`, and `data-actualsrc` in that order of preference (the same
   set the server-side bundler in `src/services/send/conversion/assetBundler.ts`
   handles).
-- Image bytes fetched by the **service worker** under the user's existing
-  session (`credentials: 'include'`) and the extension's broad
-  `host_permissions: ["<all_urls>"]` — CORS doesn't apply, paywalled CDN
-  cookies do.
+- Image bytes fetched in the **offscreen conversion document** under the extension's
+  resource permissions. Asset authorization depends on browser cookie policy;
+  missing resources are reported rather than treated as complete.
 - A small bundled stylesheet (system fonts only — no remote fonts), so the
   EPUB never makes a network request when opened offline.
 - Inline images stored under `OEBPS/images/<sha256>.<ext>`, deduplicated by
   hash so a hero shared between `<picture>` and `<img>` only ships once.
 
-The EPUB is POSTed to **`POST /api/send/inbox/file`** with `kind=file`. The
+In explicit cloud mode, the EPUB is POSTed to **`POST /api/send/inbox/file`** with `kind=file`. The
 server writes the bytes to R2 and inserts a `send_inbox` row; the next
 Readest client to open drains the inbox and imports the EPUB as-is — no
 further server-side conversion.

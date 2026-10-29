@@ -26,10 +26,10 @@ const makeBook = (overrides?: Partial<Book>): Book =>
 
 describe('BookCover', () => {
   it('shows a readable paper cover immediately when there is no image', () => {
-    const { container } = render(
-      <BookCover book={makeBook({ coverImageUrl: undefined })} showSpine />,
-    );
+    const { container } = render(<BookCover book={makeBook({ coverImageUrl: undefined })} />);
     expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('.book-spine')).toBeNull();
+    expect(container.querySelector('[data-material]')).toBeNull();
     expect(container.querySelector('.fallback-cover')?.classList.contains('invisible')).toBe(false);
     expect(container.querySelector('.fallback-cover')?.textContent).toContain('Test Book');
   });

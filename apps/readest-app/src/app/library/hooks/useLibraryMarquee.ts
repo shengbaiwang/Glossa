@@ -5,10 +5,8 @@ type Options = {
   root: React.RefObject<HTMLElement | null>;
   scroller: React.RefObject<HTMLElement | null>;
   selected: string[];
-  selecting: boolean;
   enabled: boolean;
   onSelect: (ids: string[]) => void;
-  onMode: (enabled: boolean) => void;
 };
 type Gesture = {
   id: number;
@@ -19,8 +17,7 @@ type Gesture = {
   active: boolean;
   additive: boolean;
   previous: string[];
-  selecting: boolean;
-  measured: Map<string, Rect>;
+  measured: Map<HTMLElement, Rect & { id: string }>;
 };
 
 /** Blank-space selection shares the shelf's existing selection and book drag payload. */
@@ -50,26 +47,27 @@ export function useLibraryMarquee(options: Options) {
         height: Math.abs(g.clientY + offset() - g.y),
       };
       for (const el of latest.current.root.current?.querySelectorAll<HTMLElement>(
-        '[data-book-hash]',
+        '[data-library-item-id]',
       ) ?? []) {
         const box = el.getBoundingClientRect();
         if (box.width && box.height)
-          g.measured.set(el.dataset['bookHash']!, {
+          g.measured.set(el, {
+            id: el.dataset['libraryItemId']!,
             left: box.left,
             top: box.top + offset(),
             width: box.width,
             height: box.height,
           });
       }
-      const hits = [...g.measured]
+      const hits = [...g.measured.values()]
         .filter(
-          ([, box]) =>
+          (box) =>
             box.left < selection.left + selection.width &&
             box.left + box.width > selection.left &&
             box.top < selection.top + selection.height &&
             box.top + box.height > selection.top,
         )
-        .map(([id]) => id);
+        .map((box) => box.id);
       const ids = [...new Set([...(g.additive ? g.previous : []), ...hits])];
       if (ids.join('\0') !== latest.current.selected.join('\0')) latest.current.onSelect(ids);
       setRect({ ...selection, top: selection.top - offset() });
@@ -86,7 +84,6 @@ export function useLibraryMarquee(options: Options) {
       setRect(null);
       if (restore && g.active) {
         latest.current.onSelect(g.previous);
-        latest.current.onMode(g.selecting);
       }
     };
     const move = (event: PointerEvent) => {
@@ -98,7 +95,6 @@ export function useLibraryMarquee(options: Options) {
       if (!g.active) {
         g.active = true;
         suppressClick.current = true;
-        latest.current.onMode(true);
         tick();
       }
       event.preventDefault();
@@ -112,7 +108,6 @@ export function useLibraryMarquee(options: Options) {
         update();
       } else if (!g.additive) {
         latest.current.onSelect([]);
-        latest.current.onMode(false);
       }
       finish();
     };
@@ -184,7 +179,6 @@ export function useLibraryMarquee(options: Options) {
           active: false,
           additive: event.shiftKey || event.metaKey || event.ctrlKey,
           previous: [...options.selected],
-          selecting: options.selecting,
           measured: new Map(),
         };
         event.preventDefault();

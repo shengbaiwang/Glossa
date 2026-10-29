@@ -16,7 +16,7 @@ import {
   registerLibraryDatabase,
   writeLibraryRows,
 } from '@/services/libraryRepository';
-import { saveLibraryBooks } from '@/services/libraryService';
+import { loadLibraryBooks, saveLibraryBooks } from '@/services/libraryService';
 
 const TABLE = 'glossa_library_entries';
 const temporaryRoots: string[] = [];
@@ -88,6 +88,34 @@ afterEach(async () => {
 });
 
 describe('library repository with a real disk database', () => {
+  it('reads only requested records by bound primary keys without scanning unrelated payloads', async () => {
+    const f = await fixture([book('wanted'), book('other')]);
+    await loadLibraryRows(f.fs);
+    await f
+      .db()
+      .execute(`UPDATE ${TABLE} SET payload = ? WHERE key = ?`, [
+        'broken unrelated JSON',
+        'book:other',
+      ]);
+    const select = vi.spyOn(f.db(), 'select');
+    expect(await loadLibraryRows(f.fs, { hashes: ['wanted', 'missing', 'wanted'] })).toEqual([
+      book('wanted'),
+    ]);
+    expect(
+      select.mock.calls.some(
+        ([query, bindings]) =>
+          query.includes('json_each') && bindings?.[0] === JSON.stringify(['wanted', 'missing']),
+      ),
+    ).toBe(true);
+    const cover = vi.fn(async (row: Book) => `cover:${row.hash}`);
+    expect((await loadLibraryBooks(f.fs, cover, ['wanted'])).map((row) => row.hash)).toEqual([
+      'wanted',
+    ]);
+    expect(cover).toHaveBeenCalledTimes(1);
+    expect(cover.mock.calls[0]?.[0].hash).toBe('wanted');
+    await expect(loadLibraryRows(f.fs)).rejects.toThrow();
+  });
+
   it('migrates stable identities and historical duplicates once, leaving source and sidecars intact', async () => {
     const identity = `sha256:${'a'.repeat(64)}`;
     const legacy = [

@@ -11,6 +11,7 @@ private let clipLogger = Logger(subsystem: Bundle.main.bundleIdentifier!, catego
 /// caller that omits a field still renders sensibly.
 class ClipUrlArgs: Decodable {
   let url: String
+  let taskId: String?
   let windowTitle: String?
   let overlayTitle: String?
   let loadingStatus: String?
@@ -35,6 +36,8 @@ class ClipUrlArgs: Decodable {
   var resolvedCaptureLabel: String { captureLabel ?? "Capture" }
   var resolvedCancelLabel: String { cancelLabel ?? "Cancel" }
 }
+
+class CancelClipArgs: Decodable { let taskId: String }
 
 /// Errors surfaced to the JS caller through `invoke.reject`. Strings
 /// match the desktop `clip_url` error vocabulary so callers handling
@@ -87,7 +90,7 @@ final class ClipUrlController: UIViewController, WKNavigationDelegate {
   static let loadSettleSeconds: TimeInterval = 3
 
   private let args: ClipUrlArgs
-  private let completion: (Result<String, ClipUrlError>) -> Void
+  private let completion: (Result<[String: String], ClipUrlError>) -> Void
 
   private var webView: WKWebView!
   private var overlayView: UIView!
@@ -96,7 +99,7 @@ final class ClipUrlController: UIViewController, WKNavigationDelegate {
   private var captureFired = false
   private var timeoutWorkItem: DispatchWorkItem?
 
-  init(args: ClipUrlArgs, completion: @escaping (Result<String, ClipUrlError>) -> Void) {
+  init(args: ClipUrlArgs, completion: @escaping (Result<[String: String], ClipUrlError>) -> Void) {
     self.args = args
     self.completion = completion
     super.init(nibName: nil, bundle: nil)
@@ -362,11 +365,12 @@ final class ClipUrlController: UIViewController, WKNavigationDelegate {
   private func captureOuterHtml() {
     guard !captureFired else { return }
     captureFired = true
-    webView.evaluateJavaScript("document.documentElement.outerHTML") { [weak self] result, error in
+    let script = "(() => { const html = document.documentElement.outerHTML; if (html.length > 8388608) return null; return { html, finalUrl: location.href, baseUrl: document.baseURI || location.href }; })()"
+    webView.evaluateJavaScript(script) { [weak self] result, error in
       guard let self = self else { return }
-      if let html = result as? String, !html.isEmpty {
+      if let page = result as? [String: String], let html = page["html"], !html.isEmpty {
         clipLogger.log("clip_url: captured \(html.count, privacy: .public) chars")
-        self.finish(.success(html))
+        self.finish(.success(page))
       } else {
         let detail = error?.localizedDescription ?? "empty HTML"
         self.finish(.failure(.loadFailed(detail)))
@@ -374,7 +378,15 @@ final class ClipUrlController: UIViewController, WKNavigationDelegate {
     }
   }
 
-  private func finish(_ result: Result<String, ClipUrlError>) {
+  private var completed = false
+
+  func cancelCapture() {
+    finish(.failure(.cancelled))
+  }
+
+  private func finish(_ result: Result<[String: String], ClipUrlError>) {
+    guard !completed else { return }
+    completed = true
     timeoutWorkItem?.cancel()
     timeoutWorkItem = nil
     // Stop the WebView before dismissing — otherwise its JS keeps
@@ -383,9 +395,8 @@ final class ClipUrlController: UIViewController, WKNavigationDelegate {
     webView?.stopLoading()
     webView?.navigationDelegate = nil
 
-    dismiss(animated: true) { [completion] in
-      completion(result)
-    }
+    dismiss(animated: false)
+    completion(result)
   }
 
   // MARK: - Inline JS scripts

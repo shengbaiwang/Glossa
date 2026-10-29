@@ -1,6 +1,7 @@
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { isTauriAppPlatform } from '@/services/environment';
 import { imageFetchHeaders } from './httpHeaders';
+import { awaitResource, readBoundedResponse } from './boundedResponse';
 
 /**
  * Find and fetch the best icon for a clipped article — the icon that
@@ -132,9 +133,15 @@ async function fetchImage(
   signal?.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await httpFetch(url, referer, { signal: ac.signal, redirect: 'follow' });
-    if (!res.ok) return null;
-    const bytes = await res.arrayBuffer();
+    const res = await awaitResource(
+      httpFetch(url, referer, { signal: ac.signal, redirect: 'follow' }),
+      ac.signal,
+    );
+    if (!res.ok) {
+      void res.body?.cancel().catch(() => undefined);
+      return null;
+    }
+    const bytes = await readBoundedResponse(res, maxBytes, ac.signal);
     if (bytes.byteLength === 0 || bytes.byteLength > maxBytes) return null;
     let mime = (res.headers.get('content-type') || '').split(';')[0]!.trim().toLowerCase();
     if (!mime.startsWith('image/')) {
@@ -150,6 +157,7 @@ async function fetchImage(
     }
     return { bytes, mime };
   } catch {
+    signal?.throwIfAborted();
     return null;
   } finally {
     clearTimeout(timer);

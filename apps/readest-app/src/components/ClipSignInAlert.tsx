@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CLIP_SIGNIN_CONFIRM_EVENT } from '@/services/send/clipSignIn';
+import type { ClipRecovery } from '@/services/send/clipSignIn';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useThemeStore } from '@/store/themeStore';
 import { eventDispatcher } from '@/utils/event';
@@ -9,6 +10,7 @@ interface ClipSignInRequest {
   url: string;
   signal?: AbortSignal;
   respond: (ok: boolean) => void;
+  reason?: ClipRecovery;
 }
 
 /**
@@ -79,11 +81,18 @@ const ClipSignInAlert: React.FC = () => {
       style={{ paddingBottom: `${(safeAreaInsets?.bottom || 0) + 16}px` }}
     >
       <Alert
-        title={_('Sign in to capture?')}
-        message={_(
-          'This page on {{host}} looks like a login or verification screen. Open it to sign in, then capture the article manually.',
-          { host },
-        )}
+        title={_('Open page to capture?')}
+        message={
+          request.reason?.code === 'login_wall'
+            ? _(
+                'This page on {{host}} looks like a login or verification screen. Open it to sign in, then capture the article manually.',
+                { host },
+              )
+            : _(
+                'The article on {{host}} could not be extracted automatically. Open the page, then capture it or select its text.',
+                { host },
+              )
+        }
         confirmLabel={_('Open Page')}
         confirmButtonClassName='btn-contrast'
         onCancel={() => respond(false)}

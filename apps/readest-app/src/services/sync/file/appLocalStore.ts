@@ -17,6 +17,7 @@ import {
 import { getEnabledFileSyncBackends } from '@/services/sync/cloudSyncProvider';
 import { withLibraryLock } from '@/services/libraryLock';
 import { withBookDataWrite } from '@/services/bookDataLifecycle';
+import { mergeLibraryBook } from '@/utils/libraryMerge';
 
 /**
  * Where this device's copy of the book actually is, or null when it holds none
@@ -166,8 +167,10 @@ export const createAppLocalStore = ({
     // so an unloaded store would persist an empty (or single-book) library and
     // clobber the disk. See the same guard in addBookToLibrary.
     if (!useLibraryStore.getState().libraryLoaded) {
-      useLibraryStore.getState().setLibrary(await appService.loadLibraryBooks());
+      useLibraryStore.getState().setLibrary(await appService.loadLibraryBooks(), true);
     }
+    const current = useLibraryStore.getState().getBookByHash(book.hash);
+    if (current) book = mergeLibraryBook(current, book);
     // updateBook persists via saveLibraryBooks and refreshes the store, so the
     // new title / author / cover show up without a reload.
     await useLibraryStore.getState().updateBook(envConfig, book);
@@ -176,7 +179,7 @@ export const createAppLocalStore = ({
   markBooksUploaded: async (hashes, uploadedAt) => {
     if (!hashes.length) return;
     if (!useLibraryStore.getState().libraryLoaded) {
-      useLibraryStore.getState().setLibrary(await appService.loadLibraryBooks());
+      useLibraryStore.getState().setLibrary(await appService.loadLibraryBooks(), true);
     }
     // Stamp the LIVE rows (see the LocalStore contract): a book the user read
     // while the sync was running must keep the progress it saved meanwhile.
@@ -215,8 +218,10 @@ export const createAppLocalStore = ({
     book.coverImageUrl = null;
     book.syncedAt = Date.now();
     if (!useLibraryStore.getState().libraryLoaded) {
-      useLibraryStore.getState().setLibrary(await appService.loadLibraryBooks());
+      useLibraryStore.getState().setLibrary(await appService.loadLibraryBooks(), true);
     }
+    const current = useLibraryStore.getState().getBookByHash(book.hash);
+    if (current) book = mergeLibraryBook(current, book);
     await useLibraryStore.getState().updateBook(envConfig, book);
     return book;
   },

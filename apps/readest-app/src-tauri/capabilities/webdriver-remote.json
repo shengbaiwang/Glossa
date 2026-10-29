@@ -33,6 +33,8 @@
     "allow-update-book-presence",
     "allow-clear-book-presence",
     "allow-clip-url",
+    "allow-clip-page",
+    "allow-cancel-clip",
     "allow-spawn-fresh-browser",
     "allow-verify-update-signature",
     "allow-install-nightly-update",

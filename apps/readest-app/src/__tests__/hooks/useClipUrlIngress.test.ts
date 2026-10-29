@@ -14,6 +14,9 @@ vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (k: string) => 
 // Clip pipeline collaborators — should never be reached for share links; stub
 // so an accidental article-clip can't blow up the test environment.
 vi.mock('@/services/send/clipOptions', () => ({ getClipOptions: () => ({}) }));
+vi.mock('@/services/send/pageAcquisition', () => ({
+  fetchWebPage: vi.fn().mockRejectedValue(new Error('HTTP unavailable')),
+}));
 vi.mock('@/services/send/conversion/conversionWorker', () => ({
   convertToEpubWithWorker: vi.fn(),
 }));
@@ -23,12 +26,16 @@ import { useClipUrlIngress } from '@/hooks/useClipUrlIngress';
 import { eventDispatcher } from '@/utils/event';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { SystemSettings } from '@/types/settings';
+import type { Book } from '@/types/book';
+import { useLibraryStore } from '@/store/libraryStore';
+import { ingestFile } from '@/services/ingestService';
 
 beforeEach(() => {
   useSettingsStore.setState({ settings: {} as SystemSettings });
-  // Reject so clipAndImport short-circuits right after invoke('clip_url') —
+  // Reject so clipAndImport short-circuits right after invoke('clip_page') —
   // we only need to observe whether the clip was attempted.
   invokeMock.mockReset().mockRejectedValue(new Error('stub'));
+  vi.mocked(ingestFile).mockReset();
 });
 
 describe('useClipUrlIngress share-extension pending saves', () => {
@@ -39,7 +46,7 @@ describe('useClipUrlIngress share-extension pending saves', () => {
     return w.__readestOnShareExtensionPending!;
   };
 
-  it('converts htmlFile saves directly without re-fetching via clip_url', async () => {
+  it('converts htmlFile saves directly without re-fetching via clip_page', async () => {
     const { convertToEpubWithWorker } = await import('@/services/send/conversion/conversionWorker');
     vi.mocked(convertToEpubWithWorker).mockResolvedValueOnce({
       file: new File(['original fixture'], 'article.epub'),
@@ -69,10 +76,10 @@ describe('useClipUrlIngress share-extension pending saves', () => {
         }),
       );
     });
-    expect(invokeMock).not.toHaveBeenCalledWith('clip_url', expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith('clip_page', expect.anything());
   });
 
-  it('falls back to clip_url when the shared HTML cannot be read', async () => {
+  it('falls back to clip_page when the shared HTML cannot be read', async () => {
     invokeMock.mockImplementation(async (cmd: unknown) => {
       if (cmd === 'plugin:native-bridge|read_share_clip_html') {
         throw new Error('file vanished');
@@ -83,10 +90,97 @@ describe('useClipUrlIngress share-extension pending saves', () => {
     getPendingHook()([{ url: 'https://example.com/paywalled', htmlFile: 'gone.html' }]);
     await vi.waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        'clip_url',
+        'clip_page',
         expect.objectContaining({ url: 'https://example.com/paywalled' }),
       );
     });
+  });
+
+  it('passes source, destination and plugin cancellation into durable ingestion', async () => {
+    const { convertToEpubWithWorker } = await import('@/services/send/conversion/conversionWorker');
+    vi.mocked(convertToEpubWithWorker).mockResolvedValueOnce({
+      file: new File(['original fixture'], 'article.epub'),
+      title: 'Article',
+      author: '',
+      source: {
+        originalUrl: 'https://example.com/old',
+        url: 'https://example.com/final',
+        extractor: 'fixture',
+        version: '1',
+        scope: 'article',
+      },
+    });
+    invokeMock.mockResolvedValueOnce({ html: '<article>Shared original</article>' });
+    let rejectSave!: (error: Error) => void;
+    vi.mocked(ingestFile).mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectSave = reject;
+        }),
+    );
+    const view = renderHook(() => useClipUrlIngress());
+    getPendingHook()([
+      {
+        url: 'https://example.com/old',
+        htmlFile: 'source.html',
+        groupId: 'chosen',
+        groupName: 'Chosen',
+      },
+    ]);
+    await vi.waitFor(() => expect(ingestFile).toHaveBeenCalledOnce());
+    const options = vi.mocked(ingestFile).mock.calls[0]![0];
+    expect(options).toMatchObject({
+      groupId: 'chosen',
+      groupName: 'Chosen',
+      signal: expect.any(AbortSignal),
+      webSource: { originalUrl: 'https://example.com/old', url: 'https://example.com/final' },
+    });
+    useSettingsStore.setState({
+      settings: { officialModules: { webImport: false } } as SystemSettings,
+    });
+    expect(options.signal?.aborted).toBe(true);
+    rejectSave(new DOMException('Aborted', 'AbortError'));
+    view.unmount();
+  });
+
+  it('does not move an existing personal record after a repeated share', async () => {
+    const { convertToEpubWithWorker } = await import('@/services/send/conversion/conversionWorker');
+    vi.mocked(convertToEpubWithWorker).mockResolvedValueOnce({
+      file: new File(['fixture'], 'a.epub'),
+      title: 'A',
+      author: '',
+    });
+    invokeMock.mockResolvedValueOnce({ html: '<article>Shared original</article>' });
+    const existing = {
+      hash: 'existing',
+      title: 'Personal title',
+      groupId: 'personal',
+      groupName: 'Personal',
+    } as Book;
+    vi.mocked(ingestFile).mockResolvedValueOnce(existing);
+    const previousUpdate = useLibraryStore.getState().updateBooks;
+    const update = vi.fn().mockResolvedValue(undefined);
+    useLibraryStore.setState({ updateBooks: update });
+    const view = renderHook(() => useClipUrlIngress());
+    try {
+      getPendingHook()([
+        {
+          url: 'https://example.com/repeated',
+          htmlFile: 'source.html',
+          groupId: 'chosen',
+          groupName: 'Chosen',
+        },
+      ]);
+      await vi.waitFor(() => expect(update).toHaveBeenCalled());
+      expect(existing).toMatchObject({
+        title: 'Personal title',
+        groupId: 'personal',
+        groupName: 'Personal',
+      });
+    } finally {
+      view.unmount();
+      useLibraryStore.setState({ updateBooks: previousUpdate });
+    }
   });
 });
 
@@ -109,7 +203,7 @@ describe('useClipUrlIngress deep-link routing', () => {
     await Promise.resolve();
     await vi.waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith(
-        'clip_url',
+        'clip_page',
         expect.objectContaining({ url: 'https://example.com/some-article' }),
       ),
     );

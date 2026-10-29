@@ -23,17 +23,39 @@ export function useFolderDrag({
   onExpand,
   onStart,
   onFinish,
+  onHoverOutside,
+  canDrop,
 }: {
   root: React.RefObject<HTMLElement | null>;
   disabled: boolean;
   onMenu: (path: string | null, position: { x: number; y: number }) => void;
   onDrop: (path: string, target: FolderDrop) => Promise<boolean>;
   onExpand: (path: string) => void;
-  onStart: () => void;
+  onStart: (path: string) => void;
   onFinish: (saved: boolean) => void;
+  onHoverOutside?: (path: string) => void;
+  canDrop?: (path: string, target: FolderDrop) => boolean;
 }) {
-  const latest = useRef({ disabled, onMenu, onDrop, onExpand, onStart, onFinish });
-  latest.current = { disabled, onMenu, onDrop, onExpand, onStart, onFinish };
+  const latest = useRef({
+    disabled,
+    onMenu,
+    onDrop,
+    onExpand,
+    onStart,
+    onFinish,
+    onHoverOutside,
+    canDrop,
+  });
+  latest.current = {
+    disabled,
+    onMenu,
+    onDrop,
+    onExpand,
+    onStart,
+    onFinish,
+    onHoverOutside,
+    canDrop,
+  };
   const gesture = useRef<Gesture | null>(null);
   const suppressClick = useRef(false);
   const [drag, setDrag] = useState<{
@@ -46,7 +68,10 @@ export function useFolderDrag({
     let expansion: ReturnType<typeof setTimeout> | undefined;
     let over = '';
     let frame = 0;
+    let external: HTMLElement | null = null;
     const project = (g: Gesture): FolderDrop | undefined => {
+      external?.removeAttribute('data-library-item-drop');
+      external = null;
       const bounds = root.current?.getBoundingClientRect();
       if (
         !bounds ||
@@ -54,8 +79,23 @@ export function useFolderDrag({
         g.lastX > bounds.right ||
         g.lastY < bounds.top ||
         g.lastY > bounds.bottom
-      )
+      ) {
+        const hit = document.elementFromPoint?.(g.lastX, g.lastY);
+        if (hit?.closest('[role="dialog"], [role="menu"], input, form')) return;
+        external = hit?.closest<HTMLElement>('[data-library-folder-path]') ?? null;
+        if (external) {
+          const target: FolderDrop = {
+            path: external.dataset['libraryFolderPath'] ?? '',
+            edge: 'inside',
+          };
+          external.setAttribute(
+            'data-library-item-drop',
+            latest.current.canDrop?.(g.path, target) === false ? 'invalid' : 'valid',
+          );
+          return target;
+        }
         return;
+      }
       const rows = root.current?.querySelectorAll<HTMLElement>('[data-folder-drop]') ?? [];
       for (const row of rows) {
         const rect = row.getBoundingClientRect();
@@ -79,15 +119,27 @@ export function useFolderDrag({
       if (!g?.dragging) return;
       const target = project(g);
       setDrag({ path: g.path, x: g.lastX, y: g.lastY, target });
-      const next = target?.edge === 'inside' ? target.path : '';
+      const allowed = target && latest.current.canDrop?.(g.path, target) !== false;
+      const next =
+        allowed && target.edge === 'inside'
+          ? `${external ? 'outside:' : 'inside:'}${target.path}`
+          : '';
       if (next !== over) {
         clearTimeout(expansion);
         over = next;
-        if (next) expansion = setTimeout(() => latest.current.onExpand(next), 650);
+        if (next && target) {
+          const outside = !!external;
+          const opens = external?.hasAttribute('data-library-drop-open');
+          expansion = setTimeout(() => {
+            if (outside) {
+              if (opens) latest.current.onHoverOutside?.(target.path);
+            } else latest.current.onExpand(target.path);
+          }, 650);
+        }
       }
-      const scroll = root.current?.querySelector<HTMLElement>(
-        '.glossa-library-navigation-categories',
-      );
+      const scroll =
+        external?.closest('.bookshelf')?.querySelector<HTMLElement>('[data-library-scroll]') ??
+        root.current?.querySelector<HTMLElement>('.glossa-library-navigation-categories');
       if (scroll) {
         const rect = scroll.getBoundingClientRect();
         if (g.lastY > rect.top && g.lastY < rect.top + 32) scroll.scrollTop -= 7;
@@ -100,6 +152,8 @@ export function useFolderDrag({
       clearTimeout(gesture.current?.timer);
       clearTimeout(expansion);
       cancelAnimationFrame(frame);
+      external?.removeAttribute('data-library-item-drop');
+      external = null;
       gesture.current = null;
       setDrag(null);
       over = '';
@@ -115,7 +169,7 @@ export function useFolderDrag({
         return;
       }
       if (!g.dragging) {
-        latest.current.onStart();
+        latest.current.onStart(g.path);
         g.dragging = true;
         suppressClick.current = true;
         clearTimeout(g.timer);

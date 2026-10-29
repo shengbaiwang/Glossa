@@ -81,6 +81,67 @@ describe('ingestFile', () => {
     expect(book).toBeNull();
   });
 
+  test('forwards a downloaded web source and cancellation through single-file ingestion', async () => {
+    const deps = makeDeps();
+    const controller = new AbortController();
+    const webSource = {
+      originalUrl: 'https://papers.example/paper',
+      url: 'https://cdn.example/paper.pdf',
+      referrerUrl: 'https://papers.example/paper',
+    };
+    deps.importBook.mockImplementation(async (_file, _books, options: ImportBookOptions) => {
+      controller.abort();
+      options.signal?.throwIfAborted();
+      return null;
+    });
+
+    await expect(
+      ingestFile(
+        {
+          file: new File(['pdf bytes'], 'paper.pdf'),
+          books: [],
+          webSource,
+          signal: controller.signal,
+        },
+        deps,
+      ),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(deps.importBook).toHaveBeenCalledWith(
+      expect.any(File),
+      [],
+      expect.objectContaining({ initialWebSource: webSource, signal: controller.signal }),
+    );
+    expect(transferManager.queueUpload).not.toHaveBeenCalled();
+  });
+
+  test('forwards each web source and signal through durable batch ingestion', async () => {
+    const deps = makeDeps();
+    const sources = [
+      { originalUrl: 'https://papers.example/a', url: 'https://cdn.example/a.pdf' },
+      { originalUrl: 'https://papers.example/b', url: 'https://cdn.example/b.pdf' },
+    ];
+    const signals = [new AbortController().signal, new AbortController().signal];
+    const importBooks = vi.fn(async (inputs: BookImportInput[]) =>
+      inputs.map((_input, index) => ({ book: makeBook({ hash: `paper-${index}` }) })),
+    );
+    deps.appService.importBooks = importBooks;
+
+    const results = await ingestFiles(
+      sources.map((webSource, index) => ({
+        file: new File([`pdf ${index}`], `${index}.pdf`),
+        books: [],
+        webSource,
+        signal: signals[index],
+      })),
+      deps,
+    );
+
+    expect(results.every((result) => result.book && !result.error)).toBe(true);
+    const inputs = importBooks.mock.calls[0]![0];
+    expect(inputs.map((input) => input.options?.initialWebSource)).toEqual(sources);
+    expect(inputs.map((input) => input.options?.signal)).toEqual(signals);
+  });
+
   test('passes the lookup index through to importBook', async () => {
     const { appService, settings, isLoggedIn, importBook } = makeDeps();
     const lookupIndex = { byHash: new Map(), byMetaHash: new Map() } as never;

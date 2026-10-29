@@ -449,7 +449,6 @@ export interface SystemSettings {
   libraryShowProgress?: boolean;
   /** List cover, text and spacing scale in percent; old settings default to 100. */
   libraryListScale?: number;
-  librarySkeuomorphicCovers: boolean;
   /** Show the recently-read carousel at the top of the library (issue #3797). */
   libraryRecentShelfEnabled: boolean;
   /**

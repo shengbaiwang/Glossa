@@ -1,39 +1,54 @@
 ## Glossa Design Language
 
-### Matte paper covers — 2026-10-24
+### Flat library covers — 2026-10-29
 
-Use the existing 3D-cover preference for a quiet printed-book material: a narrow
-binding groove, a thin warm-grey page edge, small corners and soft shadows from
-one upper light source. Keep artwork colors clean and the front face readable.
-An opaque theme-paper face keeps page-edge lines behind transparent artwork.
-Tuck the rounded page heel beneath the binding foot, soften the groove at its
-end and keep the page keyline inside the paper. Avoid a square offset tab at the
-lower binding corner; scale its curve with depth and mirror it in RTL.
-The shared cover owns the face, binding, paper and shadow geometry, including
-Full cover, wide and narrow artwork, list/recent cards, group previews and details.
-Missing, loading or failed artwork shows a composed theme-paper cover with serif
-title and author; editing either updates that cover immediately.
+Remove the 3D-cover preference, entry points and rendering. Use one flat artwork
+face for library, recent cards, group previews and details. Full cover preserves
+its aspect ratio; Crop uses the existing fixed frame. Missing, loading or failed
+artwork shows a composed theme-paper cover with serif title and author; editing
+either updates the fallback immediately. Keep labels, status, selection borders
+and hit targets stationary. Do not add a spine, page edges, binding groove, depth
+shadows or hover lift. A quiet stack may still identify a group. Keep the same
+simple geometry in dark themes, RTL, reduced motion and e-ink.
 
-Lift only the book by 2px on fine-pointer hover or card keyboard focus, with a
-240ms eased return and a 90ms press response. Keep labels, status and hit targets
-stationary. Selection and group previews stay still; child controls do not inherit
-the keyboard lift. Touch needs no hover. Reduced motion disables displacement and
-transitions. Dark themes use darker page edges and black shadows; RTL mirrors the
-binding. E-ink removes depth, gradients, shadows and motion, leaving one crisp face
-border. Use CSS interaction states without per-book timers or pointer tracking.
+### Library display menu — 2026-10-29
 
-### Library display menu — 2026-10-24
-
-Keep layout, active-view size, cover presentation, book information / recent
-reading, and sorting in that order. Omit the repeated title and global appearance
+Keep layout, active-view size, cover display, card information / recent reading,
+and sorting in that order. Omit the repeated title and global appearance
 shortcut. Use a Small–Large slider; grid size directly sets a fixed track width
-that wraps as the container changes without stretching the covers. Remove Auto
-and legacy column sizing; retain saved widths and use 156px otherwise. Show
-Fill / Full cover and 3D covers only in grid mode. Use quiet labelled switches without row-wide selected
-fills. Author and numeric progress live inside one collapsed disclosure and
-apply equally to grid, list and recent cards. Hiding numbers must retain direct
-reading-status editing. Keep 44px touch rows, visible keyboard focus, logical
+that wraps as the container changes without stretching covers. Remove Auto and
+legacy column sizing; retain saved widths and use 156px otherwise. Show Crop /
+Full cover only in grid mode. Use quiet labelled switches without row-wide
+selected fills. Author and reading progress live inside one collapsed Card
+information disclosure and apply equally to grid, list and recent cards. Hiding
+reading progress hides its percentages, remaining time and all status labels,
+including Read and Unread, while preserving the stored reading records.
+
+Use the Chinese names 封面显示, 裁切 / 完整, 卡片信息, 最近阅读, 排序 and
+主要排序 / 次要排序; the corresponding book information entry uses 书籍信息.
+Keep primary and secondary sorting inside the same Sort disclosure. The native
+select must cover the whole visible value field, including the chevron area;
+place the noninteractive chevron over the select. Preserve native keyboard
+navigation, disabled semantics, 44px touch rows, visible keyboard focus, logical
 RTL spacing, crisp e-ink controls and scrolling inside short menus.
+
+### File-style library selection — 2026-10-29
+
+Remove the old selection mode, Select All button and their persistent flags.
+Books and groups share one selection model. On desktop, a click selects an item;
+a double click on the cover opens the book and a double click on a group enters
+it. Double-clicking the title or pressing F2 still renames in place. Cmd/Ctrl-click
+toggles an item, Shift-click selects a range, arrows move, Space selects and Enter
+opens. Cmd/Ctrl+A performs one selection of the current directory; it does not
+restore a separate Select All entry or state. Escape and blank-area clicks clear
+selection. Blank-area marquee selection covers both books and groups.
+
+On touch, a tap opens directly; a long press adds an item to selection, after
+which taps toggle items. Scrolling must not select accidentally. Dragging selected
+items, moving, deleting, save-failure recovery and undo reuse the existing safe
+services. Keep a quiet selected state, focus restoration and the existing compact
+move/delete fallback beside the selection count. Do not add a permanent selection
+toolbar or a separate organizing workspace.
 
 ### Footnote reading — 2026-10-22
 
@@ -264,7 +279,8 @@ retain their own typography. Avoid shrinking essential instructions into caption
   their specialized geometry. Do not wrap a row value in another framed field.
 - Attached settings values use `SettingsInput` / `SettingsSelect`, transparent at
   rest, with the same 36px height and visible keyboard focus. Values align to the
-  trailing edge; fields intended for entry align with their labels.
+  trailing edge; fields intended for entry align with their labels. The native
+  select covers the full visible field, with its chevron overlaid and noninteractive.
 - `Toggle` retains the switch silhouette and explicit thumb position. `Slider`
   retains its continuous track, value bubble and existing drag/keyboard mapping;
   the reader progress slider remains a separate navigation control.

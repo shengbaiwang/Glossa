@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import ImportFromUrlDialog from '@/app/library/components/ImportFromUrlDialog';
+import type { WebImportFeedback } from '@/glossa/plugins/webImport';
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (key: string) => key }));
 vi.mock('@/components/Dialog', () => ({
   default: ({
@@ -85,4 +86,83 @@ it('keeps the URL available for retry if persistence fails while stopping', asyn
   expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe(
     'https://example.com/article',
   );
+});
+
+it('recovers in the same dialog and shows resource warnings only after saving', async () => {
+  const close = vi.fn();
+  const submit = vi.fn(
+    async (
+      _url: string,
+      signal: AbortSignal,
+      _stage: (value: string) => void,
+      feedback: WebImportFeedback,
+    ) => {
+      const open = await feedback.onRecovery?.(
+        { code: 'login_wall', message: 'Sign-in required' },
+        signal,
+      );
+      if (open) feedback.onWarnings?.([{ code: 'missing_assets', count: 2 }]);
+    },
+  );
+  render(<ImportFromUrlDialog isOpen onClose={close} onSubmit={submit} />);
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: 'https://example.com/article' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+  const open = await screen.findByRole('button', { name: 'Open page and continue' });
+  expect(screen.queryByRole('progressbar')).toBeNull();
+  fireEvent.click(open);
+  await screen.findByText('Imported. Some images could not be saved.');
+  expect(close).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+  expect(close).toHaveBeenCalledOnce();
+});
+
+it('resolves pending recovery when its plugin activation is cancelled', async () => {
+  const task = new AbortController();
+  let recovered: boolean | undefined;
+  const submit = vi.fn(
+    async (
+      _url: string,
+      _signal: AbortSignal,
+      _stage: (value: string) => void,
+      feedback: WebImportFeedback,
+    ) => {
+      recovered = await feedback.onRecovery?.(
+        { code: 'parse_failed', message: 'No article' },
+        task.signal,
+      );
+      task.signal.throwIfAborted();
+    },
+  );
+  render(<ImportFromUrlDialog isOpen onClose={vi.fn()} onSubmit={submit} />);
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: 'https://example.com/article' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+  await screen.findByRole('button', { name: 'Open page and continue' });
+  await act(async () => task.abort());
+  expect(recovered).toBe(false);
+  expect(screen.queryByRole('button', { name: 'Open page and continue' })).toBeNull();
+});
+
+it('lets the user choose between an abstract and its linked full-text PDF', async () => {
+  const choice = vi.fn();
+  const submit = vi.fn(
+    async (
+      _url: string,
+      signal: AbortSignal,
+      _stage: (value: string) => void,
+      feedback: WebImportFeedback,
+    ) => {
+      choice(await feedback.onFullText?.('https://example.org/paper.pdf', signal));
+    },
+  );
+  render(<ImportFromUrlDialog isOpen onClose={vi.fn()} onSubmit={submit} />);
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: 'https://example.org/abstract' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Import full-text PDF' }));
+  await waitFor(() => expect(choice).toHaveBeenCalledWith(true));
 });

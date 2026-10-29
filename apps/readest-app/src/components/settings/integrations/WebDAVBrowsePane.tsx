@@ -456,7 +456,7 @@ const WebDAVBrowsePane: React.FC<WebDAVBrowsePaneProps> = ({ settings, onUpdateS
         throw new Error('Import returned null');
       }
       await appService.saveLibraryBooks(library);
-      setLibrary(library);
+      setLibrary(library, true);
 
       setDownloadStatus((prev) => ({ ...prev, [entry.path]: 'done' }));
       eventDispatcher.dispatch('toast', {

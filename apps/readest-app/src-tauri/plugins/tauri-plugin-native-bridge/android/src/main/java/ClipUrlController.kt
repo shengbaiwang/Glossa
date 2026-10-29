@@ -38,6 +38,7 @@ import java.lang.ref.WeakReference
 @InvokeArg
 class ClipUrlArgs {
     var url: String? = null
+    var taskId: String? = null
     var windowTitle: String? = null
     var overlayTitle: String? = null
     var loadingStatus: String? = null
@@ -53,6 +54,9 @@ class ClipUrlArgs {
     var cancelLabel: String? = null
 }
 
+@InvokeArg
+class CancelClipArgs { var taskId: String? = null }
+
 /**
  * Result handed back to the calling [NativeBridgePlugin.clip_url] —
  * either the captured `document.documentElement.outerHTML`, or one of
@@ -61,7 +65,7 @@ class ClipUrlArgs {
  * handling the rejection don't need a mobile-specific branch.
  */
 sealed class ClipUrlResult {
-    data class Success(val html: String) : ClipUrlResult()
+    data class Success(val html: String, val finalUrl: String, val baseUrl: String) : ClipUrlResult()
     data class Failure(val message: String) : ClipUrlResult()
 }
 
@@ -143,6 +147,7 @@ class ClipUrlController(
     private var didFinishOrFail = false
     private var captureFired = false
     private var settled = false
+    private var completed = false
     private val timeoutRunnable = Runnable { onTimeout() }
 
     fun show() {
@@ -159,7 +164,12 @@ class ClipUrlController(
         mainHandler.post { presentDialog(act, urlStr) }
     }
 
+    fun cancelCapture() {
+        mainHandler.post { finish(ClipUrlResult.Failure(CANCELLED_MESSAGE)) }
+    }
+
     private fun presentDialog(act: Activity, urlStr: String) {
+        if (completed) return
         val bg = parseHexColor(args.background ?: DEFAULT_BACKGROUND) ?: Color.BLACK
         val fg = parseHexColor(args.foreground ?: DEFAULT_FOREGROUND) ?: Color.WHITE
 
@@ -430,21 +440,20 @@ class ClipUrlController(
         captureFired = true
         settled = true
         val wv = webView ?: return finish(ClipUrlResult.Failure("WebView vanished before capture"))
-        wv.evaluateJavascript("document.documentElement.outerHTML") { result ->
-            // `evaluateJavascript` returns the value JSON-encoded, so
-            // an HTML string comes back wrapped in quotes with escapes.
-            // Parse via JSONObject to recover the raw HTML.
-            val html = try {
-                JSONObject("{\"v\":$result}").getString("v")
+        val script = "(() => { const html = document.documentElement.outerHTML; if (html.length > 8388608) return null; return { html, finalUrl: location.href, baseUrl: document.baseURI || location.href }; })()"
+        wv.evaluateJavascript(script) { result ->
+            val page = try {
+                JSONObject(result)
             } catch (e: Exception) {
-                Log.w(TAG, "failed to decode captured HTML", e)
-                ""
+                Log.w(TAG, "failed to decode captured page", e)
+                null
             }
+            val html = page?.optString("html").orEmpty()
             if (html.isEmpty()) {
-                finish(ClipUrlResult.Failure("Could not fetch this page: empty HTML"))
+                finish(ClipUrlResult.Failure("Could not fetch this page: empty or oversized HTML"))
             } else {
                 Log.d(TAG, "captured ${html.length} chars")
-                finish(ClipUrlResult.Success(html))
+                finish(ClipUrlResult.Success(html, page?.optString("finalUrl").orEmpty(), page?.optString("baseUrl").orEmpty()))
             }
         }
     }
@@ -456,6 +465,8 @@ class ClipUrlController(
     }
 
     private fun finish(result: ClipUrlResult) {
+        if (completed) return
+        completed = true
         mainHandler.removeCallbacks(timeoutRunnable)
         try {
             // Persist any session the page established (interactive
@@ -468,6 +479,7 @@ class ClipUrlController(
             webView?.stopLoading()
             webView?.webViewClient = WebViewClient()  // detach our delegate
             dialog?.dismiss()
+            webView?.destroy()
         } catch (e: Exception) {
             Log.w(TAG, "error tearing down clip_url dialog", e)
         }

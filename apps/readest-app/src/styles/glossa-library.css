@@ -669,23 +669,6 @@ html[data-page='library'] .view-menu .glossa-menu-item:focus-visible {
   background: theme('colors.base-content / 0.18');
 }
 
-.glossa-book-selection {
-  display: grid;
-  place-items: center;
-  width: 25px;
-  height: 25px;
-  color: var(--glossa-ink);
-  background: var(--glossa-surface);
-  border: 1px solid var(--glossa-border);
-  border-radius: 50%;
-}
-
-.glossa-book-selection-checked {
-  color: var(--glossa-surface);
-  background: var(--glossa-ink);
-  border-color: var(--glossa-ink);
-}
-
 .glossa-library-empty {
   padding: 36px 24px;
   color: var(--glossa-ink);
@@ -851,7 +834,6 @@ html[data-page='library'] .view-menu .glossa-menu-item:focus-visible {
 }
 
 [data-eink='true'] .glossa-book-card-selected,
-[data-eink='true'] .glossa-book-selection,
 [data-eink='true'] .glossa-status-badge {
   border-color: var(--glossa-ink);
 }
@@ -1142,8 +1124,7 @@ html[data-page='library'] .glossa-folder-name-editor input:focus-visible {
   border-color: transparent;
 }
 
-.glossa-group-cover > .glossa-book-selection-overlay,
-.glossa-group-cover > .glossa-book-selection {
+.glossa-group-cover > .glossa-book-selection-overlay {
   z-index: 4;
 }
 .glossa-library-marquee {
@@ -1235,4 +1216,32 @@ html[data-page='library'] .glossa-folder-name-editor input:focus-visible {
 }
 .group-item .glossa-folder-label > span {
   color: inherit;
+}
+.bookshelf[data-library-item-drop='valid'],
+.bookshelf [data-library-item-drop='valid'],
+.glossa-library-navigation [data-library-item-drop='valid'] {
+  outline: 1px solid var(--glossa-ink);
+  outline-offset: -1px;
+  background-color: color-mix(in srgb, var(--glossa-ink) 7%, var(--glossa-surface));
+}
+
+[data-library-item-drop='invalid'] {
+  outline: 1px dashed var(--glossa-ink);
+  outline-offset: -1px;
+  cursor: not-allowed;
+}
+
+[data-library-cut] {
+  opacity: 0.55;
+}
+
+[data-eink='true'] [data-library-cut] {
+  opacity: 1;
+  outline: 1px dashed var(--glossa-ink);
+  outline-offset: -1px;
+}
+
+[data-eink='true'] [data-library-item-drop='valid'] {
+  background: var(--glossa-surface);
+  outline: 2px solid var(--glossa-ink);
 }

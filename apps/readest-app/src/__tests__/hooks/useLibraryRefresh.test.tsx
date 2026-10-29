@@ -29,6 +29,7 @@ it('refreshes reader progress while open and discards out-of-order reloads', asy
     updatedAt: 1,
   } as Book;
   useLibraryStore.getState().setLibrary([book]);
+  useLibraryStore.setState({ libraryLoaded: false });
   let finish!: (books: Book[]) => void;
   const load = vi
     .fn()
@@ -45,6 +46,7 @@ it('refreshes reader progress while open and discards out-of-order reloads', asy
     window.dispatchEvent(new Event('focus'));
   });
   await waitFor(() => expect(useLibraryStore.getState().library[0]?.progress).toEqual([1, 4]));
+  expect(useLibraryStore.getState().libraryLoaded).toBe(true);
   await act(async () => finish([book]));
   expect(useLibraryStore.getState().library[0]?.progress).toEqual([1, 4]);
   view.unmount();

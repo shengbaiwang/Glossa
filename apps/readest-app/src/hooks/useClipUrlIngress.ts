@@ -96,19 +96,24 @@ export function useClipUrlIngress() {
           signal: controller.signal,
           onStage: () => {},
           htmlFile: options.htmlFile,
-          save: async (file) => {
+          save: async (file, activeSignal, webSource) => {
             const { library } = useLibraryStore.getState();
             const { settings } = useSettingsStore.getState();
             const ingested = await ingestFile(
-              { file, books: library, forceUpload: true },
+              {
+                file,
+                books: library,
+                signal: activeSignal,
+                groupId: options.groupId,
+                groupName: options.groupName,
+                webSource,
+              },
               { appService, settings, isLoggedIn: !!user },
             );
             if (!ingested) {
               throw new Error('Import produced no book');
             }
-            if (options.groupId) ingested.groupId = options.groupId;
-            if (options.groupName) ingested.groupName = options.groupName;
-            await useLibraryStore.getState().updateBooks(envConfig, [ingested]);
+            await useLibraryStore.getState().updateBooks(envConfig, [ingested], { skipSave: true });
             eventDispatcher.dispatch('toast', {
               type: 'success',
               message: _('Saved “{{title}}” to your library.', {

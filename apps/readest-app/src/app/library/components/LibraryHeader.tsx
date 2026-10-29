@@ -2,7 +2,6 @@ import clsx from 'clsx';
 import React, { useRef } from 'react';
 import {
   ChevronDown,
-  CheckCheck,
   PanelLeft,
   Plus,
   Search,
@@ -31,13 +30,8 @@ import ViewMenu from './ViewMenu';
 interface LibraryHeaderProps {
   isSidebarVisible?: boolean;
   onToggleSidebar?: () => void;
-  isSelectMode: boolean;
-  isSelectAll: boolean;
   onImportBooks: (anchor: HTMLElement) => void;
   onPullLibrary: () => void;
-  onToggleSelectMode: () => void;
-  onSelectAll: () => void;
-  onDeselectAll: () => void;
   searchQuery: string;
   searchTarget: LibrarySearchTarget;
   searchConfig: LibrarySearchConfig;
@@ -49,12 +43,7 @@ interface LibraryHeaderProps {
 const LibraryHeader: React.FC<LibraryHeaderProps> = ({
   isSidebarVisible,
   onToggleSidebar,
-  isSelectMode,
-  isSelectAll,
-  onToggleSelectMode,
   onImportBooks,
-  onSelectAll,
-  onDeselectAll,
   searchQuery,
   searchTarget,
   searchConfig,
@@ -65,7 +54,7 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
   const _ = useTranslation();
   const { appService } = useEnv();
   const { systemUIVisible, statusBarHeight } = useThemeStore();
-  const { currentBookshelf, selectedBooks } = useLibraryStore();
+  const { currentBookshelf, selectedBooks, setSelectedBooks } = useLibraryStore();
   const selectedCount = selectedBooks?.size ?? 0;
 
   const headerRef = useRef<HTMLDivElement>(null);
@@ -74,7 +63,6 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
   const { safeAreaInsets: insets } = useThemeStore();
 
   useShortcuts({
-    onToggleSelectMode,
     onShowSearchBar: () => {
       searchRef.current?.focus();
       searchRef.current?.select();
@@ -94,6 +82,21 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
   return (
     <div
       ref={headerRef}
+      onKeyDownCapture={(event) => {
+        if (
+          event.key !== 'Escape' ||
+          event.defaultPrevented ||
+          !selectedCount ||
+          (event.target as HTMLElement).closest(
+            'input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"]',
+          ) ||
+          headerRef.current?.querySelector('[aria-haspopup="menu"][aria-expanded="true"]')
+        )
+          return;
+        event.preventDefault();
+        event.stopPropagation();
+        setSelectedBooks([]);
+      }}
       className={clsx(
         'titlebar glossa-library-header z-10 w-full',
         isTrafficLightVisible && 'glossa-with-traffic-lights',
@@ -173,17 +176,8 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
         )}
       </div>
       <div className='exclude-title-bar-mousedown glossa-library-actions'>
-        {isSelectMode ? (
+        {selectedCount > 0 && (
           <>
-            <button
-              type='button'
-              onClick={isSelectAll ? onDeselectAll : onSelectAll}
-              className='touch-target glossa-button'
-              aria-label={isSelectAll ? _('Deselect') : _('Select All')}
-            >
-              <CheckCheck size={17} aria-hidden='true' />
-              <span>{isSelectAll ? _('Deselect') : _('Select All')}</span>
-            </button>
             <Dropdown
               label={_('{{count}} selected', { count: selectedCount })}
               buttonClassName='touch-target glossa-button'
@@ -218,50 +212,47 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
             </Dropdown>
             <button
               type='button'
-              onClick={onToggleSelectMode}
+              onClick={() => setSelectedBooks([])}
               aria-label={_('Clear Selection')}
               className='touch-target glossa-icon-button'
             >
               <X size={18} />
             </button>
           </>
-        ) : (
-          <>
-            <button
-              type='button'
-              className='touch-target glossa-button glossa-library-import'
-              aria-label={_('Import Books')}
-              aria-haspopup='menu'
-              onClick={(event) => onImportBooks(event.currentTarget)}
-            >
-              <Plus size={16} aria-hidden='true' />
-              <span>{_('Import')}</span>
-            </button>
-            <Dropdown
-              label={_('Library Display')}
-              className='dropdown-bottom dropdown-end'
-              buttonClassName='touch-target glossa-button glossa-library-display-trigger'
-              onToggle={(open) => {
-                if (!open) {
-                  headerRef.current
-                    ?.querySelector<HTMLButtonElement>('.glossa-library-display-trigger')
-                    ?.focus();
-                }
-              }}
-              toggleButton={
-                <>
-                  <LayoutGrid size={18} aria-hidden='true' />
-                  <span>{_('Display')}</span>
-                </>
-              }
-            >
-              <ViewMenu />
-            </Dropdown>
-            <div className='glossa-library-toolbar-settings'>
-              <ApplicationSettingsButton />
-            </div>
-          </>
         )}
+        <button
+          type='button'
+          className='touch-target glossa-button glossa-library-import'
+          aria-label={_('Import Books')}
+          aria-haspopup='menu'
+          onClick={(event) => onImportBooks(event.currentTarget)}
+        >
+          <Plus size={16} aria-hidden='true' />
+          <span>{_('Import')}</span>
+        </button>
+        <Dropdown
+          label={_('Library Display')}
+          className='dropdown-bottom dropdown-end'
+          buttonClassName='touch-target glossa-button glossa-library-display-trigger'
+          onToggle={(open) => {
+            if (!open) {
+              headerRef.current
+                ?.querySelector<HTMLButtonElement>('.glossa-library-display-trigger')
+                ?.focus();
+            }
+          }}
+          toggleButton={
+            <>
+              <LayoutGrid size={18} aria-hidden='true' />
+              <span>{_('Display')}</span>
+            </>
+          }
+        >
+          <ViewMenu />
+        </Dropdown>
+        <div className='glossa-library-toolbar-settings'>
+          <ApplicationSettingsButton />
+        </div>
         {appService?.hasWindowBar && (
           <WindowButtons
             headerRef={headerRef}

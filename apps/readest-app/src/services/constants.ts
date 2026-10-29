@@ -210,7 +210,6 @@ export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
   libraryListScale: 100,
   libraryShowAuthor: true,
   libraryShowProgress: true,
-  librarySkeuomorphicCovers: false,
   libraryRecentShelfEnabled: true,
   readerBackgroundSeparate: false,
 

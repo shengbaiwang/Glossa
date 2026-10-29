@@ -4,8 +4,8 @@ import { mountAdditionalFonts } from '@/styles/fonts';
 
 import clsx from 'clsx';
 import * as React from 'react';
-import { useEffect, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, Suspense } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 import { useEnv } from '@/context/EnvContext';
 import { useTheme } from '@/hooks/useTheme';
@@ -31,6 +31,7 @@ import { Toast } from '@/components/Toast';
 import { getLocale } from '@/utils/misc';
 import { initDayjs } from '@/utils/time';
 import ReaderContent from './ReaderContent';
+import { BOOK_IDS_SEPARATOR } from '@/services/constants';
 
 /*
 Z-Index Layering Guide:
@@ -55,9 +56,13 @@ Z-Index Layering Guide:
 
 const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const routeIds = ids || searchParams?.get('ids') || pathname?.split('/reader/')[1] || '';
+  const bookIds = useMemo(() => routeIds.split(BOOK_IDS_SEPARATOR).filter(Boolean), [routeIds]);
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
-  const { libraryLoaded } = useLibrary();
+  const { libraryLoaded } = useLibrary(bookIds);
   const { sideBarBookKey } = useSidebarStore();
   const { hoveredBookKey } = useReaderStore();
   const { showSystemUI, dismissSystemUI } = useThemeStore();

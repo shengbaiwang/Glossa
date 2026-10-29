@@ -47,13 +47,47 @@ describe('libraryStore', () => {
   });
 
   describe('setLibrary', () => {
-    test('sets the library and marks it as loaded', () => {
+    test('marks an explicitly complete library as loaded', () => {
       const books = [makeBook({ hash: 'a' }), makeBook({ hash: 'b' })];
-      useLibraryStore.getState().setLibrary(books);
+      useLibraryStore.getState().setLibrary(books, true);
 
       const state = useLibraryStore.getState();
       expect(state.library).toHaveLength(2);
       expect(state.libraryLoaded).toBe(true);
+    });
+
+    test('ordinary mutations preserve an incomplete library until a complete read publishes', () => {
+      const store = useLibraryStore.getState();
+      store.setLibrary([makeBook({ hash: 'a' })], false);
+      store.setLibrary([makeBook({ hash: 'a', progress: [2, 10] })]);
+      expect(useLibraryStore.getState().libraryLoaded).toBe(false);
+      store.setLibrary([makeBook({ hash: 'a' }), makeBook({ hash: 'b' })], true);
+      store.setLibrary([makeBook({ hash: 'a' }), makeBook({ hash: 'b', title: 'Edited' })]);
+      expect(useLibraryStore.getState().libraryLoaded).toBe(true);
+    });
+
+    test('complete reads retain newer personal edits in the partial store', () => {
+      const store = useLibraryStore.getState();
+      store.setLibrary([
+        makeBook({
+          hash: 'a',
+          progress: [7, 10],
+          updatedAt: 9000,
+          groupName: 'Mine',
+          groupUpdatedAt: 8,
+        }),
+        makeBook({ hash: 'stale' }),
+      ]);
+      store.setLibrary([makeBook({ hash: 'a' }), makeBook({ hash: 'b' })], true);
+      const state = useLibraryStore.getState();
+      expect(state.libraryLoaded).toBe(true);
+      expect(state.library.map((book) => book.hash)).toEqual(['a', 'b']);
+      expect(state.getBookByHash('a')).toMatchObject({
+        progress: [7, 10],
+        updatedAt: 9000,
+        groupName: 'Mine',
+        groupUpdatedAt: 8,
+      });
     });
 
     test('builds hash index on setLibrary', () => {
@@ -186,7 +220,7 @@ describe('libraryStore', () => {
 
   describe('updateBooks', () => {
     test('persists by default', async () => {
-      useLibraryStore.getState().setLibrary([]);
+      useLibraryStore.getState().setLibrary([], true);
       const saveLibraryBooks = vi.fn().mockResolvedValue(undefined);
       const envConfig = makeEnvConfig({ saveLibraryBooks });
 
@@ -215,8 +249,39 @@ describe('libraryStore', () => {
       expect(state.libraryLoaded).toBe(true);
     });
 
-    test('does not re-load when the library is already loaded', async () => {
+    test('merges a stale same-book update with progress changed during a complete read', async () => {
       useLibraryStore.getState().setLibrary([makeBook({ hash: 'a' })]);
+      let finish!: (books: Book[]) => void;
+      const loadLibraryBooks = vi.fn(
+        () =>
+          new Promise<Book[]>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const saveLibraryBooks = vi.fn().mockResolvedValue(undefined);
+      const envConfig = makeEnvConfig({ loadLibraryBooks, saveLibraryBooks });
+      const updating = useLibraryStore
+        .getState()
+        .updateBooks(envConfig, [
+          makeBook({ hash: 'a', progress: [1, 10], title: 'Remote title', metadataUpdatedAt: 4 }),
+        ]);
+      await vi.waitFor(() => expect(loadLibraryBooks).toHaveBeenCalledOnce());
+      useLibraryStore.getState().updateBookProgress('a', [7, 10], 'reading');
+      const changedAt = useLibraryStore.getState().getBookByHash('a')!.updatedAt;
+      finish([makeBook({ hash: 'a' }), makeBook({ hash: 'b' })]);
+      await updating;
+      const saved = saveLibraryBooks.mock.calls[0]![0] as Book[];
+      expect(saved.find((book) => book.hash === 'a')).toMatchObject({
+        progress: [7, 10],
+        updatedAt: changedAt,
+        title: 'Remote title',
+      });
+      expect(useLibraryStore.getState().libraryLoaded).toBe(true);
+      expect(saved.map((book) => book.hash)).toEqual(['a', 'b']);
+    });
+
+    test('does not re-load when the library is already loaded', async () => {
+      useLibraryStore.getState().setLibrary([makeBook({ hash: 'a' })], true);
       const loadLibraryBooks = vi.fn().mockResolvedValue([]);
       const saveLibraryBooks = vi.fn().mockResolvedValue(undefined);
       const envConfig = makeEnvConfig({ loadLibraryBooks, saveLibraryBooks });
@@ -228,7 +293,7 @@ describe('libraryStore', () => {
     });
 
     test('skips persistence when skipSave: true', async () => {
-      useLibraryStore.getState().setLibrary([]);
+      useLibraryStore.getState().setLibrary([], true);
       const saveLibraryBooks = vi.fn().mockResolvedValue(undefined);
       const envConfig = makeEnvConfig({ saveLibraryBooks });
 
@@ -240,7 +305,7 @@ describe('libraryStore', () => {
     });
 
     test('still updates store state when skipSave: true', async () => {
-      useLibraryStore.getState().setLibrary([]);
+      useLibraryStore.getState().setLibrary([], true);
       const saveLibraryBooks = vi.fn().mockResolvedValue(undefined);
       const envConfig = makeEnvConfig({ saveLibraryBooks });
 

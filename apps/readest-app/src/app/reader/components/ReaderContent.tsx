@@ -2,7 +2,7 @@
 
 import ReadingSpeechPlayer from './tts/ReadingSpeechPlayer';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 import { Book } from '@/types/book';
@@ -30,7 +30,6 @@ import {
 } from '@/utils/nav';
 
 import { BOOK_IDS_SEPARATOR } from '@/services/constants';
-import { BookDetailModal } from '@/components/metadata';
 
 import useBooksManager from '../hooks/useBooksManager';
 import useBookShortcuts from '../hooks/useBookShortcuts';
@@ -38,12 +37,14 @@ import Spinner from '@/components/Spinner';
 import SideBar from './sidebar/SideBar';
 import Notebook from './notebook/Notebook';
 import BooksGrid from './BooksGrid';
-import SettingsDialog from '@/components/settings/SettingsDialog';
 import { BackupWindow } from '@/app/library/components/BackupWindow';
 import { CacheManagerWindow } from '@/app/library/components/CacheManagerWindow';
 import { MigrateDataWindow } from '@/app/library/components/MigrateDataWindow';
 import ModalPortal from '@/components/ModalPortal';
-import TransferQueuePanel from '@/app/library/components/TransferQueuePanel';
+
+const SettingsDialog = lazy(() => import('@/components/settings/SettingsDialog'));
+const BookDetailModal = lazy(() => import('@/components/metadata/BookDetailModal'));
+const TransferQueuePanel = lazy(() => import('@/app/library/components/TransferQueuePanel'));
 
 const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ ids, settings }) => {
   const _ = useTranslation();
@@ -279,19 +280,27 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
       <MigrateDataWindow />
       {isTransferQueueOpen && (
         <ModalPortal>
-          <TransferQueuePanel />
+          <Suspense fallback={<Spinner loading={true} />}>
+            <TransferQueuePanel />
+          </Suspense>
         </ModalPortal>
       )}
-      {isSettingsDialogOpen && <SettingsDialog bookKey={settingsDialogBookKey} />}
+      {isSettingsDialogOpen && (
+        <Suspense fallback={<Spinner loading={true} />}>
+          <SettingsDialog bookKey={settingsDialogBookKey} />
+        </Suspense>
+      )}
       <Notebook />
       <ReadingSpeechPlayer />
 
       {showDetailsBook && (
-        <BookDetailModal
-          isOpen={!!showDetailsBook}
-          book={showDetailsBook}
-          onClose={() => setShowDetailsBook(null)}
-        />
+        <Suspense fallback={<Spinner loading={true} />}>
+          <BookDetailModal
+            isOpen={!!showDetailsBook}
+            book={showDetailsBook}
+            onClose={() => setShowDetailsBook(null)}
+          />
+        </Suspense>
       )}
     </div>
   );

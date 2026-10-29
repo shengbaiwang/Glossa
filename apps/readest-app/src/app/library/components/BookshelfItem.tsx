@@ -10,6 +10,7 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { eventDispatcher } from '@/utils/event';
 import { getOSPlatform } from '@/utils/misc';
 import { throttle } from '@/utils/throttle';
+import type { LibrarySelectionOptions } from '../utils/librarySelection';
 import { LibraryCoverFitType, LibraryViewModeType } from '@/types/settings';
 import { BOOK_UNGROUPED_ID, BOOK_UNGROUPED_NAME } from '@/services/constants';
 import { FILE_REVEAL_LABELS, FILE_REVEAL_PLATFORMS } from '@/utils/os';
@@ -27,6 +28,7 @@ import GroupItem from './GroupItem';
 import BookContextMenuPopup, { type BookContextMenuItem } from './BookContextMenuPopup';
 import { useOpenBook } from '../hooks/useOpenBook';
 import { resolveFolderPath } from '../hooks/useLibraryFolders';
+import { cutLibraryItems, startLibraryDrag, useLibraryTransfer } from '../utils/libraryTransfer';
 
 export const generateBookshelfItems = (
   books: Book[],
@@ -133,24 +135,26 @@ interface BookshelfItemProps {
   mode: LibraryViewModeType;
   item: Book | BooksGroup;
   coverFit: LibraryCoverFitType;
-  isSelectMode: boolean;
   itemSelected: boolean;
   transferProgress: number | null;
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
-  toggleSelection: (hash: string, range?: boolean) => void;
+  selectItem: (id: string, options?: LibrarySelectionOptions) => void;
   handleGroupBooks: () => void;
   handleRenameFolder?: (path: string, name: string) => Promise<boolean>;
   handleRemoveFolder?: (path: string) => Promise<boolean>;
   handleCreateFolder?: (parent: string) => void;
   handleUndoFolder?: () => void;
   canUndoFolder?: boolean;
+  handleRedoFolder?: () => void;
+  canRedoFolder?: boolean;
+  handlePasteFolder?: (path: string) => void;
+  canPasteFolder?: (path: string) => boolean;
   handleBookDownload: (
     book: Book,
     options?: { redownload?: boolean; queued?: boolean },
   ) => Promise<boolean>;
   handleBookUpload: (book: Book, syncBooks?: boolean) => Promise<boolean>;
   handleBookDelete: (book: Book, signal?: AbortSignal) => Promise<boolean>;
-  handleSetSelectMode: (selectMode: boolean) => void;
   handleShowDetailsBook: (book: Book) => void;
   handleLibraryNavigation: (targetGroup: string) => void;
   handleUpdateReadingStatus: (book: Book, status: ReadingStatus | undefined) => void;
@@ -164,20 +168,22 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   mode,
   item,
   coverFit,
-  isSelectMode,
   itemSelected,
   transferProgress,
   setLoading,
-  toggleSelection,
+  selectItem,
   handleGroupBooks,
   handleRenameFolder,
   handleRemoveFolder,
   handleCreateFolder,
   handleUndoFolder,
   canUndoFolder,
+  handleRedoFolder,
+  canRedoFolder,
+  handlePasteFolder,
+  canPasteFolder,
   handleBookUpload,
   handleBookDownload,
-  handleSetSelectMode,
   handleShowDetailsBook,
   handleLibraryNavigation,
   handleUpdateReadingStatus,
@@ -190,6 +196,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
   const { selectedBooks } = useLibraryStore();
+  const clipboard = useLibraryTransfer((state) => state.clipboard);
   const [renaming, setRenaming] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const { openBook } = useOpenBook({ setLoading, handleBookDownload });
@@ -199,29 +206,18 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleBookClick = useCallback(
-    async (book: Book) => {
-      if (isSelectMode) {
-        toggleSelection(book.hash);
-        return;
-      }
-      if (onOpenBook) onOpenBook(book);
-      else await openBook(book);
-    },
-    [isSelectMode, openBook, onOpenBook, toggleSelection],
-  );
+  const itemId = 'format' in item ? item.hash : item.id;
+  const pointerType = useRef('mouse');
+  const handleOpenItem = useCallback(() => {
+    if ('format' in item) {
+      if (onOpenBook) onOpenBook(item);
+      else void openBook(item);
+    } else handleLibraryNavigation(item.id);
+  }, [item, openBook, onOpenBook, handleLibraryNavigation]);
 
-  const handleGroupClick = useCallback(
-    (group: BooksGroup) => {
-      if (isSelectMode) {
-        toggleSelection(group.id);
-      } else {
-        handleLibraryNavigation(group.id);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isSelectMode, handleLibraryNavigation],
-  );
+  const isItemAction = (target: EventTarget | null) =>
+    target instanceof Element &&
+    !!target.closest('button, input, select, textarea, form, [data-inline-edit]');
 
   const buildBookMenuItems = (book: Book): BookContextMenuItem[] => {
     const osPlatform = getOSPlatform();
@@ -235,8 +231,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
       group: {
         text: _('Move to…'),
         action: async () => {
-          if (!isSelectMode) handleSetSelectMode(true);
-          if (!itemSelected) useLibraryStore.getState().setSelectedBooks([book.hash]);
+          selectItem(book.hash, { preserve: true });
           handleGroupBooks();
         },
       },
@@ -257,12 +252,31 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
         },
       },
     };
-    return getBookContextMenuItemIds(book)
+    const items = getBookContextMenuItemIds(book)
       .filter(
         (id) => id !== 'showInFinder' || (!!appService?.hasContextMenu && !appService.isMobileApp),
       )
       .map((id) => itemOptions[id]);
+    items.splice(1, 0, ...transferMenuItems(book.hash));
+    return items;
   };
+
+  const transferMenuItems = (id: string): BookContextMenuItem[] => [
+    {
+      text: _('Cut'),
+      action: () => {
+        selectItem(id, { preserve: true });
+        cutLibraryItems(useLibraryStore.getState().getSelectedBooks());
+      },
+    },
+    {
+      text: _('New group with selection'),
+      action: () => {
+        selectItem(id, { preserve: true });
+        void eventDispatcher.dispatch('library-create-from-selection');
+      },
+    },
+  ];
 
   const buildGroupMenuItems = (group: BooksGroup): BookContextMenuItem[] => {
     // Single Menu.new({ items }) call keeps the order deterministic — see the
@@ -281,20 +295,36 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
       {
         text: handleRenameFolder ? _('Move to…') : _('Group Books'),
         action: async () => {
-          if (!isSelectMode) handleSetSelectMode(true);
-          if (!itemSelected) useLibraryStore.getState().setSelectedBooks([group.id]);
+          selectItem(group.id, { preserve: true });
           handleGroupBooks();
         },
       },
+      ...(handleRenameFolder ? transferMenuItems(group.id) : []),
+      ...(clipboard && handlePasteFolder
+        ? [
+            {
+              text: _('Paste into group'),
+              disabled: !canPasteFolder?.(group.name),
+              action: () => handlePasteFolder(group.name),
+            },
+          ]
+        : []),
       ...(handleUndoFolder && canUndoFolder
         ? [{ text: _('Undo'), disabled: !canUndoFolder, action: handleUndoFolder }]
         : []),
+      ...(handleRedoFolder && canRedoFolder ? [{ text: _('Redo'), action: handleRedoFolder }] : []),
       ...(handleRemoveFolder
         ? [
             {
-              text: _('Delete group'),
+              text: selectedBooks.size > 1 ? _('Delete') : _('Delete group'),
               destructive: true,
-              action: () => handleRemoveFolder(group.name),
+              action: () => {
+                if (useLibraryStore.getState().getSelectedBooks().length > 1)
+                  void eventDispatcher.dispatch('delete-books', {
+                    ids: useLibraryStore.getState().getSelectedBooks(),
+                  });
+                else void handleRemoveFolder(group.name);
+              },
             },
           ]
         : []),
@@ -339,38 +369,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
       cachedMenuRef.current = null;
       if (cached) releaseMenu(cached);
     };
-  }, [item, itemSelected, isSelectMode, settings.localBooksDir, _, selectedBooks]);
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const handleSelectItem = useCallback(
-    throttle(() => {
-      if (!isSelectMode) {
-        handleSetSelectMode(true);
-      }
-      if ('format' in item) {
-        toggleSelection((item as Book).hash);
-      } else {
-        toggleSelection((item as BooksGroup).id);
-      }
-    }, 100),
-    [isSelectMode],
-  );
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const handleOpenItem = useCallback(
-    throttle(() => {
-      if (isSelectMode) {
-        handleSelectItem();
-        return;
-      }
-      if ('format' in item) {
-        handleBookClick(item as Book);
-      } else {
-        handleGroupClick(item as BooksGroup);
-      }
-    }, 100),
-    [handleSelectItem, handleBookClick, handleGroupClick],
-  );
+  }, [item, itemSelected, settings.localBooksDir, _, selectedBooks, clipboard]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleContextMenu = useCallback(
@@ -392,30 +391,29 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
       // pass through unchanged.
       await trackPopup(menu.popup(new LogicalPosition(position.x, position.y)));
     }, 100),
-    [item, itemSelected, isSelectMode, settings.localBooksDir, selectedBooks],
+    [item, itemSelected, settings.localBooksDir, selectedBooks],
   );
 
   const { pressing, handlers } = useLongPress(
     {
       onLongPress: () => {
+        selectItem(itemId, { toggle: true, preserve: true });
         if ('books' in item && handleRenameFolder) {
           const rect = cardRef.current?.getBoundingClientRect();
           if (rect) handleContextMenu({ x: rect.left, y: rect.bottom });
-        } else handleSelectItem();
+        }
       },
       onTap: () => {
-        handleOpenItem();
-      },
-      onContextMenu: (e) => {
-        handleContextMenu({ x: e.clientX, y: e.clientY });
+        if (useLibraryStore.getState().selectedBooks.size) selectItem(itemId, { toggle: true });
+        else handleOpenItem();
       },
     },
-    [isSelectMode, handleSelectItem, handleOpenItem, handleContextMenu],
+    [itemId, selectItem, handleOpenItem],
   );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.target !== e.currentTarget) return;
-    if (e.key === 'F2' && 'format' in item && handleRenameBook && !isSelectMode) {
+    if (e.key === 'F2' && 'format' in item && handleRenameBook) {
       e.preventDefault();
       cardRef.current
         ?.querySelector('[data-inline-edit]')
@@ -427,12 +425,17 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
       setRenaming(true);
       return;
     }
-    if (e.key === 'Enter' || e.key === ' ') {
+    if (e.key === 'Enter') {
       e.preventDefault();
       handleOpenItem();
     }
+    if (e.key === ' ') {
+      e.preventDefault();
+      selectItem(itemId, { toggle: e.metaKey || e.ctrlKey, range: e.shiftKey });
+    }
     if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
       e.preventDefault();
+      selectItem(itemId, { preserve: true });
       const rect = e.currentTarget.getBoundingClientRect();
       handleContextMenu({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
     }
@@ -468,42 +471,73 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
               ? _('Author not set')
               : item.name
         }
-        aria-pressed={isSelectMode ? itemSelected : undefined}
+        aria-pressed={itemSelected}
         onKeyDown={handleKeyDown}
         onPointerEnter={() => {
           if ('format' in item && appService?.hasContextMenu && !appService.isLinuxApp)
             void ensureMenu();
         }}
+        data-library-item-id={itemId}
         {...itemDataAttrs}
-        {...handlers}
-        onPointerDown={(event) => {
+        onPointerDownCapture={(event) => {
+          pointerType.current = event.pointerType || 'mouse';
           if (
-            event.pointerType === 'mouse' &&
-            event.button === 0 &&
-            (event.metaKey || event.ctrlKey || event.shiftKey) &&
-            !(event.target as HTMLElement).closest('button, input, form')
-          ) {
-            event.preventDefault();
-            if (!isSelectMode) handleSetSelectMode(true);
-            toggleSelection('format' in item ? item.hash : item.id, event.shiftKey);
-            return;
-          }
-          handlers.onPointerDown(event);
+            !(event.target as HTMLElement).closest('button, input, select, textarea, form') &&
+            pointerType.current !== 'mouse'
+          )
+            handlers.onPointerDown(event);
+        }}
+        onPointerUpCapture={(event) => {
+          if (
+            !(event.target as HTMLElement).closest('button, input, select, textarea, form') &&
+            pointerType.current !== 'mouse'
+          )
+            handlers.onPointerUp(event);
         }}
         onClickCapture={(event) => {
-          if (event.metaKey || event.ctrlKey || event.shiftKey) {
-            event.preventDefault();
-            event.stopPropagation();
+          if (
+            pointerType.current === 'mouse' &&
+            (event.target as HTMLElement).closest('[data-inline-edit]') &&
+            !(event.target as HTMLElement).closest('form')
+          )
+            selectItem(itemId, { toggle: event.metaKey || event.ctrlKey, range: event.shiftKey });
+        }}
+        onPointerMove={handlers.onPointerMove}
+        onPointerCancel={handlers.onPointerCancel}
+        onPointerLeave={handlers.onPointerLeave}
+        onClick={(event) => {
+          if (isItemAction(event.target)) return;
+          if (pointerType.current !== 'mouse') {
+            handlers.onClick(event);
+            return;
           }
+          selectItem(itemId, { toggle: event.metaKey || event.ctrlKey, range: event.shiftKey });
+        }}
+        onDoubleClick={(event) => {
+          if (isItemAction(event.target) || event.metaKey || event.ctrlKey || event.shiftKey)
+            return;
+          handleOpenItem();
+        }}
+        onContextMenu={(event) => {
+          if (isItemAction(event.target)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          selectItem(itemId, { preserve: true });
+          handleContextMenu({ x: event.clientX, y: event.clientY });
         }}
         draggable={!renaming && !appService?.isMobile && ('format' in item || !!handleRenameFolder)}
+        data-library-folder-path={'books' in item && handleRenameFolder ? item.name : undefined}
+        data-library-drop-open={'books' in item && handleRenameFolder ? '' : undefined}
+        data-library-cut={clipboard?.selection.includes(itemId) ? '' : undefined}
         onDragStart={(event) => {
           if ((event.target as HTMLElement).closest('input, button, form')) {
             event.preventDefault();
             return;
           }
           const id = 'format' in item ? item.hash : item.id;
-          const ids = itemSelected ? useLibraryStore.getState().getSelectedBooks() : [id];
+          selectItem(id, { preserve: true });
+          const ids = useLibraryStore.getState().getSelectedBooks();
+          startLibraryDrag(ids);
           event.dataTransfer.setData(LIBRARY_ITEMS_MIME, JSON.stringify(ids));
           event.dataTransfer.effectAllowed = 'move';
         }}
@@ -514,7 +548,6 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
               mode={mode}
               book={item}
               coverFit={coverFit}
-              isSelectMode={isSelectMode}
               bookSelected={itemSelected}
               transferProgress={transferProgress}
               handleBookUpload={handleBookUpload}
@@ -528,7 +561,6 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
             <GroupItem
               mode={mode}
               group={item}
-              isSelectMode={isSelectMode}
               groupSelected={itemSelected}
               renaming={renaming}
               onStartRename={handleRenameFolder ? () => setRenaming(true) : undefined}

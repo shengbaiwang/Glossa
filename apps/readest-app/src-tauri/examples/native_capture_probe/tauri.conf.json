@@ -1,0 +1,8 @@
+{
+  "productName": "Glossa Capture Probe",
+  "version": "0.0.0",
+  "identifier": "app.glossa.capture.probe",
+  "build": { "frontendDist": "frontend" },
+  "app": { "windows": [], "security": { "capabilities": [] } },
+  "bundle": { "active": false, "icon": ["../../icons/icon.png"] }
+}

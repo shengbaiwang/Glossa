@@ -7,7 +7,7 @@
  * The offscreen page exists because MV3 service workers don't expose
  * `DOMParser` / `Document`, which the shared `convertPageToEpub` relies
  * on (Readability, asset bundler, heading extractor, etc.). It also
- * performs the **upload** — we avoid sending the EPUB bytes back to the
+ * retains the EPUB for local download or performs the explicit cloud upload — we avoid sending the EPUB bytes back to the
  * SW because `chrome.runtime.sendMessage` does not reliably structured-
  * clone `ArrayBuffer` between extension contexts; the bytes come through
  * JSON-serialized as `{}`, which wrapped in `new Blob([{}])` becomes the
@@ -57,7 +57,7 @@ export async function ensureOffscreenDocument(): Promise<void> {
         url: OFFSCREEN_URL,
         reasons: [chrome.offscreen.Reason.DOM_PARSER],
         justification:
-          'Parse and convert the captured page HTML to a self-contained EPUB, then upload to the user inbox. The MV3 service worker has no DOMParser, and EPUB bytes do not survive runtime.sendMessage serialization between contexts.',
+          'Parse and convert the captured page HTML to a self-contained EPUB, then save locally or explicitly upload to the user inbox. The MV3 service worker has no DOMParser, and EPUB bytes do not survive runtime.sendMessage serialization between contexts.',
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -98,6 +98,20 @@ export interface ClipAndUploadResult {
   title: string;
   author: string;
   byteSize: number;
+  missingAssets?: number;
+}
+
+export interface ClipAndDownloadResult {
+  url: string;
+  filename: string;
+  missingAssets?: number;
+}
+
+interface ClipInput {
+  html: string;
+  url: string;
+  baseUrl?: string;
+  pageTitle: string;
 }
 
 export interface ClipAndUploadFailure {
@@ -105,88 +119,63 @@ export interface ClipAndUploadFailure {
   message: string;
 }
 
-/**
- * Send the page snapshot + auth token to the offscreen page. It runs the
- * full conversion AND the upload inside its own realm, then returns a
- * small JSON-friendly payload — no ArrayBuffer crosses the boundary.
- */
-/** Hard ceiling on the convert+upload round-trip. A 4 MB WeChat article
- *  with ~15 images typically clears in under 20 s on a fast connection;
- *  90 s leaves slack for slow CDNs without letting a stuck handler hang
- *  the popup forever. */
+type Outcome<T> = { ok: true; result: T } | { ok: false; failure: ClipAndUploadFailure };
 const CLIP_TIMEOUT_MS = 90_000;
 
-export async function clipAndUploadViaOffscreen(opts: {
-  html: string;
-  url: string;
-  token: string;
-  pageTitle: string;
-}): Promise<
-  { ok: true; result: ClipAndUploadResult } | { ok: false; failure: ClipAndUploadFailure }
-> {
+async function requestConversion<T>(request: Record<string, unknown>): Promise<Outcome<T>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await ensureOffscreenDocument();
+    const response = (await Promise.race([
+      chrome.runtime.sendMessage(request),
+      new Promise<undefined>((resolve) => {
+        timer = setTimeout(resolve, CLIP_TIMEOUT_MS);
+      }),
+    ])) as ({ ok: true } & T) | ({ ok: false } & ClipAndUploadFailure) | undefined;
+    if (!response)
+      return {
+        ok: false,
+        failure: {
+          code: 'unknown',
+          message: _('Conversion timed out after {seconds}s', { seconds: CLIP_TIMEOUT_MS / 1000 }),
+        },
+      };
+    if (!response.ok)
+      return { ok: false, failure: { code: response.code, message: response.message } };
+    const { ok: _ok, ...result } = response;
+    return { ok: true, result: result as T };
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
     return {
       ok: false,
-      failure: {
-        code: 'unknown',
-        message: _('Could not start the converter page: {reason}', { reason }),
-      },
+      failure: { code: 'unknown', message: err instanceof Error ? err.message : String(err) },
     };
+  } finally {
+    if (timer) clearTimeout(timer);
   }
+}
 
-  // Resolve the endpoint here in the SW — `chrome.storage` is reliable
-  // in the SW context but has been observed `undefined` inside the
-  // offscreen page on some Chrome builds, so we never make the offscreen
-  // page read storage itself.
+/** Cloud mode is explicit; EPUB bytes and upload remain in the offscreen realm. */
+export async function clipAndUploadViaOffscreen(
+  opts: ClipInput & { token: string },
+): Promise<Outcome<ClipAndUploadResult>> {
   const endpoint = await resolveUploadEndpoint();
-
-  const sendPromise = chrome.runtime.sendMessage({
+  return requestConversion<ClipAndUploadResult>({
     type: 'send-to-readest:clip-and-upload',
-    html: opts.html,
-    url: opts.url,
-    token: opts.token,
-    pageTitle: opts.pageTitle,
+    ...opts,
     endpoint,
   });
-  const timeoutPromise = new Promise<undefined>((resolve) =>
-    setTimeout(() => resolve(undefined), CLIP_TIMEOUT_MS),
-  );
+}
 
-  const response = (await Promise.race([sendPromise, timeoutPromise])) as
-    | {
-        ok: true;
-        inboxId: string;
-        title: string;
-        author: string;
-        byteSize: number;
-      }
-    | { ok: false; code: ClipErrorCode; message: string }
-    | undefined;
+/** Local mode never reads credentials or resolves the cloud endpoint. */
+export async function clipAndDownloadViaOffscreen(
+  opts: ClipInput,
+): Promise<Outcome<ClipAndDownloadResult>> {
+  return requestConversion<ClipAndDownloadResult>({
+    type: 'send-to-readest:clip-and-download',
+    ...opts,
+  });
+}
 
-  if (!response) {
-    return {
-      ok: false,
-      failure: {
-        code: 'unknown',
-        message: _('Conversion timed out after {seconds}s', {
-          seconds: CLIP_TIMEOUT_MS / 1000,
-        }),
-      },
-    };
-  }
-  if (!response.ok) {
-    return { ok: false, failure: { code: response.code, message: response.message } };
-  }
-  return {
-    ok: true,
-    result: {
-      inboxId: response.inboxId,
-      title: response.title,
-      author: response.author,
-      byteSize: response.byteSize,
-    },
-  };
+export async function releaseDownloadUrl(url: string): Promise<void> {
+  await chrome.runtime.sendMessage({ type: 'send-to-readest:release-download', url });
 }

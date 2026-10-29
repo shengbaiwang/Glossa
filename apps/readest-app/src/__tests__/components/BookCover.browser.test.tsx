@@ -10,7 +10,7 @@ import '@/styles/globals.css';
 import '@/styles/glossa.css';
 import '@/styles/glossa-library.css';
 
-const mocks = vi.hoisted(() => ({ paper: true, open: vi.fn() }));
+const mocks = vi.hoisted(() => ({ open: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({}) }));
 vi.mock('@/context/EnvContext', () => ({ useEnv: () => ({ appService: {} }) }));
 vi.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: null }) }));
@@ -19,7 +19,7 @@ vi.mock('@/hooks/useTranslation', () => ({
     key.replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(values?.[name] ?? `{{${name}}}`)),
 }));
 vi.mock('@/store/settingsStore', () => ({
-  useSettingsStore: () => ({ settings: { librarySkeuomorphicCovers: mocks.paper } }),
+  useSettingsStore: () => ({ settings: {} }),
 }));
 vi.mock('@/hooks/useMedianPageDurationSecs', () => ({
   useMedianPageDurationSecs: () => undefined,
@@ -43,12 +43,10 @@ const book: Book = {
 };
 
 function Gallery({
-  selecting = false,
   selected = false,
   fit = 'crop',
   mixed = false,
 }: {
-  selecting?: boolean;
   selected?: boolean;
   fit?: LibraryCoverFitType;
   mixed?: boolean;
@@ -88,7 +86,6 @@ function Gallery({
               book={item}
               mode='grid'
               coverFit={fit}
-              isSelectMode={selecting}
               bookSelected={selected}
               transferProgress={null}
               handleBookUpload={vi.fn()}
@@ -122,7 +119,6 @@ async function loadedImages() {
 
 afterEach(() => {
   cleanup();
-  mocks.paper = true;
   mocks.open.mockReset();
   document.documentElement.removeAttribute('data-theme');
   document.documentElement.removeAttribute('data-eink');
@@ -135,218 +131,70 @@ it.each([
   ['fit', 360, 900],
   ['fit', 900, 600],
   ['crop', 600, 900],
-] as const)('keeps the %s face, binding and shadow within the actual %i × %i image', async (fit, width, height) => {
+] as const)('keeps the flat %s face within the actual %i × %i image', async (fit, width, height) => {
   render(
     <div style={{ width: 200, height: 292 }}>
-      <BookCover book={{ ...book, coverImageUrl: cover(width, height) }} coverFit={fit} showSpine />
+      <BookCover book={{ ...book, coverImageUrl: cover(width, height) }} coverFit={fit} />
     </div>,
   );
   await loadedImages();
   const face = firstSurface().getBoundingClientRect();
   const root = document.querySelector('.book-cover-container')!.getBoundingClientRect();
   const image = document.querySelector('img')!.getBoundingClientRect();
-  const spine = document.querySelector('.book-spine')!.getBoundingClientRect();
   expect(face.width).toBeGreaterThan(0);
-  expect(face.right).toBeLessThan(root.right);
-  expect(face.bottom).toBeLessThan(root.bottom);
+  expect(face.right).toBeLessThanOrEqual(root.right + 0.1);
+  expect(face.bottom).toBeLessThanOrEqual(root.bottom + 0.1);
   expect(image.width).toBeCloseTo(face.width, 1);
   expect(image.height).toBeCloseTo(face.height, 1);
-  expect(spine.height).toBeCloseTo(face.height, 1);
-  expect(spine.width).toBeLessThan(face.width * 0.11);
+  expect(document.querySelector('.book-spine')).toBeNull();
+  expect(getComputedStyle(firstSurface(), '::before').content).toBe('none');
   if (fit === 'fit') expect(face.width / face.height).toBeCloseTo(width / height, 2);
+  else {
+    expect(face.width).toBeCloseTo(root.width, 1);
+    expect(face.height).toBeCloseTo(root.height, 1);
+  }
 });
 
 it.each([
   'default-light',
   'default-dark',
-])('renders quiet paper, clean artwork and a composed fallback in %s', async (theme) => {
+])('renders flat artwork and a composed fallback in %s', async (theme) => {
   await page.viewport(940, 600);
   document.documentElement.setAttribute('data-page', 'library');
   document.documentElement.setAttribute('data-theme', theme);
   document.body.classList.add('bg-base-100', 'text-base-content');
   render(<Gallery />);
   await loadedImages();
-  expect(getComputedStyle(firstSurface()).boxShadow).not.toBe('none');
-  const face = document.querySelector('.book-cover-face')!;
-  expect(getComputedStyle(face, '::after').backgroundImage).toBe('none');
-  expect(getComputedStyle(firstSurface(), '::before').backgroundImage).toContain(
-    'repeating-linear-gradient',
-  );
-  const fallback = document.querySelector<HTMLElement>(
-    '[data-material="paper"] .fallback-cover:not(.invisible)',
-  )!;
+  expect(getComputedStyle(firstSurface()).boxShadow).toBe('none');
+  expect(getComputedStyle(firstSurface(), '::before').content).toBe('none');
+  const fallback = document.querySelector<HTMLElement>('.fallback-cover:not(.invisible)')!;
   expect(getComputedStyle(fallback).visibility).toBe('visible');
   expect(fallback.textContent).toContain('纸上行旅');
-  await page.getByRole('button', { name: 'Outside', exact: true }).hover();
-  const mode = matchMedia('(prefers-reduced-motion: reduce)').matches
-    ? '-reduced'
-    : matchMedia('(pointer: coarse)').matches
-      ? '-touch'
-      : '';
-  await page.screenshot({ path: `../../../../../.glossa-dev/qa/covers-${theme}${mode}.png` });
+  await page.screenshot({ path: `../../../../../.glossa-dev/qa/flat-covers-${theme}.png` });
 });
 
-it('lifts only the book, settles on exit and preserves the reading hit target', async () => {
+it('keeps flat covers, title baselines and the reading hit target still during hover and keyboard focus', async () => {
   render(<Gallery />);
   await loadedImages();
   const title = document.querySelector('.glossa-book-title')!;
   const titleTop = title.getBoundingClientRect().top;
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const hover = matchMedia('(hover: hover) and (pointer: fine)').matches;
   const card = page.getByRole('button', { name: 'Open Field Notes', exact: true });
   await card.hover();
-  await expect.poll(lift).toBeCloseTo(hover && !reduced ? -2 : 0, 1);
+  expect(lift()).toBe(0);
   expect(title.getBoundingClientRect().top).toBe(titleTop);
-  let pressDuration = '';
-  document.querySelector('.glossa-book-card')!.addEventListener(
-    'pointerdown',
-    () => {
-      pressDuration = getComputedStyle(firstSurface()).transitionDuration;
-    },
-    { once: true },
-  );
   await card.click();
   expect(mocks.open).toHaveBeenCalledOnce();
-  if (hover && !reduced) expect(pressDuration).toBe('0.09s');
-  await page.getByRole('button', { name: 'Outside', exact: true }).click();
-  await expect.poll(lift).toBeCloseTo(0, 1);
-  if (reduced) expect(getComputedStyle(firstSurface()).transitionDuration).toBe('0s');
-});
-
-it('provides a keyboard lift and leaves child controls and selection still', async () => {
-  const { rerender } = render(<Gallery />);
-  await loadedImages();
   await page.getByRole('button', { name: 'Outside', exact: true }).click();
   await userEvent.keyboard('{Tab}');
   expect(document.activeElement?.getAttribute('aria-label')).toBe('Open Field Notes');
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  await expect.poll(lift).toBeCloseTo(reduced ? 0 : -2, 1);
-  await userEvent.keyboard('{Tab}');
-  await expect.poll(lift).toBeCloseTo(0, 1);
-  rerender(<Gallery selecting selected />);
-  await page.getByRole('button', { name: 'Open Field Notes', exact: true }).hover();
-  await expect.poll(lift).toBeCloseTo(0, 1);
+  expect(lift()).toBe(0);
 });
 
-it('keeps RTL binding and paper edges on opposite sides', async () => {
-  document.documentElement.dir = 'rtl';
-  render(
-    <div style={{ width: 160, height: 240 }}>
-      <BookCover book={book} showSpine />
-    </div>,
-  );
-  await loadedImages();
-  const face = firstSurface().getBoundingClientRect();
-  const spine = document.querySelector('.book-spine')!.getBoundingClientRect();
-  expect(spine.right).toBeCloseTo(face.right, 1);
-  expect(parseFloat(getComputedStyle(firstSurface(), '::before').left)).toBeLessThan(0);
-});
-
-it.each([
-  [76, 'ltr'],
-  [180, 'ltr'],
-  [76, 'rtl'],
-  [180, 'rtl'],
-] as const)('joins the binding foot to a rounded page edge at %ipx in %s', async (width, direction) => {
-  document.documentElement.dir = direction;
-  render(
-    <div style={{ width, height: width * 1.46 }}>
-      <BookCover book={book} showSpine />
-    </div>,
-  );
-  await loadedImages();
-  const pages = getComputedStyle(firstSurface(), '::before');
-  const depth = -parseFloat(pages.bottom);
-  // A rounded heel starts under the binding, rather than exposing an offset square tab.
-  expect(parseFloat(pages.insetInlineStart)).toBeLessThanOrEqual(1.5);
-  expect(parseFloat(pages.borderEndStartRadius)).toBeGreaterThan(depth + 1);
-  expect(pages.boxShadow === 'none' || pages.boxShadow.includes('inset')).toBe(true);
-});
-
-it.each([
-  'default-light',
-  'default-dark',
-])('previews binding corners at normal size and 4× in %s', async (theme) => {
-  await page.viewport(940, 600);
-  document.documentElement.setAttribute('data-theme', theme);
-  document.body.classList.add('bg-base-100', 'text-base-content');
-  const colors = ['#e0d5bd', '#a64d3e', '#788477'];
-  render(
-    <main style={{ padding: 32 }}>
-      <h1 style={{ marginBottom: 24 }}>Glossa · 装订转角</h1>
-      <div style={{ display: 'flex', gap: 48 }}>
-        {colors.map((color) => (
-          <div key={color}>
-            <div style={{ width: 180, height: 264 }}>
-              <BookCover book={{ ...book, coverImageUrl: cover(600, 900, color) }} showSpine />
-            </div>
-            <div
-              style={{
-                position: 'relative',
-                width: 180,
-                height: 128,
-                overflow: 'hidden',
-                marginTop: 24,
-              }}
-            >
-              <div
-                style={{
-                  position: 'absolute',
-                  width: 180,
-                  height: 264,
-                  bottom: 16,
-                  left: 16,
-                  transform: 'scale(4)',
-                  transformOrigin: 'bottom left',
-                }}
-              >
-                <BookCover book={{ ...book, coverImageUrl: cover(600, 900, color) }} showSpine />
-              </div>
-            </div>
-            <p style={{ fontSize: 12, opacity: 0.6 }}>左下角 · 4×</p>
-          </div>
-        ))}
-        <div style={{ width: 120, display: 'flex', flexDirection: 'column', gap: 24 }}>
-          <div style={{ width: 76, height: 112 }}>
-            <BookCover book={book} showSpine />
-          </div>
-          <div dir='rtl' style={{ width: 76, height: 112 }}>
-            <BookCover book={book} showSpine />
-          </div>
-          <div style={{ width: 28, height: 41 }}>
-            <BookCover book={book} isPreview showSpine />
-          </div>
-          <p style={{ fontSize: 12, opacity: 0.6 }}>小封面 / RTL</p>
-        </div>
-      </div>
-    </main>,
-  );
-  await loadedImages();
-  await page.screenshot({ path: `../../../../../.glossa-dev/qa/covers-binding-${theme}.png` });
-});
-
-it('keeps the editable metadata preview free of an outer clipping frame', async () => {
-  render(
-    <button
-      type='button'
-      aria-label='Change cover image'
-      className='glossa-metadata-cover-preview'
-      style={{ width: 160 }}
-    >
-      <BookCover book={book} mode='list' showSpine />
-    </button>,
-  );
-  await loadedImages();
-  const preview = document.querySelector('.glossa-metadata-cover-preview')!;
-  expect(getComputedStyle(preview).overflow).toBe('visible');
-  expect(getComputedStyle(preview).borderTopWidth).toBe('0px');
-});
-
-it('keeps page-edge lines behind an opaque paper face when artwork is transparent', async () => {
+it('keeps transparent artwork over an opaque paper face', async () => {
   const transparentCover = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900"><circle cx="300" cy="450" r="100" fill="#788477"/></svg>')}`;
   render(
     <div style={{ width: 160, height: 240 }}>
-      <BookCover book={{ ...book, coverImageUrl: transparentCover }} showSpine />
+      <BookCover book={{ ...book, coverImageUrl: transparentCover }} />
     </div>,
   );
   await loadedImages();
@@ -373,27 +221,20 @@ it('keeps mixed natural cover ratios and title baselines stable in the real book
     expect(title.getBoundingClientRect().top).toBeCloseTo(titleTops[index]!, 1);
   }
   expect(Math.max(...titleTops) - Math.min(...titleTops)).toBeLessThan(1);
-  await page.getByRole('button', { name: 'Outside', exact: true }).hover();
-  await page.screenshot({ path: '../../../../../.glossa-dev/qa/covers-natural-ratios.png' });
+  await page.screenshot({ path: '../../../../../.glossa-dev/qa/flat-covers-natural-ratios.png' });
 });
 
-it('uses static crisp boundaries in e-ink and respects the existing flat-cover switch', async () => {
+it('uses static crisp boundaries in e-ink and RTL', async () => {
   document.documentElement.setAttribute('data-eink', 'true');
-  const { rerender } = render(<Gallery fit='fit' />);
+  document.documentElement.dir = 'rtl';
+  render(<Gallery fit='fit' />);
   await loadedImages();
   await page.getByRole('button', { name: 'Open Field Notes', exact: true }).hover();
   expect(lift()).toBe(0);
   expect(getComputedStyle(firstSurface()).boxShadow).toBe('none');
   expect(getComputedStyle(firstSurface()).transitionDuration).toBe('0s');
-  expect(getComputedStyle(firstSurface(), '::before').display).toBe('none');
-  expect(getComputedStyle(document.querySelector('.book-spine')!).display).toBe('none');
-  document.documentElement.removeAttribute('data-eink');
-  mocks.paper = false;
-  rerender(<Gallery />);
   expect(document.querySelector('.book-spine')).toBeNull();
   expect(getComputedStyle(firstSurface(), '::before').content).toBe('none');
-  await page.getByRole('button', { name: 'Open Field Notes', exact: true }).hover();
-  await expect.poll(lift).toBeCloseTo(0, 1);
 });
 
 it('fits small list covers and narrow shelves without clipping or horizontal overflow', async () => {
@@ -405,14 +246,13 @@ it('fits small list covers and narrow shelves without clipping or horizontal ove
   cleanup();
   render(
     <div style={{ width: 76, height: 112 }}>
-      <BookCover book={book} mode='list' coverFit='fit' showSpine />
+      <BookCover book={book} mode='list' coverFit='fit' />
     </div>,
   );
   await loadedImages();
   const face = firstSurface().getBoundingClientRect();
-  expect(face.width).toBeLessThanOrEqual(74);
-  expect(face.height).toBeLessThanOrEqual(110);
-  expect(getComputedStyle(firstSurface(), '::before').pointerEvents).toBe('none');
+  expect(face.width).toBeLessThanOrEqual(76);
+  expect(face.height).toBeLessThanOrEqual(112);
 });
 
 it('centers original book and group artwork within identical grid stages', async () => {
@@ -447,7 +287,6 @@ it('centers original book and group artwork within identical grid stages', async
         book={narrow}
         mode='grid'
         coverFit='fit'
-        isSelectMode={false}
         bookSelected={false}
         transferProgress={null}
         handleBookUpload={vi.fn()}
@@ -455,12 +294,11 @@ it('centers original book and group artwork within identical grid stages', async
         showBookDetailsModal={vi.fn()}
         showTimeRemaining={false}
       />
-      <GroupItem group={group} mode='grid' isSelectMode={false} groupSelected={false} />
+      <GroupItem group={group} mode='grid' groupSelected={false} />
       <BookItem
         book={wide}
         mode='grid'
         coverFit='fit'
-        isSelectMode={false}
         bookSelected={false}
         transferProgress={null}
         handleBookUpload={vi.fn()}

@@ -26,8 +26,15 @@ import {
   moveToFolder,
   MAX_FOLDER_DEPTH,
 } from '../utils/libraryFolders';
-import { LIBRARY_ITEMS_MIME, readLibraryItems } from '../utils/libraryDragDrop';
+import {
+  captureCurrentLibraryTransfer,
+  cutLibraryItems,
+  useLibraryTransfer,
+  type LibraryTransfer,
+} from '../utils/libraryTransfer';
 import { useLibraryFolders } from '../hooks/useLibraryFolders';
+import { useLibraryClipboard } from '../hooks/useLibraryClipboard';
+import { useLibraryItemDrop } from '../hooks/useLibraryItemDrop';
 import { useFolderDrag, type FolderDrop } from '../hooks/useFolderDrag';
 import FolderNameEditor from './FolderNameEditor';
 import FolderDeleteDialog from './FolderDeleteDialog';
@@ -40,6 +47,7 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
   const { settings } = useSettingsStore();
   const { library } = useLibraryStore();
   const folders = useLibraryFolders();
+  const clipboard = useLibraryClipboard(folders);
   const navRef = useRef<HTMLElement>(null);
   const savedFocus = useRef<string | null>(null);
   const [editing, setEditing] = useState<{ path?: string; parent: string } | null>(null);
@@ -47,7 +55,9 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
     null,
   );
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const branchTransfer = useRef<LibraryTransfer | undefined>(undefined);
+  const dragOrigin = useRef<string | null>(null);
+  const [creatingWithItems, setCreatingWithItems] = useState<LibraryTransfer | null>(null);
   const [focusPath, setFocusPath] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(new Set<string>());
   const collapsedBeforeDrag = useRef<Set<string> | null>(null);
@@ -96,6 +106,7 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
   const begin = (parent: string, path?: string) => {
     if (folders.busy) return;
     folders.clearError();
+    setCreatingWithItems(null);
     expand(parent);
     setEditing({ parent, path });
   };
@@ -103,6 +114,7 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
     const path = savedFocus.current ?? editing?.path ?? editing?.parent ?? '';
     savedFocus.current = null;
     setEditing(null);
+    setCreatingWithItems(null);
     if (restoreFocus) setFocusPath(path);
   };
   const save = async (label: string) => {
@@ -113,7 +125,9 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
         .filter(Boolean)
         .join('/');
     } else {
-      const path = await folders.create(editing.parent, label);
+      const path = creatingWithItems
+        ? await folders.createWithItems(editing.parent, label, creatingWithItems)
+        : await folders.create(editing.parent, label);
       if (!path) return false;
       savedFocus.current = path;
     }
@@ -123,8 +137,12 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
     if (folders.busy) return false;
     const saved =
       target.edge === 'inside'
-        ? await folders.move([md5Fingerprint(path)], target.path)
-        : await folders.place(path, target.path, target.edge);
+        ? branchTransfer.current
+          ? await folders.moveItems(branchTransfer.current, target.path)
+          : await folders.move([md5Fingerprint(path)], target.path)
+        : branchTransfer.current
+          ? await folders.placeItems(branchTransfer.current, target.path, target.edge)
+          : await folders.place(path, target.path, target.edge);
     if (saved) {
       expand(target.edge === 'inside' ? target.path : folderParent(target.path));
       setFocusPath(folders.resolvePath(path));
@@ -137,12 +155,45 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
     onMenu: (path, position) => setMenu(path === null ? null : { path, ...position }),
     onDrop: moveBranch,
     onExpand: expand,
-    onStart: () => {
+    onStart: (path) => {
+      branchTransfer.current = captureCurrentLibraryTransfer([md5Fingerprint(path)]);
       collapsedBeforeDrag.current = new Set(collapsed);
+    },
+    canDrop: (path, target) => {
+      try {
+        moveToFolder(
+          [],
+          folders.paths,
+          [md5Fingerprint(path)],
+          target.edge === 'inside' ? target.path : folderParent(target.path),
+        );
+        return path !== target.path && !target.path.startsWith(path + '/');
+      } catch {
+        return false;
+      }
+    },
+    onHoverOutside: (path) => {
+      if (dragOrigin.current === null) dragOrigin.current = current;
+      navigate(LibraryGroupByType.Group, path);
     },
     onFinish: (saved) => {
       if (!saved && collapsedBeforeDrag.current) setCollapsed(collapsedBeforeDrag.current);
+      if (!saved && dragOrigin.current !== null)
+        navigate(LibraryGroupByType.Group, dragOrigin.current);
+      dragOrigin.current = null;
+      branchTransfer.current = undefined;
       collapsedBeforeDrag.current = null;
+    },
+  });
+  useLibraryItemDrop({
+    root: navRef,
+    name: 'navigation',
+    disabled: folders.busy || !!editing || !!deleting,
+    move: folders.moveItems,
+    hover: (path) => {
+      const previous = new Set(collapsed);
+      expand(path);
+      return () => setCollapsed(previous);
     },
   });
   let dragError = '';
@@ -163,31 +214,13 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
   const dropProps = (path: string) => ({
     'data-library-folder-path': path,
     'data-folder-drop': path,
+    'data-library-drop-open': '',
     'data-drop-target':
-      dropTarget === path ||
-      (drag?.target?.path === path && drag.target.edge === 'inside' && !dragError)
-        ? ''
-        : undefined,
+      drag?.target?.path === path && drag.target.edge === 'inside' && !dragError ? '' : undefined,
     'data-drop-edge':
       drag?.target?.path === path && drag.target.edge !== 'inside' && !dragError
         ? drag.target.edge
         : undefined,
-    onDragOver: (event: React.DragEvent) => {
-      if (!event.dataTransfer.types.includes(LIBRARY_ITEMS_MIME)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      event.dataTransfer.dropEffect = 'move';
-      setDropTarget(path);
-    },
-    onDragLeave: () => setDropTarget(null),
-    onDrop: (event: React.DragEvent) => {
-      if (!event.dataTransfer.types.includes(LIBRARY_ITEMS_MIME)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      setDropTarget(null);
-      const ids = readLibraryItems(event.dataTransfer);
-      if (ids.length && !folders.busy) void folders.move(ids, path);
-    },
   });
   const openMenu = (path: string, element: HTMLElement) => {
     const rect = element.getBoundingClientRect();
@@ -200,6 +233,12 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
     )
       setDeleting(path);
     else void folders.remove(path);
+  };
+  const createFromSelection = (parent: string, ids: string[]) => {
+    const snapshot = captureCurrentLibraryTransfer(ids);
+    if (!snapshot || folders.busy) return;
+    begin(parent);
+    setCreatingWithItems(snapshot);
   };
   const menuItems: BookContextMenuItem[] = menu?.moving
     ? [
@@ -245,8 +284,24 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
                 disabled: folders.busy,
                 action: () => setMenu({ ...menu, moving: true }),
               },
+              { text: _('Cut'), action: () => cutLibraryItems([md5Fingerprint(menu.path)]) },
+              {
+                text: _('New group with selection'),
+                disabled: folders.busy,
+                action: () =>
+                  createFromSelection(folderParent(menu.path), [md5Fingerprint(menu.path)]),
+              },
             ]
           : [{ text: _('New group'), disabled: folders.busy, action: () => begin('') }]),
+        ...(clipboard.clipboard
+          ? [
+              {
+                text: _('Paste into group'),
+                disabled: !clipboard.canPaste(menu?.path ?? ''),
+                action: () => void clipboard.paste(menu?.path ?? ''),
+              },
+            ]
+          : []),
         ...(folders.canUndo
           ? [
               {
@@ -255,6 +310,9 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
                 action: () => void folders.undo(),
               },
             ]
+          : []),
+        ...(folders.canRedo
+          ? [{ text: _('Redo'), disabled: folders.busy, action: () => void folders.redo() }]
           : []),
         ...(menu?.path
           ? [
@@ -290,7 +348,41 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
       className='glossa-library-navigation'
       aria-label={_('Library')}
       onKeyDown={(event) => {
-        if ((event.target as HTMLElement).closest('form')) return;
+        if (
+          (event.target as HTMLElement).closest('form, input, textarea, [contenteditable="true"]')
+        )
+          return;
+        const command = event.metaKey || event.ctrlKey;
+        const key = event.key.toLowerCase();
+        const path = (event.target as HTMLElement).closest<HTMLElement>(
+          '[data-library-folder-path]',
+        )?.dataset['libraryFolderPath'];
+        if (command && key === 'x' && path) {
+          event.preventDefault();
+          cutLibraryItems([md5Fingerprint(path)]);
+          return;
+        }
+        if (command && key === 'v' && clipboard.clipboard && path !== undefined) {
+          event.preventDefault();
+          void clipboard.paste(path);
+          return;
+        }
+        if (command && event.altKey && key === 'n' && path) {
+          event.preventDefault();
+          createFromSelection(folderParent(path), [md5Fingerprint(path)]);
+          return;
+        }
+        if (event.key === 'Escape') useLibraryTransfer.setState({ clipboard: undefined });
+        if (
+          command &&
+          ((key === 'z' && event.shiftKey) || (key === 'y' && event.ctrlKey)) &&
+          folders.canRedo &&
+          !folders.busy
+        ) {
+          event.preventDefault();
+          void folders.redo();
+          return;
+        }
         if (
           (event.metaKey || event.ctrlKey) &&
           event.shiftKey &&
@@ -451,6 +543,9 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
                       groupBy === LibraryGroupByType.Group && current === path ? 'page' : undefined
                     }
                     {...dropProps(path)}
+                    data-library-cut={
+                      clipboard.clipboard?.selection.includes(md5Fingerprint(path)) ? '' : undefined
+                    }
                     onPointerDown={(event) => start(event, path)}
                     onDragStart={(event) => event.preventDefault()}
                     onClick={(event) => {

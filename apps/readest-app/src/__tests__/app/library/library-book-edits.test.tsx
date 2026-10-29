@@ -86,6 +86,81 @@ it('rolls back a failed save and permits retry', async () => {
     expect(await result.current.apply([original], 'title', 'New')).toBe(true);
   });
 });
+it('rolls back a failed rename while preserving later reading progress', async () => {
+  const { result } = renderHook(useLibraryBookEdits);
+  let progressUpdatedAt = 0;
+  mocks.save.mockImplementationOnce(async () => {
+    progressUpdatedAt = current().updatedAt + 100;
+    useLibraryStore
+      .getState()
+      .setLibrary([{ ...current(), progress: [77, 100], updatedAt: progressUpdatedAt }]);
+    throw new Error('disk');
+  });
+  await act(async () => {
+    expect(await result.current.apply([original], 'title', 'New')).toBe(false);
+  });
+  expect(current()).toMatchObject({
+    title: original.title,
+    metadata: original.metadata,
+    progress: [77, 100],
+    updatedAt: progressUpdatedAt,
+  });
+  expect(current().metadataUpdatedAt).toBe(original.metadataUpdatedAt);
+  expect(useLibraryStore.getState().libraryLoaded).toBe(true);
+});
+it('preserves a later metadata edit when an earlier rename fails to save', async () => {
+  const { result } = renderHook(useLibraryBookEdits);
+  const metadata = { ...original.metadata!, title: 'Other window', author: 'New author' };
+  mocks.save.mockImplementationOnce(async () => {
+    const updatedAt = current().updatedAt + 100;
+    useLibraryStore.getState().setLibrary([
+      {
+        ...current(),
+        title: metadata.title,
+        author: metadata.author,
+        metadata,
+        metadataUpdatedAt: updatedAt,
+        updatedAt,
+      },
+    ]);
+    throw new Error('disk');
+  });
+  await act(async () => {
+    expect(await result.current.apply([original], 'title', 'New')).toBe(false);
+  });
+  expect(current()).toMatchObject({ title: metadata.title, author: metadata.author, metadata });
+});
+it('rolls back a failed status save without overwriting later metadata or progress', async () => {
+  const { result } = renderHook(useLibraryBookEdits);
+  const metadata = { ...original.metadata!, title: 'Other window' };
+  let updatedAt = 0;
+  mocks.save.mockImplementationOnce(async () => {
+    updatedAt = current().updatedAt + 100;
+    useLibraryStore.getState().setLibrary([
+      {
+        ...current(),
+        title: metadata.title,
+        metadata,
+        metadataUpdatedAt: updatedAt,
+        progress: [77, 100],
+        updatedAt,
+      },
+    ]);
+    throw new Error('disk');
+  });
+  await act(async () => {
+    expect(await result.current.apply([original], 'readingStatus', 'finished')).toBe(false);
+  });
+  expect(current()).toMatchObject({
+    title: metadata.title,
+    metadata,
+    metadataUpdatedAt: updatedAt,
+    progress: [77, 100],
+    updatedAt,
+  });
+  expect(current().readingStatus).toBe(original.readingStatus);
+  expect(current().readingStatusUpdatedAt).toBe(original.readingStatusUpdatedAt);
+});
 it('updates and restores a batch of statuses without changing reading progress', async () => {
   const second = { ...original, hash: 'second', readingStatus: 'abandoned' as const };
   useLibraryStore.getState().setLibrary([original, second]);

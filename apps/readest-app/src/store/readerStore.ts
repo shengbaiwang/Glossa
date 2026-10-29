@@ -12,7 +12,7 @@ import {
 import { Insets } from '@/types/misc';
 import { EnvConfigType } from '@/services/environment';
 import { FoliateView } from '@/types/view';
-import { DocumentLoader, TOCItem } from '@/libs/document';
+import { BookDoc, DocumentLoader, TOCItem } from '@/libs/document';
 import {
   isPseStreamFileName,
   openPseStreamBook,
@@ -30,6 +30,75 @@ import { BookData, useBookDataStore } from './bookDataStore';
 import { useLibraryStore } from './libraryStore';
 import { clearBookProgress, getBookProgress, setBookProgress } from './readerProgressStore';
 import { uniqueId } from '@/utils/misc';
+import { cloneTocItems } from '@/services/nav/grouping';
+import { assertNavActive } from '@/services/nav/scheduling';
+import { bakeLocationsAndCfis } from '@/services/nav/locations';
+
+interface NavigationTask {
+  controller: AbortController;
+  started: number;
+  start?: () => void;
+}
+
+interface DocumentNavigation {
+  controller: AbortController;
+  owners: Set<string>;
+  complete: boolean;
+  start?: () => void;
+}
+
+const navigationTasks = new Map<string, NavigationTask>();
+const initializingBooks = new Map<string, Promise<void>>();
+const documentNavigation = new WeakMap<BookDoc, DocumentNavigation>();
+const documentSources = new WeakMap<BookDoc, string | null>();
+const originalTocs = new WeakMap<BookDoc, TOCItem[]>();
+
+// Local User Timing only: bounded, without titles, paths or exported telemetry.
+const measureReaderPhase = (phase: string, start: number) => {
+  try {
+    const name = `glossa.reader.${phase}`;
+    if (performance.getEntriesByName(name).length >= 32) performance.clearMeasures(name);
+    performance.measure(name, { start, end: performance.now() });
+  } catch {
+    /* Older WebViews may not implement numeric User Timing boundaries. */
+  }
+};
+
+const cancelNavigation = (key: string) => {
+  navigationTasks.get(key)?.controller.abort();
+  navigationTasks.delete(key);
+};
+
+// Let the restored position paint before beginning optional whole-book work.
+const afterReaderPaint = (signal: AbortSignal, run: () => void) => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const frame = requestAnimationFrame(() => {
+    if (!signal.aborted) timer = setTimeout(() => !signal.aborted && run(), 0);
+  });
+  signal.addEventListener(
+    'abort',
+    () => {
+      cancelAnimationFrame(frame);
+      if (timer !== undefined) clearTimeout(timer);
+    },
+    { once: true },
+  );
+};
+
+const navigationCopy = (bookDoc: BookDoc): BookDoc => ({
+  ...bookDoc,
+  toc: cloneTocItems(bookDoc.toc ?? []),
+  sections: bookDoc.sections.map((section) => ({ ...section })),
+  splitTOCHref: bookDoc.splitTOCHref.bind(bookDoc),
+});
+
+const publishNavigation = (bookDoc: BookDoc, staged: BookDoc) => {
+  bookDoc.toc = staged.toc;
+  bookDoc.sections.forEach((section, index) => {
+    section.fragments = staged.sections[index]?.fragments;
+    section.location = staged.sections[index]?.location;
+  });
+};
 
 interface ViewState {
   /* Unique key for each book view */
@@ -139,6 +208,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
   },
 
   clearViewState: (key: string) => {
+    cancelNavigation(key);
     // Drop the per-book progress entry alongside the view state so the
     // standalone progress store doesn't leak across opens/closes.
     clearBookProgress(key);
@@ -156,8 +226,22 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
     isPrimary = true,
     reload = false,
   ) => {
-    const booksData = useBookDataStore.getState().booksData;
-    const bookData = booksData[id];
+    cancelNavigation(key);
+    const task: NavigationTask = { controller: new AbortController(), started: performance.now() };
+    navigationTasks.set(key, task);
+    const { signal } = task.controller;
+    const isCurrent = () => !signal.aborted && navigationTasks.get(key) === task;
+    // Same-book views share one parsed document. Let the preceding open publish
+    // (or release its cancelled resources) before reading the shared BookData.
+    const preceding = initializingBooks.get(id);
+    let finishInitialization!: () => void;
+    const initialization = new Promise<void>((resolve) => {
+      finishInitialization = resolve;
+    });
+    initializingBooks.set(id, initialization);
+    let ownedDoc: BookDoc | undefined;
+    let ownedFile: (File & { close?: () => void | Promise<void> }) | undefined;
+    let published = false;
     set((state) => ({
       viewStates: {
         ...state.viewStates,
@@ -180,7 +264,12 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       },
     }));
     try {
+      if (preceding) await preceding;
+      assertNavActive(signal);
+      const bookData = useBookDataStore.getState().booksData[id];
       const appService = await envConfig.getAppService();
+      measureReaderPhase('service-ready', task.started);
+      assertNavActive(signal);
       const { settings } = useSettingsStore.getState();
       const { getBookByHash, library } = useLibraryStore.getState();
       const book = getBookByHash(id);
@@ -192,39 +281,64 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       }
       const isPseStream = !!book.url && isPseStreamFileName(book.url);
       const isFeed = !!book.url && isFeedBookUrl(book.url);
+      const needsNav = book.format === 'EPUB';
+      // Capture before parsing; a replacement must never stamp an old result
+      // with the new file's identity when the background calculation finishes.
+      let navSource = needsNav ? await appService.getBookNavSource(book) : null;
+      assertNavActive(signal);
       let bookDoc = bookData?.bookDoc;
       let file: File | null = bookData?.file ?? null;
-      if (!bookDoc || (!isPseStream && !isFeed && !file) || reload) {
+      const sourceChanged =
+        bookDoc && documentSources.has(bookDoc) && documentSources.get(bookDoc) !== navSource;
+      if (!bookDoc || (!isPseStream && !isFeed && !file) || reload || sourceChanged) {
         console.log('Loading book', key);
         if (isPseStream) {
           const data = parsePseStreamFileName(book.url!);
           const doc = await openPseStreamBook(data);
           bookDoc = doc.book;
+          ownedDoc = bookDoc;
           file = null;
         } else if (isFeed) {
           const { feedUrl } = parseFeedBookUrl(book.url!);
           // AppService publicly exposes the readFile/writeFile/exists surface of FileSystem.
           const fs = appService as unknown as FileSystem;
           bookDoc = await openFeedBookDoc(fs, book.hash, feedUrl, book.title);
+          ownedDoc = bookDoc;
           file = null;
         } else {
+          const fileStarted = performance.now();
           const content = (await appService.loadBookContent(book)) as BookContent;
+          measureReaderPhase('file-open', fileStarted);
           file = content.file;
+          if (file !== bookData?.file) ownedFile = file;
+          assertNavActive(signal);
+          // Loading may have downloaded a previously remote-only book. Bind
+          // the now-local source before parsing, never after building its nav.
+          if (needsNav && !navSource) navSource = await appService.getBookNavSource(book);
           let nativeFilePath: string | null = null;
           try {
             nativeFilePath = await appService.resolveNativeBookFilePath(book);
           } catch (err) {
             console.warn('resolveNativeBookFilePath failed', err);
           }
+          const documentStarted = performance.now();
           const doc = await new DocumentLoader(file, {
             nativeFilePath: nativeFilePath ?? undefined,
             pdfOwner: { bookId: book.hash, revision: book.removal?.revision ?? 0 },
             autoPDFOCR: book.format === 'PDF',
           }).open();
+          measureReaderPhase('document-parse', documentStarted);
           bookDoc = doc.book;
+          ownedDoc = bookDoc;
         }
       }
+      assertNavActive(signal);
+      documentSources.set(bookDoc, navSource);
+      if (!originalTocs.has(bookDoc)) originalTocs.set(bookDoc, cloneTocItems(bookDoc.toc ?? []));
+      const configStarted = performance.now();
       const config = await appService.loadBookConfig(book, settings);
+      measureReaderPhase('config-read', configStarted);
+      assertNavActive(signal);
       // Import annotations from third-party readers on first open
       if (bookDoc.metadata.identifier) {
         const { getAnnotationProviders } = await import('@/services/annotation');
@@ -244,19 +358,119 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       }
       // Filter out invalid booknotes
       config.booknotes = config.booknotes?.filter((booknote) => booknote.cfi) ?? [];
-      // Load cached book navigation (TOC + section fragments) or compute and persist.
+      // A valid cache is cheap in development and production. A miss must not
+      // hold up the chapter renderer or restoration of the saved CFI.
       if (book.format === 'EPUB' && bookDoc.rendition?.layout !== 'pre-paginated') {
-        const cachedNav = await appService.loadBookNav(book);
-        if (isBookNavCacheCurrent(cachedNav) && process.env.NODE_ENV === 'production') {
-          hydrateBookNav(bookDoc, cachedNav);
-        } else {
-          const freshNav = await computeBookNav(bookDoc);
-          hydrateBookNav(bookDoc, freshNav);
-          try {
-            await appService.saveBookNav(book, freshNav);
-          } catch (e) {
-            console.warn('Failed to persist book nav cache:', e);
+        let shared = documentNavigation.get(bookDoc);
+        // A secondary view must keep the prepared navigation of its shared
+        // document, including enhancements that cannot be cached for old books.
+        if (!shared || (!shared.complete && shared.controller.signal.aborted)) {
+          const navStarted = performance.now();
+          const cachedNav = await appService.loadBookNav(book);
+          measureReaderPhase('navigation-cache-read', navStarted);
+          assertNavActive(signal);
+          let cacheUsed = false;
+          if (navSource && isBookNavCacheCurrent(cachedNav) && cachedNav.source === navSource) {
+            try {
+              const staged = navigationCopy(bookDoc);
+              hydrateBookNav(staged, cachedNav);
+              publishNavigation(bookDoc, staged);
+              cacheUsed = true;
+            } catch (error) {
+              console.warn('Ignoring damaged book navigation cache:', error);
+            }
           }
+          shared = { controller: new AbortController(), owners: new Set(), complete: cacheUsed };
+          documentNavigation.set(bookDoc, shared);
+          if (!cacheUsed) {
+            bookDoc.toc = cloneTocItems(originalTocs.get(bookDoc) ?? []);
+            // Cheap structural positions keep bookmarks, annotation grouping and
+            // chapter navigation useful while precise fragment CFIs are pending.
+            bakeLocationsAndCfis(bookDoc.toc, bookDoc.sections, (href) =>
+              bookDoc.splitTOCHref(href),
+            );
+            const originalDoc = bookDoc;
+            const input = navigationCopy(originalDoc);
+            const navigation = shared;
+            const navSignal = navigation.controller.signal;
+            const navIsCurrent = () =>
+              !navSignal.aborted &&
+              documentNavigation.get(originalDoc) === navigation &&
+              useBookDataStore.getState().booksData[id]?.bookDoc === originalDoc;
+            navigation.start = () => {
+              // All views request this same function after their first paint;
+              // consume it synchronously so only one whole-book build starts.
+              navigation.start = undefined;
+              void (async () => {
+                try {
+                  const freshNav = await computeBookNav(input, {
+                    signal: navSignal,
+                    background: true,
+                  });
+                  if (!navIsCurrent()) return;
+                  if (navSource !== (await appService.getBookNavSource(book))) return;
+                  if (!navIsCurrent()) return;
+                  const staged = navigationCopy(originalDoc);
+                  hydrateBookNav(staged, freshNav);
+                  const owner =
+                    [...navigation.owners].find(
+                      (ownerKey) => get().viewStates[ownerKey]?.isPrimary,
+                    ) ?? navigation.owners.values().next().value;
+                  const latestSettings = owner ? get().viewStates[owner]?.viewSettings : undefined;
+                  await updateToc(
+                    staged,
+                    latestSettings?.sortedTOC ?? false,
+                    latestSettings?.convertChineseVariant ?? 'none',
+                  );
+                  if (!navIsCurrent()) return;
+                  // Publish the complete artifact synchronously. Once committed,
+                  // finish progress refreshes for all surviving views even if
+                  // the initiating view closes during their asynchronous init.
+                  publishNavigation(originalDoc, staged);
+                  navigation.complete = true;
+                  measureReaderPhase('navigation-enhanced', task.started);
+                  const views = get()
+                    .getViewsById(id)
+                    .filter((view) => view?.book === originalDoc);
+                  // Notify sidebars without changing viewerKey or mounting a new renderer.
+                  useBookDataStore.setState((state) => ({
+                    booksData: {
+                      ...state.booksData,
+                      [id]: { ...state.booksData[id]! },
+                    },
+                  }));
+                  await Promise.all(
+                    views.map(async (view) => {
+                      try {
+                        await view.updateTOC?.(staged.toc ?? []);
+                      } catch (error) {
+                        console.warn('Failed to refresh view navigation:', error);
+                      }
+                    }),
+                  );
+                  if (navSource && navIsCurrent()) {
+                    freshNav.source = navSource;
+                    await appService.saveBookNav(book, freshNav);
+                  }
+                } catch (error) {
+                  if (!navSignal.aborted) console.warn('Failed to enhance book navigation:', error);
+                }
+              })();
+            };
+          }
+        }
+        if (!shared.complete) {
+          const navigation = shared;
+          navigation.owners.add(key);
+          signal.addEventListener(
+            'abort',
+            () => {
+              navigation.owners.delete(key);
+              if (!navigation.owners.size) navigation.controller.abort();
+            },
+            { once: true },
+          );
+          task.start = () => afterReaderPaint(signal, () => navigation.start?.());
         }
       }
       await updateToc(
@@ -264,6 +478,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
         config.viewSettings?.sortedTOC ?? false,
         config.viewSettings?.convertChineseVariant ?? 'none',
       );
+      assertNavActive(signal);
       if (!bookDoc.metadata.title && file) {
         bookDoc.metadata.title = getBaseFilename(file.name);
       }
@@ -308,6 +523,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
           [id]: newBookData,
         },
       }));
+      published = true;
       const configViewSettings = config.viewSettings!;
       const globalViewSettings = settings.globalViewSettings;
       set((state) => ({
@@ -332,7 +548,9 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
           },
         },
       }));
+      measureReaderPhase('store-ready', task.started);
     } catch (error) {
+      if (!isCurrent()) return;
       console.error(error);
       set((state) => ({
         viewStates: {
@@ -357,6 +575,23 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
         },
       }));
       throw error;
+    } finally {
+      if (!published) {
+        task.controller.abort();
+        const current = useBookDataStore.getState().booksData[id];
+        try {
+          if (ownedDoc && ownedDoc !== current?.bookDoc) await ownedDoc.destroy?.();
+        } catch (error) {
+          console.warn('Failed to release unopened book:', error);
+        }
+        try {
+          if (ownedFile && ownedFile !== current?.file) await ownedFile.close?.();
+        } catch (error) {
+          console.warn('Failed to release unopened book file:', error);
+        }
+      }
+      finishInitialization();
+      if (initializingBooks.get(id) === initialization) initializingBooks.delete(id);
     }
   },
   getViewSettings: (key: string) => get().viewStates[key]?.viewSettings || null,
@@ -542,7 +777,8 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       },
     })),
 
-  setViewInited: (key: string, inited: boolean) =>
+  setViewInited: (key: string, inited: boolean) => {
+    if (!get().viewStates[key]) return;
     set((state) => ({
       viewStates: {
         ...state.viewStates,
@@ -551,7 +787,18 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
           inited,
         },
       },
-    })),
+    }));
+    if (inited) {
+      const task = navigationTasks.get(key);
+      if (task && !get().viewStates[key]?.loading) {
+        measureReaderPhase('position-restored', task.started);
+        measureReaderPhase('window-to-position', 0);
+      }
+      const start = task?.start;
+      if (task) task.start = undefined;
+      start?.();
+    }
+  },
 
   setPreviewMode: (key: string, previewMode: boolean) =>
     set((state) => ({

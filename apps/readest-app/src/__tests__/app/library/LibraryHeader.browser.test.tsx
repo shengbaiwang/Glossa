@@ -7,6 +7,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 let zh: Record<string, string> = {};
 
 const locale = vi.hoisted(() => ({ chinese: false }));
+const selection = vi.hoisted(() => ({ ids: new Set<string>(), clear: vi.fn() }));
 import '@/styles/globals.css';
 import '@/styles/glossa.css';
 import '@/styles/glossa-library.css';
@@ -37,10 +38,18 @@ vi.mock('@/hooks/useShortcuts', () => ({ default: vi.fn() }));
 vi.mock('@/store/themeStore', () => ({
   useThemeStore: () => ({ safeAreaInsets: { top: 0, right: 0, bottom: 0, left: 0 } }),
 }));
-vi.mock('@/store/libraryStore', () => ({ useLibraryStore: () => ({ currentBookshelf: [] }) }));
+vi.mock('@/store/libraryStore', () => ({
+  useLibraryStore: () => ({
+    currentBookshelf: [],
+    selectedBooks: selection.ids,
+    setSelectedBooks: selection.clear,
+  }),
+}));
 beforeEach(async () => {
   zh = await fetch('/locales/zh-CN/translation.json').then((response) => response.json());
   locale.chinese = false;
+  selection.ids = new Set();
+  selection.clear.mockReset();
   document.documentElement.dataset['page'] = 'library';
   useSettingsStore.setState({
     settings: {
@@ -50,7 +59,6 @@ beforeEach(async () => {
       libraryColumns: 4,
       libraryCoverFit: 'fit',
       libraryListScale: 100,
-      librarySkeuomorphicCovers: false,
       libraryGroupBy: 'none',
       librarySortBy: 'title',
       librarySortByAuto: true,
@@ -74,11 +82,6 @@ function renderToolbar() {
   const view = render(
     <DropdownProvider>
       <LibraryHeader
-        isSelectMode={false}
-        isSelectAll={false}
-        onToggleSelectMode={select}
-        onSelectAll={vi.fn()}
-        onDeselectAll={vi.fn()}
         onImportBooks={vi.fn()}
         onPullLibrary={vi.fn()}
         searchQuery=''
@@ -114,9 +117,7 @@ it('keeps display hierarchy and functional icons legible in light and dark', asy
     expect(
       screen.getByRole('button', { name: 'List', pressed: false }).querySelector('svg'),
     ).toBeTruthy();
-    expect((screen.getByRole('checkbox', { name: '3D covers' }) as HTMLInputElement).checked).toBe(
-      false,
-    );
+    expect(screen.queryByRole('checkbox', { name: '3D covers' })).toBeNull();
     await page.screenshot({
       path: `../../../../../../.glossa-dev/qa/library-display-${theme}.png`,
     });
@@ -157,17 +158,13 @@ it('updates cover and sort preferences in place and reaches global settings from
   await page.viewport(390, 520);
   renderToolbar();
   await userEvent.click(screen.getByRole('button', { name: 'Library Display' }));
-  await userEvent.click(screen.getByRole('checkbox', { name: '3D covers' }));
-  expect((screen.getByRole('checkbox', { name: '3D covers' }) as HTMLInputElement).checked).toBe(
-    true,
-  );
-  await userEvent.click(screen.getByRole('button', { name: 'Sort by' }));
-  await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'author');
+  await userEvent.click(screen.getByRole('button', { name: 'Sort' }));
+  await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Primary sort' }), 'author');
   expect(useSettingsStore.getState().settings.librarySortBy).toBe('author');
-  await userEvent.click(screen.getByRole('button', { name: 'Sort by / Ascending' }));
-  expect(screen.getByRole('button', { name: 'Sort by / Descending' })).toBeTruthy();
+  await userEvent.click(screen.getByRole('button', { name: 'Primary sort / Ascending' }));
+  expect(screen.getByRole('button', { name: 'Primary sort / Descending' })).toBeTruthy();
   expect(
-    screen.getByRole('button', { name: 'Then by... / Ascending' }).hasAttribute('disabled'),
+    screen.getByRole('button', { name: 'Secondary sort / Ascending' }).hasAttribute('disabled'),
   ).toBe(true);
   expect(screen.queryByRole('menuitem', { name: 'Theme & Background' })).toBeNull();
   await userEvent.keyboard('{Escape}');
@@ -199,4 +196,18 @@ it('keeps Chinese controls aligned with touch targets and takes a localized prev
     }
   }
   await page.screenshot({ path: '../../../../../../.glossa-dev/qa/library-display-zh-dark.png' });
+});
+
+it('keeps direct selection actions and display/import within a narrow toolbar', async () => {
+  await page.viewport(320, 680);
+  locale.chinese = true;
+  selection.ids = new Set(['a', 'b']);
+  const { container } = renderToolbar();
+  expect(screen.queryByRole('button', { name: zh['Select All'] })).toBeNull();
+  expect(screen.getByRole('button', { name: zh['Import Books'] })).toBeTruthy();
+  expect(screen.getByRole('button', { name: zh['Library Display'] })).toBeTruthy();
+  expect(container.querySelector('.glossa-library-header')!.scrollWidth).toBeLessThanOrEqual(320);
+  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(innerWidth);
+  await userEvent.click(screen.getByRole('button', { name: zh['Clear Selection'] }));
+  expect(selection.clear).toHaveBeenCalledWith([]);
 });

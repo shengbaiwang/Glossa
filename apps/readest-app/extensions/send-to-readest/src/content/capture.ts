@@ -6,9 +6,7 @@
  * Reduced to a thin shell: grab the rendered `outerHTML` and hand it to
  * the SW on a long-lived Port. The SW runs everything else (Readability
  * extraction, asset bundling, cover generation, TOC, EPUB build) through
- * the shared `convertPageToEpub` in `src/services/send/conversion/`, so
- * an extension-clipped EPUB is byte-identical to a desktop / mobile-
- * clipped EPUB for the same URL.
+ * the shared `convertPageToEpub` in `src/services/send/conversion/`, using the same extraction and packaging rules as application import.
  *
  * We intentionally do NOT scroll the page to materialise lazy-loaded
  * images — the user can see the scroll, and on long pages it's visible
@@ -23,10 +21,10 @@ const LOG = '[send-to-readest]';
 const PORT_NAME = 'send-to-readest:capture';
 
 function snapshot(): PageSnapshot {
-  const sourceUrl =
-    document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href || location.href;
+  const sourceUrl = location.href;
   return {
     sourceUrl,
+    baseUrl: document.baseURI,
     pageTitle: document.title || sourceUrl,
     html: document.documentElement.outerHTML,
   };

@@ -55,3 +55,18 @@ it('concurrent independent display edits merge and late older writes cannot win'
   } as SystemSettings);
   expect(read()).toMatchObject({ libraryCoverWidth: 260, libraryShowAuthor: false });
 });
+
+it('does not keep retired 3D-cover preferences when an older window saves', async () => {
+  const { fs, read } = memory();
+  const old = {
+    ...base(),
+    librarySkeuomorphicCovers: true,
+    libraryDisplayUpdatedAt: { librarySkeuomorphicCovers: 100, libraryCoverWidth: 2 },
+  } as SystemSettings;
+  await saveSettings(fs, old);
+  expect(read()).not.toHaveProperty('librarySkeuomorphicCovers');
+  expect(read().libraryDisplayUpdatedAt).not.toHaveProperty('librarySkeuomorphicCovers');
+  expect(read().libraryCoverWidth).toBe(156);
+  await saveSettings(fs, old);
+  expect(read()).not.toHaveProperty('librarySkeuomorphicCovers');
+});

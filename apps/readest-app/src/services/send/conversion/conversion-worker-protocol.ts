@@ -1,4 +1,5 @@
 import type { ConvertInput } from './convertToEpub';
+import type { ConversionWarning, WebArticleSource } from './types';
 
 export interface ConversionWorkerRequest {
   type: 'convert';
@@ -12,6 +13,8 @@ export interface ConversionWorkerSuccess {
     name: string;
     title: string;
     author: string;
+    source?: WebArticleSource;
+    warnings?: ConversionWarning[];
   };
 }
 

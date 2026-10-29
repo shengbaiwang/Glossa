@@ -66,6 +66,8 @@ fn main() {
             "update_book_presence",
             "clear_book_presence",
             "clip_url",
+            "clip_page",
+            "cancel_clip",
             "spawn_fresh_browser",
             "verify_update_signature",
             "install_nightly_update",

@@ -3,13 +3,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useSpatialNavigation } from '@/app/library/hooks/useSpatialNavigation';
 
-const LibraryNavigation = () => {
+const LibraryNavigation = ({
+  onSelect,
+}: {
+  onSelect?: Parameters<typeof useSpatialNavigation>[1];
+}) => {
   const ref = useRef<HTMLDivElement>(null);
-  useSpatialNavigation(ref);
+  useSpatialNavigation(ref, onSelect);
 
   const card = (title: string, top: number) => (
-    <div role='button' tabIndex={0} aria-label={title} data-layout-top={top} key={title}>
+    <div
+      role='button'
+      tabIndex={0}
+      aria-label={title}
+      data-library-item-id={title}
+      data-layout-top={top}
+      key={title}
+    >
       {title}
+      <span role='button' tabIndex={0} data-inline-edit aria-label={`${title} title`}>
+        Edit title
+      </span>
       <button type='button' aria-label={`${title} details`}>
         Details
       </button>
@@ -132,7 +146,20 @@ describe('library spatial navigation', () => {
     first.focus();
 
     expect(fireEvent.keyDown(first, { key: 'Tab' })).toBe(true);
-    expect(document.querySelectorAll('[role="button"][tabindex="0"]')).toHaveLength(6);
+    expect(document.querySelectorAll('[data-library-item-id][tabindex="0"]')).toHaveLength(6);
     expect(screen.getByRole('button', { name: 'Book one details' }).tabIndex).toBe(0);
   });
+});
+
+it('selects cards rather than inline editors and keeps the full collection range order', () => {
+  const onSelect = vi.fn();
+  render(<LibraryNavigation onSelect={onSelect} />);
+  const first = screen.getByRole('button', { name: 'Book one' });
+  first.focus();
+  fireEvent.keyDown(first, { key: 'ArrowRight', shiftKey: true });
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Book two' }));
+  expect(onSelect.mock.calls).toEqual([
+    ['Book one', { preserve: true }],
+    ['Book two', { range: true, toggle: false }],
+  ]);
 });

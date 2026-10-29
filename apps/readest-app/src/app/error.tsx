@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { parseWebViewInfo } from '@/utils/ua';
-import { handleGlobalError } from '@/utils/error';
+import { handleGlobalError, isChunkLoadError } from '@/utils/error';
 import { GLOSSA_SOURCE_URL } from '@/services/constants';
 
 interface ErrorPageProps {
@@ -28,6 +28,11 @@ export default function ErrorPage({ error, reset }: ErrorPageProps) {
 
   const handleGoHome = () => {
     window.location.href = '/library';
+  };
+
+  const handleRetry = () => {
+    if (isChunkLoadError(error)) window.location.reload();
+    else reset();
   };
 
   const handleGoBack = () => {
@@ -77,7 +82,7 @@ export default function ErrorPage({ error, reset }: ErrorPageProps) {
           </div>
 
           <div className='flex flex-col gap-4'>
-            <button onClick={reset} className='btn btn-primary btn-lg'>
+            <button onClick={handleRetry} className='btn btn-primary btn-lg'>
               <RefreshCw className='me-2 h-5 w-5' />
               {_('Try Again')}
             </button>

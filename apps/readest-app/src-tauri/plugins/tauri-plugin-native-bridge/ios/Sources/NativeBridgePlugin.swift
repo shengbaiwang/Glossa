@@ -568,6 +568,14 @@ extension WebViewLifecycleManager: WKNavigationDelegate {
 }
 
 class NativeBridgePlugin: Plugin {
+  // Main-thread-only task ownership. Rust validates the invoking app window.
+  private var activeClips: [String: ClipUrlController] = [:]
+  private var cancelledClips: [String: Date] = [:]
+
+  private func pruneCancelledClips() {
+    cancelledClips = cancelledClips.filter { Date().timeIntervalSince($0.value) < 60 }
+  }
+
   private var webView: WKWebView?
   private var authSession: ASWebAuthenticationSession?
   private var currentOrientationMask: UIInterfaceOrientationMask = .all
@@ -1602,37 +1610,48 @@ class NativeBridgePlugin: Plugin {
 
   /// Open a hidden-but-visible WKWebView at `url`, capture
   /// `document.documentElement.outerHTML` after the page settles, and
-  /// resolve with `{ html }`. Implements the mobile half of the
+  /// resolve with `{ html, finalUrl, baseUrl }`. Implements the mobile half of the
   /// `clip_url` command — see `clip_url.rs` for the desktop half and
   /// `ClipUrlController.swift` for the actual lifecycle.
   @objc public func clip_url(_ invoke: Invoke) {
     let args: ClipUrlArgs
-    do {
-      args = try invoke.parseArgs(ClipUrlArgs.self)
-    } catch {
-      invoke.reject(error.localizedDescription)
-      return
-    }
+    do { args = try invoke.parseArgs(ClipUrlArgs.self) }
+    catch { invoke.reject(error.localizedDescription); return }
     DispatchQueue.main.async {
-      // Find the topmost view controller to present from. The Tauri
-      // root WKWebView lives in the app's key window — present over
-      // whatever's currently on top of it (e.g., the library page,
-      // a settings sheet) so the user keeps their place after the
-      // controller dismisses.
+      let taskId = args.taskId ?? UUID().uuidString
+      self.pruneCancelledClips()
+      if self.cancelledClips[taskId] != nil { invoke.reject(ClipUrlError.cancelled.message); return }
+      guard self.activeClips[taskId] == nil else { invoke.reject("Capture task already active"); return }
       guard let presenter = topmostViewController() else {
         invoke.reject("Could not find a view controller to present from")
         return
       }
-
       let controller = ClipUrlController(args: args) { result in
+        self.activeClips.removeValue(forKey: taskId)
         switch result {
-        case .success(let html):
-          invoke.resolve(["html": html])
-        case .failure(let err):
-          invoke.reject(err.message)
+        case .success(let page): invoke.resolve(page)
+        case .failure(let err): invoke.reject(err.message)
         }
       }
+      self.activeClips[taskId] = controller
       presenter.present(controller, animated: true)
+    }
+  }
+
+  @objc public func cancel_clip(_ invoke: Invoke) {
+    let args: CancelClipArgs
+    do { args = try invoke.parseArgs(CancelClipArgs.self) }
+    catch { invoke.reject(error.localizedDescription); return }
+    DispatchQueue.main.async {
+      self.pruneCancelledClips()
+      // Remember even an unknown task: cancellation may beat native presentation.
+      if self.cancelledClips.count >= 64,
+         let oldest = self.cancelledClips.min(by: { $0.value < $1.value })?.key {
+        self.cancelledClips.removeValue(forKey: oldest)
+      }
+      self.cancelledClips[args.taskId] = Date()
+      self.activeClips[args.taskId]?.cancelCapture()
+      invoke.resolve()
     }
   }
 

@@ -4,7 +4,7 @@
   "version": "0.2.1",
   "description": "__MSG_app_description__",
   "default_locale": "en",
-  "permissions": ["activeTab", "scripting", "storage", "offscreen"],
+  "permissions": ["activeTab", "scripting", "storage", "offscreen", "downloads"],
   "host_permissions": ["<all_urls>"],
   "action": {
     "default_popup": "popup/popup.html",

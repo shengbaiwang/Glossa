@@ -29,6 +29,8 @@ const ReadingProgress: React.FC<ReadingProgressProps> = memo(
     const _ = useTranslation();
     const progressPercentage = useMemo(() => getProgressPercentage(book), [book]);
     const medianPageDurationSecs = useMedianPageDurationSecs(book.hash) ?? undefined;
+    if (!showProgress) return null;
+
     const minutes = getDisplayedTimeRemaining(book, medianPageDurationSecs);
     const formatTimeLeft = (total: number) => {
       if (total < 60) return _('{{minutes}}m left', { minutes: total });
@@ -58,7 +60,7 @@ const ReadingProgress: React.FC<ReadingProgressProps> = memo(
           role='status'
         >
           <StatusBadge status={book.readingStatus}>{_('On hold')}</StatusBadge>
-          {showProgress && progressPercentage !== null && !Number.isNaN(progressPercentage) && (
+          {progressPercentage !== null && !Number.isNaN(progressPercentage) && (
             <span>{progressPercentage}%</span>
           )}
         </div>
@@ -80,8 +82,6 @@ const ReadingProgress: React.FC<ReadingProgressProps> = memo(
     if (progressPercentage === null || Number.isNaN(progressPercentage)) {
       return <div className='flex justify-start'></div>;
     }
-
-    if (!showProgress) return <span>{_('Reading')}</span>;
 
     return (
       <div

@@ -23,9 +23,7 @@ export interface ClipOptions {
   savedTitle: string;
   background: string;
   foreground: string;
-  /** Interactive mode: show the page with a Cancel/Capture bar instead of
-   *  the opaque overlay, so the user can sign in before capturing. Mobile
-   *  only — the desktop flow ignores it. */
+  /** Show the page with Cancel/Capture controls for sign-in or manual capture. */
   interactive?: boolean;
   signInHint: string;
   captureLabel: string;

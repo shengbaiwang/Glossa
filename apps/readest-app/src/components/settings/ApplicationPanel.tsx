@@ -89,7 +89,7 @@ const ApplicationPanel: React.FC<{ section: 'General' | 'Data' | 'About' | 'Acco
         }
       }
       await appService.saveLibraryBooks(books);
-      setLibrary(books);
+      setLibrary(books, true);
       setProgress(_('{{count}} books refreshed', { count: refreshed }));
     } catch {
       setProgress(_('Failed to refresh metadata'));

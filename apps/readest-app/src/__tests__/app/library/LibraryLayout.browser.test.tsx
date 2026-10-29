@@ -151,7 +151,6 @@ it('uses the same cover stage and metadata baselines for books and groups in bot
         book={books[0]!}
         mode='grid'
         coverFit='fit'
-        isSelectMode={false}
         bookSelected={false}
         transferProgress={null}
         handleBookUpload={vi.fn()}
@@ -159,7 +158,7 @@ it('uses the same cover stage and metadata baselines for books and groups in bot
         showBookDetailsModal={vi.fn()}
         showTimeRemaining={false}
       />
-      <GroupItem mode='grid' group={group} isSelectMode={false} groupSelected={false} />
+      <GroupItem mode='grid' group={group} groupSelected={false} />
     </div>,
   );
   await waitFor(() =>
@@ -182,7 +181,7 @@ it('uses the same cover stage and metadata baselines for books and groups in bot
   );
   rerender(
     <div className='glossa-collection-list'>
-      <GroupItem mode='list' group={group} isSelectMode={false} groupSelected={false} />
+      <GroupItem mode='list' group={group} groupSelected={false} />
     </div>,
   );
   expect(container.querySelectorAll('.glossa-group-stack-cover')).toHaveLength(2);
@@ -201,11 +200,6 @@ function LibraryPreview() {
         <LibraryHeader
           isSidebarVisible={sidebar}
           onToggleSidebar={() => setSidebar(!sidebar)}
-          isSelectMode={false}
-          isSelectAll={false}
-          onToggleSelectMode={vi.fn()}
-          onSelectAll={vi.fn()}
-          onDeselectAll={vi.fn()}
           onImportBooks={vi.fn()}
           onPullLibrary={vi.fn()}
           searchQuery=''
@@ -236,7 +230,6 @@ function LibraryPreview() {
                     book={book}
                     mode='grid'
                     coverFit='crop'
-                    isSelectMode={false}
                     bookSelected={false}
                     transferProgress={null}
                     handleBookUpload={vi.fn()}
@@ -377,11 +370,11 @@ it.each([
   const props = {
     books: [books[0]!],
     coverFit: 'crop' as const,
-    isSelectMode: false,
+
     selectedBooks: new Set<string>(),
     onOpenBook: vi.fn(),
-    toggleSelection: vi.fn(),
-    handleSetSelectMode: vi.fn(),
+    selectItem: vi.fn(),
+
     handleBookUpload: vi.fn(),
     handleBookDownload: vi.fn(),
     showBookDetailsModal: mocks.details,
@@ -421,7 +414,7 @@ it.each([
   expect(getComputedStyle(card).outlineWidth).toBe('2px');
   await userEvent.keyboard('{Enter}');
   expect(props.onOpenBook).toHaveBeenCalledExactlyOnceWith(books[0]);
-  rerender(<RecentShelf {...props} isSelectMode selectedBooks={new Set([books[0]!.hash])} />);
+  rerender(<RecentShelf {...props} selectedBooks={new Set([books[0]!.hash])} />);
   expect(getComputedStyle(card).borderTopColor).not.toBe('rgba(0, 0, 0, 0)');
 });
 
@@ -494,7 +487,6 @@ it('keeps multiple book actions inside a small grid card', async () => {
         book={{ ...books[0]!, uploadedAt: 2, hasNarration: true }}
         mode='grid'
         coverFit='crop'
-        isSelectMode={false}
         bookSelected={false}
         transferProgress={null}
         handleBookUpload={vi.fn()}
@@ -527,7 +519,6 @@ it('keeps mixed fit covers aligned and changes columns with the content width', 
             book={book}
             mode='grid'
             coverFit='fit'
-            isSelectMode={false}
             bookSelected={false}
             transferProgress={null}
             handleBookUpload={vi.fn()}
@@ -548,7 +539,6 @@ it('keeps mixed fit covers aligned and changes columns with the content width', 
             books: [books[0]!],
             updatedAt: 1,
           }}
-          isSelectMode={false}
           groupSelected={false}
         />
       </div>
@@ -556,7 +546,6 @@ it('keeps mixed fit covers aligned and changes columns with the content width', 
         <GroupItem
           mode='grid'
           group={{ id: 'pair', name: 'Pair', displayName: 'Pair', books, updatedAt: 1 }}
-          isSelectMode={true}
           groupSelected={true}
         />
       </div>

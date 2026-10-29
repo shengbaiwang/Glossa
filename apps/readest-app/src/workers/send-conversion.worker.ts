@@ -22,6 +22,8 @@ workerContext.onmessage = async (event: MessageEvent<ConversionWorkerRequest>) =
         name: book.file.name,
         title: book.title,
         author: book.author,
+        source: book.source,
+        warnings: book.warnings,
       },
     };
     workerContext.postMessage(response, [epubBuffer]);

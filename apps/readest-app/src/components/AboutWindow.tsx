@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useTranslation } from '@/hooks/useTranslation';
 import Dialog from './Dialog';
-import AboutContent from './AboutContent';
+
+const AboutContent = lazy(() => import('./AboutContent'));
 
 export const setAboutDialogVisible = (visible: boolean) => {
   const dialog = document.getElementById('about_window');
@@ -47,7 +48,11 @@ export const AboutWindow = () => {
       onClose={handleClose}
       boxClassName='sm:!w-[480px] sm:!max-w-screen-sm sm:h-auto'
     >
-      {isOpen && <AboutContent />}
+      {isOpen && (
+        <Suspense fallback={null}>
+          <AboutContent />
+        </Suspense>
+      )}
     </Dialog>
   );
 };

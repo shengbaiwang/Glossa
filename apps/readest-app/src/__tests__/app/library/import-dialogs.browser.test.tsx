@@ -152,3 +152,78 @@ it('updates individual completions and keeps an interrupted import available for
   await userEvent.click(screen.getByRole('button', { name: '重试' }));
   expect(retry).toHaveBeenCalledOnce();
 });
+
+it.each(
+  fixtures,
+)('keeps webpage recovery and partial-success feedback compact in $theme/$width/$dir', async (fixture) => {
+  await page.viewport(fixture.width, 720);
+  document.documentElement.setAttribute('data-theme', fixture.theme);
+  document.documentElement.dir = fixture.dir;
+  document.documentElement.setAttribute('data-eink', String(fixture.eink));
+  const close = vi.fn();
+  render(
+    <ImportFromUrlDialog
+      isOpen
+      onClose={close}
+      onSubmit={async (_url, signal, _stage, feedback) => {
+        const accepted = await feedback.onRecovery?.(
+          { code: 'parse_failed', message: 'Original fixture' },
+          signal,
+        );
+        if (accepted)
+          feedback.onWarnings?.([
+            { code: 'missing_assets', count: 2 },
+            { code: 'partial_content' },
+          ]);
+      }}
+    />,
+  );
+  await userEvent.fill(screen.getByRole('textbox'), 'https://example.org/original-article');
+  await userEvent.click(screen.getByRole('button', { name: '导入' }));
+  const recover = await screen.findByRole('button', { name: '打开原页继续导入' });
+  for (const state of ['recovery', 'warnings']) {
+    if (state === 'warnings') {
+      await userEvent.click(recover);
+      await screen.findByText('已导入，部分图片未能保存。');
+    }
+    const surface = document.querySelector('.glossa-import-dialog')!;
+    const rect = surface.getBoundingClientRect();
+    expect(rect.width).toBeLessThanOrEqual(Math.min(fixture.width, 480));
+    expect(rect.height).toBeLessThan(360);
+    expect(surface.scrollWidth).toBeLessThanOrEqual(surface.clientWidth);
+    await page.screenshot({
+      path: `../../../../../../.glossa-dev/qa/web-import-20261029/${state}-${fixture.theme}-${fixture.width}-${fixture.dir}.png`,
+    });
+  }
+  expect(close).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole('button', { name: '完成' }));
+  expect(close).toHaveBeenCalledOnce();
+});
+
+it.each(fixtures)('fits the abstract and PDF choice in $theme/$width/$dir', async (fixture) => {
+  await page.viewport(fixture.width, 720);
+  document.documentElement.setAttribute('data-theme', fixture.theme);
+  document.documentElement.dir = fixture.dir;
+  document.documentElement.setAttribute('data-eink', String(fixture.eink));
+  const close = vi.fn();
+  render(
+    <ImportFromUrlDialog
+      isOpen
+      onClose={close}
+      onSubmit={async (_url, signal, _stage, feedback) => {
+        await feedback.onFullText?.('https://example.org/original.pdf', signal);
+      }}
+    />,
+  );
+  await userEvent.fill(screen.getByRole('textbox'), 'https://example.org/original-abstract');
+  await userEvent.click(screen.getByRole('button', { name: '导入' }));
+  await screen.findByText('此网页仅含摘要，提供了全文 PDF 链接。');
+  const surface = document.querySelector('.glossa-import-dialog')!;
+  expect(surface.scrollWidth).toBeLessThanOrEqual(surface.clientWidth);
+  expect(surface.getBoundingClientRect().height).toBeLessThan(360);
+  await page.screenshot({
+    path: `../../../../../../.glossa-dev/qa/web-import-20261029/abstract-${fixture.theme}-${fixture.width}-${fixture.dir}.png`,
+  });
+  await userEvent.click(screen.getByRole('button', { name: '导入摘要' }));
+  await waitFor(() => expect(close).toHaveBeenCalledOnce());
+});

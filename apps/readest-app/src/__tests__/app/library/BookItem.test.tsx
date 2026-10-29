@@ -46,7 +46,6 @@ function renderBook(overrides: Partial<Book> = {}) {
       book={item}
       mode='grid'
       coverFit='crop'
-      isSelectMode={false}
       bookSelected={false}
       transferProgress={null}
       handleBookUpload={mocks.upload}
@@ -121,12 +120,27 @@ it('uses the configured personal cloud without requiring an app account', () => 
   expect(mocks.login).not.toHaveBeenCalled();
 });
 
-it('hides optional author and progress without losing title, status editing or details', () => {
+it.each([
+  undefined,
+  'unread',
+  'finished',
+  'abandoned',
+] as const)('hides optional progress and %s status while keeping title and details', (readingStatus) => {
   mocks.display = { libraryShowAuthor: false, libraryShowProgress: false };
-  renderBook({ progress: [1, 4] });
+  renderBook({ progress: [1, 4], readingStatus });
   expect(screen.getByText(book.title)).toBeTruthy();
   expect(screen.queryByText(book.author)).toBeNull();
   expect(screen.queryByText('25%')).toBeNull();
-  expect(screen.getByRole('button', { name: 'Reading Status' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Reading Status' })).toBeNull();
+  for (const label of ['Unread', 'Finished', 'On hold', 'Reading']) {
+    expect(screen.queryByText(label)).toBeNull();
+  }
   expect(screen.getByRole('button', { name: 'Show Book Details' })).toBeTruthy();
+});
+
+it('does not show the unread fallback for books with no progress when progress is disabled', () => {
+  mocks.display = { libraryShowProgress: false };
+  renderBook();
+  expect(screen.queryByText('Unread')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Reading Status' })).toBeNull();
 });

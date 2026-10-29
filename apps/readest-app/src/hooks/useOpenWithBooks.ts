@@ -96,7 +96,8 @@ export function useOpenWithBooks() {
       let library = useLibraryStore.getState().library;
       if (!libraryLoaded) {
         library = await appService.loadLibraryBooks();
-        setLibrary(library);
+        setLibrary(library, true);
+        library = useLibraryStore.getState().library;
       }
       const bookIds: string[] = [];
       let libraryMutated = false;

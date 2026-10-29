@@ -28,6 +28,8 @@ import {
   getMetadataHash,
 } from '@/utils/book';
 import type { BookNav } from '@/services/nav';
+import { getBookNavSource } from './navCacheSource';
+export { getBookNavSource } from './navCacheSource';
 import { partialMD5, md5 } from '@/utils/md5';
 import { getBaseFilename, getFilename, getFolderImportGroupName } from '@/utils/path';
 import { BookDoc, DocumentLoader } from '@/libs/document';
@@ -917,6 +919,7 @@ async function prepareBookImport(
         groupName: options.initialGroup?.name,
         groupUpdatedAt: options.initialGroup ? Date.now() : undefined,
         tags: options.initialTags,
+        webSource: options.initialWebSource,
         createdAt: existingBook ? existingBook.createdAt : Date.now(),
         uploadedAt: existingBook ? existingBook.uploadedAt : null,
         deletedAt: transient ? Date.now() : null,
@@ -1439,13 +1442,70 @@ export async function saveBookConfig(
   if (config.booknotes) bookNoteEdits.delete(config.booknotes);
 }
 
+const isNavObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const isNavNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0;
+
+const isNavLocation = (value: unknown): boolean =>
+  value === undefined ||
+  (isNavObject(value) &&
+    isNavNumber(value['current']) &&
+    isNavNumber(value['next']) &&
+    isNavNumber(value['total']));
+
+const isNavItems = (value: unknown, fragments = false, depth = 0): boolean => {
+  // The hydrator and TOC consumers recurse, so a damaged cache must not supply
+  // a hierarchy deep enough to exhaust their call stacks.
+  if (!Array.isArray(value) || depth > 128) return false;
+  return value.every((item: unknown) => {
+    if (!isNavObject(item)) return false;
+    const { href, location, cfi, id, size, linear, label, index, subitems } = item;
+    if (!isNavLocation(location)) return false;
+    // EPUB navigation may contain plain grouping labels with a null href.
+    if (typeof href !== 'string' && (fragments || href != null)) return false;
+    if (cfi !== undefined && typeof cfi !== 'string') return false;
+    if (fragments) {
+      if (
+        typeof id !== 'string' ||
+        typeof cfi !== 'string' ||
+        !/^epubcfi\(.+\)$/.test(cfi) ||
+        !isNavNumber(size) ||
+        (linear !== undefined && typeof linear !== 'string')
+      )
+        return false;
+      return item['fragments'] === undefined || isNavItems(item['fragments'], true, depth + 1);
+    }
+    if (
+      typeof label !== 'string' ||
+      (id !== undefined && !isNavNumber(id)) ||
+      (index !== undefined && !isNavNumber(index))
+    )
+      return false;
+    return subitems === undefined || isNavItems(subitems, false, depth + 1);
+  });
+};
+
+const isBookNavArtifact = (value: unknown): value is BookNav =>
+  isNavObject(value) &&
+  isNavNumber(value['version']) &&
+  typeof value['source'] === 'string' &&
+  isNavItems(value['toc']) &&
+  isNavObject(value['sections']) &&
+  Object.entries(value['sections']).every(
+    ([id, section]) =>
+      isNavObject(section) && section['id'] === id && isNavItems(section['fragments'], true),
+  );
+
 export async function loadBookNav(fs: FileSystem, book: Book): Promise<BookNav | null> {
   try {
     const path = getBookNavFilename(book);
     if (!(await fs.exists(path, 'Books'))) return null;
     const str = (await fs.readFile(path, 'Books', 'text')) as string;
-    const parsed = JSON.parse(str) as BookNav;
-    if (!parsed || typeof parsed.version !== 'number') return null;
+    const parsed: unknown = JSON.parse(str);
+    if (!isBookNavArtifact(parsed)) return null;
+    if (parsed.source !== (await getBookNavSource(fs, book))) return null;
     return parsed;
   } catch {
     return null;
@@ -1453,9 +1513,13 @@ export async function loadBookNav(fs: FileSystem, book: Book): Promise<BookNav |
 }
 
 export async function saveBookNav(fs: FileSystem, book: Book, nav: BookNav): Promise<void> {
-  await withBookDataWrite(book.hash, book.removal?.revision ?? 0, () =>
-    fs.writeFile(getBookNavFilename(book), 'Books', JSON.stringify(nav)),
-  );
+  // The caller captures this before parsing/building. Never bless old output
+  // with the source that happens to exist when the delayed write finally runs.
+  if (!nav.source) return;
+  await withBookDataWrite(book.hash, book.removal?.revision ?? 0, async () => {
+    if (nav.source !== (await getBookNavSource(fs, book))) return;
+    await fs.writeFile(getBookNavFilename(book), 'Books', JSON.stringify(nav));
+  });
 }
 
 export async function fetchBookDetails(

@@ -183,8 +183,8 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
       </div>
 
       {viewMode === 'grid' && (
-        <div role='group' aria-label={_('Book Covers')} className='glossa-library-cover-options'>
-          <div className='glossa-library-menu-heading'>{_('Book Covers')}</div>
+        <div role='group' aria-label={_('Cover display')} className='glossa-library-cover-options'>
+          <div className='glossa-library-menu-heading'>{_('Cover display')}</div>
           <div className='glossa-library-display-options'>
             {coverFitOptions.map((option) => (
               <button
@@ -198,20 +198,10 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
               </button>
             ))}
           </div>
-          <label className='glossa-library-display-toggle'>
-            <span>{_('3D covers')}</span>
-            <Toggle
-              className='toggle-sm'
-              checked={settings.librarySkeuomorphicCovers}
-              onChange={() =>
-                setPreference('librarySkeuomorphicCovers', !settings.librarySkeuomorphicCovers)
-              }
-            />
-          </label>
         </div>
       )}
       <hr aria-hidden='true' className='border-base-200 my-1' />
-      <MenuItem label={_('Book information')} Icon={<Info size={16} />} detailsOpen={false}>
+      <MenuItem label={_('Card information')} Icon={<Info size={16} />} detailsOpen={false}>
         <div className='glossa-library-info-options'>
           <label className='glossa-library-display-toggle'>
             <span>{_('Author')}</span>
@@ -236,7 +226,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
         </div>
       </MenuItem>
       <label className='glossa-library-display-toggle'>
-        <span>{_('Show recent reading')}</span>
+        <span>{_('Recent reading')}</span>
         <Toggle
           className='toggle-sm'
           checked={settings.libraryRecentShelfEnabled}
@@ -246,12 +236,12 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
         />
       </label>
       <hr aria-hidden='true' className='border-base-200 my-1' />
-      <MenuItem label={_('Sort by')} Icon={<ListOrdered size={16} />} detailsOpen={false}>
+      <MenuItem label={_('Sort')} Icon={<ListOrdered size={16} />} detailsOpen={false}>
         <div className='glossa-library-sort-options'>
-          <div role='group' aria-label={_('Sort by')} className='glossa-library-sort-row'>
-            <span className='glossa-library-sort-label'>{_('Sort by')}</span>
+          <div role='group' aria-label={_('Primary sort')} className='glossa-library-sort-row'>
+            <span className='glossa-library-sort-label'>{_('Primary sort')}</span>
             <SettingsSelect
-              ariaLabel={_('Sort by')}
+              ariaLabel={_('Primary sort')}
               value={primaryEffective}
               options={sortByOptions.map((option) => ({
                 ...option,
@@ -265,17 +255,17 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
             <button
               type='button'
               className='glossa-menu-item glossa-library-sort-direction'
-              aria-label={`${_('Sort by')} / ${isAscending ? _('Ascending') : _('Descending')}`}
+              aria-label={`${_('Primary sort')} / ${isAscending ? _('Ascending') : _('Descending')}`}
               onClick={() => handleSetSortAscending(!isAscending)}
             >
               {isAscending ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
               <span>{isAscending ? _('Ascending') : _('Descending')}</span>
             </button>
           </div>
-          <div role='group' aria-label={_('Then by...')} className='glossa-library-sort-row'>
-            <span className='glossa-library-sort-label'>{_('Then by...')}</span>
+          <div role='group' aria-label={_('Secondary sort')} className='glossa-library-sort-row'>
+            <span className='glossa-library-sort-label'>{_('Secondary sort')}</span>
             <SettingsSelect
-              ariaLabel={_('Then by...')}
+              ariaLabel={_('Secondary sort')}
               value={secondaryEffective}
               options={thenSortByOptions.map((option) => ({
                 ...option,
@@ -291,7 +281,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ setIsDropdownOpen }) => {
             <button
               type='button'
               className='glossa-menu-item glossa-library-sort-direction'
-              aria-label={`${_('Then by...')} / ${isThenAscending ? _('Ascending') : _('Descending')}`}
+              aria-label={`${_('Secondary sort')} / ${isThenAscending ? _('Ascending') : _('Descending')}`}
               disabled={secondaryEffective === 'none'}
               onClick={() => handleSetThenSortAscending(!isThenAscending)}
             >

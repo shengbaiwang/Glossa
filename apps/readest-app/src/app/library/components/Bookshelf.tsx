@@ -28,6 +28,14 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { removalScope } from '@/services/appBookRemoval';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useLibraryFolders } from '../hooks/useLibraryFolders';
+import { useLibraryClipboard } from '../hooks/useLibraryClipboard';
+import { useLibraryItemDrop } from '../hooks/useLibraryItemDrop';
+import {
+  captureCurrentLibraryTransfer,
+  cutLibraryItems,
+  useLibraryTransfer,
+  type LibraryTransfer,
+} from '../utils/libraryTransfer';
 import { useLibraryBookEdits } from '../hooks/useLibraryBookEdits';
 import { useLibraryMarquee } from '../hooks/useLibraryMarquee';
 import FolderToolbar from './FolderToolbar';
@@ -54,6 +62,7 @@ import {
 } from '../utils/libraryUtils';
 import { eventDispatcher } from '@/utils/event';
 
+import { resolveLibrarySelection, type LibrarySelectionOptions } from '../utils/librarySelection';
 import { useSpatialNavigation } from '../hooks/useSpatialNavigation';
 import type { RemovalResult } from '@/services/bookRemovalService';
 import DeleteConfirmAlert from '@/components/DeleteConfirmAlert';
@@ -72,9 +81,6 @@ export interface ContentSearchRequest {
 
 interface BookshelfProps {
   libraryBooks: Book[];
-  isSelectMode: boolean;
-  isSelectAll: boolean;
-  isSelectNone: boolean;
   onScrollerRef: (el: HTMLDivElement | null) => void;
   handleImportBooks: (anchor: HTMLElement) => void;
   renderGroupNavigation?: (openMenu: (anchor: HTMLElement) => void) => React.ReactNode;
@@ -89,7 +95,6 @@ interface BookshelfProps {
   ) => Promise<RemovalResult>;
   handleBookDelete: (book: Book, signal?: AbortSignal) => Promise<boolean>;
   handleBookPurge?: (book: Book, syncBooks?: boolean) => Promise<boolean>;
-  handleSetSelectMode: (selectMode: boolean) => void;
   handleShowDetailsBook: (book: Book) => void;
   handleLibraryNavigation: (targetGroup: string) => void;
   handlePushLibrary: () => Promise<void>;
@@ -119,9 +124,7 @@ type BookshelfListContext = {
   libraryTitle: string | null;
   onGroupMenu?: (element: HTMLElement) => void;
   /**
-   * Height (px) of the trailing Footer spacer. Defaults to the baseline
-   * breathing room, but grows to clear the fixed select-mode action bar so the
-   * last book can scroll above it instead of hiding behind it (#5175).
+   * Trailing breathing room below the last book.
    */
   footerHeight: number;
 };
@@ -217,9 +220,6 @@ const LIST_VIRTUOSO_COMPONENTS: Components<unknown, BookshelfListContext> = {
 
 const Bookshelf: React.FC<BookshelfProps> = ({
   libraryBooks,
-  isSelectMode,
-  isSelectAll,
-  isSelectNone,
   onScrollerRef,
   handleImportBooks,
   renderGroupNavigation,
@@ -227,7 +227,6 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   handleBookDownload,
   handleBookDelete,
   onRemoveBooks,
-  handleSetSelectMode,
   handleShowDetailsBook,
   handleLibraryNavigation,
   handlePushLibrary,
@@ -263,21 +262,22 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   useEffect(() => () => deletionController.current?.abort(), []);
   const isImportingBook = useRef(false);
   const autofocusRef = useAutoFocus<HTMLDivElement>();
-  useSpatialNavigation(autofocusRef);
 
   const { setCurrentBookshelf, setLibrary } = useLibraryStore();
-  const { setSelectedBooks, getSelectedBooks, toggleSelectedBook } = useLibraryStore();
+  const { setSelectedBooks, getSelectedBooks } = useLibraryStore();
   // The raw Set from the store: its identity only changes when the selection
   // does, so memos keyed on it stay stable across unrelated re-renders
   // (getSelectedBooks() allocates a fresh array per call).
   const { selectedBooks: selectedBookSet } = useLibraryStore();
   const { getGroupName } = useLibraryStore();
   const folders = useLibraryFolders();
+  const clipboard = useLibraryClipboard(folders);
   const bookEdits = useLibraryBookEdits();
   useEffect(() => {
     bookEdits.clearUndo();
   }, [folders.revision, bookEdits.clearUndo]);
   const [creatingFolder, setCreatingFolder] = useState<string | null>(null);
+  const [creatingWithItems, setCreatingWithItems] = useState<LibraryTransfer | null>(null);
   const [folderMenu, setFolderMenu] = useState<{ x: number; y: number } | null>(null);
   const [deletingFolder, setDeletingFolder] = useState<string | null>(null);
   const removeFolder = async (path: string) => {
@@ -291,7 +291,16 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     return folders.remove(path);
   };
   const createFolder = async (parent: string, name: string) => {
-    const path = await folders.create(parent, name);
+    const path = creatingWithItems
+      ? await folders.createWithItems(parent, name, creatingWithItems)
+      : await folders.create(parent, name);
+    if (path && creatingWithItems && groupBy !== LibraryGroupByType.Group) {
+      const params = new URLSearchParams(window.location.search);
+      params.set('groupBy', LibraryGroupByType.Group);
+      params.set('group', parent ? md5Fingerprint(parent) : '');
+      params.delete('q');
+      navigateToLibrary(router, params.toString());
+    }
     return path;
   };
   const renameFolder = async (path: string, name: string) => {
@@ -333,6 +342,14 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       : undefined;
   const manualGroupName =
     groupBy === LibraryGroupByType.Group ? (getGroupName(groupId) ?? remappedGroup) : undefined;
+  const beginCreateWithItems = () => {
+    if (folders.busy) return;
+    const snapshot = captureCurrentLibraryTransfer(getSelectedBooks());
+    if (!snapshot) return;
+    folders.clearError();
+    setCreatingWithItems(snapshot);
+    setCreatingFolder(manualGroupName ?? '');
+  };
   const currentShelfBooks = useMemo(
     () => resolveCurrentShelfBooks(libraryBooks, groupBy, groupId, manualGroupName),
     [libraryBooks, groupBy, groupId, manualGroupName],
@@ -499,25 +516,35 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   }, [currentShelfBooks, setCurrentBookshelf]);
 
   const selectionAnchor = useRef<string | null>(null);
-  const toggleSelection = useCallback(
-    (id: string, range = false) => {
-      const ids = sortedBookshelfItems.map((item) => ('hash' in item ? item.hash : item.id));
-      const from = selectionAnchor.current ? ids.indexOf(selectionAnchor.current) : -1;
-      const to = ids.indexOf(id);
-      if (range && from >= 0 && to >= 0)
-        setSelectedBooks([
-          ...new Set([
-            ...getSelectedBooks(),
-            ...ids.slice(Math.min(from, to), Math.max(from, to) + 1),
-          ]),
-        ]);
-      else {
-        toggleSelectedBook(id);
-        selectionAnchor.current = id;
-      }
+  useEffect(() => {
+    if (!selectedBookSet.size) selectionAnchor.current = null;
+  }, [selectedBookSet]);
+  const selectItem = useCallback(
+    (id: string, options: LibrarySelectionOptions = {}) => {
+      const order =
+        options.order ?? sortedBookshelfItems.map((item) => ('hash' in item ? item.hash : item.id));
+      const next = resolveLibrarySelection(
+        getSelectedBooks(),
+        selectionAnchor.current,
+        id,
+        order,
+        options,
+      );
+      selectionAnchor.current = next.anchor;
+      setSelectedBooks(next.selected);
     },
-    [sortedBookshelfItems, toggleSelectedBook, setSelectedBooks, getSelectedBooks],
+    [sortedBookshelfItems, setSelectedBooks, getSelectedBooks],
   );
+  const clearSelection = useCallback(() => {
+    selectionAnchor.current = null;
+    setSelectedBooks([]);
+  }, [setSelectedBooks]);
+  useSpatialNavigation(autofocusRef, selectItem);
+
+  // Navigation starts a fresh selection; progress refreshes preserve it.
+  useEffect(() => {
+    clearSelection();
+  }, [groupId, groupBy, queryTerm, clearSelection]);
 
   // Only explicitly selected book identities are removed; groups never expand here.
   const getBooksToDelete = () => {
@@ -609,21 +636,6 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   };
 
   useEffect(() => {
-    if (isSelectMode) {
-      if (isSelectAll) {
-        setSelectedBooks(
-          currentBookshelfItems.map((item) => ('hash' in item ? item.hash : item.id)),
-        );
-      } else if (isSelectNone) {
-        setSelectedBooks([]);
-      }
-    } else {
-      setSelectedBooks([]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSelectMode, isSelectAll, isSelectNone, currentBookshelfItems]);
-
-  useEffect(() => {
     eventDispatcher.on('delete-books', handleDeleteBooksIntent);
     return () => {
       eventDispatcher.off('delete-books', handleDeleteBooksIntent);
@@ -639,9 +651,11 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     };
     eventDispatcher.on('library-move-selection', move);
     eventDispatcher.on('library-delete-selection', remove);
+    eventDispatcher.on('library-create-from-selection', beginCreateWithItems);
     return () => {
       eventDispatcher.off('library-move-selection', move);
       eventDispatcher.off('library-delete-selection', remove);
+      eventDispatcher.off('library-create-from-selection', beginCreateWithItems);
     };
   });
 
@@ -651,6 +665,29 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const selectionRootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLElement | null>(null);
   const [scroller, setScroller] = useState<HTMLElement | null>(null);
+  useLibraryItemDrop({
+    root: autofocusRef,
+    scroller: scrollRef,
+    name: 'shelf',
+    disabled:
+      folders.busy || loading || creatingFolder !== null || showDeleteAlert || showGroupingModal,
+    move: folders.moveItems,
+    hover: (path) => {
+      if (path === (manualGroupName ?? '')) return;
+      const origin = groupId;
+      const top = scrollRef.current?.scrollTop ?? 0;
+      const selection = getSelectedBooks();
+      handleLibraryNavigation(path ? md5Fingerprint(path) : '');
+      return () => {
+        handleLibraryNavigation(origin);
+        requestAnimationFrame(() => {
+          if (scrollRef.current) scrollRef.current.scrollTop = top;
+          setSelectedBooks(captureCurrentLibraryTransfer(selection) ? selection : []);
+          autofocusRef.current?.focus();
+        });
+      };
+    },
+  });
   const [initialize, osInstance] = useOverlayScrollbars({
     defer: true,
     options: { scrollbars: { autoHide: 'scroll' } },
@@ -675,6 +712,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const handleScrollerRef = useCallback(
     (el: HTMLElement | Window | null) => {
       const div = el instanceof HTMLElement ? el : null;
+      if (div) div.setAttribute('data-library-scroll', '');
       scrollRef.current = div;
       setScroller(div);
       onScrollerRef(div as HTMLDivElement | null);
@@ -684,17 +722,16 @@ const Bookshelf: React.FC<BookshelfProps> = ({
 
   const selectedBooks = getSelectedBooks();
 
-  // Bulk download (#5244): a selected group stands in for every book it shows,
-  // which is how a 300-book folder gets onto a new device in one action. Only
-  // worth computing while the select-mode bar is up.
-  const downloadableBooks = isSelectMode
-    ? selectDownloadableBooks(selectedBooks, sortedBookshelfItems, filteredBooks)
-    : [];
+  // Selected groups stand in for their books when downloading from a cloud badge.
+  const downloadableBooks =
+    selectedBooks.length > 0
+      ? selectDownloadableBooks(selectedBooks, sortedBookshelfItems, filteredBooks)
+      : [];
 
   const downloadSelectedBooks = async () => {
     const books = downloadableBooks;
     if (books.length === 0) return;
-    handleSetSelectMode(false);
+    clearSelection();
     // One summary up front rather than a toast per book: the Readest Cloud
     // path returns as soon as each book is queued, but a file backend
     // actually fetches them, and either way the user needs immediate feedback
@@ -759,8 +796,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   );
 
   // A top-level quick-resume strip: hidden while searching, inside a group, or
-  // when nothing has been read yet. It stays up in select mode so shelf books
-  // can be selected in place, just like the grid.
+  // when nothing has been read yet. Selection is shared with the main collection.
   const showRecentShelf =
     settings.libraryRecentShelfEnabled && !queryTerm && !groupId && recentBooks.length > 0;
 
@@ -770,11 +806,9 @@ const Bookshelf: React.FC<BookshelfProps> = ({
         <RecentShelf
           books={recentBooks}
           coverFit={coverFit as LibraryCoverFitType}
-          isSelectMode={isSelectMode}
           selectedBooks={selectedBookSet}
           onOpenBook={openRecentBook}
-          toggleSelection={toggleSelection}
-          handleSetSelectMode={handleSetSelectMode}
+          selectItem={selectItem}
           handleBookUpload={handleBookUpload}
           handleBookDownload={downloadFromCard}
           showBookDetailsModal={handleShowDetailsBook}
@@ -788,11 +822,9 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       showRecentShelf,
       recentBooks,
       coverFit,
-      isSelectMode,
       selectedBookSet,
       openRecentBook,
-      toggleSelection,
-      handleSetSelectMode,
+      selectItem,
       handleBookUpload,
       handleBookDownload,
       handleShowDetailsBook,
@@ -862,10 +894,9 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           item={item}
           mode={viewMode as LibraryViewModeType}
           coverFit={coverFit as LibraryCoverFitType}
-          isSelectMode={isSelectMode}
           itemSelected={itemSelected}
           setLoading={setLoading}
-          toggleSelection={toggleSelection}
+          selectItem={selectItem}
           handleGroupBooks={groupSelectedBooks}
           handleRenameFolder={groupBy === LibraryGroupByType.Group ? renameFolder : undefined}
           handleRemoveFolder={groupBy === LibraryGroupByType.Group ? removeFolder : undefined}
@@ -874,10 +905,17 @@ const Bookshelf: React.FC<BookshelfProps> = ({
             groupBy === LibraryGroupByType.Group ? () => void folders.undo() : undefined
           }
           canUndoFolder={folders.canUndo}
+          handleRedoFolder={
+            groupBy === LibraryGroupByType.Group ? () => void folders.redo() : undefined
+          }
+          canRedoFolder={folders.canRedo}
+          handlePasteFolder={
+            groupBy === LibraryGroupByType.Group ? (path) => void clipboard.paste(path) : undefined
+          }
+          canPasteFolder={clipboard.canPaste}
           handleBookUpload={handleBookUpload}
           handleBookDownload={downloadFromCard}
           handleBookDelete={handleBookDelete}
-          handleSetSelectMode={handleSetSelectMode}
           handleShowDetailsBook={handleShowDetailsBook}
           handleLibraryNavigation={handleLibraryNavigation}
           handleUpdateReadingStatus={handleUpdateReadingStatus}
@@ -895,13 +933,11 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       selectedBooks,
       viewMode,
       coverFit,
-      isSelectMode,
       booksTransferProgress,
-      toggleSelection,
+      selectItem,
       handleBookUpload,
       handleBookDownload,
       handleBookDelete,
-      handleSetSelectMode,
       handleShowDetailsBook,
       handleLibraryNavigation,
       handleUpdateReadingStatus,
@@ -910,6 +946,8 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       groupBy,
       renameFolder,
       folders.canUndo,
+      folders.canRedo,
+      clipboard,
       folders.revision,
       folders.remove,
     ],
@@ -928,10 +966,8 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     root: selectionRootRef,
     scroller: scrollRef,
     selected: selectedBooks,
-    selecting: isSelectMode,
     enabled: !appService?.isMobile && !contentSearch?.query.trim() && !loading,
     onSelect: setSelectedBooks,
-    onMode: handleSetSelectMode,
   });
 
   return (
@@ -941,21 +977,27 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       role='main'
       aria-label={_('Bookshelf')}
       className='bookshelf glossa-bookshelf flex min-h-0 flex-grow flex-col focus:outline-none'
+      data-library-folder-path={
+        (groupBy === LibraryGroupByType.Group || groupBy === LibraryGroupByType.None) &&
+        !queryTerm &&
+        !contentSearch
+          ? (manualGroupName ?? '')
+          : undefined
+      }
       onClick={(event) => {
         if (
-          isSelectMode &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          !event.shiftKey &&
           !(event.target as HTMLElement).closest(
             '[data-book-hash], [data-group-name], button, input, form, [role="menu"], [role="dialog"]',
           )
         ) {
-          setSelectedBooks([]);
-          handleSetSelectMode(false);
+          clearSelection();
         }
       }}
       onContextMenu={(event) => {
         if (
-          groupBy !== LibraryGroupByType.Group ||
-          queryTerm ||
           (event.target as HTMLElement).closest(
             '[data-group-name], [data-book-hash], button, input, form',
           )
@@ -967,19 +1009,46 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       onKeyDown={(event) => {
         if ((event.target as HTMLElement).closest('input, textarea, [contenteditable="true"]'))
           return;
-        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
+        const command = event.metaKey || event.ctrlKey;
+        const key = event.key.toLowerCase();
+        if (command && key === 'x' && getSelectedBooks().length) {
           event.preventDefault();
-          handleSetSelectMode(true);
-          setSelectedBooks(
-            currentBookshelfItems.map((item) => ('hash' in item ? item.hash : item.id)),
-          );
+          cutLibraryItems(getSelectedBooks());
           return;
         }
         if (
-          isSelectMode &&
-          (event.key === 'Delete' || event.key === 'Backspace') &&
-          getSelectedBooks().length
+          command &&
+          key === 'v' &&
+          clipboard.clipboard &&
+          (groupBy === LibraryGroupByType.Group || groupBy === LibraryGroupByType.None)
         ) {
+          event.preventDefault();
+          void clipboard.paste(manualGroupName ?? '');
+          return;
+        }
+        if (command && event.altKey && key === 'n' && getSelectedBooks().length) {
+          event.preventDefault();
+          beginCreateWithItems();
+          return;
+        }
+        if (
+          command &&
+          ((key === 'z' && event.shiftKey) || (key === 'y' && event.ctrlKey)) &&
+          folders.canRedo &&
+          !folders.busy
+        ) {
+          event.preventDefault();
+          void folders.redo();
+          return;
+        }
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
+          event.preventDefault();
+          setSelectedBooks(
+            sortedBookshelfItems.map((item) => ('hash' in item ? item.hash : item.id)),
+          );
+          return;
+        }
+        if ((event.key === 'Delete' || event.key === 'Backspace') && getSelectedBooks().length) {
           event.preventDefault();
           void deleteSelectedBooks();
           return;
@@ -1004,10 +1073,11 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           void bookEdits.undo();
           return;
         }
-        if (event.key === 'Escape' && isSelectMode) {
+        if (event.key === 'Escape' && (getSelectedBooks().length || clipboard.clipboard)) {
           event.preventDefault();
           event.stopPropagation();
-          handleSetSelectMode(false);
+          clearSelection();
+          useLibraryTransfer.setState({ clipboard: undefined });
           return;
         }
         if (
@@ -1019,7 +1089,8 @@ const Bookshelf: React.FC<BookshelfProps> = ({
         ) {
           event.preventDefault();
           folders.clearError();
-          setCreatingFolder('');
+          setCreatingWithItems(null);
+          setCreatingFolder(manualGroupName ?? '');
           return;
         }
         if (
@@ -1044,7 +1115,9 @@ const Bookshelf: React.FC<BookshelfProps> = ({
         const rect = element.getBoundingClientRect();
         setFolderMenu({ x: rect.left, y: rect.bottom });
       })}
-      {groupBy === LibraryGroupByType.Group && !queryTerm && (
+      {(creatingFolder !== null ||
+        folders.error ||
+        (groupBy === LibraryGroupByType.Group && !queryTerm)) && (
         <FolderToolbar
           parent={creatingFolder ?? manualGroupName ?? ''}
           {...folders}
@@ -1052,6 +1125,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           active={creatingFolder !== null}
           onClose={(restoreFocus) => {
             setCreatingFolder(null);
+            setCreatingWithItems(null);
             if (restoreFocus)
               requestAnimationFrame(() =>
                 autofocusRef.current
@@ -1071,14 +1145,47 @@ const Bookshelf: React.FC<BookshelfProps> = ({
               disabled: folders.busy || (manualGroupName?.split('/').length ?? 0) >= 4,
               action: () => {
                 folders.clearError();
+                setCreatingWithItems(null);
                 setCreatingFolder(manualGroupName || '');
               },
             },
+            ...(selectedBooks.length
+              ? [
+                  {
+                    text: _('New group with selection'),
+                    disabled: folders.busy || (manualGroupName?.split('/').length ?? 0) >= 4,
+                    action: beginCreateWithItems,
+                  },
+                  {
+                    text: _('Cut'),
+                    action: () => cutLibraryItems(getSelectedBooks()),
+                  },
+                ]
+              : []),
+            ...(clipboard.clipboard &&
+            (groupBy === LibraryGroupByType.Group || groupBy === LibraryGroupByType.None)
+              ? [
+                  {
+                    text: _('Paste into group'),
+                    disabled: !clipboard.canPaste(manualGroupName ?? ''),
+                    action: () => void clipboard.paste(manualGroupName ?? ''),
+                  },
+                ]
+              : []),
             {
               text: _('Undo'),
               disabled: folders.busy || !folders.canUndo,
               action: () => void folders.undo(),
             },
+            ...(folders.canRedo
+              ? [
+                  {
+                    text: _('Redo'),
+                    disabled: folders.busy,
+                    action: () => void folders.redo(),
+                  },
+                ]
+              : []),
           ]}
         />
       )}
@@ -1202,7 +1309,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
             }}
             onConfirm={() => {
               setShowGroupingModal(false);
-              handleSetSelectMode(false);
+              clearSelection();
             }}
           />
         </ModalPortal>

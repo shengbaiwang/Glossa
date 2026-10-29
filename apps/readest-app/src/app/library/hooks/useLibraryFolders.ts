@@ -7,8 +7,10 @@ import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { broadcastGlobalSettings } from '@/utils/settingsSync';
 import { md5Fingerprint } from '@/utils/md5';
+import { isLibraryTransferCurrent, type LibraryTransfer } from '../utils/libraryTransfer';
 import {
   collectFolderPaths,
+  assignBookToFolder,
   createFolderPath,
   renameFolder,
   moveToFolder,
@@ -25,13 +27,16 @@ type Undo = {
   after: string[];
   books: { hash: string; before: string; after: string }[];
   imports: { key: string; before: string; after: string }[];
+  replacements?: Map<string, string>;
 };
+const HISTORY_LIMIT = 30;
 const useFolderHistory = create<{
-  undo?: Undo;
+  past: Undo[];
+  future: Undo[];
   revision: number;
   replacements?: Map<string, string>;
   pending: number;
-}>(() => ({ revision: 0, pending: 0 }));
+}>(() => ({ past: [], future: [], revision: 0, pending: 0 }));
 export const resolveFolderPath = (path: string) =>
   useFolderHistory.getState().replacements?.get(path) ?? path;
 const samePaths = (a: string[], b: string[]) =>
@@ -41,8 +46,10 @@ function canRestore(
   paths: string[],
   books: Book[],
   imports?: Record<string, string>,
+  direction: 'undo' | 'redo' = 'undo',
 ): undo is Undo {
-  if (!undo || !samePaths(paths, undo.after)) return false;
+  const from = direction === 'undo' ? 'after' : 'before';
+  if (!undo || !samePaths(paths, undo[from])) return false;
   const affected = new Map(undo.books.map((b) => [b.hash, b]));
   const changedPaths = new Set(
     [...undo.before, ...undo.after].filter(
@@ -50,11 +57,14 @@ function canRestore(
     ),
   );
   return (
-    undo.imports.every((entry) => imports?.[entry.key] === entry.after) &&
+    undo.imports.every((entry) => imports?.[entry.key] === entry[from]) &&
+    !Object.entries(imports ?? {}).some(
+      ([key, path]) => changedPaths.has(path) && !undo.imports.some((entry) => entry.key === key),
+    ) &&
     undo.books.every((b) =>
       books.some(
         (current) =>
-          current.hash === b.hash && !current.deletedAt && (current.groupName ?? '') === b.after,
+          current.hash === b.hash && !current.deletedAt && (current.groupName ?? '') === b[from],
       ),
     ) &&
     !books.some((b) => !b.deletedAt && !affected.has(b.hash) && changedPaths.has(b.groupName ?? ''))
@@ -67,6 +77,8 @@ const folderErrors = new Set([
   'A folder with this name already exists',
   'Cannot move a folder into itself',
   'This change can no longer be undone',
+  'This change can no longer be redone',
+  'These items have changed. Select them again.',
 ]);
 
 export function useLibraryFolders() {
@@ -86,7 +98,7 @@ export function useLibraryFolders() {
       books: typeof library,
       paths: string[],
     ) => FolderChange & { target?: string; importGroups?: Record<string, string> },
-    undoing = false,
+    direction?: 'undo' | 'redo',
   ) => {
     useFolderHistory.setState((state) => ({ pending: state.pending + 1 }));
     setError('');
@@ -113,8 +125,34 @@ export function useLibraryFolders() {
           autoImportFolderGroups: importGroups,
         };
         const changedBooks = result.books.filter((book, index) => book !== books[index]);
+        if (samePaths(beforePaths, result.paths) && !changedBooks.length) return result;
+        const sourceBooks = new Map(books.map((book) => [book.hash, book]));
+        const record: Undo = {
+          before: beforePaths,
+          after: result.paths,
+          books: changedBooks.map((book) => ({
+            hash: book.hash,
+            before: sourceBooks.get(book.hash)?.groupName ?? '',
+            after: book.groupName ?? '',
+          })),
+          imports: Object.entries(before.autoImportFolderGroups ?? {}).flatMap(([key, path]) =>
+            importGroups?.[key] !== path ? [{ key, before: path, after: importGroups![key]! }] : [],
+          ),
+          replacements: result.replacements,
+        };
         await appService.saveSettings(nextSettings);
         try {
+          const current = useSettingsStore.getState().settings;
+          if (
+            !canRestore(
+              record,
+              collectFolderPaths(useLibraryStore.getState().library, current.libraryFolders),
+              useLibraryStore.getState().library,
+              current.autoImportFolderGroups,
+              'redo',
+            )
+          )
+            throw new Error('These items have changed. Select them again.');
           if (changedBooks.length) {
             const latest = new Map(useLibraryStore.getState().library.map((b) => [b.hash, b]));
             await appService.saveLibraryBooks(
@@ -125,36 +163,38 @@ export function useLibraryFolders() {
                 groupName: book.groupName,
                 groupId: book.groupId,
                 groupUpdatedAt: book.groupUpdatedAt,
-                updatedAt: book.updatedAt,
+                updatedAt: Math.max(book.updatedAt, latest.get(book.hash)?.updatedAt ?? 0),
               })),
             );
           }
         } catch (err) {
           // The book save failed: restore the catalog and leave the visible state unchanged.
-          await appService.saveSettings({
-            ...useSettingsStore.getState().settings,
-            libraryFolders: before.libraryFolders,
-            autoImportFolderGroups: before.autoImportFolderGroups,
-          });
+          await appService.saveSettings(useSettingsStore.getState().settings);
           throw err;
         }
         const currentSettings = {
           ...useSettingsStore.getState().settings,
           libraryFolders: result.paths,
-          autoImportFolderGroups: importGroups,
+          autoImportFolderGroups: useSettingsStore.getState().settings.autoImportFolderGroups && {
+            ...useSettingsStore.getState().settings.autoImportFolderGroups,
+            ...Object.fromEntries(record.imports.map((entry) => [entry.key, entry.after])),
+          },
         };
         useSettingsStore.getState().setSettings(currentSettings);
         const changed = new Map(changedBooks.map((book) => [book.hash, book]));
         useLibraryStore.getState().setLibrary(
           useLibraryStore.getState().library.map((book) => {
             const updated = changed.get(book.hash);
-            return updated
+            // A later move or deletion may arrive while book persistence is pending.
+            return updated &&
+              !book.deletedAt &&
+              (book.groupUpdatedAt ?? 0) <= (updated.groupUpdatedAt ?? 0)
               ? {
                   ...book,
                   groupName: updated.groupName,
                   groupId: updated.groupId,
                   groupUpdatedAt: updated.groupUpdatedAt,
-                  updatedAt: updated.updatedAt,
+                  updatedAt: Math.max(book.updatedAt, updated.updatedAt),
                 }
               : book;
           }),
@@ -162,33 +202,47 @@ export function useLibraryFolders() {
         const previousFolderIds = new Set(beforePaths.map(md5Fingerprint));
         const nextFolderIds = new Set(result.paths.map(md5Fingerprint));
         const selection = useLibraryStore.getState().getSelectedBooks();
-        const retained = selection.filter(
-          (id) => !previousFolderIds.has(id) || nextFolderIds.has(id),
+        const remappedIds = new Map(
+          [...(result.replacements ?? [])].map(([from, to]) => [
+            md5Fingerprint(from),
+            to && (to === from || !beforePaths.includes(to)) ? md5Fingerprint(to) : '',
+          ]),
         );
-        if (retained.length !== selection.length)
-          useLibraryStore.getState().setSelectedBooks(retained);
+        const retained = [
+          ...new Set(
+            selection
+              .map((id) => remappedIds.get(id) ?? id)
+              .filter((id) => id && (!previousFolderIds.has(id) || nextFolderIds.has(id))),
+          ),
+        ];
+        if (!samePaths(retained, selection)) useLibraryStore.getState().setSelectedBooks(retained);
         void broadcastGlobalSettings(currentSettings, { includeLibraryFolders: true });
         if (!samePaths(beforePaths, result.paths) || changedBooks.length) {
+          const state = useFolderHistory.getState();
+          const prior = canRestore(
+            state.past.at(-1),
+            beforePaths,
+            books,
+            before.autoImportFolderGroups,
+          )
+            ? state.past
+            : [];
           useFolderHistory.setState({
-            revision: useFolderHistory.getState().revision + 1,
+            revision: state.revision + 1,
             replacements: result.replacements,
-            undo: undoing
-              ? undefined
-              : {
-                  before: beforePaths,
-                  after: result.paths,
-                  books: changedBooks.map((book) => ({
-                    hash: book.hash,
-                    before: books.find((b) => b.hash === book.hash)?.groupName ?? '',
-                    after: book.groupName ?? '',
-                  })),
-                  imports: Object.entries(before.autoImportFolderGroups ?? {}).flatMap(
-                    ([key, path]) =>
-                      importGroups?.[key] !== path
-                        ? [{ key, before: path, after: importGroups![key]! }]
-                        : [],
-                  ),
-                },
+            past:
+              direction === 'undo'
+                ? state.past.slice(0, -1)
+                : [
+                    ...(direction === 'redo' ? state.past : prior),
+                    direction === 'redo' ? state.future.at(-1)! : record,
+                  ].slice(-HISTORY_LIMIT),
+            future:
+              direction === 'undo'
+                ? [...state.future, state.past.at(-1)!].slice(-HISTORY_LIMIT)
+                : direction === 'redo'
+                  ? state.future.slice(0, -1)
+                  : [],
           });
         }
         return result;
@@ -210,6 +264,42 @@ export function useLibraryFolders() {
     }
   };
 
+  const restore = async (direction: 'undo' | 'redo') =>
+    (await mutate((books, all) => {
+      const state = useFolderHistory.getState();
+      const record = (direction === 'undo' ? state.past : state.future).at(-1);
+      const imports = useSettingsStore.getState().settings.autoImportFolderGroups;
+      if (!canRestore(record, all, books, imports, direction))
+        throw new Error(
+          direction === 'undo'
+            ? 'This change can no longer be undone'
+            : 'This change can no longer be redone',
+        );
+      const to = direction === 'undo' ? 'before' : 'after';
+      const changes = new Map(record.books.map((book) => [book.hash, book[to]]));
+      const reverse = new Map<string, string>();
+      for (const [before, after] of record.replacements ?? []) {
+        if (after && !record.before.includes(after)) reverse.set(after, before);
+      }
+      return {
+        paths: record[to],
+        importGroups: imports && {
+          ...imports,
+          ...Object.fromEntries(record.imports.map((entry) => [entry.key, entry[to]])),
+        },
+        replacements: direction === 'undo' ? reverse : record.replacements,
+        books: books.map((book) => {
+          const path = changes.get(book.hash);
+          return path === undefined ? book : assignBookToFolder(book, path);
+        }),
+      };
+    }, direction)) !== undefined;
+
+  const validateTransfer = (snapshot: LibraryTransfer, books: Book[], paths: string[]) => {
+    if (!isLibraryTransferCurrent(snapshot, books, paths))
+      throw new Error('These items have changed. Select them again.');
+  };
+
   return {
     paths,
     busy: history.pending > 0,
@@ -220,40 +310,29 @@ export function useLibraryFolders() {
     resolvePath: resolveFolderPath,
     remappedGroup: (id: string) =>
       [...(history.replacements ?? [])].find(([path]) => md5Fingerprint(path) === id)?.[1],
-    canUndo: canRestore(history.undo, paths, library, settings.autoImportFolderGroups),
-    undo: async () =>
+    canUndo: canRestore(history.past.at(-1), paths, library, settings.autoImportFolderGroups),
+    canRedo: canRestore(
+      history.future.at(-1),
+      paths,
+      library,
+      settings.autoImportFolderGroups,
+      'redo',
+    ),
+    undo: () => restore('undo'),
+    redo: () => restore('redo'),
+    moveItems: async (snapshot: LibraryTransfer, destination: string) =>
       (await mutate((books, all) => {
-        const record = useFolderHistory.getState().undo;
-        const imports = useSettingsStore.getState().settings.autoImportFolderGroups;
-        if (!canRestore(record, all, books, imports))
-          throw new Error('This change can no longer be undone');
-        const changes = new Map(record.books.map((b) => [b.hash, b.before]));
-        const reverse = new Map<string, string>();
-        for (const [before, after] of useFolderHistory.getState().replacements ?? []) {
-          // Removal can map a container to a pre-existing parent; only moved branches redirect.
-          if (after && !record.before.includes(after)) reverse.set(after, before);
-        }
-        return {
-          paths: record.before,
-          importGroups: imports && {
-            ...imports,
-            ...Object.fromEntries(record.imports.map((entry) => [entry.key, entry.before])),
-          },
-          replacements: reverse,
-          books: books.map((book) => {
-            const path = changes.get(book.hash);
-            return path === undefined
-              ? book
-              : {
-                  ...book,
-                  groupName: path,
-                  groupId: path ? md5Fingerprint(path) : '',
-                  groupUpdatedAt: Date.now(),
-                  updatedAt: Date.now(),
-                };
-          }),
-        };
-      }, true)) !== undefined,
+        validateTransfer(snapshot, books, all);
+        return moveToFolder(books, all, snapshot.selection, destination);
+      })) !== undefined,
+    createWithItems: async (parent: string, label: string, snapshot: LibraryTransfer) =>
+      (
+        await mutate((books, all) => {
+          validateTransfer(snapshot, books, all);
+          const target = createFolderPath(all, parent, label.trim() || _('Untitled'));
+          return { ...moveToFolder(books, [...all, target], snapshot.selection, target), target };
+        })
+      )?.target,
     ensure: async (imported: string[]) =>
       (await mutate((books, all) => {
         const next = [...all];
@@ -281,6 +360,13 @@ export function useLibraryFolders() {
       undefined,
     place: async (path: string, anchor: string, edge: 'before' | 'after') =>
       (await mutate((books, all) => placeFolder(books, all, path, anchor, edge))) !== undefined,
+    placeItems: async (snapshot: LibraryTransfer, anchor: string, edge: 'before' | 'after') =>
+      (await mutate((books, all) => {
+        validateTransfer(snapshot, books, all);
+        if (snapshot.roots.length !== 1)
+          throw new Error('These items have changed. Select them again.');
+        return placeFolder(books, all, snapshot.roots[0]!, anchor, edge);
+      })) !== undefined,
     removeMany: async (selection: string[]) =>
       (await mutate((books, all) => removeFolders(books, all, selection))) !== undefined,
     remove: async (path: string) =>

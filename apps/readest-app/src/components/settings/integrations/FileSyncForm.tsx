@@ -117,7 +117,8 @@ const FileSyncForm: React.FC<FileSyncFormProps> = ({
       currentLibrary = await appService.loadLibraryBooks();
       // Hydrate the store before syncing so the engine's addBookToLibrary /
       // updateBookMetadata merge against the real library, not an empty one.
-      useLibraryStore.getState().setLibrary(currentLibrary);
+      useLibraryStore.getState().setLibrary(currentLibrary, true);
+      currentLibrary = useLibraryStore.getState().library;
     }
 
     // Count only live books for the progress label, but sync the FULL library

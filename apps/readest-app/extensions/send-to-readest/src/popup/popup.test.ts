@@ -23,6 +23,7 @@ const POPUP_DOM = `
       <p id="page-title" class="page-title">Loading…</p>
       <p id="page-url" class="page-url"></p>
     </div>
+    <button id="download" disabled>Download EPUB</button>
     <button id="send" class="primary" disabled>Send to Readest</button>
     <div id="progress" class="progress">
       <div class="progress-label" id="progress-label">Preparing…</div>
@@ -98,11 +99,13 @@ describe('popup — initial render', () => {
     expect((document.getElementById('send') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  test('routes to the signed-out view when the SW reports no token', async () => {
+  test('keeps local download available when signed out', async () => {
     setStatus({ signedIn: false });
     await loadPopup();
 
-    expect(document.getElementById('signed-in-view')?.classList.contains('hidden')).toBe(true);
+    expect(document.getElementById('signed-in-view')?.classList.contains('hidden')).toBe(false);
+    expect((document.getElementById('download') as HTMLButtonElement).disabled).toBe(false);
+    expect(document.getElementById('send')?.classList.contains('hidden')).toBe(true);
     expect(document.getElementById('signed-out-view')?.classList.contains('hidden')).toBe(false);
   });
 
@@ -194,7 +197,9 @@ describe('popup — render(progress)', () => {
     expect(document.getElementById('status')?.textContent).toBe('Server returned 500');
 
     pushProgress({ phase: 'error', code: 'session-expired', message: 'Session expired' });
-    expect(document.getElementById('signed-in-view')?.classList.contains('hidden')).toBe(true);
+    expect(document.getElementById('signed-in-view')?.classList.contains('hidden')).toBe(false);
+    expect((document.getElementById('download') as HTMLButtonElement).disabled).toBe(false);
+    expect(document.getElementById('send')?.classList.contains('hidden')).toBe(true);
     expect(document.getElementById('signed-out-view')?.classList.contains('hidden')).toBe(false);
   });
 });
@@ -212,5 +217,28 @@ describe('popup — Send button', () => {
     });
     expect(clipCall).toBeDefined();
     expect(clipCall![0]).toEqual({ type: 'send-to-readest:clip', tabId: 7 });
+  });
+});
+
+describe('popup — local EPUB', () => {
+  test('downloads without cloud authentication', async () => {
+    setStatus({ signedIn: false });
+    await loadPopup();
+    chromeMock.runtime.sendMessage.mockClear();
+    document.getElementById('download')!.click();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'send-to-readest:clip',
+      tabId: 7,
+      delivery: 'download',
+    });
+    expect((document.getElementById('download') as HTMLButtonElement).disabled).toBe(true);
+  });
+  test('download completion asks for file import without claiming library persistence', async () => {
+    await loadPopup();
+    pushProgress({ phase: 'done', delivery: 'download', missingAssets: 2 });
+    expect(document.getElementById('status')?.textContent).toContain('Import it into Glossa');
+    expect(document.getElementById('status')?.textContent).toContain('2 images');
+    expect(document.getElementById('status')?.textContent).not.toContain('Saved to your library');
   });
 });

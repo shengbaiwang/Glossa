@@ -125,8 +125,39 @@ describe('createAppLocalStore — library hydration (data-loss guard)', () => {
     expect(savedLibrary!.find((b) => b.hash === 'a')!.title).toBe('New Title');
   });
 
+  test('metadata sync retains progress saved while the partial reader finishes loading', async () => {
+    useLibraryStore.getState().setLibrary([makeBook('a', { progress: [1, 100] })]);
+    let finish!: (books: Book[]) => void;
+    appService.loadLibraryBooks = vi.fn(
+      () =>
+        new Promise<Book[]>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const syncing = makeStore().updateBookMetadata(
+      makeBook('a', {
+        title: 'Remote title',
+        metadataUpdatedAt: 9,
+        updatedAt: 9,
+        progress: [1, 100],
+      }),
+    );
+    await vi.waitFor(() => expect(appService.loadLibraryBooks).toHaveBeenCalledOnce());
+    useLibraryStore.getState().updateBookProgress('a', [42, 100], 'reading');
+    const changedAt = useLibraryStore.getState().getBookByHash('a')!.updatedAt;
+    finish(onDisk.map((book) => ({ ...book })));
+    await syncing;
+    expect(savedLibrary!.find((book) => book.hash === 'a')).toMatchObject({
+      title: 'Remote title',
+      metadataUpdatedAt: 9,
+      progress: [42, 100],
+      updatedAt: changedAt,
+    });
+    expect(savedLibrary!.map((book) => book.hash)).toEqual(['a', 'b']);
+  });
+
   test('addBookToLibrary merges against an already-loaded store without reloading', async () => {
-    useLibraryStore.getState().setLibrary([makeBook('a'), makeBook('b')]);
+    useLibraryStore.getState().setLibrary([makeBook('a'), makeBook('b')], true);
     await makeStore().addBookToLibrary(makeBook('c'));
 
     expect(appService.loadLibraryBooks).not.toHaveBeenCalled();
@@ -134,7 +165,7 @@ describe('createAppLocalStore — library hydration (data-loss guard)', () => {
   });
 
   test('deleteBookLocally removes the managed copy and persists the tombstone (#4860)', async () => {
-    useLibraryStore.getState().setLibrary([makeBook('a'), makeBook('b')]);
+    useLibraryStore.getState().setLibrary([makeBook('a'), makeBook('b')], true);
 
     await makeStore().deleteBookLocally(makeBook('a', { deletedAt: 500 }));
 
@@ -150,10 +181,37 @@ describe('createAppLocalStore — library hydration (data-loss guard)', () => {
     expect(useLibraryStore.getState().visibleLibrary.map((b) => b.hash)).toEqual(['b']);
   });
 
-  test('markBooksUploaded stamps the live rows, not the engine snapshot (#5084)', async () => {
+  test('legacy tombstones keep progress saved while a partial reader finishes loading', async () => {
+    useLibraryStore.getState().setLibrary([makeBook('a', { progress: [1, 100] })]);
+    let finish!: (books: Book[]) => void;
+    appService.loadLibraryBooks = vi.fn(
+      () =>
+        new Promise<Book[]>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const deleting = makeStore().deleteBookLocally(
+      makeBook('a', { deletedAt: 500, downloadedAt: null, progress: [1, 100] }),
+    );
+    await vi.waitFor(() => expect(appService.loadLibraryBooks).toHaveBeenCalledOnce());
+    useLibraryStore.getState().updateBookProgress('a', [42, 100], 'reading');
+    const changedAt = useLibraryStore.getState().getBookByHash('a')!.updatedAt;
+    finish(onDisk.map((book) => ({ ...book })));
+    await deleting;
+    expect(savedLibrary!.find((book) => book.hash === 'a')).toMatchObject({
+      deletedAt: 500,
+      downloadedAt: null,
+      progress: [42, 100],
+      updatedAt: changedAt,
+    });
+    expect(savedLibrary!.map((book) => book.hash)).toEqual(['a', 'b']);
+    expect(useLibraryStore.getState().visibleLibrary.map((book) => book.hash)).toEqual(['b']);
+  });
+
+  test('markBooksUploaded retains newer progress in a partially loaded reader (#5084)', async () => {
     // The engine captured `a` at the start of a long run; meanwhile the user
     // read it and saved progress. The stamp must not roll that back.
-    useLibraryStore.getState().setLibrary([makeBook('a', { progress: [42, 100] }), makeBook('b')]);
+    useLibraryStore.getState().setLibrary([makeBook('a', { progress: [42, 100], updatedAt: 9 })]);
 
     await makeStore().markBooksUploaded(['a'], 900);
 

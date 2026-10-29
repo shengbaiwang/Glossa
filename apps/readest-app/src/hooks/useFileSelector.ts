@@ -1,4 +1,5 @@
 import { AppService } from '@/types/system';
+import type { BookWebSource } from '@/types/book';
 import { isTauriAppPlatform } from '@/services/environment';
 import { invoke } from '@tauri-apps/api/core';
 import { basename } from '@tauri-apps/api/path';
@@ -16,6 +17,7 @@ export interface FileSelectorOptions {
 }
 
 export interface SelectedFile {
+  webSource?: BookWebSource;
   // For Web file
   file?: File;
 

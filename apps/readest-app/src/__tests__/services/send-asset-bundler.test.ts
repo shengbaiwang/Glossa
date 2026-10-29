@@ -139,7 +139,9 @@ describe('bundleAssets', () => {
     expect(result.missing).toBe(1);
     expect(result.images).toHaveLength(0);
     expect(result.html).not.toMatch(/src="https/);
-    expect(result.html).toContain('alt="missing"');
+    expect(result.html).toContain('href="https://cdn.example.com/gone.png"');
+    expect(result.html).toContain('>missing</a>');
+    expect(result.missingResources).toEqual(['https://cdn.example.com/gone.png']);
   });
 
   test('resolves relative URLs against the page URL', async () => {
@@ -270,4 +272,176 @@ describe('bundleAssets — determinism under the size budget', () => {
       spy.mockRestore();
     }
   }, 30_000);
+});
+
+describe('bundleAssets — bounded resource reads', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  test('rejects a dishonest oversized stream before buffering the whole response', async () => {
+    const cancel = vi.fn();
+    let chunks = 0;
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          chunks++;
+          controller.enqueue(new Uint8Array(1024 * 1024));
+        },
+        cancel,
+      },
+      { highWaterMark: 0 },
+    );
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(body, { headers: { 'content-type': 'image/png', 'content-length': '1' } }),
+    );
+    const result = await bundleAssets(
+      '<img src="https://example.org/unbounded.png">',
+      'https://example.org/',
+    );
+    expect(result.images).toHaveLength(0);
+    expect(result.missing).toBe(1);
+    expect(chunks).toBeLessThanOrEqual(6);
+    expect(cancel).toHaveBeenCalled();
+  });
+
+  test('cancels a stalled body when the per-image deadline elapses', async () => {
+    vi.useFakeTimers();
+    const cancel = vi.fn();
+    const response = new Response(
+      new ReadableStream({
+        pull() {
+          return new Promise(() => undefined);
+        },
+        cancel,
+      }),
+      { headers: { 'content-type': 'image/png' } },
+    );
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response);
+    const operation = bundleAssets(
+      '<img src="https://example.org/stalled.png">',
+      'https://example.org/',
+    );
+    await vi.advanceTimersByTimeAsync(8_001);
+    await expect(operation).resolves.toMatchObject({ images: [], missing: 1 });
+    expect(cancel).toHaveBeenCalled();
+  });
+
+  test('keeps a four-item window while the first image is stalled', async () => {
+    let finishFirst!: (response: Response) => void;
+    const first = new Promise<Response>((resolve) => {
+      finishFirst = resolve;
+    });
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input) =>
+        String(input).endsWith('/0.png') ? first : pngResponse(),
+      );
+    const html = Array.from(
+      { length: 30 },
+      (_, i) => `<img src="https://cdn.example.org/${i}.png">`,
+    ).join('');
+    const operation = bundleAssets(html, 'https://example.org/');
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(spy).toHaveBeenCalledTimes(4);
+    finishFirst(pngResponse());
+    await operation;
+  });
+
+  test('never logs full image URLs or upstream error text', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      new Error('https://private.example/path?secret=token response-private'),
+    );
+    await bundleAssets(
+      '<img src="https://private.example/path?secret=token">',
+      'https://example.org/',
+    );
+    const messages = JSON.stringify([...log.mock.calls, ...warn.mock.calls]);
+    expect(messages).not.toContain('secret');
+    expect(messages).not.toContain('response-private');
+  });
+});
+
+test('resource phase stops after forty seconds regardless of the number of images', async () => {
+  vi.useFakeTimers();
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(
+    async () =>
+      new Response(
+        new ReadableStream({
+          pull() {
+            return new Promise(() => undefined);
+          },
+        }),
+        { headers: { 'content-type': 'image/png' } },
+      ),
+  );
+  try {
+    const html = Array.from(
+      { length: 100 },
+      (_, i) => `<img src="https://example.org/${i}.png" alt="Figure ${i}">`,
+    ).join('');
+    const operation = bundleAssets(html, 'https://example.org/');
+    await vi.advanceTimersByTimeAsync(40_001);
+    const result = await operation;
+    expect(result.missing).toBe(100);
+    expect(result.missingResources).toHaveLength(100);
+    expect(result.html).toContain('href="https://example.org/99.png"');
+    expect(spy.mock.calls.length).toBeLessThanOrEqual(20);
+  } finally {
+    spy.mockRestore();
+    vi.useRealTimers();
+  }
+});
+
+test('missing local image placeholders do not expose absolute filesystem paths', async () => {
+  const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 404 }));
+  try {
+    const result = await bundleAssets(
+      '<img src="Saved_files/private.png" alt="Figure">',
+      'file:///Users/private/Saved.html',
+    );
+    expect(result.html).not.toContain('/Users/private');
+    expect(result.html).toContain('>Figure</a>');
+    expect(result.missing).toBe(1);
+  } finally {
+    fetch.mockRestore();
+  }
+});
+
+test('a remote page cannot gain local-file access by declaring a file base URI', async () => {
+  const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => pngResponse());
+  try {
+    const result = await bundleAssets(
+      '<img src="secret.png">',
+      'https://example.org/article',
+      undefined,
+      undefined,
+      'file:///Users/private/',
+    );
+    expect(fetch).not.toHaveBeenCalled();
+    expect(result.images).toHaveLength(0);
+    expect(result.html).not.toContain('/Users/private');
+  } finally {
+    fetch.mockRestore();
+  }
+});
+
+test('asset base URI resolves relative images without replacing the real page source', async () => {
+  const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => pngResponse());
+  try {
+    const result = await bundleAssets(
+      '<img src="figure.png">',
+      'https://publisher.example/article',
+      undefined,
+      undefined,
+      'https://cdn.example/assets/',
+    );
+    expect(fetch).toHaveBeenCalledWith('https://cdn.example/assets/figure.png', expect.anything());
+    expect(result.images).toHaveLength(1);
+  } finally {
+    fetch.mockRestore();
+  }
 });

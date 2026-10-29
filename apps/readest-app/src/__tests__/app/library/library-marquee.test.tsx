@@ -8,24 +8,21 @@ function Shelf({ inset = false }: { inset?: boolean }) {
   const root = useRef<HTMLDivElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const [ids, setIds] = useState<string[]>(['old']);
-  const [mode, setMode] = useState(false);
   const marquee = useLibraryMarquee({
     root,
     scroller: inset ? viewport : root,
     selected: ids,
-    selecting: mode,
     enabled: true,
     onSelect: setIds,
-    onMode: setMode,
   });
   return (
     <div ref={root} {...marquee.handlers} data-testid='shelf'>
       <div ref={viewport} data-testid='viewport'>
-        <div data-book-hash='a' data-testid='a' />
-        <div data-book-hash='b' data-testid='b' />
+        <div data-book-hash='a' data-library-item-id='a' data-testid='a' />
+        <div data-group-name='Folder' data-library-item-id='b' data-testid='b' />
       </div>
       <button type='button'>Import</button>
-      <output>{`${mode}:${ids.join(',')}`}</output>
+      <output>{ids.join(',')}</output>
       {marquee.rect && <div data-testid='rectangle' />}
     </div>
   );
@@ -67,10 +64,10 @@ it('selects intersecting books from blank space and preserves the set after rele
   down(shelf);
   move(210, 130);
   expect(screen.getByTestId('rectangle')).toBeTruthy();
-  expect(screen.getByText('true:a,b')).toBeTruthy();
+  expect(screen.getByText('a,b')).toBeTruthy();
   up();
   expect(screen.queryByTestId('rectangle')).toBeNull();
-  expect(screen.getByText('true:a,b')).toBeTruthy();
+  expect(screen.getByText('a,b')).toBeTruthy();
 });
 it('includes blank shelf insets outside the scroll viewport without capturing its scrollbar', () => {
   const shelf = setup(true);
@@ -81,28 +78,28 @@ it('includes blank shelf insets outside the scroll viewport without capturing it
   down(shelf, { clientX: 210 });
   move(30, 130);
   up();
-  expect(screen.getByText('false:old')).toBeTruthy();
+  expect(screen.getByText('old')).toBeTruthy();
   down(shelf);
   move(210, 130);
   up();
-  expect(screen.getByText('true:a,b')).toBeTruthy();
+  expect(screen.getByText('a,b')).toBeTruthy();
 });
 it('adds to the previous set with a modifier and shrinks selection when dragging back', () => {
   const shelf = setup();
   down(shelf, { shiftKey: true });
   move(210, 130);
   move(105, 130);
-  expect(screen.getByText('true:old,a')).toBeTruthy();
+  expect(screen.getByText('old,a')).toBeTruthy();
   up();
 });
-it('restores the previous selection and mode when cancelled and ignores other pointers', () => {
+it('restores the previous selection when cancelled and ignores other pointers', () => {
   const shelf = setup();
   down(shelf);
   move(210, 130, 2);
   expect(screen.queryByTestId('rectangle')).toBeNull();
   move(210, 130);
   fireEvent.keyDown(document, { key: 'Escape' });
-  expect(screen.getByText('false:old')).toBeTruthy();
+  expect(screen.getByText('old')).toBeTruthy();
 });
 it('leaves book drags, controls and touch scrolling to their existing interactions', () => {
   setup();
@@ -115,5 +112,17 @@ it('leaves book drags, controls and touch scrolling to their existing interactio
   down(screen.getByTestId('shelf'), { pointerType: 'touch' });
   move(210, 130);
   up();
-  expect(screen.getByText('false:old')).toBeTruthy();
+  expect(screen.getByText('old')).toBeTruthy();
+});
+
+it('selects a duplicate recent/grid identity by either rectangle', () => {
+  const shelf = setup();
+  const duplicate = document.createElement('div');
+  duplicate.dataset['libraryItemId'] = 'a';
+  duplicate.getBoundingClientRect = () => new DOMRect(320, 320, 80, 100);
+  screen.getByTestId('viewport').append(duplicate);
+  down(shelf);
+  move(105, 130);
+  up();
+  expect(screen.getByText('a')).toBeTruthy();
 });

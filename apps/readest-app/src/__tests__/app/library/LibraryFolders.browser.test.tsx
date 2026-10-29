@@ -1,4 +1,4 @@
-import { useReducer, useState } from 'react';
+import { useReducer } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { page, userEvent, commands } from 'vitest/browser';
@@ -15,6 +15,7 @@ import { DEFAULT_SYSTEM_SETTINGS } from '@/services/constants';
 import { LibraryGroupByType, SystemSettings } from '@/types/settings';
 import { Book, BooksGroup } from '@/types/book';
 import { md5Fingerprint } from '@/utils/md5';
+import { useLibraryTransfer } from '@/app/library/utils/libraryTransfer';
 import '@/styles/globals.css';
 import '@/styles/glossa.css';
 import '@/styles/glossa-library.css';
@@ -86,7 +87,6 @@ const original: Book = {
 
 function Shelf({ direct = false } = {}) {
   const [, update] = useReducer((n) => n + 1, 0);
-  const [selecting, setSelecting] = useState(false);
   if (!direct)
     mocks.navigate = (query) => {
       mocks.search = query;
@@ -110,6 +110,14 @@ function Shelf({ direct = false } = {}) {
             ? (openMenu) => (
                 <div className='glossa-shelf-breadcrumbs'>
                   <button
+                    data-library-folder-path=''
+                    data-library-drop-open=''
+                    onClick={() => mocks.navigate('groupBy=group')}
+                  >
+                    All
+                  </button>
+                  <button
+                    data-library-folder-path={current}
                     type='button'
                     className='glossa-folder-heading-action'
                     aria-current='location'
@@ -123,16 +131,12 @@ function Shelf({ direct = false } = {}) {
             : undefined
         }
         libraryBooks={library}
-        isSelectMode={selecting}
-        isSelectAll={false}
-        isSelectNone={false}
         onScrollerRef={noop}
         handleImportBooks={mocks.importBooks}
         handleBookUpload={transfer}
         handleBookDownload={transfer}
         handleBookDelete={transfer}
         handleBookPurge={transfer}
-        handleSetSelectMode={setSelecting}
         handleShowDetailsBook={noop}
         handleLibraryNavigation={(group) => {
           const params = new URLSearchParams(mocks.search);
@@ -169,6 +173,12 @@ function DirectShelf() {
 }
 
 beforeEach(() => {
+  useLibraryTransfer.setState({
+    clipboard: undefined,
+    drag: undefined,
+    dragAccepted: false,
+    restores: new Map(),
+  });
   vi.clearAllMocks();
   mocks.search = 'groupBy=group';
   mocks.saveSettings.mockResolvedValue(undefined);
@@ -184,6 +194,187 @@ beforeEach(() => {
   } as SystemSettings);
   useLibraryStore.setState({ libraryLoaded: true });
   useLibraryStore.getState().setLibrary([]);
+});
+
+it.each([
+  'grid',
+  'list',
+] as const)('moves by dropping on a %s group card and on the root breadcrumb', async (view) => {
+  await page.viewport(1100, 780);
+  useSettingsStore.getState().setSettings({
+    ...useSettingsStore.getState().settings,
+    libraryFolders: ['Destination'],
+    libraryViewMode: view,
+  });
+  useLibraryStore.getState().setLibrary([original]);
+  render(<Shelf />);
+  await page
+    .getByRole('button', { name: original.title, exact: true })
+    .dropTo(page.getByRole('button', { name: 'Destination', exact: true }));
+  await waitFor(() => expect(useLibraryStore.getState().library[0]?.groupName).toBe('Destination'));
+  await userEvent.dblClick(page.getByRole('button', { name: 'Destination', exact: true }));
+  await page
+    .getByRole('button', { name: original.title, exact: true })
+    .dropTo(page.getByRole('button', { name: 'All', exact: true }));
+  await waitFor(() => expect(useLibraryStore.getState().library[0]?.groupName).toBe(''));
+  expect(useLibraryStore.getState().library).toHaveLength(1);
+  expect(mocks.openBook).not.toHaveBeenCalled();
+});
+
+it('cuts a mixed selection, pastes after navigating, then undoes and redoes from the sidebar', async () => {
+  await page.viewport(1100, 780);
+  useSettingsStore.getState().setSettings({
+    ...useSettingsStore.getState().settings,
+    libraryFolders: ['A', 'A/Child', 'Destination'],
+  });
+  useLibraryStore
+    .getState()
+    .setLibrary([original, { ...original, hash: 'nested', title: 'Nested', groupName: 'A/Child' }]);
+  render(<DirectShelf />);
+  const shelf = screen.getByRole('main', { name: 'Bookshelf' });
+  await userEvent.click(await within(shelf).findByRole('button', { name: original.title }));
+  await userEvent.keyboard('{Meta>}');
+  await userEvent.click(within(shelf).getByRole('button', { name: 'A' }));
+  await userEvent.keyboard('{/Meta}');
+  await userEvent.keyboard('{Meta>}x{/Meta}');
+  expect(useLibraryTransfer.getState().clipboard?.selection).toHaveLength(2);
+  const destination = page
+    .getByRole('navigation')
+    .getByRole('button', { name: 'Destination', exact: true });
+  await userEvent.click(destination);
+  await userEvent.keyboard('{Meta>}v{/Meta}');
+  await waitFor(() =>
+    expect(useLibraryStore.getState().library.map((entry) => entry.groupName)).toEqual([
+      'Destination',
+      'Destination/A/Child',
+    ]),
+  );
+  expect(useLibraryTransfer.getState().clipboard).toBeUndefined();
+  await userEvent.click(destination);
+  await userEvent.keyboard('{Meta>}z{/Meta}');
+  await waitFor(() => expect(useLibraryStore.getState().library[0]?.groupName ?? '').toBe(''));
+  await userEvent.keyboard('{Meta>}{Shift>}z{/Shift}{/Meta}');
+  await waitFor(() => expect(useLibraryStore.getState().library[0]?.groupName).toBe('Destination'));
+  expect(useLibraryStore.getState().library).toHaveLength(2);
+});
+
+it('creates a group with selected books inline and restores the whole operation once', async () => {
+  await page.viewport(1100, 780);
+  useLibraryStore.getState().setLibrary([original]);
+  render(<Shelf />);
+  await userEvent.click(page.getByRole('button', { name: original.title, exact: true }), {
+    button: 'right',
+  });
+  await page.screenshot({
+    path: '../../../../../../.glossa-dev/qa/groups-quick-transfer-menu.png',
+  });
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'New group with selection' }));
+  const input = await screen.findByRole('textbox', { name: 'Group name' });
+  await userEvent.fill(input, 'Collected');
+  await page.screenshot({
+    path: '../../../../../../.glossa-dev/qa/groups-create-with-selection.png',
+  });
+  await userEvent.keyboard('{Enter}');
+  await waitFor(() => expect(useLibraryStore.getState().library[0]?.groupName).toBe('Collected'));
+  const shelf = screen.getByRole('main', { name: 'Bookshelf' });
+  shelf.focus();
+  await userEvent.keyboard('{Meta>}z{/Meta}');
+  await waitFor(() => expect(useSettingsStore.getState().settings.libraryFolders).toEqual([]));
+  expect(useLibraryStore.getState().library[0]?.groupName ?? '').toBe('');
+  await userEvent.keyboard('{Meta>}{Shift>}z{/Shift}{/Meta}');
+  await waitFor(() => expect(useLibraryStore.getState().library[0]?.groupName).toBe('Collected'));
+  expect(document.querySelector('.selection-toolbar')).toBeNull();
+});
+
+it('moves a sidebar branch onto a shelf group with a real mouse drag', async () => {
+  await page.viewport(1100, 780);
+  useSettingsStore.getState().setSettings({
+    ...useSettingsStore.getState().settings,
+    libraryFolders: ['Source', 'Source/Child', 'Target'],
+  });
+  useLibraryStore.getState().setLibrary([{ ...original, groupName: 'Source/Child' }]);
+  render(<DirectShelf />);
+  const source = await within(screen.getByRole('navigation')).findByRole('button', {
+    name: 'Source',
+  });
+  const target = await within(screen.getByRole('main', { name: 'Bookshelf' })).findByRole(
+    'button',
+    { name: 'Target' },
+  );
+  const from = source.getBoundingClientRect(),
+    to = target.getBoundingClientRect();
+  await commands.dragPDFText(
+    { x: from.left + from.width / 2, y: from.top + from.height / 2 },
+    { x: to.left + to.width / 2, y: to.top + to.height / 2 },
+  );
+  await waitFor(() =>
+    expect(useLibraryStore.getState().library[0]?.groupName).toBe('Target/Source/Child'),
+  );
+  expect(useSettingsStore.getState().settings.libraryFolders).toContain('Target/Source');
+});
+
+it('spring-opens a shelf destination and restores the origin and selection on cancellation', async () => {
+  await page.viewport(1100, 780);
+  useSettingsStore.getState().setSettings({
+    ...useSettingsStore.getState().settings,
+    libraryFolders: ['Target', 'Target/Child'],
+  });
+  useLibraryStore.getState().setLibrary([original]);
+  render(<Shelf />);
+  const source = await screen.findByRole('button', { name: original.title });
+  await userEvent.click(source);
+  const dataTransfer = new DataTransfer();
+  fireEvent(source, new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer }));
+  expect(useLibraryTransfer.getState().drag?.selection).toEqual([original.hash]);
+  expect([...dataTransfer.types]).toContain('application/x-glossa-library-items');
+  const target = await screen.findByRole('button', { name: 'Target' });
+  expect(target.isConnected).toBe(true);
+  fireEvent(
+    target,
+    new DragEvent('dragover', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer,
+      clientY: target.getBoundingClientRect().top + 20,
+    }),
+  );
+  expect(target.getAttribute('data-library-item-drop')).toBe('valid');
+  await waitFor(
+    () => expect(new URLSearchParams(mocks.search).get('group')).toBe(md5Fingerprint('Target')),
+    { timeout: 2500 },
+  );
+  fireEvent.keyDown(window, { key: 'Escape' });
+  await waitFor(() => expect(new URLSearchParams(mocks.search).get('group') ?? '').toBe(''));
+  await waitFor(() =>
+    expect(useLibraryStore.getState().getSelectedBooks()).toEqual([original.hash]),
+  );
+  expect(useLibraryStore.getState().library[0]?.groupName).toBeUndefined();
+  expect(mocks.saveLibraryBooks).not.toHaveBeenCalled();
+});
+
+it('keeps cut items after a failed paste and retries without duplicating records', async () => {
+  await page.viewport(1100, 780);
+  useSettingsStore
+    .getState()
+    .setSettings({ ...useSettingsStore.getState().settings, libraryFolders: ['Target'] });
+  useLibraryStore.getState().setLibrary([original]);
+  render(<DirectShelf />);
+  await userEvent.click(page.getByRole('button', { name: original.title, exact: true }));
+  await userEvent.keyboard('{Control>}x{/Control}');
+  await userEvent.click(
+    page.getByRole('navigation').getByRole('button', { name: 'Target', exact: true }),
+  );
+  mocks.saveLibraryBooks.mockRejectedValueOnce(new Error('disk full'));
+  await userEvent.keyboard('{Control>}v{/Control}');
+  await waitFor(() =>
+    expect(screen.getByRole('alert')).toHaveTextContent('Unable to save folders'),
+  );
+  expect(useLibraryTransfer.getState().clipboard).toBeDefined();
+  expect(useLibraryStore.getState().library[0]?.groupName).toBeUndefined();
+  await userEvent.keyboard('{Control>}v{/Control}');
+  await waitFor(() => expect(useLibraryTransfer.getState().clipboard).toBeUndefined());
+  expect(useLibraryStore.getState().library).toHaveLength(1);
+  expect(useLibraryStore.getState().library[0]?.groupName).toBe('Target');
 });
 afterEach(() => {
   cleanup();
@@ -769,7 +960,7 @@ it('shows author collections with matching counts and opens missing authors as a
   expect(screen.queryByRole('heading', { name: 'All books' })).toBeNull();
   expect(screen.getByText('2 groups')).toBeTruthy();
   expect(screen.queryByRole('button', { name: missing[0]!.title })).toBeNull();
-  await page.getByRole('button', { name: 'Author not set', exact: true }).click();
+  await userEvent.dblClick(await screen.findByRole('button', { name: 'Author not set' }));
   await screen.findByRole('button', { name: missing[0]!.title });
   expect(screen.getByRole('button', { name: missing[1]!.title })).toBeTruthy();
   expect(screen.queryByRole('button', { name: original.title })).toBeNull();
@@ -881,4 +1072,53 @@ it('retires legacy columns and retains manual cover width as the shelf wraps', a
     '220',
   );
   expect(mocks.saveSettings).toHaveBeenCalled();
+});
+
+it.each([
+  'grid',
+  'list',
+] as const)('uses file selection for books and folders in %s without a mode', async (view) => {
+  await page.viewport(1100, 780);
+  useSettingsStore.getState().setSettings({
+    ...useSettingsStore.getState().settings,
+    libraryViewMode: view,
+    libraryFolders: ['文件夹'],
+  });
+  useLibraryStore
+    .getState()
+    .setLibrary([
+      original,
+      { ...original, hash: 'b'.repeat(32), title: '第二本' },
+      { ...original, hash: 'c'.repeat(32), title: '第三本' },
+    ]);
+  render(<Shelf />);
+  const first = await screen.findByRole('button', { name: original.title });
+  const folder = await screen.findByRole('button', { name: '文件夹' });
+  await userEvent.click(first);
+  expect(useLibraryStore.getState().getSelectedBooks()).toEqual([original.hash]);
+  expect(mocks.openBook).not.toHaveBeenCalled();
+  await userEvent.keyboard('{Meta>}');
+  await userEvent.click(folder);
+  await userEvent.keyboard('{/Meta}');
+  expect(new Set(useLibraryStore.getState().getSelectedBooks())).toEqual(
+    new Set([original.hash, md5Fingerprint('文件夹')]),
+  );
+  await userEvent.click(first, { button: 'right' });
+  expect(useLibraryStore.getState().getSelectedBooks()).toHaveLength(2);
+  await userEvent.keyboard('{Escape}');
+  first.focus();
+  await userEvent.keyboard('{Escape}');
+  expect(useLibraryStore.getState().getSelectedBooks()).toEqual([]);
+  await userEvent.click(within(first).getByRole('button', { name: 'Title' }));
+  expect(useLibraryStore.getState().getSelectedBooks()).toHaveLength(1);
+  // A plain click replaces the mixed batch; modifier click toggles without opening.
+  await userEvent.click(folder);
+  expect(useLibraryStore.getState().getSelectedBooks()).toEqual([md5Fingerprint('文件夹')]);
+  await userEvent.keyboard('{Meta>}');
+  await userEvent.click(folder);
+  await userEvent.keyboard('{/Meta}');
+  expect(useLibraryStore.getState().getSelectedBooks()).toEqual([]);
+  await userEvent.dblClick(first);
+  expect(mocks.openBook).toHaveBeenCalledExactlyOnceWith(original);
+  expect(document.querySelector('.glossa-book-selection')).toBeNull();
 });

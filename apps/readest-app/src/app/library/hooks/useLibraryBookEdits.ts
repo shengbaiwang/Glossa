@@ -63,7 +63,14 @@ export function useLibraryBookEdits() {
               ]
             : [];
         });
-        if (reverted.length) await store.updateBooks(envConfig, reverted, { skipSave: true });
+        if (reverted.length) {
+          // This is a guarded rollback of an unsaved field, not a newer incoming edit.
+          // The normal merge correctly rejects its older revision, so publish locally.
+          const byHash = new Map(reverted.map((book) => [book.hash, book]));
+          store.setLibrary(
+            useLibraryStore.getState().library.map((book) => byHash.get(book.hash) ?? book),
+          );
+        }
         throw new Error('library_edit_save_failed');
       }
     },

@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { useEffect, useState, type CSSProperties } from 'react';
-import { Check, Circle, BookCollection } from '@/components/GlossaIcons';
+import { BookCollection } from '@/components/GlossaIcons';
 import FolderNameEditor from './FolderNameEditor';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -8,12 +8,10 @@ import { BooksGroup } from '@/types/book';
 import { LibraryViewModeType } from '@/types/settings';
 import BookCover from '@/components/BookCover';
 import { MISSING_AUTHOR_GROUP_ID } from '../utils/libraryUtils';
-import { useSettingsStore } from '@/store/settingsStore';
 
 interface GroupItemProps {
   mode: LibraryViewModeType;
   group: BooksGroup;
-  isSelectMode: boolean;
   groupSelected: boolean;
   renaming?: boolean;
   onStartRename?: () => void;
@@ -24,7 +22,6 @@ interface GroupItemProps {
 const GroupItem: React.FC<GroupItemProps> = ({
   mode,
   group,
-  isSelectMode,
   groupSelected,
   renaming,
   onStartRename,
@@ -33,7 +30,6 @@ const GroupItem: React.FC<GroupItemProps> = ({
 }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
-  const { settings } = useSettingsStore();
   const firstBook = group.books[0];
   const [coverAspect, setCoverAspect] = useState<number | null>(null);
   useEffect(() => {
@@ -55,20 +51,27 @@ const GroupItem: React.FC<GroupItemProps> = ({
       <span
         className='glossa-folder-label'
         onPointerDown={
-          onStartRename && !isSelectMode
+          onStartRename
             ? (event) => {
                 if (event.pointerType === 'mouse') event.stopPropagation();
               }
             : undefined
         }
         onPointerUp={
-          onStartRename && !isSelectMode
+          onStartRename
             ? (event) => {
                 if (event.pointerType === 'mouse') event.stopPropagation();
               }
             : undefined
         }
-        onDoubleClick={!isSelectMode ? onStartRename : undefined}
+        onDoubleClick={
+          onStartRename
+            ? (event) => {
+                event.stopPropagation();
+                onStartRename();
+              }
+            : undefined
+        }
       >
         <span className='line-clamp-2' title={displayName}>
           {displayName}
@@ -116,7 +119,6 @@ const GroupItem: React.FC<GroupItemProps> = ({
                     coverFit='fit'
                     onAspectRatioChange={index === 0 ? setCoverAspect : undefined}
                     onImageError={index === 0 ? () => setCoverAspect(null) : undefined}
-                    showSpine={settings.librarySkeuomorphicCovers}
                     imageClassName='rounded-[2px]'
                   />
                 </div>
@@ -124,16 +126,6 @@ const GroupItem: React.FC<GroupItemProps> = ({
             </div>
           )}
           {groupSelected && <div className='glossa-book-selection-overlay absolute inset-0' />}
-          {isSelectMode && (
-            <div
-              className={clsx(
-                'glossa-book-selection absolute bottom-2 end-2',
-                groupSelected && 'glossa-book-selection-checked',
-              )}
-            >
-              {groupSelected ? <Check size={16} /> : <Circle size={18} />}
-            </div>
-          )}
         </div>
       </div>
       <div

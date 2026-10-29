@@ -243,13 +243,14 @@ export interface AppService {
   fetchBookDetails(book: Book): Promise<BookMetadata>;
   saveBookConfig(book: Book, config: BookConfig, settings?: SystemSettings): Promise<void>;
   loadBookNav(book: Book): Promise<BookNav | null>;
+  getBookNavSource(book: Book): Promise<string | null>;
   saveBookNav(book: Book, nav: BookNav): Promise<void>;
   loadBookContent(book: Book): Promise<BookContent>;
   resolveNativeBookFilePath(book: Book): Promise<string | null>;
   prepareBookContents?(book: Book, document?: BookDoc, signal?: AbortSignal): Promise<void>;
   loadFeeds(): Promise<RssFeed[]>;
   saveFeeds(feeds: RssFeed[]): Promise<void>;
-  loadLibraryBooks(): Promise<Book[]>;
+  loadLibraryBooks(hashes?: string[]): Promise<Book[]>;
   saveLibraryBooks(books: Book[], options?: SaveLibraryBooksOptions): Promise<Book[] | void>;
   getCoverImageUrl(book: Book): string;
   getCoverImageBlobUrl(book: Book): Promise<string>;

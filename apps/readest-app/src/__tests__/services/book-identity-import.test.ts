@@ -23,6 +23,7 @@ import {
 const importParser = vi.hoisted(() => ({
   count: 0,
   destroyed: 0,
+  format: 'EPUB' as 'EPUB' | 'PDF',
   beforeOpen: undefined as undefined | (() => Promise<void>),
 }));
 
@@ -37,7 +38,7 @@ vi.mock('@/libs/document', async (original) => {
         importParser.count++;
         await importParser.beforeOpen?.();
         return {
-          format: 'EPUB',
+          format: importParser.format,
           book: {
             metadata: { title: 'Same title', author: 'Same author', language: 'en' },
             getCover: async () => null,
@@ -101,6 +102,7 @@ describe('content identity import contract', () => {
     memory = memoryFileSystem();
     importParser.count = 0;
     importParser.destroyed = 0;
+    importParser.format = 'EPUB';
     importParser.beforeOpen = undefined;
   });
   const options = () => ({
@@ -113,6 +115,82 @@ describe('content identity import contract', () => {
         JSON.stringify({ booknotes: [] }),
       );
     },
+  });
+
+  it('persists a raw PDF web source and retains it with personal data on another URL reimport', async () => {
+    importParser.format = 'PDF';
+    const bytes = '%PDF-1.7\noriginal synthetic PDF bytes\n%%EOF';
+    const webSource = {
+      originalUrl: 'https://papers.example/paper',
+      url: 'https://cdn.example/paper.pdf',
+      referrerUrl: 'https://papers.example/paper',
+    };
+    const first = (await importBook(
+      memory.fs,
+      new File([bytes], 'paper.pdf', { type: 'application/pdf' }),
+      [],
+      { ...options(), initialWebSource: webSource },
+    ))!;
+    expect((await loadLibraryBooks(memory.fs, async () => ''))[0]?.webSource).toEqual(webSource);
+    expect(await (await memory.fs.openFile(getLocalBookFilename(first), 'Books')).text()).toBe(
+      bytes,
+    );
+
+    first.title = 'My annotated paper';
+    first.groupId = 'research';
+    first.progress = [37, 100];
+    first.metadataUpdatedAt = first.updatedAt + 1;
+    first.updatedAt++;
+    await saveLibraryBooks(memory.fs, [first]);
+    const notes = JSON.stringify({ booknotes: [{ id: 'personal-note', text: 'Keep my note' }] });
+    await memory.fs.writeFile(getConfigFilename(first), 'Books', notes);
+    const restarted = await loadLibraryBooks(memory.fs, async () => '');
+    const onResult = vi.fn();
+    const reused = await importBook(
+      memory.fs,
+      new File([bytes], 'another-name.pdf', { type: 'application/pdf' }),
+      restarted,
+      {
+        ...options(),
+        initialWebSource: {
+          originalUrl: 'https://mirror.example/other',
+          url: 'https://mirror.example/other.pdf',
+        },
+        onResult,
+      },
+    );
+
+    expect(onResult).toHaveBeenCalledWith('existing');
+    expect(reused).toMatchObject({
+      hash: first.hash,
+      title: 'My annotated paper',
+      groupId: 'research',
+      progress: [37, 100],
+      webSource,
+    });
+    expect(restarted).toHaveLength(1);
+    expect(await memory.fs.readFile(getConfigFilename(first), 'Books', 'text')).toBe(notes);
+    expect((await loadLibraryBooks(memory.fs, async () => ''))[0]?.webSource).toEqual(webSource);
+  });
+
+  it('does not publish the web source of a cancelled PDF import', async () => {
+    importParser.format = 'PDF';
+    const controller = new AbortController();
+    controller.abort();
+    const books: Book[] = [];
+    await expect(
+      importBook(memory.fs, new File(['%PDF synthetic cancelled'], 'cancel.pdf'), books, {
+        ...options(),
+        initialWebSource: {
+          originalUrl: 'https://papers.example/cancel',
+          url: 'https://cdn.example/cancel.pdf',
+        },
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(books).toEqual([]);
+    expect(memory.files.has('Books/library.json')).toBe(false);
+    expect(importParser.count).toBe(0);
   });
 
   it('records an explicit restore lifecycle when a deleted file is deliberately reimported', async () => {

@@ -1,6 +1,7 @@
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { isTauriAppPlatform } from '@/services/environment';
 import { imageFetchHeaders } from './httpHeaders';
+import { awaitResource, readBoundedResponse } from './boundedResponse';
 import type { EpubImage } from './types';
 
 // On Tauri we go through the Rust HTTP client (no browser-CORS); on web
@@ -10,9 +11,7 @@ import type { EpubImage } from './types';
 // `credentials: 'include'` so the browser sends the user's cookies for
 // paywalled / member-only CDN hosts — without that, an authenticated
 // Substack image returns a placeholder. In Tauri we also fold in the
-// full image-fetch header set (UA + Sec-Ch-Ua + Sec-Fetch-* + Referer)
-// so CDNs that gate images on the browser shape — NYT, WSJ, paywalled
-// CDNs — cooperate.
+// resource Accept and page Referer headers without impersonating a browser.
 const httpFetch = (url: string, referer: string | null, init?: RequestInit): Promise<Response> => {
   if (!isTauriAppPlatform()) {
     return globalThis.fetch(url, { credentials: 'include', ...init });
@@ -30,6 +29,7 @@ export const MAX_ASSET_BYTES = 5 * 1024 * 1024;
 export const MAX_TOTAL_ASSET_BYTES = 30 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 8_000;
 const MAX_CONCURRENCY = 4;
+const RESOURCE_PHASE_TIMEOUT_MS = 40_000;
 
 const MIME_TO_EXT: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -233,9 +233,15 @@ async function fetchAsset(
   signal?.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await httpFetch(url, referer, { signal: ac.signal, redirect: 'follow' });
-    if (!res.ok) return null;
-    const bytes = await res.arrayBuffer();
+    const res = await awaitResource(
+      httpFetch(url, referer, { signal: ac.signal, redirect: 'follow' }),
+      ac.signal,
+    );
+    if (!res.ok) {
+      void res.body?.cancel().catch(() => undefined);
+      return null;
+    }
+    const bytes = await readBoundedResponse(res, MAX_ASSET_BYTES, ac.signal);
     if (bytes.byteLength === 0) return null;
     if (bytes.byteLength > MAX_ASSET_BYTES) return null;
     const mime = mimeFromContentType(res.headers.get('content-type'), url);
@@ -257,6 +263,8 @@ export interface BundleAssetsResult {
   images: EpubImage[];
   /** Number of references that could not be fetched (404, timeout, oversize). */
   missing: number;
+  /** Original resource URLs retained only in the generated article/source metadata. */
+  missingResources: string[];
 }
 
 /**
@@ -274,10 +282,12 @@ export async function bundleAssets(
   contentHtml: string,
   pageUrl: string,
   signal?: AbortSignal,
+  resourceSignal?: AbortSignal,
+  assetBaseUrl: string = pageUrl,
 ): Promise<BundleAssetsResult> {
   const doc = new DOMParser().parseFromString(`<div id="root">${contentHtml}</div>`, 'text/html');
   const root = doc.getElementById('root');
-  if (!root) return { html: contentHtml, images: [], missing: 0 };
+  if (!root) return { html: contentHtml, images: [], missing: 0, missingResources: [] };
 
   // Drop unrenderable / blocking media before walking.
   for (const el of Array.from(root.querySelectorAll('iframe, video, audio, embed, object'))) {
@@ -301,7 +311,7 @@ export async function bundleAssets(
     picture.replaceWith(img);
     let abs: string;
     try {
-      abs = new URL(url, pageUrl).toString();
+      abs = new URL(url, assetBaseUrl).toString();
     } catch {
       dropElement(img);
       continue;
@@ -323,7 +333,7 @@ export async function bundleAssets(
     }
     let abs: string;
     try {
-      abs = new URL(url, pageUrl).toString();
+      abs = new URL(url, assetBaseUrl).toString();
     } catch {
       dropElement(img);
       continue;
@@ -347,71 +357,72 @@ export async function bundleAssets(
   const uniqueUrls = Array.from(urlToTargets.keys());
   console.log('[clip/bundle] start', {
     unique_urls: uniqueUrls.length,
-    sample: uniqueUrls.slice(0, 5),
   });
   const fetched = new Map<string, FetchedAsset>();
   let totalBytes = 0;
   let missing = 0;
+  const missingResources: string[] = [];
+  const phase = new AbortController();
+  const abortPhase = (): void => phase.abort(signal?.reason);
+  signal?.addEventListener('abort', abortPhase, { once: true });
+  const deadlineReached = (): void => phase.abort();
+  resourceSignal?.addEventListener('abort', deadlineReached, { once: true });
+  if (resourceSignal?.aborted) deadlineReached();
+  const phaseTimer = setTimeout(() => phase.abort(), RESOURCE_PHASE_TIMEOUT_MS);
 
-  // Bounded-concurrency fetch loop. `MAX_CONCURRENCY` workers pull from a
-  // shared cursor so we never hammer a single origin with N requests. Each
-  // fetch owns its own timeout — see `fetchAsset`.
-  //
-  // Results are parked by index rather than committed as they land, because
-  // the size budget below has to decide which images to drop and that
-  // decision must not depend on which fetch happened to win the race. A
-  // clip has to be reproducible: the same page with the same assets must
-  // produce the same EPUB bytes on every device, every time.
-  const settled = new Array<FetchedAsset | null>(uniqueUrls.length).fill(null);
-  const resolved = new Array<boolean>(uniqueUrls.length).fill(false);
-
-  // Bytes owned by the unbroken run of assets already resolved from the front
-  // of the document. Consulted only to stop dispatching once the budget is
-  // provably spent, so an image-heavy page does not download megabytes it is
-  // going to discard. The authoritative accounting is the in-order pass below,
-  // so this staying approximate cannot affect the output.
-  let prefixCursor = 0;
-  let prefixBytes = 0;
-  const settledPrefixBytes = (): number => {
-    while (prefixCursor < resolved.length && resolved[prefixCursor]) {
-      prefixBytes += settled[prefixCursor]?.bytes.byteLength ?? 0;
-      prefixCursor++;
-    }
-    return prefixBytes;
-  };
-
-  let cursor = 0;
-  const worker = async () => {
-    while (cursor < uniqueUrls.length) {
-      signal?.throwIfAborted();
-      const i = cursor++;
-      const url = uniqueUrls[i]!;
-      if (isFetchableAssetUrl(url, pageUrl) && settledPrefixBytes() < MAX_TOTAL_ASSET_BYTES) {
+  // At most four unresolved or uncommitted assets exist at once. Advancing
+  // this window only after the oldest result is committed keeps a slow first
+  // image from accumulating every later response. Budget decisions remain in
+  // document order, independent of network completion order.
+  const pending = new Map<number, Promise<FetchedAsset | null>>();
+  let nextIndex = 0;
+  const fillWindow = (): void => {
+    while (
+      pending.size < MAX_CONCURRENCY &&
+      nextIndex < uniqueUrls.length &&
+      totalBytes < MAX_TOTAL_ASSET_BYTES &&
+      !phase.signal.aborted
+    ) {
+      const index = nextIndex++;
+      const url = uniqueUrls[index]!;
+      const operation = (async (): Promise<FetchedAsset | null> => {
+        signal?.throwIfAborted();
+        if (!isFetchableAssetUrl(url, pageUrl)) return null;
         try {
-          settled[i] = await fetchAsset(url, pageUrl, signal);
-        } catch (err) {
+          return await fetchAsset(url, pageUrl, phase.signal);
+        } catch {
           signal?.throwIfAborted();
-          console.warn('[clip/bundle] image fetch failed', {
-            url,
-            error: err instanceof Error ? err.message : String(err),
-          });
+          // URLs can contain private paths or signed query strings, and
+          // upstream exception messages may echo them or response content.
+          console.warn('[clip/bundle] image fetch failed');
+          return null;
         }
-      }
-      resolved[i] = true;
+      })();
+      void operation.catch(() => undefined);
+      pending.set(index, operation);
     }
   };
-  await Promise.all(Array.from({ length: MAX_CONCURRENCY }, worker));
-  signal?.throwIfAborted();
-
-  // Apply the budget strictly in document order.
-  for (let i = 0; i < uniqueUrls.length; i++) {
-    const asset = settled[i];
-    if (!asset || totalBytes + asset.bytes.byteLength > MAX_TOTAL_ASSET_BYTES) {
-      missing++;
-      continue;
+  try {
+    fillWindow();
+    for (let i = 0; i < uniqueUrls.length; i++) {
+      signal?.throwIfAborted();
+      const asset = await pending.get(i);
+      pending.delete(i);
+      if (!asset || totalBytes + asset.bytes.byteLength > MAX_TOTAL_ASSET_BYTES) {
+        missing++;
+        missingResources.push(uniqueUrls[i]!);
+      } else {
+        fetched.set(uniqueUrls[i]!, asset);
+        totalBytes += asset.bytes.byteLength;
+      }
+      fillWindow();
     }
-    fetched.set(uniqueUrls[i]!, asset);
-    totalBytes += asset.bytes.byteLength;
+    signal?.throwIfAborted();
+  } finally {
+    clearTimeout(phaseTimer);
+    signal?.removeEventListener('abort', abortPhase);
+    resourceSignal?.removeEventListener('abort', deadlineReached);
+    phase.abort();
   }
   console.log('[clip/bundle] done', {
     fetched: fetched.size,
@@ -419,15 +430,18 @@ export async function bundleAssets(
     total_bytes: totalBytes,
   });
 
-  // Rewrite refs. Failed-fetch elements get their `src` cleared so they
-  // render as the alt text placeholder.
+  // Rewrite successful resources and retain a source link in each missing image position.
   const images: EpubImage[] = [];
   const seenPaths = new Set<string>();
   for (const [url, els] of urlToTargets) {
     const asset = fetched.get(url);
     if (!asset) {
       for (const el of els) {
-        el.removeAttribute('src');
+        const link = doc.createElement('a');
+        if (/^https?:/i.test(url)) link.href = url;
+        link.textContent = el.getAttribute('alt') || 'Image unavailable';
+        link.className = 'missing-image';
+        el.replaceWith(link);
       }
       continue;
     }
@@ -440,5 +454,5 @@ export async function bundleAssets(
     }
   }
 
-  return { html: root.innerHTML, images, missing };
+  return { html: root.innerHTML, images, missing, missingResources };
 }

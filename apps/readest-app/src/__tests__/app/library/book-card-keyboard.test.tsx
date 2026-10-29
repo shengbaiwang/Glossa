@@ -30,6 +30,9 @@ vi.mock('@/app/library/components/BookItem', () => ({
         showBookDetailsModal(book);
       }}
     >
+      <svg data-testid='details-icon' aria-hidden='true'>
+        <path d='M0 0h1v1z' />
+      </svg>
       Details
     </button>
   ),
@@ -65,12 +68,12 @@ afterEach(() => {
 
 const renderCard = (surface: 'grid' | 'list' | 'recent') => {
   const showDetails = vi.fn();
-  const toggleSelection = vi.fn();
+  const selectItem = vi.fn();
   const common = {
     coverFit: 'crop' as const,
-    isSelectMode: false,
-    toggleSelection,
-    handleSetSelectMode: vi.fn(),
+
+    selectItem,
+
     handleBookUpload: vi.fn(async () => true),
     handleBookDownload: vi.fn(async () => true),
     showTimeRemaining: false,
@@ -102,12 +105,12 @@ const renderCard = (surface: 'grid' | 'list' | 'recent') => {
       />,
     );
   }
-  return { showDetails, toggleSelection };
+  return { showDetails, selectItem };
 };
 
 describe.each(['grid', 'list', 'recent'] as const)('%s book-card keyboard actions', (surface) => {
   it.each(['Enter', ' '])('keeps %j on a nested action from opening its book', (key) => {
-    const { showDetails, toggleSelection } = renderCard(surface);
+    const { showDetails, selectItem } = renderCard(surface);
     const action = screen.getByRole('button', { name: 'Show book details' });
     action.focus();
 
@@ -118,11 +121,12 @@ describe.each(['grid', 'list', 'recent'] as const)('%s book-card keyboard action
 
     expect(showDetails).toHaveBeenCalledExactlyOnceWith(book);
     expect(openBook).not.toHaveBeenCalled();
-    expect(toggleSelection).not.toHaveBeenCalled();
+    expect(selectItem).not.toHaveBeenCalled();
     expect(action.tabIndex).toBe(0);
   });
 
-  it.each(['Enter', ' '])('opens the focused card itself with %j', (key) => {
+  it('opens the focused card itself with Enter', () => {
+    const key = 'Enter';
     renderCard(surface);
     const card = screen.getByRole('button', { name: book.title });
     card.focus();
@@ -132,4 +136,25 @@ describe.each(['grid', 'list', 'recent'] as const)('%s book-card keyboard action
     expect(openBook).toHaveBeenCalledExactlyOnceWith(book);
     expect(card.tabIndex).toBe(0);
   });
+});
+
+it.each(['grid', 'list', 'recent'] as const)('Space selects a focused %s card', (surface) => {
+  const { selectItem } = renderCard(surface);
+  fireEvent.keyDown(screen.getByRole('button', { name: book.title }), { key: ' ' });
+  expect(selectItem).toHaveBeenCalledWith(
+    book.hash,
+    expect.objectContaining({ toggle: false, range: false }),
+  );
+  expect(openBook).not.toHaveBeenCalled();
+});
+
+it.each([
+  'grid',
+  'list',
+  'recent',
+] as const)('keeps double-clicking a nested SVG action from opening the %s book', (surface) => {
+  const { selectItem } = renderCard(surface);
+  fireEvent.doubleClick(screen.getByTestId('details-icon').querySelector('path')!);
+  expect(openBook).not.toHaveBeenCalled();
+  expect(selectItem).not.toHaveBeenCalled();
 });

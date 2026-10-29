@@ -35,12 +35,14 @@ async function convertInWorker(input: ConvertInput, timeoutMs: number): Promise<
         reject(new Error(event.data.payload.message));
         return;
       }
-      const { epubBuffer, name, title, author } = event.data.payload;
+      const { epubBuffer, name, title, author, source, warnings } = event.data.payload;
       cleanup();
       resolve({
         file: new File([epubBuffer], name, { type: 'application/epub+zip' }),
         title,
         author,
+        source,
+        warnings,
       });
     };
 

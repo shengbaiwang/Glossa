@@ -122,6 +122,42 @@ describe('computeBookNav (fragment-link TOC)', () => {
     const tocAfter = JSON.stringify(freshBook.toc);
     expect(tocAfter).toBe(tocBefore);
   });
+
+  it('builds the same navigation in the background without changing live section locations', async () => {
+    const freshBook = await openFixture('repro-3688.epub');
+    const before = JSON.stringify(
+      freshBook.sections.map(({ location, fragments }) => ({ location, fragments })),
+    );
+    const background = await computeBookNav(freshBook, { background: true });
+    expect(background).toEqual(nav);
+    expect(
+      JSON.stringify(
+        freshBook.sections.map(({ location, fragments }) => ({ location, fragments })),
+      ),
+    ).toBe(before);
+  });
+
+  it('discards an aborted section read without publishing partial navigation', async () => {
+    const freshBook = await openFixture('repro-3688.epub');
+    const controller = new AbortController();
+    const before = JSON.stringify(freshBook.toc);
+    for (const section of freshBook.sections) {
+      const load = section.loadText?.bind(section);
+      if (load)
+        section.loadText = async () => {
+          const text = await load();
+          controller.abort();
+          return text;
+        };
+    }
+    await expect(
+      computeBookNav(freshBook, { signal: controller.signal, background: true }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(JSON.stringify(freshBook.toc)).toBe(before);
+    expect(freshBook.sections.every((section) => !section.fragments && !section.location)).toBe(
+      true,
+    );
+  });
 });
 
 describe('hydrateBookNav', () => {

@@ -13,7 +13,6 @@ const { settings, save, navigate, openSettings } = vi.hoisted(() => ({
     librarySortByAuto: true,
     libraryThenSortBy: 'none',
     libraryCoverFit: 'crop',
-    librarySkeuomorphicCovers: false,
     libraryRecentShelfEnabled: true,
     libraryCoverWidth: undefined as number | undefined,
     libraryShowAuthor: undefined as boolean | undefined,
@@ -47,7 +46,6 @@ beforeEach(() => {
     librarySortByAuto: true,
     libraryThenSortBy: 'none',
     libraryCoverFit: 'crop',
-    librarySkeuomorphicCovers: false,
     libraryRecentShelfEnabled: true,
     libraryCoverWidth: undefined,
     libraryShowAuthor: undefined,
@@ -67,8 +65,8 @@ it('keeps display choices together without a selection command', () => {
   expect(screen.getByRole('button', { name: 'List', pressed: true })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Grid', pressed: false })).toBeTruthy();
   expect(screen.queryByText('Library Display')).toBeNull();
-  expect(screen.queryByRole('group', { name: 'Book Covers' })).toBeNull();
-  expect(screen.getByRole('checkbox', { name: 'Show recent reading' })).toBeTruthy();
+  expect(screen.queryByRole('group', { name: 'Cover display' })).toBeNull();
+  expect(screen.getByRole('checkbox', { name: 'Recent reading' })).toBeTruthy();
   expect(screen.queryByRole('group', { name: 'Cover Size' })).toBeNull();
 });
 
@@ -122,15 +120,14 @@ it('removes automatic sizing and reuses cover and recent reading fields', async 
   settings.libraryCoverWidth = 220;
   render(<ViewMenu />);
   expect(screen.queryByRole('button', { name: 'Auto' })).toBeNull();
-  fireEvent.click(screen.getByRole('checkbox', { name: '3D covers' }));
-  await waitFor(() => expect(save).toHaveBeenCalledWith({}, 'librarySkeuomorphicCovers', true));
-  fireEvent.click(screen.getByRole('checkbox', { name: 'Show recent reading' }));
+  expect(screen.queryByRole('checkbox', { name: '3D covers' })).toBeNull();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Recent reading' }));
   await waitFor(() => expect(save).toHaveBeenCalledWith({}, 'libraryRecentShelfEnabled', false));
 });
 
 it('keeps book information collapsed and defaults old preferences to visible', async () => {
   render(<ViewMenu />);
-  const disclosure = screen.getByRole('button', { name: 'Book information' }).closest('details')!;
+  const disclosure = screen.getByRole('button', { name: 'Card information' }).closest('details')!;
   expect(disclosure.open).toBe(false);
   disclosure.open = true;
   const info = within(disclosure);
@@ -147,18 +144,18 @@ it('keeps book information collapsed and defaults old preferences to visible', a
 it('preserves effective secondary sorting inside one disclosure', async () => {
   settings.libraryGroupBy = 'author';
   render(<ViewMenu />);
-  const details = screen.getByRole('button', { name: 'Sort by' }).closest('details')!;
+  const details = screen.getByRole('button', { name: 'Sort' }).closest('details')!;
   details.open = true;
   const sort = within(details);
-  expect((sort.getByRole('combobox', { name: 'Then by...' }) as HTMLSelectElement).value).toBe(
+  expect((sort.getByRole('combobox', { name: 'Secondary sort' }) as HTMLSelectElement).value).toBe(
     'series',
   );
   expect(sort.getByRole('option', { name: 'Series (Auto)' })).toBeTruthy();
-  fireEvent.change(sort.getByRole('combobox', { name: 'Then by...' }), {
+  fireEvent.change(sort.getByRole('combobox', { name: 'Secondary sort' }), {
     target: { value: 'title' },
   });
   await waitFor(() => expect(save).toHaveBeenCalledWith({}, 'libraryThenSortBy', 'title'));
-  fireEvent.change(sort.getByRole('combobox', { name: 'Sort by' }), {
+  fireEvent.change(sort.getByRole('combobox', { name: 'Primary sort' }), {
     target: { value: 'author' },
   });
   await waitFor(() => expect(save).toHaveBeenCalledWith({}, 'librarySortByAuto', false));

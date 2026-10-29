@@ -1,4 +1,4 @@
-import type { Book, BookImportProgress, BookLookupIndex } from '@/types/book';
+import type { Book, BookImportProgress, BookLookupIndex, BookWebSource } from '@/types/book';
 import type { AppService, OsPlatform } from '@/types/system';
 import type { SystemSettings } from '@/types/settings';
 import { transferManager } from '@/services/transferManager';
@@ -25,6 +25,7 @@ export interface IngestFileOptions {
   /** A file path (desktop/mobile) or a File object (web). */
   file: File | string;
   markdownResourceRoot?: string;
+  webSource?: BookWebSource;
   /** Current library, used by importBook for dedup. */
   books: Book[];
   /** Pre-built lookup index for O(1) dedup during batch imports. */
@@ -182,6 +183,7 @@ export async function ingestFile(
     initialGroup:
       opts.groupId !== undefined ? { id: opts.groupId, name: opts.groupName } : undefined,
     initialTags: opts.subjectTag?.trim() ? [opts.subjectTag.trim()] : undefined,
+    initialWebSource: opts.webSource,
     onResult: (result) => {
       outcome.status = result;
     },
@@ -315,6 +317,7 @@ export async function ingestFiles(
       initialGroup:
         opts.groupId !== undefined ? { id: opts.groupId, name: opts.groupName } : undefined,
       initialTags: opts.subjectTag?.trim() ? [opts.subjectTag.trim()] : undefined,
+      initialWebSource: opts.webSource,
       onResult: (result: 'added' | 'existing') => {
         outcomes[index]!.status = result;
         opts.onResult?.(result);

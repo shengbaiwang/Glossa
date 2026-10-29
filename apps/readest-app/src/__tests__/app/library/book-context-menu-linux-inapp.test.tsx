@@ -1,4 +1,3 @@
-import { useLibraryStore } from '@/store/libraryStore';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
@@ -80,16 +79,14 @@ const renderItem = (overrides: Partial<React.ComponentProps<typeof BookshelfItem
     mode: 'grid' as const,
     item: book,
     coverFit: 'crop' as const,
-    isSelectMode: false,
     itemSelected: false,
     transferProgress: null,
     setLoading: vi.fn(),
-    toggleSelection: vi.fn(),
+    selectItem: vi.fn(),
     handleGroupBooks: vi.fn(),
     handleBookDownload: vi.fn(async () => true),
     handleBookUpload: vi.fn(async () => true),
     handleBookDelete: vi.fn(async () => true),
-    handleSetSelectMode: vi.fn(),
     handleShowDetailsBook: vi.fn(),
     handleLibraryNavigation: vi.fn(),
     handleUpdateReadingStatus: vi.fn(),
@@ -122,7 +119,7 @@ describe('library context menu on Linux desktop (issue #5360)', () => {
 
     // The downloaded, never-uploaded, statusless test book resolves to this
     // ordered id list via getBookContextMenuItemIds.
-    const labels = ['Move to…', 'Reveal in Folder', 'Delete'];
+    const labels = ['Move to…', 'Cut', 'New group with selection', 'Reveal in Folder', 'Delete'];
     const menuItems = await screen.findAllByRole('menuitem');
     expect(menuItems.map((el) => el.textContent)).toEqual(labels);
 
@@ -130,7 +127,7 @@ describe('library context menu on Linux desktop (issue #5360)', () => {
     expect(popupSpy).not.toHaveBeenCalled();
   });
 
-  it('enters batch selection by holding a book after removing selection from display options', async () => {
+  it('selects a book by holding it on touch without entering a separate mode', async () => {
     vi.useFakeTimers();
     try {
       const { props } = renderItem();
@@ -139,24 +136,49 @@ describe('library context menu on Linux desktop (issue #5360)', () => {
       await act(async () => {
         vi.advanceTimersByTime(550);
       });
-      expect(props.handleSetSelectMode).toHaveBeenCalledWith(true);
-      expect(props.toggleSelection).toHaveBeenCalledExactlyOnceWith(book.hash);
+      expect(props.selectItem).toHaveBeenCalledExactlyOnceWith(book.hash, {
+        toggle: true,
+        preserve: true,
+      });
       fireEvent.pointerUp(card, { pointerId: 1, clientX: 20, clientY: 20 });
-      expect(props.toggleSelection).toHaveBeenCalledTimes(1);
+      expect(props.selectItem).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('enters batch selection from the book context menu with the keyboard', async () => {
+  it('keeps group rename and new-subgroup actions reachable by touch long press', async () => {
+    vi.useFakeTimers();
+    try {
+      const rename = vi.fn(async () => true);
+      const { props } = renderItem({
+        item: { id: 'folder', name: 'Folder', displayName: 'Folder', books: [], updatedAt: 1 },
+        handleRenameFolder: rename,
+        handleCreateFolder: vi.fn(),
+      });
+      const card = screen.getByRole('button', { name: 'Folder' });
+      fireEvent.pointerDown(card, { pointerType: 'touch', pointerId: 1, clientX: 20, clientY: 20 });
+      await act(async () => {
+        vi.advanceTimersByTime(550);
+      });
+      expect(props.selectItem).toHaveBeenCalledWith('folder', { toggle: true, preserve: true });
+      expect(screen.getByRole('menuitem', { name: 'Rename group' })).toBeTruthy();
+      expect(screen.getByRole('menuitem', { name: 'New subgroup' })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('preserves a book selection before invoking Move from the keyboard context menu', async () => {
     const { props } = renderItem();
     fireEvent.keyDown(screen.getByRole('button', { name: 'Test Book' }), {
       key: 'F10',
       shiftKey: true,
     });
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Move to…' }));
-    expect(props.handleSetSelectMode).toHaveBeenCalledWith(true);
-    expect(useLibraryStore.getState().getSelectedBooks()).toEqual([book.hash]);
+    await screen.findByRole('menuitem', { name: 'Move to…' });
+    expect(props.selectItem).toHaveBeenCalledWith(book.hash, { preserve: true });
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Move to…' }));
+    expect(props.selectItem).toHaveBeenCalledWith(book.hash, { preserve: true });
     expect(props.handleGroupBooks).toHaveBeenCalled();
     expect(screen.queryByRole('menuitem')).toBeNull();
   });

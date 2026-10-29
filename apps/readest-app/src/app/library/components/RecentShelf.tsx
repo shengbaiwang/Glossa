@@ -2,6 +2,7 @@ import { Book, ReadingStatus } from '@/types/book';
 import { LibraryCoverFitType } from '@/types/settings';
 import { useTranslation } from '@/hooks/useTranslation';
 import BookshelfItem from './BookshelfItem';
+import type { LibrarySelectionOptions } from '../utils/librarySelection';
 
 /**
  * How many recently-read books the top shelf holds. Fixed (no user option) so
@@ -12,11 +13,9 @@ export const RECENT_SHELF_BOOK_COUNT = 12;
 interface RecentShelfProps {
   books: Book[];
   coverFit: LibraryCoverFitType;
-  isSelectMode: boolean;
   selectedBooks: ReadonlySet<string>;
   onOpenBook: (book: Book) => void;
-  toggleSelection: (hash: string, range?: boolean) => void;
-  handleSetSelectMode: (selectMode: boolean) => void;
+  selectItem: (id: string, options?: LibrarySelectionOptions) => void;
   handleBookUpload: (book: Book) => void;
   handleBookDownload: (book: Book, options?: { redownload?: boolean; queued?: boolean }) => void;
   showBookDetailsModal: (book: Book) => void;
@@ -30,11 +29,9 @@ interface RecentShelfProps {
 const RecentShelf: React.FC<RecentShelfProps> = ({
   books,
   coverFit,
-  isSelectMode,
   selectedBooks,
   onOpenBook,
-  toggleSelection,
-  handleSetSelectMode,
+  selectItem,
   handleBookUpload,
   handleBookDownload,
   showBookDetailsModal,
@@ -64,10 +61,10 @@ const RecentShelf: React.FC<RecentShelfProps> = ({
                 mode='list'
                 item={book}
                 coverFit={coverFit}
-                isSelectMode={isSelectMode}
                 itemSelected={selectedBooks.has(book.hash)}
-                toggleSelection={toggleSelection}
-                handleSetSelectMode={handleSetSelectMode}
+                selectItem={(id, options) =>
+                  selectItem(id, { ...options, order: books.map((book) => book.hash) })
+                }
                 handleBookUpload={async (b) => {
                   await handleBookUpload(b);
                   return true;

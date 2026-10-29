@@ -4,11 +4,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repositoryRoot = path.resolve(__dirname, '../..');
 
 const isDev = process.env['NODE_ENV'] === 'development';
 const appPlatform = process.env['NEXT_PUBLIC_APP_PLATFORM'];
 
-if (isDev) {
+if (isDev && appPlatform === 'web') {
   const { initOpenNextCloudflareForDev } = await import('@opennextjs/cloudflare');
   initOpenNextCloudflareForDev();
 }
@@ -32,9 +33,9 @@ const nextConfig = {
   // symbolicate crashes. `scripts/upload-sourcemaps.mjs` uploads them after the
   // build and strips the .map files, so they never ship inside the app bundle.
   productionBrowserSourceMaps: exportOutput,
-  // Monorepo: trace from the repo root so workspace packages land in the
-  // standalone tree. Only relevant to — and only set for — the Docker build.
-  outputFileTracingRoot: standaloneOutput ? path.join(__dirname, '../../') : undefined,
+  // Bound workspace discovery to Glossa even if an ancestor has a lockfile.
+  // Standalone web builds still include the shared workspace packages.
+  outputFileTracingRoot: repositoryRoot,
   pageExtensions: exportOutput ? ['jsx', 'tsx'] : ['js', 'jsx', 'ts', 'tsx'],
   // Note: This feature is required to use the Next.js Image component in SSG mode.
   // See https://nextjs.org/docs/messages/export-image-api for different workarounds.
@@ -71,6 +72,7 @@ const nextConfig = {
     return config;
   },
   turbopack: {
+    root: repositoryRoot,
     resolveAlias: {
       nunjucks: 'nunjucks/browser/nunjucks.js',
       // Turbopack rejects absolute paths in resolveAlias ("server relative
@@ -119,17 +121,15 @@ const nextConfig = {
           },
         ],
       },
-      {
-        source: '/_next/static/:path*',
-        headers: [
+      // Next.js controls development chunk caching and hot updates.
+      ...(!isDev
+        ? [
           {
-            key: 'Cache-Control',
-            value: isDev
-              ? 'public, max-age=0, must-revalidate'
-              : 'public, max-age=31536000, immutable',
+            source: '/_next/static/:path*',
+            headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
           },
-        ],
-      },
+        ]
+        : []),
     ];
   },
 };

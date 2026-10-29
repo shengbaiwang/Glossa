@@ -12,9 +12,8 @@
  *       `src/services/send/conversion/` — Readability, per-site rule
  *       fast-paths, asset bundling, cover generation, headings → TOC,
  *       and the EPUB build all happen there. Same code path the
- *       desktop / mobile `/send` URL clipping flow uses, so the EPUBs
- *       are byte-identical for the same URL.
- *   SW: POSTs the resulting EPUB to /api/send/inbox/file.
+ *       desktop / mobile `/send` URL clipping flow uses, using shared extraction and packaging rules.
+ *   SW: saves the EPUB locally, or explicitly uploads it in cloud mode.
  *   SW → popup: `send-to-readest:progress` broadcasts at each phase.
  */
 
@@ -30,7 +29,12 @@ import { readToken } from '../lib/auth';
 import { translate as _ } from '../lib/i18n';
 import { hasFileSchemeAccess, isClippableUrl, isLocalFileUrl } from '../lib/localPage';
 import { setBadge } from './badge';
-import { clipAndUploadViaOffscreen } from './offscreen';
+import {
+  clipAndUploadViaOffscreen,
+  clipAndDownloadViaOffscreen,
+  releaseDownloadUrl,
+} from './offscreen';
+import { downloadEpub } from './download';
 
 const LOG = '[send-to-readest/sw]';
 
@@ -134,7 +138,7 @@ chrome.runtime.onConnect.addListener((port) => {
   });
 });
 
-async function runClip(tabId: number): Promise<void> {
+async function runClip(tabId: number, delivery: 'download' | 'cloud' = 'cloud'): Promise<void> {
   if (state.inFlight) return;
   state.inFlight = true;
 
@@ -151,8 +155,8 @@ async function runClip(tabId: number): Promise<void> {
       return emitError('restricted-page', _('Readest needs permission to read local files.'));
     }
 
-    const stored = await readToken();
-    if (!stored) {
+    const stored = delivery === 'cloud' ? await readToken() : null;
+    if (delivery === 'cloud' && !stored) {
       return emitError('not-signed-in', _('Sign in at web.readest.com first'));
     }
 
@@ -188,24 +192,33 @@ async function runClip(tabId: number): Promise<void> {
     setBadge('epub');
     broadcast({ phase: 'converting' });
 
-    let outcome;
-    try {
-      outcome = await clipAndUploadViaOffscreen({
-        html: snapshot.html,
-        url: snapshot.sourceUrl,
-        token: stored.token,
-        pageTitle: snapshot.pageTitle,
-      });
-    } catch (err) {
-      return emitError('unknown', err instanceof Error ? err.message : _('Unknown error'));
-    }
-    if (!outcome.ok) {
-      return emitError(outcome.failure.code, outcome.failure.message);
+    const input = {
+      html: snapshot.html,
+      url: snapshot.sourceUrl,
+      baseUrl: snapshot.baseUrl,
+      pageTitle: snapshot.pageTitle,
+    };
+    let missingAssets: number | undefined;
+    if (delivery === 'download') {
+      const outcome = await clipAndDownloadViaOffscreen(input);
+      if (!outcome.ok) return emitError(outcome.failure.code, outcome.failure.message);
+      broadcast({ phase: 'downloading' });
+      try {
+        await downloadEpub(outcome.result, () => releaseDownloadUrl(outcome.result.url));
+      } catch (err) {
+        return emitError('unknown', err instanceof Error ? err.message : _('Unknown error'));
+      }
+      missingAssets = outcome.result.missingAssets;
+    } else {
+      broadcast({ phase: 'uploading' });
+      const outcome = await clipAndUploadViaOffscreen({ ...input, token: stored!.token });
+      if (!outcome.ok) return emitError(outcome.failure.code, outcome.failure.message);
+      missingAssets = outcome.result.missingAssets;
     }
 
     setBadge('ok');
     setTimeout(() => setBadge('clear'), 5_000);
-    broadcast({ phase: 'done' });
+    broadcast({ phase: 'done', delivery, missingAssets });
   } finally {
     state.inFlight = false;
   }
@@ -216,8 +229,8 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse): 
   const m = message as { type?: string };
 
   if (m.type === 'send-to-readest:clip') {
-    const { tabId } = message as ClipRequest;
-    runClip(tabId).catch((err) =>
+    const { tabId, delivery } = message as ClipRequest;
+    runClip(tabId, delivery === 'download' ? 'download' : 'cloud').catch((err) =>
       emitError('unknown', err instanceof Error ? err.message : _('Unknown error')),
     );
     sendResponse({ accepted: true });

@@ -1,6 +1,6 @@
 import { configureZip } from '@/utils/zip';
 import { buildNavMap } from './toc';
-import type { EpubChapter, EpubBuildMetadata, EpubImage } from './types';
+import type { EpubChapter, EpubBuildMetadata, EpubImage, TocEntry } from './types';
 
 // Zero the zip timestamps so converting the same source twice yields
 // byte-identical EPUBs — that keeps the import-time hash stable and dedups
@@ -34,7 +34,43 @@ figcaption { font-size: 0.9em; color: #666; text-align: center; }
 blockquote { margin: 1em 1.5em; color: #444; border-left: 3px solid #ccc; padding-left: 1em; }
 pre, code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
 pre { white-space: pre-wrap; background: #f5f5f5; padding: 0.6em 0.8em; border-radius: 4px; }
+table { border-collapse: collapse; max-width: 100%; }
+th, td { border: 1px solid #aaa; padding: 0.25em 0.5em; }
+math, svg { max-width: 100%; }
 `;
+
+/** HTML void elements and entities must be serialized as XML in EPUB XHTML. */
+function asXhtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const serializer = new XMLSerializer();
+  return Array.from(doc.body.childNodes)
+    .map((node) => serializer.serializeToString(node))
+    .join('');
+}
+
+function navigationList(entries: TocEntry[]): string {
+  interface NavNode {
+    entry?: TocEntry;
+    children: NavNode[];
+  }
+  const root: NavNode = { children: [] };
+  const stack = [root];
+  for (const entry of entries) {
+    while (stack.length > 1 && (stack[stack.length - 1]!.entry?.level ?? 0) >= entry.level)
+      stack.pop();
+    const node: NavNode = { entry, children: [] };
+    stack[stack.length - 1]!.children.push(node);
+    stack.push(node);
+  }
+  const render = (nodes: NavNode[]): string =>
+    nodes
+      .map((node) => {
+        const entry = node.entry!;
+        return `<li><a href="OEBPS/chapter${(entry.chapterIndex ?? 0) + 1}.xhtml#${escapeXml(entry.id)}">${escapeXml(entry.text)}</a>${node.children.length ? `<ol>${render(node.children)}</ol>` : ''}</li>`;
+      })
+      .join('');
+  return render(root.children);
+}
 
 /**
  * Build a minimal, valid EPUB 2.0 from sanitized HTML chapters. Shares the
@@ -59,11 +95,15 @@ export async function buildEpub(
   await configureZip();
   const { BlobWriter, TextReader, Uint8ArrayReader, ZipWriter } = await import('@zip.js/zip.js');
   const { title, author, language, identifier } = metadata;
+  const epub3 = Boolean(metadata.source);
 
   const zipWriter = new ZipWriter(new BlobWriter('application/epub+zip'), {
     extendedTimestamp: false,
   });
-  await zipWriter.add('mimetype', new TextReader('application/epub+zip'), zipWriteOptions);
+  await zipWriter.add('mimetype', new TextReader('application/epub+zip'), {
+    ...zipWriteOptions,
+    level: 0,
+  });
 
   const containerXml = `<?xml version="1.0" encoding="UTF-8"?>
 <container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
@@ -135,7 +175,7 @@ export async function buildEpub(
     <title>${escapeXml(chapter.title)}</title>
     <link rel="stylesheet" type="text/css" href="../style.css"/>
   </head>
-  <body>${chapter.html}</body>
+  <body>${epub3 ? asXhtml(chapter.html) : chapter.html}</body>
 </html>`;
     await zipWriter.add(`OEBPS/chapter${i + 1}.xhtml`, new TextReader(xhtml), zipWriteOptions);
   }
@@ -143,7 +183,7 @@ export async function buildEpub(
   const manifest = chapters
     .map(
       (_, i) =>
-        `<item id="chap${i + 1}" href="OEBPS/chapter${i + 1}.xhtml" media-type="application/xhtml+xml"/>`,
+        `<item id="chap${i + 1}" href="OEBPS/chapter${i + 1}.xhtml" media-type="application/xhtml+xml"${epub3 && /<(?:math|svg)\b/i.test(chapters[i]!.html) ? ` properties="${[/<math\b/i.test(chapters[i]!.html) ? 'mathml' : '', /<svg\b/i.test(chapters[i]!.html) ? 'svg' : ''].filter(Boolean).join(' ')}"` : ''}/>`,
     )
     .join('\n    ');
   const imageManifest = images
@@ -158,6 +198,26 @@ export async function buildEpub(
   const coverMeta = coverImage ? `<meta name="cover" content="cover-image"/>` : '';
   const spine = chapters.map((_, i) => `<itemref idref="chap${i + 1}"/>`).join('\n    ');
 
+  if (epub3) {
+    const links = metadata.toc?.length
+      ? navigationList(metadata.toc)
+      : chapters
+          .map(
+            (chapter, index) =>
+              `<li><a href="OEBPS/chapter${index + 1}.xhtml">${escapeXml(chapter.title)}</a></li>`,
+          )
+          .join('');
+    const nav = `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="${escapeXml(language)}"><head><title>${escapeXml(title)}</title></head><body><nav epub:type="toc"><ol>${links}</ol></nav></body></html>`;
+    await zipWriter.add('nav.xhtml', new TextReader(nav), zipWriteOptions);
+    await zipWriter.add(
+      'source.json',
+      new TextReader(
+        JSON.stringify({ source: metadata.source, warnings: metadata.warnings ?? [] }),
+      ),
+      zipWriteOptions,
+    );
+  }
+
   // Only include manifest lines that have content — empty lines would leave
   // stray blank entries in the OPF and trip strict parsers.
   const manifestLines = [manifest, imageManifest, coverManifest]
@@ -165,18 +225,20 @@ export async function buildEpub(
     .join('\n    ');
 
   const contentOpf = `<?xml version="1.0" encoding="UTF-8"?>
-<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="book-id" version="2.0">
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="book-id" version="${epub3 ? '3.0' : '2.0'}">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:title>${escapeXml(title)}</dc:title>
     <dc:language>${escapeXml(language)}</dc:language>
     <dc:creator>${escapeXml(author)}</dc:creator>
     <dc:identifier id="book-id">${escapeXml(identifier)}</dc:identifier>
+    ${metadata.source ? `<dc:source>${escapeXml(metadata.source.url)}</dc:source>${metadata.source.published ? `<dc:date>${escapeXml(metadata.source.published)}</dc:date>` : ''}<meta property="dcterms:modified">1970-01-01T00:00:00Z</meta>` : ''}
     ${coverMeta}
   </metadata>
   <manifest>
     ${manifestLines}
     <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
     <item id="css" href="style.css" media-type="text/css"/>
+    ${epub3 ? '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="source" href="source.json" media-type="application/json"/>' : ''}
   </manifest>
   <spine toc="ncx">
     ${spine}

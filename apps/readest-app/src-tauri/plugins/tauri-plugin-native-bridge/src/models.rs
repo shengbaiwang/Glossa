@@ -357,6 +357,8 @@ pub struct GetSyncPassphraseResponse {
 pub struct ClipUrlRequest {
     pub url: String,
     #[serde(default)]
+    pub task_id: Option<String>,
+    #[serde(default)]
     pub window_title: Option<String>,
     #[serde(default)]
     pub overlay_title: Option<String>,
@@ -382,12 +384,22 @@ pub struct ClipUrlRequest {
     pub cancel_label: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipCancelRequest {
+    pub task_id: String,
+}
+
 #[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClipUrlResponse {
     /// Rendered `document.documentElement.outerHTML` captured from the
     /// hidden WKWebView / WebView once load+settle completed.
     pub html: String,
+    #[serde(default)]
+    pub final_url: String,
+    #[serde(default)]
+    pub base_url: String,
 }
 
 /// Read (and delete) a page-HTML file the iOS Share Extension captured

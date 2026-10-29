@@ -161,19 +161,27 @@ async function database(io: LibraryIO): Promise<DatabaseService | undefined> {
 /** Read the sole authority. Database failures never fall back to stale JSON. */
 export async function loadLibraryRows(
   io: LibraryIO,
-  options?: { strict?: boolean },
+  options?: { strict?: boolean; hashes?: string[] },
 ): Promise<Book[]> {
+  const hashes = options?.hashes && [...new Set(options.hashes)];
+  if (hashes && !hashes.length) return [];
   const db = await database(io);
   if (!db) {
-    if (!options?.strict) return safeLoadJSON<Book[]>(io, getLibraryFilename(), 'Books', []);
+    if (!options?.strict) {
+      const books = await safeLoadJSON<Book[]>(io, getLibraryFilename(), 'Books', []);
+      return hashes ? books.filter((book) => hashes.includes(book.hash)) : books;
+    }
     const raw: unknown = JSON.parse(
       (await io.readFile(getLibraryFilename(), 'Books', 'text')) as string,
     );
     assertRows(raw);
-    return raw;
+    return hashes ? raw.filter((book) => hashes.includes(book.hash)) : raw;
   }
   const rows = await db.select<{ payload: string }>(
-    `SELECT payload FROM ${TABLE} WHERE key LIKE 'book:%' AND payload IS NOT NULL ORDER BY rowid`,
+    hashes
+      ? `SELECT payload FROM ${TABLE} WHERE key IN (SELECT 'book:' || value FROM json_each(?)) AND payload IS NOT NULL ORDER BY rowid`
+      : `SELECT payload FROM ${TABLE} WHERE key LIKE 'book:%' AND payload IS NOT NULL ORDER BY rowid`,
+    hashes ? [JSON.stringify(hashes)] : undefined,
   );
   const books: unknown = rows.map((row) => JSON.parse(row.payload));
   assertRows(books);

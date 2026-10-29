@@ -17,6 +17,8 @@ import FolderToolbar from '@/app/library/components/FolderToolbar';
 import GroupingModal from '@/app/library/components/GroupingModal';
 import FolderNameEditor from '@/app/library/components/FolderNameEditor';
 import { md5Fingerprint } from '@/utils/md5';
+import { captureLibraryTransfer } from '@/app/library/utils/libraryTransfer';
+import { mergeLibraryBook } from '@/utils/libraryMerge';
 
 const mocks = vi.hoisted(() => ({ saveSettings: vi.fn(), saveLibraryBooks: vi.fn() }));
 vi.mock('@/context/EnvContext', () => ({ useEnv: () => ({ appService: mocks }) }));
@@ -41,6 +43,248 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('folder persistence and recovery', () => {
+  it('does not publish an older group over a later move while book persistence is pending', async () => {
+    useSettingsStore
+      .getState()
+      .setSettings({ libraryFolders: ['A', 'B', 'C'] } as unknown as SystemSettings);
+    useLibraryStore.getState().setLibrary([{ ...book, groupName: 'A' }]);
+    const { result } = renderHook(() => useLibraryFolders());
+    mocks.saveLibraryBooks.mockImplementationOnce(async (incoming: Book[]) => {
+      useLibraryStore.getState().setLibrary([
+        {
+          ...incoming[0]!,
+          groupName: 'C',
+          groupId: md5Fingerprint('C'),
+          groupUpdatedAt: incoming[0]!.groupUpdatedAt! + 1,
+        },
+      ]);
+    });
+    await act(async () => {
+      await result.current.move([book.hash], 'B');
+    });
+    expect(useLibraryStore.getState().library[0]?.groupName).toBe('C');
+    expect(result.current.canUndo).toBe(false);
+  });
+
+  it('persists rapid undo and redo with strictly advancing group revisions', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1000);
+    try {
+      let disk = { ...book, groupName: 'A', groupUpdatedAt: 1000 };
+      useSettingsStore
+        .getState()
+        .setSettings({ libraryFolders: ['A'] } as unknown as SystemSettings);
+      useLibraryStore.getState().setLibrary([disk]);
+      mocks.saveLibraryBooks.mockImplementation(async (incoming: Book[]) => {
+        disk = mergeLibraryBook(disk, incoming[0]!) as typeof disk;
+        return [disk];
+      });
+      const { result } = renderHook(() => useLibraryFolders());
+      await act(async () => expect(await result.current.rename('A', 'B')).toBe(true));
+      expect(disk.groupName).toBe('B');
+      await act(async () => expect(await result.current.undo()).toBe(true));
+      expect(disk.groupName).toBe('A');
+      await act(async () => expect(await result.current.redo()).toBe(true));
+      expect(disk.groupName).toBe('B');
+      expect(disk.groupUpdatedAt).toBeGreaterThan(1002);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('refuses a transfer if branch membership changes while the catalog is saving', async () => {
+    useSettingsStore
+      .getState()
+      .setSettings({ libraryFolders: ['A', 'B'] } as unknown as SystemSettings);
+    useLibraryStore.getState().setLibrary([{ ...book, groupName: 'A' }]);
+    const { result } = renderHook(() => useLibraryFolders());
+    const snapshot = captureLibraryTransfer(
+      useLibraryStore.getState().library,
+      result.current.paths,
+      [md5Fingerprint('A')],
+    )!;
+    mocks.saveSettings.mockImplementationOnce(async () => {
+      useLibraryStore
+        .getState()
+        .setLibrary([
+          ...useLibraryStore.getState().library,
+          { ...book, hash: 'new-member', groupName: 'A' },
+        ]);
+    });
+    await act(async () => expect(await result.current.moveItems(snapshot, 'B')).toBe(false));
+    expect(mocks.saveLibraryBooks).not.toHaveBeenCalled();
+    expect(result.current.paths).toEqual(['A', 'B']);
+    expect(useLibraryStore.getState().library.every((entry) => entry.groupName === 'A')).toBe(true);
+  });
+
+  it('rejects stale sidebar reorder snapshots and preserves later personal edits during save', async () => {
+    useSettingsStore
+      .getState()
+      .setSettings({ libraryFolders: ['A', 'B'] } as unknown as SystemSettings);
+    useLibraryStore.getState().setLibrary([{ ...book, groupName: 'A' }]);
+    const { result } = renderHook(() => useLibraryFolders());
+    const snapshot = captureLibraryTransfer(
+      useLibraryStore.getState().library,
+      result.current.paths,
+      [md5Fingerprint('A')],
+    )!;
+    act(() => useLibraryStore.getState().setLibrary([{ ...book, groupName: 'B' }]));
+    await act(async () =>
+      expect(await result.current.placeItems(snapshot, 'B', 'after')).toBe(false),
+    );
+    mocks.saveSettings.mockImplementationOnce(async () => {
+      useLibraryStore.getState().setLibrary([
+        {
+          ...useLibraryStore.getState().library[0]!,
+          title: 'Later title',
+          updatedAt: Date.now() + 1000,
+          progress: [4, 10],
+        },
+      ]);
+      useSettingsStore.getState().setSettings({
+        ...useSettingsStore.getState().settings,
+        autoImportFolderGroups: { '/new': 'A' },
+      });
+    });
+    await act(async () => expect(await result.current.move([book.hash], 'A')).toBe(true));
+    expect(useLibraryStore.getState().library[0]).toMatchObject({
+      title: 'Later title',
+      progress: [4, 10],
+      groupName: 'A',
+    });
+    expect(useLibraryStore.getState().library[0]!.updatedAt).toBeGreaterThan(
+      useLibraryStore.getState().library[0]!.groupUpdatedAt!,
+    );
+    expect(useSettingsStore.getState().settings.autoImportFolderGroups).toEqual({ '/new': 'A' });
+  });
+
+  it('creates a group from mixed selected items as one undoable change and never duplicates books', async () => {
+    useSettingsStore
+      .getState()
+      .setSettings({ libraryFolders: ['A', 'A/Child'] } as unknown as SystemSettings);
+    useLibraryStore.getState().setLibrary([
+      { ...book, groupName: '' },
+      { ...book, hash: 'nested', groupName: 'A/Child' },
+    ]);
+    const { result } = renderHook(() => useLibraryFolders());
+    const snapshot = captureLibraryTransfer(
+      useLibraryStore.getState().library,
+      result.current.paths,
+      [book.hash, md5Fingerprint('A')],
+    )!;
+    await act(async () =>
+      expect(await result.current.createWithItems('', 'Collection', snapshot)).toBe('Collection'),
+    );
+    expect(useLibraryStore.getState().library.map((entry) => entry.groupName)).toEqual([
+      'Collection',
+      'Collection/A/Child',
+    ]);
+    expect(mocks.saveLibraryBooks).toHaveBeenCalledTimes(1);
+    await act(async () => expect(await result.current.undo()).toBe(true));
+    expect(result.current.paths).toEqual(['A', 'A/Child']);
+    expect(useLibraryStore.getState().library.map((entry) => entry.groupName)).toEqual([
+      '',
+      'A/Child',
+    ]);
+    await act(async () => expect(await result.current.redo()).toBe(true));
+    expect(useLibraryStore.getState().library).toHaveLength(2);
+  });
+
+  it('keeps a transfer retryable after failure and refuses a changed source', async () => {
+    useSettingsStore
+      .getState()
+      .setSettings({ libraryFolders: ['A', 'B'] } as unknown as SystemSettings);
+    useLibraryStore.getState().setLibrary([{ ...book, groupName: 'A' }]);
+    const { result } = renderHook(() => useLibraryFolders());
+    const snapshot = captureLibraryTransfer(
+      useLibraryStore.getState().library,
+      result.current.paths,
+      [book.hash],
+    )!;
+    mocks.saveLibraryBooks.mockRejectedValueOnce(new Error('full'));
+    await act(async () => expect(await result.current.moveItems(snapshot, 'B')).toBe(false));
+    expect(useLibraryStore.getState().library[0]?.groupName).toBe('A');
+    await act(async () => expect(await result.current.moveItems(snapshot, 'B')).toBe(true));
+    await act(async () => expect(await result.current.moveItems(snapshot, 'A')).toBe(false));
+    expect(useLibraryStore.getState().library[0]?.groupName).toBe('B');
+  });
+  it('undoes and redoes several branch changes without restoring old personal records', async () => {
+    useSettingsStore.getState().setSettings({
+      libraryFolders: ['A', 'A/Child', 'Destination'],
+      autoImportFolderGroups: { '/books': 'A/Child' },
+    } as unknown as SystemSettings);
+    useLibraryStore.getState().setLibrary([{ ...book, groupName: 'A/Child' }]);
+    const { result } = renderHook(() => useLibraryFolders());
+    await act(async () => {
+      expect(await result.current.rename('A', 'B')).toBe(true);
+      expect(await result.current.move([md5Fingerprint('B')], 'Destination')).toBe(true);
+    });
+    act(() =>
+      useLibraryStore
+        .getState()
+        .setLibrary([
+          { ...useLibraryStore.getState().library[0]!, title: 'Personal title', progress: [7, 10] },
+        ]),
+    );
+    await act(async () => {
+      expect(await result.current.undo()).toBe(true);
+      expect(await result.current.undo()).toBe(true);
+    });
+    expect(result.current.paths).toEqual(['A', 'A/Child', 'Destination']);
+    expect(result.current.canRedo).toBe(true);
+    await act(async () => {
+      expect(await result.current.redo()).toBe(true);
+      expect(await result.current.redo()).toBe(true);
+    });
+    expect(useLibraryStore.getState().library[0]).toMatchObject({
+      groupName: 'Destination/B/Child',
+      title: 'Personal title',
+      progress: [7, 10],
+    });
+    expect(useSettingsStore.getState().settings.autoImportFolderGroups).toEqual({
+      '/books': 'Destination/B/Child',
+    });
+  });
+
+  it('retains redo after a save failure, and clears it only after a new successful change', async () => {
+    useSettingsStore.getState().setSettings({ libraryFolders: ['A'] } as unknown as SystemSettings);
+    useLibraryStore.getState().setLibrary([{ ...book, groupName: 'A' }]);
+    const { result } = renderHook(() => useLibraryFolders());
+    await act(async () => {
+      await result.current.rename('A', 'B');
+      await result.current.undo();
+    });
+    mocks.saveLibraryBooks.mockRejectedValueOnce(new Error('disk full'));
+    await act(async () => expect(await result.current.redo()).toBe(false));
+    expect(result.current.canRedo).toBe(true);
+    expect(useLibraryStore.getState().library[0]?.groupName).toBe('A');
+    await act(async () => expect(await result.current.redo()).toBe(true));
+    await act(async () => {
+      await result.current.undo();
+      await result.current.create('', 'New');
+    });
+    expect(result.current.canRedo).toBe(false);
+  });
+
+  it('refuses redo if another book has joined a restored branch', async () => {
+    useSettingsStore.getState().setSettings({ libraryFolders: ['A'] } as unknown as SystemSettings);
+    useLibraryStore.getState().setLibrary([{ ...book, groupName: 'A' }]);
+    const { result } = renderHook(() => useLibraryFolders());
+    await act(async () => {
+      await result.current.rename('A', 'B');
+      await result.current.undo();
+    });
+    act(() =>
+      useLibraryStore
+        .getState()
+        .setLibrary([
+          ...useLibraryStore.getState().library,
+          { ...book, hash: 'later', groupName: 'A' },
+        ]),
+    );
+    expect(result.current.canRedo).toBe(false);
+    await act(async () => expect(await result.current.redo()).toBe(false));
+    expect(useLibraryStore.getState().library.every((entry) => entry.groupName === 'A')).toBe(true);
+  });
   it('keeps future folder imports attached to a renamed group and restores that attachment on undo', async () => {
     useSettingsStore.getState().setSettings({
       libraryFolders: ['研究', '研究/Books'],

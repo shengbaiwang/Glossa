@@ -42,7 +42,6 @@ vi.mock('@/store/settingsStore', async () => {
         libraryColumns: 6,
         libraryCoverFit: 'crop',
         libraryRecentShelfEnabled: true,
-        librarySkeuomorphicCovers: false,
         libraryGroupBy: 'none',
         librarySortBy: 'title',
         librarySortAscending: true,
@@ -82,7 +81,6 @@ beforeEach(() => {
       libraryColumns: 6,
       libraryCoverFit: 'crop',
       libraryRecentShelfEnabled: true,
-      librarySkeuomorphicCovers: false,
       libraryGroupBy: 'none',
       librarySortBy: 'title',
       librarySortAscending: true,
@@ -115,7 +113,6 @@ function SizePreview() {
             book={book}
             mode='list'
             coverFit='crop'
-            isSelectMode={false}
             bookSelected={false}
             transferProgress={null}
             handleBookUpload={vi.fn()}
@@ -133,7 +130,6 @@ function SizePreview() {
             books: [book],
             updatedAt: 1,
           }}
-          isSelectMode={false}
           groupSelected={false}
         />
       </div>
@@ -168,7 +164,7 @@ it('keeps active sizing and cover choices aligned in light, dark, narrow RTL and
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
     const menu = container.querySelector('.view-menu')!;
     expect(menu.getBoundingClientRect().height).toBeLessThan(touch ? 470 : 430);
-    const covers = screen.getByRole('group', { name: 'Book Covers' });
+    const covers = screen.getByRole('group', { name: 'Cover display' });
     const crop = within(covers).getByRole('button', { name: 'Fill cover', pressed: true });
     const fit = within(covers).getByRole('button', { name: 'Show full cover', pressed: false });
     expect(crop.getBoundingClientRect().top).toBe(fit.getBoundingClientRect().top);
@@ -211,12 +207,14 @@ it('opens sorting with the keyboard and bounds expanded content in a short windo
   document.documentElement.setAttribute('data-page', 'library');
   document.documentElement.setAttribute('data-theme', 'default-light');
   const { container } = render(<SizePreview />);
-  const sort = screen.getByRole('button', { name: 'Sort by' });
+  const sort = screen.getByRole('button', { name: 'Sort' });
   expect(sort.getAttribute('aria-expanded')).toBe('false');
   sort.focus();
   await userEvent.keyboard('{Enter}');
   await waitFor(() => expect(sort.getAttribute('aria-expanded')).toBe('true'));
-  expect(within(sort.closest('details')!).getByRole('combobox', { name: 'Sort by' })).toBeTruthy();
+  expect(
+    within(sort.closest('details')!).getByRole('combobox', { name: 'Primary sort' }),
+  ).toBeTruthy();
   const menu = container.querySelector('.view-menu')!;
   expect(menu.getBoundingClientRect().bottom).toBeLessThanOrEqual(560);
   expect(menu.scrollHeight).toBeGreaterThan(menu.clientHeight);
@@ -228,7 +226,7 @@ it('opens sorting with the keyboard and bounds expanded content in a short windo
 it('applies book information to list and recent-style cards and retains it after reopening', async () => {
   await page.viewport(390, 844);
   const view = render(<SizePreview />);
-  await page.getByRole('button', { name: 'Book information' }).click();
+  await page.getByRole('button', { name: 'Card information' }).click();
   await page.getByRole('checkbox', { name: /^Author$/ }).click();
   await waitFor(() =>
     expect(view.container.querySelector('.book-item .glossa-book-author')).toBeNull(),
@@ -239,7 +237,7 @@ it('applies book information to list and recent-style cards and retains it after
   cleanup();
   render(<SizePreview />);
   expect(document.querySelector('.book-item .glossa-book-author')).toBeNull();
-  await page.getByRole('button', { name: 'Book information' }).click();
+  await page.getByRole('button', { name: 'Card information' }).click();
   expect((screen.getByRole('checkbox', { name: /^Author$/ }) as HTMLInputElement).checked).toBe(
     false,
   );
@@ -251,10 +249,37 @@ it('previews the compact Chinese menu with the actual translations', async () =>
   document.documentElement.setAttribute('data-page', 'library');
   document.documentElement.setAttribute('data-theme', 'default-dark');
   const view = render(<SizePreview />);
-  expect(screen.getByRole('button', { name: '完整显示' })).toBeTruthy();
-  expect(screen.getByRole('checkbox', { name: '立体封面' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: '书卡信息' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '完整' })).toBeTruthy();
+  expect(screen.queryByRole('checkbox', { name: '立体封面' })).toBeNull();
+  expect(screen.getByRole('button', { name: '卡片信息' })).toBeTruthy();
   await page.screenshot({ path: '../../../../../../.glossa-dev/qa/display-menu-zh-dark.png' });
   const menu = view.container.querySelector('.view-menu')!;
   expect(menu.scrollWidth).toBeLessThanOrEqual(menu.clientWidth);
+});
+
+it('opens native sort controls from the chevron and the full trailing edge in either direction', async () => {
+  await page.viewport(600, 800);
+  for (const dir of ['ltr', 'rtl']) {
+    document.documentElement.dir = dir;
+    render(<SizePreview />);
+    await userEvent.click(screen.getByRole('button', { name: 'Sort' }));
+    for (const name of ['Primary sort', 'Secondary sort']) {
+      const select = screen.getByRole('combobox', { name }) as HTMLSelectElement;
+      const wrapper = select.parentElement!;
+      wrapper.scrollIntoView({ block: 'nearest' });
+      const rect = wrapper.getBoundingClientRect();
+      const trailingX = dir === 'rtl' ? 3 : rect.width - 3;
+      expect(document.elementFromPoint(rect.left + trailingX, rect.top + rect.height / 2)).toBe(
+        select,
+      );
+      const click = vi.fn();
+      select.addEventListener('click', click);
+      await userEvent.click(wrapper, { position: { x: trailingX, y: rect.height / 2 } });
+      expect(click).toHaveBeenCalledOnce();
+      expect(document.activeElement).toBe(select);
+      await userEvent.keyboard('{Escape}');
+      select.removeEventListener('click', click);
+    }
+    cleanup();
+  }
 });

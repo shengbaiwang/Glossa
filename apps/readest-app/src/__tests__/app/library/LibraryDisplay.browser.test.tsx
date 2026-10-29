@@ -1,6 +1,6 @@
 import { useLibraryRefresh } from '@/hooks/useLibraryRefresh';
 import { notifyLibraryUpdated } from '@/utils/libraryEvents';
-import { useReducer, useState } from 'react';
+import { useReducer } from 'react';
 import { cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
@@ -81,7 +81,6 @@ const original: Book = {
 
 function Shelf({ direct = false } = {}) {
   const [, update] = useReducer((n) => n + 1, 0);
-  const [selecting, setSelecting] = useState(false);
   if (!direct)
     mocks.navigate = (query) => {
       mocks.search = query;
@@ -118,16 +117,12 @@ function Shelf({ direct = false } = {}) {
             : undefined
         }
         libraryBooks={library}
-        isSelectMode={selecting}
-        isSelectAll={false}
-        isSelectNone={false}
         onScrollerRef={noop}
         handleImportBooks={mocks.importBooks}
         handleBookUpload={transfer}
         handleBookDownload={transfer}
         handleBookDelete={transfer}
         handleBookPurge={transfer}
-        handleSetSelectMode={setSelecting}
         handleShowDetailsBook={noop}
         handleLibraryNavigation={(group) => {
           const params = new URLSearchParams(mocks.search);
@@ -273,8 +268,7 @@ it('live covers, author and progress consume toggles', async () => {
     expect(e).toBeTruthy();
     return e!;
   });
-  fireEvent.click(screen.getByRole('checkbox', { name: '3D covers' }));
-  await waitFor(() => expect(cover.dataset['material']).toBe('paper'));
+  expect(screen.queryByRole('checkbox', { name: '3D covers' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Show full cover' }));
   await waitFor(() => expect(cover.dataset['fit']).toBe('fit'));
   const image = cover.querySelector('img')!;
@@ -285,7 +279,7 @@ it('live covers, author and progress consume toggles', async () => {
       Math.abs(face.getBoundingClientRect().width - face.getBoundingClientRect().height),
     ).toBeLessThan(2),
   );
-  await userEvent.click(screen.getByRole('button', { name: 'Book information' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Card information' }));
   await userEvent.click(screen.getByRole('checkbox', { name: 'Author' }));
   await waitFor(() => expect(view.container.querySelector('.glossa-book-author')).toBeNull());
   expect(view.container.textContent).toContain('25%');
@@ -319,7 +313,7 @@ it('layout and list sizing update shelf', async () => {
 it('recent reading appears only with eligible books', async () => {
   await displayViewport();
   setupDisplay();
-  fireEvent.click(screen.getByRole('checkbox', { name: 'Show recent reading' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Recent reading' }));
   await waitFor(() => expect(screen.getByText('Continue reading')).toBeTruthy());
   useLibraryStore
     .getState()
@@ -387,8 +381,8 @@ it('choosing explicit no secondary sort in author view must disable it', async (
     { libraryGroupBy: LibraryGroupByType.Author, libraryThenSortBy: 'none' },
     'groupBy=author',
   );
-  await userEvent.click(screen.getByRole('button', { name: 'Sort by' }));
-  const secondary = screen.getByRole('combobox', { name: 'Then by...' });
+  await userEvent.click(screen.getByRole('button', { name: 'Sort' }));
+  const secondary = screen.getByRole('combobox', { name: 'Secondary sort' });
   if ('__TAURI_INTERNALS__' in window) {
     // The native WebDriver only clicks <option>; even a plain select receives no
     // input/change events. Exercise React's change contract here; Chromium below
@@ -405,10 +399,10 @@ it('choosing explicit no secondary sort in author view must disable it', async (
   mocks.search = 'groupBy=author';
   window.history.replaceState(null, '', '?groupBy=author');
   render(<ViewMenu />);
-  await userEvent.click(screen.getByRole('button', { name: 'Sort by' }));
-  expect((screen.getByRole('combobox', { name: 'Then by...' }) as HTMLSelectElement).value).toBe(
-    'none',
-  );
+  await userEvent.click(screen.getByRole('button', { name: 'Sort' }));
+  expect(
+    (screen.getByRole('combobox', { name: 'Secondary sort' }) as HTMLSelectElement).value,
+  ).toBe('none');
 });
 
 it('sort arrow should reverse actual URL order on first click', async () => {
@@ -421,8 +415,8 @@ it('sort arrow should reverse actual URL order on first click', async () => {
     view.container.querySelector('.glossa-collection-grid .glossa-book-title')?.textContent;
   await waitFor(() => expect(titles()).toContain('Original 7'));
   const before = titles();
-  await userEvent.click(screen.getByRole('button', { name: 'Sort by' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Sort by / Ascending' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Sort' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Primary sort / Ascending' }));
   await waitFor(() =>
     expect(useSettingsStore.getState().settings.librarySortAscending).toBe(false),
   );
@@ -453,9 +447,9 @@ it('refreshes recently-read books through the persisted-update channel without c
 it('keeps a failed menu edit available for retry', async () => {
   setupDisplay();
   mocks.saveSettings.mockRejectedValueOnce(new Error('controlled disk failure'));
-  await userEvent.click(screen.getByRole('checkbox', { name: '3D covers' }));
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Recent reading' }));
   expect((await screen.findByRole('alert')).textContent).toContain('Failed to save settings');
   await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
   await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
-  expect(useSettingsStore.getState().settings.librarySkeuomorphicCovers).toBe(true);
+  expect(useSettingsStore.getState().settings.libraryRecentShelfEnabled).toBe(true);
 });

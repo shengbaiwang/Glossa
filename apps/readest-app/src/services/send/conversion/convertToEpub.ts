@@ -1,4 +1,3 @@
-import { Readability } from '@mozilla/readability';
 import { detectLanguage } from '@/utils/lang';
 // `mammoth` (DOCX → HTML) and `TxtToEpubConverter` are dynamically imported
 // inside their respective `case` bodies in `convertToEpub`. They're heavy
@@ -6,15 +5,25 @@ import { detectLanguage } from '@/utils/lang';
 // browser extension imports `convertPageToEpub` and never reaches those
 // branches, so dynamic imports let webpack code-split them out of the
 // extension bundle entirely.
-import { sanitizeHtml, sanitizeForParsing } from '@/utils/sanitize';
+import { sanitizeHtml, sanitizeArticleHtml, sanitizeForParsing } from '@/utils/sanitize';
 import { buildEpub } from './buildEpub';
 import { bundleAssets } from './assetBundler';
 import { generateCoverSvg } from './coverGenerator';
 import { fetchAuthorImage, fetchBestFavicon } from './faviconFetcher';
 import { findSiteRule, META_FALLBACK, type SiteRule } from './siteRules';
 import { extractHeadings } from './toc';
+import { extractWebArticle, safeSourceUrl } from './extractWebArticle';
 import { ConversionError } from './types';
-import type { ConvertibleMime, ConvertedBook, EpubChapter, EpubImage, TocEntry } from './types';
+import type {
+  ConvertibleMime,
+  ConvertedBook,
+  EpubChapter,
+  EpubImage,
+  TocEntry,
+  WebArticleOptions,
+  WebArticleSource,
+  ConversionWarning,
+} from './types';
 
 /** Discriminated input — the caller resolves the kind from the MIME type. */
 export type ConvertInput =
@@ -22,11 +31,11 @@ export type ConvertInput =
   | { kind: 'rtf'; bytes: ArrayBuffer; fileName?: string }
   | { kind: 'html'; bytes: ArrayBuffer; fileName?: string }
   | { kind: 'txt'; file: File }
-  | { kind: 'article'; html: string; url: string }
+  | ({ kind: 'article'; html: string; url: string } & WebArticleOptions)
   /** Self-contained page clip: like `article` but fetches every referenced
    *  image and embeds it in the EPUB. Only safe from a CORS-free context
    *  (Tauri webview, browser-extension content script). */
-  | { kind: 'page'; html: string; url: string; signal?: AbortSignal };
+  | ({ kind: 'page'; html: string; url: string; signal?: AbortSignal } & WebArticleOptions);
 
 const MIME_TO_KIND: Record<ConvertibleMime, ConvertInput['kind']> = {
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
@@ -100,17 +109,8 @@ function composeArticleContent(title: string, byline: string, body: string): str
   return parts.join('\n');
 }
 
-/** Assemble an EPUB from a single block of sanitized HTML (optionally with
- *  pre-fetched image resources to embed). Extracts an in-chapter heading
- *  TOC so the EPUB reader's sidebar shows the article's sections.
- *
- *  `identityKey` is the input the EPUB's `dc:identifier` is derived from.
- *  Callers choose what to feed it:
- *   - Page / article clips pass the canonical URL — the identifier then
- *     stays stable across edits of the same article, so a re-clip after
- *     the publisher tweaks a paragraph is recognised as the same work.
- *   - Local file inputs (docx / html / rtf) pass the sanitized chapter
- *     HTML — there's no URL, and content is the only stable handle. */
+/** Assemble deterministic bytes. The EPUB identifier describes a work;
+ * the import pipeline separately verifies complete file bytes for identity. */
 async function htmlToBook(
   rawHtml: string,
   title: string,
@@ -118,12 +118,14 @@ async function htmlToBook(
   identityKey: string,
   images: EpubImage[] = [],
   coverImage?: EpubImage,
+  source?: WebArticleSource,
+  warnings?: ConversionWarning[],
 ): Promise<ConvertedBook> {
   // Assign stable ids to headings BEFORE sanitization so the strict
   // `sanitizeHtml` step (which now allows `id`) preserves them — those
   // ids are what `toc.ncx` links to.
   const { html: withIds, headings } = extractHeadings(rawHtml);
-  const html = sanitizeHtml(withIds);
+  const html = source ? sanitizeArticleHtml(withIds) : sanitizeHtml(withIds);
   const text = stripTags(html);
   if (!text) {
     throw new ConversionError('Document has no readable content', 'empty_input');
@@ -145,6 +147,8 @@ async function htmlToBook(
       language,
       identifier: stableIdentifier(identityKey),
       toc,
+      source,
+      warnings,
     },
     images,
     coverImage,
@@ -153,131 +157,9 @@ async function htmlToBook(
   const file = new File([fileBytes], `${safeFileName(title)}.epub`, {
     type: 'application/epub+zip',
   });
-  return { file, title, author };
+  return { file, title, author, ...(source ? { source, warnings } : {}) };
 }
 
-/**
- * Parse a captured page into a document Readability can extract from.
- *
- * `DOMParser` gives the new document the *calling realm's* base URI —
- * `chrome-extension://<id>/offscreen.html` in the extension, `tauri://…`
- * in the desktop webview — and Readability rewrites every relative
- * `href`/`src` against it. Injecting the page's own URL as `<base>` makes
- * those resolve to where the assets actually live: identical absolute URLs
- * on every clip channel (which is what keeps the EPUBs byte-identical),
- * and `file://` siblings for a page opened from disk, which the asset
- * bundler then skips instead of fetching from the extension's origin.
- *
- * `sanitizeForParsing` strips any `<base>` the page itself shipped, so
- * there is never an author-supplied one to preserve.
- */
-function parsePageDocument(html: string, pageUrl: string): Document {
-  const doc = new DOMParser().parseFromString(sanitizeForParsing(html), 'text/html');
-  const base = doc.createElement('base');
-  base.setAttribute('href', pageUrl);
-  doc.head.insertBefore(base, doc.head.firstChild);
-  return doc;
-}
-
-interface RuleExtracted {
-  content: string;
-  title?: string;
-  byline?: string;
-}
-
-/**
- * Apply a `SiteRule` to a full HTML document. Returns the article body
- * (innerHTML of the rule's `content` selector, with `strip` selectors
- * removed) plus the rule-extracted title and byline if present.
- *
- * Returns null when the content selector matches nothing — the caller falls
- * through to Readability so a stale rule never blocks extraction.
- */
-function extractWithSiteRule(rawHtml: string, rule: SiteRule): RuleExtracted | null {
-  const doc = new DOMParser().parseFromString(sanitizeForParsing(rawHtml), 'text/html');
-  const contentEl = doc.querySelector(rule.content);
-  if (!contentEl) return null;
-  if (rule.strip?.length) {
-    for (const sel of rule.strip) {
-      for (const el of Array.from(contentEl.querySelectorAll(sel))) {
-        el.parentNode?.removeChild(el);
-      }
-    }
-  }
-  // Rule selectors first, OpenGraph / Twitter Card meta tags second.
-  // The meta-tag layer is what saves us when the site ships a frontend
-  // redesign and our CSS hooks stop matching — every reputable publisher
-  // keeps these tags stable for crawlers.
-  const ruleTitle = rule.title ? (doc.querySelector(rule.title)?.textContent?.trim() ?? '') : '';
-  const ruleByline = rule.byline ? (doc.querySelector(rule.byline)?.textContent?.trim() ?? '') : '';
-  const title = ruleTitle || pickMetaContent(doc, META_FALLBACK.title) || '';
-  const byline = ruleByline || pickMetaContent(doc, META_FALLBACK.byline) || '';
-  return {
-    content: contentEl.innerHTML,
-    title: title || undefined,
-    byline: byline || undefined,
-  };
-}
-
-/**
- * Pick the article body without Readability — useful when its scoring trips
- * on a custom layout (e.g. an article body wrapped in a non-semantic div
- * that's revealed by JS, plus heavy page chrome that outscores it).
- *
- * Walks a prioritized selector list, picks the element with the most stripped
- * text, returns its innerHTML if it clears the quality floor.
- */
-const ARTICLE_FALLBACK_SELECTORS = [
-  '#js_content',
-  'article',
-  'main article',
-  'main',
-  '[role="article"]',
-  '[itemprop="articleBody"]',
-  '.post-content',
-  '.entry-content',
-  '.article-content',
-  '.post-body',
-  '.markdown-body',
-  '#content',
-];
-
-function extractArticleFallback(rawHtml: string, minTextChars: number): string | null {
-  const doc = new DOMParser().parseFromString(sanitizeForParsing(rawHtml), 'text/html');
-  let bestHtml = '';
-  let bestText = 0;
-  for (const selector of ARTICLE_FALLBACK_SELECTORS) {
-    let els: NodeListOf<Element>;
-    try {
-      els = doc.querySelectorAll(selector);
-    } catch {
-      continue;
-    }
-    for (const el of Array.from(els)) {
-      const text = stripTags(el.innerHTML);
-      if (text.length > bestText) {
-        bestText = text.length;
-        bestHtml = el.innerHTML;
-      }
-    }
-  }
-  return bestText >= minTextChars ? bestHtml : null;
-}
-
-/**
- * Pick the site name for the synthetic cover. Tries Open Graph + Twitter
- * metadata first (most reliable; publishers set these for previews), falls
- * through to `<meta name="application-name">`, then degrades to the URL's
- * hostname stripped of the leading `www.` so e.g. `https://nytimes.com/foo`
- * yields "nytimes.com".
- */
-/**
- * Walk a list of meta-tag selectors and return the first non-empty
- * `content` attribute. Used as the universal safety net when a per-site
- * rule's selector missed (site re-skinned and our CSS hooks no longer
- * match) — see `META_FALLBACK` in `siteRules.ts` for the canonical
- * lists per field.
- */
 function pickMetaContent(doc: Document, selectors: readonly string[]): string | null {
   for (const sel of selectors) {
     const value = doc.querySelector(sel)?.getAttribute('content')?.trim();
@@ -331,18 +213,6 @@ function fileNameFromUrl(pageUrl: string): string {
   } catch {
     return '';
   }
-}
-
-/** Last-resort title for a page that declares none. A remote page has only
- *  its URL to offer; a local one has a file name, which beats putting the
- *  user's absolute path in the library (and in the upload headers). */
-function titleFallback(pageUrl: string): string {
-  try {
-    if (new URL(pageUrl).protocol === 'file:') return fileNameFromUrl(pageUrl) || pageUrl;
-  } catch {
-    /* unparseable — the raw string is all we have */
-  }
-  return pageUrl;
 }
 
 /**
@@ -473,139 +343,70 @@ function baseName(fileName: string | undefined, fallback: string): string {
   return fileName.replace(/\.[^.]+$/, '').trim() || fallback;
 }
 
-/**
- * Convert a single web page (rendered HTML + URL) into a self-contained
- * EPUB — Readability extraction, per-site rule fast-paths, inlined images,
- * cover, headings-as-TOC. Shared between every "self-contained page clip"
- * caller:
- *
- *   - The Tauri desktop / mobile `/send` URL field (Tauri-only path).
- *   - The browser extension's service worker (`extensions/send-to-readest`).
- *   - Future: any other channel that captures the rendered DOM and wants
- *     the same EPUB out the other side.
- *
- * Centralising it here is the only way to guarantee that the same URL
- * produces byte-identical EPUBs across desktop, mobile, and extension —
- * which is what the import-time hash dedup relies on.
- *
- * Only valid from a CORS-free caller (Tauri webview or browser-extension
- * service worker with broad `host_permissions`). A plain web page hitting
- * this would fail on the image fetches.
- */
+/** Convert captured HTML locally, then package reachable images and provenance. */
 export async function convertPageToEpub(
   html: string,
   url: string,
   signal?: AbortSignal,
+  options: WebArticleOptions = {},
 ): Promise<ConvertedBook> {
   signal?.throwIfAborted();
-  console.log('[clip/page] input', {
-    url,
-    html_bytes: html.length,
-  });
-
-  // Fast path: per-site rule. Skips Readability entirely on sites we know
-  // it mis-scores. Falls through if the rule's content selector matches
-  // nothing or the extracted text is below the quality floor.
-  const rule = findSiteRule(url);
-  if (rule) {
-    const ruleResult = extractWithSiteRule(html, rule);
-    const ruleText = ruleResult ? stripTags(ruleResult.content) : '';
-    console.log('[clip/page] site rule', {
-      name: rule.name,
-      matched: !!ruleResult,
-      text_chars: ruleText.length,
-      title: ruleResult?.title || null,
-    });
-    if (ruleResult && ruleText.length >= 400) {
-      const title = ruleResult.title || extractHtmlTitle(html, titleFallback(url));
-      const byline = ruleResult.byline || '';
-      const bundle = await bundleAssets(ruleResult.content, url, signal);
-      const cover = await buildArticleCover(html, url, title, byline, rule, signal);
-      signal?.throwIfAborted();
-      return htmlToBook(
-        composeArticleContent(title, byline, bundle.html),
-        title,
-        byline,
-        url,
-        bundle.images,
-        cover,
+  const article = extractWebArticle(html, url, options);
+  // The body images and generated cover share one resource deadline. Expiry
+  // preserves readable text and missing-resource evidence; user cancellation
+  // still rejects the entire conversion through the separate caller signal.
+  const resources = new AbortController();
+  const cancelResources = () => resources.abort(signal?.reason);
+  signal?.addEventListener('abort', cancelResources, { once: true });
+  const timer = setTimeout(
+    () => resources.abort(new Error('Article resource deadline reached')),
+    40_000,
+  );
+  try {
+    options.onStage?.('Saving article images…');
+    const bundle = await bundleAssets(
+      article.content,
+      url,
+      signal,
+      resources.signal,
+      article.baseUrl,
+    );
+    if (bundle.missingResources.length)
+      article.source.missingAssets = bundle.missingResources.map(safeSourceUrl);
+    if (article.imageOnly && !bundle.images.length) {
+      throw new ConversionError(
+        'The article images could not be packaged for offline reading',
+        'parse_failed',
       );
     }
-  }
-
-  let parsed: { title?: string | null; content?: string | null; byline?: string | null } | null;
-  try {
-    parsed = new Readability(parsePageDocument(html, url)).parse();
-  } catch (err) {
-    console.warn('[clip/page] readability threw', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    throw new ConversionError(`Could not extract article: ${String(err)}`, 'parse_failed');
-  }
-  if (!parsed?.content) {
-    console.warn('[clip/page] readability returned no content');
-    throw new ConversionError('No readable article found at the URL', 'parse_failed');
-  }
-  let articleHtml = parsed.content;
-  let contentText = stripTags(articleHtml);
-  console.log('[clip/page] readability', {
-    title: parsed.title || null,
-    byline: parsed.byline || null,
-    content_chars: articleHtml.length,
-    text_chars: contentText.length,
-  });
-  // Readability sometimes scores the wrong container on sites with custom
-  // markup (e.g. an article body wrapped in a non-semantic div revealed
-  // by JS). When the extracted text is tiny but the page HTML is
-  // substantial, try a known-selector fallback before giving up.
-  const QUALITY_FLOOR = 400;
-  if (contentText.length < QUALITY_FLOOR && html.length > 50_000) {
-    const fallback = extractArticleFallback(html, QUALITY_FLOOR);
-    if (fallback) {
-      articleHtml = fallback;
-      contentText = stripTags(articleHtml);
-      console.log('[clip/page] fallback selector picked up the article', {
-        text_chars: contentText.length,
-      });
-    }
-  }
-  // Bot-detection screens, paywall stubs and "please enable JavaScript"
-  // pages all slip past Readability AND the selector fallback with a
-  // tiny scrap of text. Refuse to import them — never save a junk EPUB.
-  if (contentText.length < QUALITY_FLOOR) {
-    throw new ConversionError(
-      'Could not read this page — it looks like a verification screen or a login wall. Open it in a browser first.',
-      'login_wall',
+    options.onStage?.('Preparing article cover…');
+    const cover = await buildArticleCover(
+      html,
+      url,
+      article.title,
+      article.author,
+      findSiteRule(url),
+      resources.signal,
     );
+    signal?.throwIfAborted();
+    const warnings: ConversionWarning[] = [];
+    if (bundle.missing) warnings.push({ code: 'missing_assets', count: bundle.missing });
+    if (article.source.scope !== 'article') warnings.push({ code: 'partial_content' });
+    options.onStage?.('Packaging article…');
+    return htmlToBook(
+      composeArticleContent(article.title, article.author, bundle.html),
+      article.title,
+      article.author,
+      url,
+      bundle.images,
+      cover,
+      article.source,
+      warnings,
+    );
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', cancelResources);
   }
-  // Readability gives us content reliably but byline misses on sites with
-  // non-standard author markup (most SPAs, anything class-mangled). Meta
-  // tags fill the gap — see `META_FALLBACK` in siteRules.ts.
-  let metaDoc: Document | null = null;
-  try {
-    metaDoc = new DOMParser().parseFromString(sanitizeForParsing(html), 'text/html');
-  } catch {
-    /* meta fallback unavailable; keep going with what Readability gave us */
-  }
-  const title =
-    parsed.title?.trim() ||
-    (metaDoc ? pickMetaContent(metaDoc, META_FALLBACK.title) : null) ||
-    extractHtmlTitle(html, titleFallback(url));
-  const byline =
-    parsed.byline?.trim() ||
-    (metaDoc ? pickMetaContent(metaDoc, META_FALLBACK.byline) : null) ||
-    '';
-  const bundle = await bundleAssets(articleHtml, url, signal);
-  const cover = await buildArticleCover(html, url, title, byline, rule, signal);
-  signal?.throwIfAborted();
-  return htmlToBook(
-    composeArticleContent(title, byline, bundle.html),
-    title,
-    byline,
-    url,
-    bundle.images,
-    cover,
-  );
 }
 
 /**
@@ -653,35 +454,32 @@ export async function convertToEpub(input: ConvertInput): Promise<ConvertedBook>
       return htmlToBook(html, baseName(input.fileName, 'Document'), '', html);
     }
     case 'article': {
-      let parsed: { title?: string | null; content?: string | null; byline?: string | null } | null;
-      try {
-        parsed = new Readability(parsePageDocument(input.html, input.url)).parse();
-      } catch (err) {
-        throw new ConversionError(`Could not extract article: ${String(err)}`, 'parse_failed');
+      const article = extractWebArticle(input.html, input.url, input);
+      if (article.imageOnly) {
+        throw new ConversionError('Image articles require offline image packaging', 'parse_failed');
       }
-      if (!parsed?.content) {
-        throw new ConversionError('No readable article found at the URL', 'parse_failed');
-      }
-      const title = parsed.title?.trim() || extractHtmlTitle(input.html, input.url);
-      const byline = parsed.byline?.trim() || '';
       const cover = await buildArticleCover(
         input.html,
         input.url,
-        title,
-        byline,
+        article.title,
+        article.author,
         findSiteRule(input.url),
       );
+      const warnings: ConversionWarning[] =
+        article.source.scope === 'article' ? [] : [{ code: 'partial_content' }];
       return htmlToBook(
-        composeArticleContent(title, byline, parsed.content),
-        title,
-        byline,
+        composeArticleContent(article.title, article.author, article.content),
+        article.title,
+        article.author,
         input.url,
         [],
         cover,
+        article.source,
+        warnings,
       );
     }
     case 'page': {
-      return convertPageToEpub(input.html, input.url, input.signal);
+      return convertPageToEpub(input.html, input.url, input.signal, input);
     }
     default: {
       throw new ConversionError(

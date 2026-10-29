@@ -42,23 +42,41 @@ export interface EnvConfigType {
 }
 
 let nativeAppService: AppService | null = null;
+let nativeAppServiceInit: Promise<AppService> | null = null;
 const getNativeAppService = async () => {
-  if (!nativeAppService) {
-    const { NativeAppService } = await import('@/services/nativeAppService');
-    nativeAppService = new NativeAppService();
-    await nativeAppService.init();
+  if (nativeAppService) return nativeAppService;
+  if (!nativeAppServiceInit) {
+    nativeAppServiceInit = (async () => {
+      const { NativeAppService } = await import('@/services/nativeAppService');
+      const service = new NativeAppService();
+      await service.init();
+      nativeAppService = service;
+      return service;
+    })().catch((error) => {
+      nativeAppServiceInit = null;
+      throw error;
+    });
   }
-  return nativeAppService;
+  return nativeAppServiceInit;
 };
 
 let webAppService: AppService | null = null;
+let webAppServiceInit: Promise<AppService> | null = null;
 const getWebAppService = async () => {
-  if (!webAppService) {
-    const { WebAppService } = await import('@/services/webAppService');
-    webAppService = new WebAppService();
-    await webAppService.init();
+  if (webAppService) return webAppService;
+  if (!webAppServiceInit) {
+    webAppServiceInit = (async () => {
+      const { WebAppService } = await import('@/services/webAppService');
+      const service = new WebAppService();
+      await service.init();
+      webAppService = service;
+      return service;
+    })().catch((error) => {
+      webAppServiceInit = null;
+      throw error;
+    });
   }
-  return webAppService;
+  return webAppServiceInit;
 };
 
 const environmentConfig: EnvConfigType = {
@@ -72,7 +90,7 @@ const environmentConfig: EnvConfigType = {
 };
 
 /**
- * Synchronously returns the app service if it has already been created by
+ * Synchronously returns the app service after initialization has completed via
  * {@link environmentConfig.getAppService}; null before first init. The async
  * getter is preferred everywhere — use this only from synchronous code paths
  * that run well after startup (e.g. capability checks during reader render),

@@ -399,6 +399,12 @@ impl<R: Runtime> NativeBridge<R> {
             .map_err(Into::into)
     }
 
+    pub fn cancel_clip(&self, payload: ClipCancelRequest) -> crate::Result<()> {
+        self.0
+            .run_mobile_plugin("cancel_clip", payload)
+            .map_err(Into::into)
+    }
+
     /// Read + delete a Share-Extension-captured page HTML file from the
     /// App Group container (iOS only; Android resolves `html: None`).
     pub fn read_share_clip_html(

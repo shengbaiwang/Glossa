@@ -419,7 +419,8 @@ describe('bookDataStore', () => {
       const saveLibraryBooks = vi.fn().mockResolvedValue(undefined);
       const envConfig = makeEnvConfig({ saveBookConfig, saveLibraryBooks });
 
-      useLibraryStore.getState().setLibrary([makeLibraryBook({ hash: 'h1' })]);
+      useLibraryStore.getState().setLibrary([makeLibraryBook({ hash: 'h1' })], false);
+      useLibraryStore.setState({ libraryLoaded: false });
 
       const data = makeBookData('h1', { progress: [42, 100] });
       useBookDataStore.setState({ booksData: { h1: data } });
@@ -428,6 +429,7 @@ describe('bookDataStore', () => {
 
       const stored = useLibraryStore.getState().getBookByHash('h1');
       expect(stored?.progress).toEqual([42, 100]);
+      expect(useLibraryStore.getState().libraryLoaded).toBe(false);
       // Per-book config still writes eagerly — it's small and the source
       // of truth for reconstructing the shelf on next launch.
       expect(saveBookConfig).toHaveBeenCalledOnce();

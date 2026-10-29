@@ -11,7 +11,6 @@ interface BookCoverProps {
   coverFit?: LibraryCoverFitType;
   className?: string;
   imageClassName?: string;
-  showSpine?: boolean;
   isPreview?: boolean;
   onImageError?: () => void;
   onAspectRatioChange?: (ratio: number) => void;
@@ -21,7 +20,6 @@ const BookCover = memo(function BookCover({
   book,
   mode = 'grid',
   coverFit = 'crop',
-  showSpine = false,
   className,
   imageClassName,
   isPreview,
@@ -52,7 +50,6 @@ const BookCover = memo(function BookCover({
       className={clsx('book-cover-container relative flex h-full w-full', className)}
       data-fit={coverFit}
       data-mode={mode}
-      data-material={showSpine ? 'paper' : 'flat'}
       data-preview={isPreview || undefined}
       style={{ '--book-cover-ratio': currentImage?.ratio ?? 28 / 41 } as CSSProperties}
     >
@@ -94,7 +91,6 @@ const BookCover = memo(function BookCover({
             </span>
             <span className='book-cover-author line-clamp-2'>{author}</span>
           </div>
-          {showSpine && <span className='book-spine' aria-hidden='true' />}
         </div>
       </div>
     </div>

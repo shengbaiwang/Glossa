@@ -1,13 +1,6 @@
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
-import {
-  Check,
-  Circle,
-  CloudUpload,
-  CloudDownload,
-  Headphones,
-  Info,
-} from '@/components/GlossaIcons';
+import { CloudUpload, CloudDownload, Headphones, Info } from '@/components/GlossaIcons';
 
 import InlineTextEditor from '@/components/InlineTextEditor';
 import BookContextMenuPopup from './BookContextMenuPopup';
@@ -33,7 +26,6 @@ interface BookItemProps {
   book: Book;
   mode: LibraryViewModeType;
   coverFit: LibraryCoverFitType;
-  isSelectMode: boolean;
   bookSelected: boolean;
   transferProgress: number | null;
   handleBookUpload: (book: Book) => void;
@@ -48,7 +40,6 @@ const BookItem: React.FC<BookItemProps> = ({
   book,
   mode,
   coverFit,
-  isSelectMode,
   bookSelected,
   transferProgress,
   handleBookUpload,
@@ -90,7 +81,7 @@ const BookItem: React.FC<BookItemProps> = ({
   return (
     <div
       role='none'
-      data-selecting={isSelectMode || undefined}
+      data-selecting={bookSelected || undefined}
       className={clsx(
         'book-item flex',
         mode === 'grid' && 'h-full flex-col',
@@ -98,7 +89,6 @@ const BookItem: React.FC<BookItemProps> = ({
         mode === 'list' ? 'library-list-item' : 'library-grid-item',
         appService?.hasContextMenu ? 'cursor-pointer' : '',
       )}
-      onClick={(e) => e.stopPropagation()}
     >
       <div
         className={mode === 'grid' ? 'glossa-book-cover-stage aspect-[28/41] w-full' : 'contents'}
@@ -116,25 +106,10 @@ const BookItem: React.FC<BookItemProps> = ({
             mode={mode}
             book={book}
             coverFit={coverFit}
-            showSpine={settings.librarySkeuomorphicCovers}
             onImageError={() => setCoverAspect(null)}
             onAspectRatioChange={setCoverAspect}
           />
           {bookSelected && <div className='glossa-book-selection-overlay absolute inset-0'></div>}
-          {isSelectMode && (
-            <div
-              className={clsx(
-                'glossa-book-selection absolute bottom-2 end-2',
-                bookSelected && 'glossa-book-selection-checked',
-              )}
-            >
-              {bookSelected ? (
-                <Check size={16} aria-hidden='true' />
-              ) : (
-                <Circle size={18} aria-hidden='true' />
-              )}
-            </div>
-          )}
         </div>
       </div>
       <div
@@ -157,7 +132,7 @@ const BookItem: React.FC<BookItemProps> = ({
               mode === 'list' && 'line-clamp-2 text-base',
             )}
           >
-            {onRename && !isSelectMode ? (
+            {onRename ? (
               <InlineTextEditor
                 value={book.title}
                 label={_('Title')}
@@ -184,45 +159,39 @@ const BookItem: React.FC<BookItemProps> = ({
         <div
           className={clsx(
             'glossa-book-status flex items-center',
-            onUpdateStatus || book.progress || book.readingStatus
+            settings.libraryShowProgress !== false &&
+              (onUpdateStatus || book.progress || book.readingStatus)
               ? 'justify-between'
               : 'justify-end',
           )}
         >
-          {onUpdateStatus ? (
-            <button
-              type='button'
-              className='glossa-reading-status-button'
-              aria-label={_('Reading Status')}
-              aria-haspopup='menu'
-              onPointerDown={(e) => e.stopPropagation()}
-              onPointerUp={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                const r = e.currentTarget.getBoundingClientRect();
-                setStatusPosition({ x: r.left, y: r.bottom });
-              }}
-            >
-              {book.progress || book.readingStatus ? (
-                <ReadingProgress
-                  book={book}
-                  showTimeRemaining={showTimeRemaining}
-                  showProgress={settings.libraryShowProgress !== false}
-                />
-              ) : (
-                <span>{_('Unread')}</span>
-              )}
-            </button>
-          ) : (
-            (book.progress || book.readingStatus) && (
-              <ReadingProgress
-                book={book}
-                showTimeRemaining={showTimeRemaining}
-                showProgress={settings.libraryShowProgress !== false}
-              />
-            )
-          )}
-          {statusPosition && (
+          {settings.libraryShowProgress !== false &&
+            (onUpdateStatus ? (
+              <button
+                type='button'
+                className='glossa-reading-status-button'
+                aria-label={_('Reading Status')}
+                aria-haspopup='menu'
+                onPointerDown={(e) => e.stopPropagation()}
+                onPointerUp={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const r = e.currentTarget.getBoundingClientRect();
+                  setStatusPosition({ x: r.left, y: r.bottom });
+                }}
+              >
+                {book.progress || book.readingStatus ? (
+                  <ReadingProgress book={book} showTimeRemaining={showTimeRemaining} />
+                ) : (
+                  <span>{_('Unread')}</span>
+                )}
+              </button>
+            ) : (
+              (book.progress || book.readingStatus) && (
+                <ReadingProgress book={book} showTimeRemaining={showTimeRemaining} />
+              )
+            ))}
+          {settings.libraryShowProgress !== false && statusPosition && (
             <BookContextMenuPopup
               position={statusPosition}
               onClose={() => setStatusPosition(null)}

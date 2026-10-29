@@ -12,6 +12,8 @@ import {
 import { bakeLocationsAndCfis, sortTocItems } from './locations';
 import { buildSectionFragments } from './fragments';
 import { enrichTocFromNavElements } from './enrichment';
+import { assertNavActive, yieldNavBuild, type NavBuildOptions } from './scheduling';
+export type { NavBuildOptions } from './scheduling';
 
 /**
  * Bound on simultaneous in-flight section reads during nav build.
@@ -78,6 +80,8 @@ export interface BookNavSection {
 
 export interface BookNav {
   version: number;
+  /** Verified source binding supplied by the persistence service. */
+  source?: string;
   toc: TOCItem[];
   sections: Record<string, BookNavSection>;
 }
@@ -134,16 +138,23 @@ export const updateToc = async (
  * result is persisted to Books/{hash}/nav.json and replayed via
  * hydrateBookNav on subsequent opens.
  */
-export const computeBookNav = async (bookDoc: BookDoc): Promise<BookNav> => {
+export const computeBookNav = async (
+  bookDoc: BookDoc,
+  options: NavBuildOptions = {},
+): Promise<BookNav> => {
+  assertNavActive(options.signal);
   const tocClone = cloneTocItems(bookDoc.toc ?? []);
   const sections: Record<string, BookNavSection> = {};
-  const enrichedNav = await enrichTocFromNavElements(bookDoc, tocClone);
+  const enrichedNav = await enrichTocFromNavElements(bookDoc, tocClone, options);
+  assertNavActive(options.signal);
 
   if (tocClone.length) {
     groupTocSubitems(bookDoc, tocClone);
   }
 
-  const bookSections = bookDoc.sections ?? [];
+  // Computation must not mutate live sections while a reader is using them.
+  // Only hydration of a completed, current result publishes derived locations.
+  const bookSections = (bookDoc.sections ?? []).map((section) => ({ ...section }));
   if (!tocClone.length || !bookSections.length) {
     return { version: BOOK_NAV_VERSION, toc: tocClone, sections };
   }
@@ -164,8 +175,9 @@ export const computeBookNav = async (bookDoc: BookDoc): Promise<BookNav> => {
   type SectionEntry = [string, BookNavSection];
   const taskOutcomes = await runWithConcurrency(
     Array.from(groups.entries()),
-    NAV_BUILD_CONCURRENCY,
+    options.background ? 4 : NAV_BUILD_CONCURRENCY,
     async ([sectionId, { base, fragments }]): Promise<SectionEntry | null> => {
+      await yieldNavBuild(options);
       const section = sectionMap.get(sectionId);
       if (!section || fragments.length === 0) return null;
       if (!section.loadText) return null;
@@ -181,6 +193,7 @@ export const computeBookNav = async (bookDoc: BookDoc): Promise<BookNav> => {
         return null;
       });
       const [content, doc] = await Promise.all([contentP, docP]);
+      assertNavActive(options.signal);
       if (!content) return null;
       if (!doc) return null;
 
@@ -196,6 +209,7 @@ export const computeBookNav = async (bookDoc: BookDoc): Promise<BookNav> => {
       return [sectionId, { id: sectionId, fragments: sectionFragments }];
     },
   );
+  assertNavActive(options.signal);
 
   for (const outcome of taskOutcomes) {
     if ('error' in outcome) {
@@ -209,10 +223,7 @@ export const computeBookNav = async (bookDoc: BookDoc): Promise<BookNav> => {
     }
   }
 
-  // Attach the freshly computed fragments to live sections so the bake can see
-  // them via createSectionsMap. hydrateBookNav on the same bookDoc (called
-  // right after by readerStore) will re-clone these, so the shared-ref write
-  // here is a temporary staging step.
+  // Bake against private section copies; a cancelled build cannot publish.
   for (const section of bookSections) {
     section.fragments = sections[section.id]?.fragments;
   }

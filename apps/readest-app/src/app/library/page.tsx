@@ -41,7 +41,6 @@ import { getFilename, getFolderImportGroupName, joinScannedPath } from '@/utils/
 import { parseOpenWithFiles } from '@/helpers/openWith';
 import { isTauriAppPlatform, isWebAppPlatform } from '@/services/environment';
 import { checkForAppUpdates, checkAppReleaseNotes } from '@/helpers/updater';
-import { impactFeedback } from '@tauri-apps/plugin-haptics';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 
 import { useEnv } from '@/context/EnvContext';
@@ -186,6 +185,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     updateBook,
     updateBooks,
     setLibrary,
+    setSelectedBooks,
     getGroupId,
     getGroupName,
     refreshGroups,
@@ -236,10 +236,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // immediately. This prevents `showBookshelf` from briefly being false on
   // remount, which used to flash a placeholder before `initLibrary` finished.
   const [libraryLoaded, setLibraryLoaded] = useState(() => libraryBooks.length > 0);
-  const [isSelectMode, setIsSelectMode] = useState(false);
   const [isLibrarySidebarVisible, setIsLibrarySidebarVisible] = useState(true);
-  const [isSelectAll, setIsSelectAll] = useState(false);
-  const [isSelectNone, setIsSelectNone] = useState(false);
   const [librarySearchQuery, setLibrarySearchQuery] = useState(searchParams?.get('q') ?? '');
   const pendingLibrarySearchQueryRef = useRef<string | null>(null);
   const [librarySearchProgress, setLibrarySearchProgress] = useState<number | null>(null);
@@ -449,12 +446,15 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   );
 
   const handleBackUpOneGroupLevel = () => {
+    if (useLibraryStore.getState().selectedBooks.size) {
+      setSelectedBooks([]);
+      return;
+    }
     if (!currentGroupPath) return;
     const segments = currentGroupPath.split('/');
     const parentPath = segments.length > 1 ? segments.slice(0, -1).join('/') : undefined;
     const parentGroupId = parentPath ? getGroupId(parentPath) || '' : '';
-    setIsSelectAll(false);
-    setIsSelectNone(false);
+    setSelectedBooks([]);
     handleLibraryNavigation(parentGroupId);
   };
 
@@ -509,7 +509,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         const settings = await appService.loadSettings();
         const library = await appService.loadLibraryBooks();
         setSettings(mergeLibraryDisplay(settings, useSettingsStore.getState().settings));
-        setLibrary(library);
+        setLibrary(library, true);
       });
       return () => {
         unlisten.then((fn) => fn());
@@ -559,7 +559,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
 
   useEffect(() => {
     if (!libraryBooks.some((book) => !book.deletedAt)) {
-      handleSetSelectMode(false);
+      setSelectedBooks([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [libraryBooks]);
@@ -705,7 +705,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       // different `library` reference (intent-imported books) — only then
       // do we commit it.
       if (!hasCachedLibrary || library !== libraryBooks) {
-        setLibrary(library);
+        setLibrary(library, true);
       }
       setLibraryLoaded(true);
       if (loadingTimeout) clearTimeout(loadingTimeout);
@@ -885,6 +885,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       return {
         file,
         markdownResourceRoot: selectedFile.resourceRoot ?? basePath,
+        webSource: selectedFile.webSource,
         books: library,
         lookupIndex,
         retryPDFContents: !options.silent,
@@ -1195,7 +1196,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       void appService
         .loadLibraryBooks()
         .then((rows) => {
-          if (active) useLibraryStore.getState().setLibrary(rows);
+          if (active) useLibraryStore.getState().setLibrary(rows, true);
         })
         .catch(() => {});
     };
@@ -1286,7 +1287,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   };
 
   const handleImportBooksFromFiles = async () => {
-    setIsSelectMode(false);
+    setSelectedBooks([]);
     console.log('Importing books from files...');
     if (appService?.isAndroidApp) {
       // The dialog plugin's promise dies when Android tears down the activity
@@ -1310,13 +1311,14 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     url: string,
     signal: AbortSignal,
     onStage: (stage: string) => void,
+    feedback: import('@/glossa/plugins/webImport').WebImportFeedback,
   ) => {
     if (
       !isTauriAppPlatform() ||
       !isPluginEnabled(useSettingsStore.getState().settings, 'webImport')
     )
       return;
-    setIsSelectMode(false);
+    setSelectedBooks([]);
     const groupId = getImportTargetGroupId();
     const { importWebPage } = await pluginLoaders.webImport();
     signal.throwIfAborted();
@@ -1326,8 +1328,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       appService,
       signal,
       onStage,
-      save: async (file, activeSignal) => {
-        await importBooks([{ file }], groupId, {
+      ...feedback,
+      save: async (file, activeSignal, webSource) => {
+        await importBooks([{ file, webSource }], groupId, {
           signal: activeSignal,
           onProgress: () => {},
           throwOnFailure: true,
@@ -1339,7 +1342,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const handleImportBooksFromDirectory = async (dirPath?: string, destination?: string) => {
     if (!appService || !isTauriAppPlatform()) return;
 
-    setIsSelectMode(false);
+    setSelectedBooks([]);
 
     if (dirPath) {
       try {
@@ -1639,15 +1642,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     await importBooks(toImportFiles, undefined, options);
   };
 
-  const handleSetSelectMode = (selectMode: boolean) => {
-    if (selectMode && appService?.hasHaptics) {
-      impactFeedback('medium');
-    }
-    setIsSelectMode(selectMode);
-    setIsSelectAll(false);
-    setIsSelectNone(false);
-  };
-
   const updateLibrarySearchUrl = (target: LibrarySearchTarget, config: LibrarySearchConfig) => {
     const params = new URLSearchParams(window.location.search);
     const query = pendingLibrarySearchQueryRef.current ?? librarySearchQuery;
@@ -1676,7 +1670,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     setLibrarySearchTarget(target);
     debouncedSearchUrlUpdate.cancel();
     updateLibrarySearchUrl(target, librarySearchConfigRef.current);
-    if (target === 'text') handleSetSelectMode(false);
+    if (target === 'text') setSelectedBooks([]);
   };
 
   // The input itself stays instant; applying the query (URL, shelf filter,
@@ -1721,24 +1715,13 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     updateLibrarySearchUrl(librarySearchTargetRef.current, config);
   };
 
-  const handleSelectAll = () => {
-    setIsSelectAll(true);
-    setIsSelectNone(false);
-  };
-
-  const handleDeselectAll = () => {
-    setIsSelectNone(true);
-    setIsSelectAll(false);
-  };
-
   const handleShowDetailsBook = (book: Book) => {
     setShowDetailsBook(book);
   };
 
   const handleNavigateToPath = (path: string | undefined) => {
     const group = path ? getGroupId(path) || '' : '';
-    setIsSelectAll(false);
-    setIsSelectNone(false);
+    setSelectedBooks([]);
     handleLibraryNavigation(group);
   };
 
@@ -1767,13 +1750,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         <LibraryHeader
           isSidebarVisible={isLibrarySidebarVisible}
           onToggleSidebar={() => setIsLibrarySidebarVisible((visible) => !visible)}
-          isSelectMode={isSelectMode}
-          isSelectAll={isSelectAll}
           onImportBooks={setImportMenuAnchor}
           onPullLibrary={pullLibrary}
-          onToggleSelectMode={() => handleSetSelectMode(!isSelectMode)}
-          onSelectAll={handleSelectAll}
-          onDeselectAll={handleDeselectAll}
           searchQuery={librarySearchQuery}
           searchTarget={librarySearchTarget}
           searchConfig={librarySearchConfig}
@@ -1809,9 +1787,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         </div>
       )}
       <div className='glossa-library-workspace'>
-        {isLibrarySidebarVisible && (
-          <LibraryNavigation onNavigate={() => handleSetSelectMode(false)} />
-        )}
+        {isLibrarySidebarVisible && <LibraryNavigation onNavigate={() => setSelectedBooks([])} />}
         <div className='glossa-library-content'>
           {librarySearchTarget === 'text' &&
             !librarySearchQuery.trim() &&
@@ -1871,15 +1847,14 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
                   <DropIndicator />
                   <Bookshelf
                     libraryBooks={libraryBooks}
-                    isSelectMode={isSelectMode}
-                    isSelectAll={isSelectAll}
-                    isSelectNone={isSelectNone}
                     onScrollerRef={handleScrollerRef}
                     renderGroupNavigation={
                       currentGroupPath
                         ? (openMenu) => (
                             <div className='glossa-shelf-breadcrumbs'>
                               <button
+                                data-library-folder-path=''
+                                data-library-drop-open=''
                                 onClick={() => handleNavigateToPath(undefined)}
                                 className='hover:bg-base-300 text-base-content/85 rounded px-2 py-1'
                               >
@@ -1897,6 +1872,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
                                       <button
                                         type='button'
                                         className='glossa-folder-heading-action truncate rounded px-2 py-1'
+                                        data-library-folder-path={crumb.path}
                                         aria-haspopup='menu'
                                         aria-current='location'
                                         onClick={(event) => openMenu(event.currentTarget)}
@@ -1905,6 +1881,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
                                       </button>
                                     ) : (
                                       <button
+                                        data-library-folder-path={crumb.path}
+                                        data-library-drop-open=''
                                         onClick={() => handleNavigateToPath(crumb.path)}
                                         className='hover:bg-base-300 text-base-content/85 truncate rounded px-2 py-1'
                                       >
@@ -1923,7 +1901,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
                     handleBookDownload={handleBookDownload}
                     onRemoveBooks={removeBooks}
                     handleBookDelete={handleBookDelete('both')}
-                    handleSetSelectMode={handleSetSelectMode}
                     handleShowDetailsBook={handleShowDetailsBook}
                     handleLibraryNavigation={handleLibraryNavigation}
                     booksTransferProgress={booksTransferProgress}

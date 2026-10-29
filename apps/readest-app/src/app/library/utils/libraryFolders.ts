@@ -61,6 +61,18 @@ export interface FolderChange {
   replacements?: Map<string, string>;
 }
 
+/** Explicit group edits must outrank earlier moves even within the same millisecond. */
+export function assignBookToFolder(book: Book, path: string, now = Date.now()): Book {
+  const stamp = Math.max(now, (book.groupUpdatedAt ?? 0) + 1);
+  return {
+    ...book,
+    groupName: path,
+    groupId: path ? md5Fingerprint(path) : '',
+    groupUpdatedAt: stamp,
+    updatedAt: Math.max(book.updatedAt, stamp),
+  };
+}
+
 function replaceFolders(
   books: Book[],
   paths: string[],
@@ -76,13 +88,7 @@ function replaceFolders(
     books: books.map((book) => {
       const path = !book.deletedAt && book.groupName ? replacements.get(book.groupName) : undefined;
       return path !== undefined && path !== book.groupName
-        ? {
-            ...book,
-            groupName: path,
-            groupId: path ? md5Fingerprint(path) : '',
-            groupUpdatedAt: now,
-            updatedAt: now,
-          }
+        ? assignBookToFolder(book, path, now)
         : book;
     }),
   };
@@ -139,14 +145,9 @@ export function moveToFolder(
   result.books = result.books.map((book, index) =>
     selected.has(book.hash) &&
     !book.deletedAt &&
+    (book.groupName ?? '') !== destination &&
     !roots.some((root) => contains(root, books[index]?.groupName ?? ''))
-      ? {
-          ...book,
-          groupName: destination,
-          groupId: destination ? md5Fingerprint(destination) : '',
-          groupUpdatedAt: now,
-          updatedAt: now,
-        }
+      ? assignBookToFolder(book, destination, now)
       : book,
   );
   const moved = new Set(replacements.values());

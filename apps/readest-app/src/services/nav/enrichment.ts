@@ -10,6 +10,7 @@
 import { BookDoc, TOCItem } from '@/libs/document';
 import { runWithConcurrency } from '@/utils/concurrency';
 import { collectAllTocItems } from './grouping';
+import { assertNavActive, yieldNavBuild, type NavBuildOptions } from './scheduling';
 
 const NAV_ENRICH_MIN_SECTIONS = 64;
 const NAV_ENRICH_TOC_RATIO = 8;
@@ -99,6 +100,7 @@ const hrefSection = (href: string): string => {
 export const enrichTocFromNavElements = async (
   bookDoc: BookDoc,
   tocClone: TOCItem[],
+  options: NavBuildOptions = {},
 ): Promise<boolean> => {
   const sections = bookDoc.sections ?? [];
   if (sections.length <= NAV_ENRICH_MIN_SECTIONS) return false;
@@ -127,8 +129,9 @@ export const enrichTocFromNavElements = async (
   type Survivor = { section: (typeof sections)[number] };
   const phase1Outcomes = await runWithConcurrency(
     sections,
-    NAV_ENRICH_CONCURRENCY,
+    options.background ? 4 : NAV_ENRICH_CONCURRENCY,
     async (section): Promise<Survivor | null> => {
+      await yieldNavBuild(options);
       if (!section.loadText) return null;
       try {
         const content = await section.loadText();
@@ -139,6 +142,7 @@ export const enrichTocFromNavElements = async (
       }
     },
   );
+  assertNavActive(options.signal);
   const survivors: Survivor[] = [];
   for (const o of phase1Outcomes) {
     if ('result' in o && o.result) survivors.push(o.result);
@@ -147,8 +151,9 @@ export const enrichTocFromNavElements = async (
   type NavMatch = { sectionId: string; navs: Element[] };
   const phase2Outcomes = await runWithConcurrency(
     survivors,
-    NAV_ENRICH_CONCURRENCY,
+    options.background ? 4 : NAV_ENRICH_CONCURRENCY,
     async ({ section }): Promise<NavMatch | null> => {
+      await yieldNavBuild(options);
       let doc: Document;
       try {
         doc = await section.createDocument();
@@ -160,6 +165,7 @@ export const enrichTocFromNavElements = async (
       return { sectionId: section.id, navs };
     },
   );
+  assertNavActive(options.signal);
 
   const collected: ExtractedNavItem[] = [];
   const seenHref = new Set<string>();

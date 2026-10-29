@@ -20,6 +20,17 @@ pnpm dev:glossa -- apps/readest-app/src/__tests__/fixtures/data/glossa-reading-s
 Use `pnpm dev:glossa:check` to confirm that Node 24, Cargo and the isolated
 configuration are available without starting the application.
 
+Desktop development uses `next dev --webpack`, matching the bundler used for
+the native export. Both bundlers use this repository as their workspace root;
+ancestor lockfiles must not expand it to the home directory. Cloudflare's dev
+worker is initialized only for `dev-web`, and Next.js owns development chunk
+cache headers.
+
+If a development window reports a failed code chunk, check that port 3000 is
+still served before retrying. A chunk-error retry reloads the document so a
+cached `React.lazy` rejection does not survive. This does not restart a crashed
+server; restart `pnpm dev:glossa` if its frontend is no longer running.
+
 The launcher selects Homebrew Node 24 and Rust when they are installed, sets
 the isolated runtime identifier, disables the upstream updater and writes Rust output
 only under `.glossa-dev/target/`. Portable mode remains disabled so development

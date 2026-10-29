@@ -202,6 +202,15 @@ interface KeyDownInterceptor {
   ]
 )
 class NativeBridgePlugin(private val activity: Activity): Plugin(activity) {
+    // Access only on the Activity UI thread; Rust validates the caller owner.
+    private val activeClips = mutableMapOf<String, ClipUrlController>()
+    private val cancelledClips = linkedMapOf<String, Long>()
+
+    private fun pruneCancelledClips() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        cancelledClips.entries.removeAll { now - it.value >= 60_000 }
+    }
+
     private val implementation = NativeBridge()
     private var webViewRef: WebView? = null
     private val billingManager by lazy {
@@ -236,6 +245,9 @@ class NativeBridgePlugin(private val activity: Activity): Plugin(activity) {
     }
 
     override fun onDestroy() {
+        activeClips.values.toList().forEach { it.cancelCapture() }
+        activeClips.clear()
+        cancelledClips.clear()
         stopAmbientLightUpdatesInternal()
         pluginScope.cancel()
         activity.application.unregisterActivityLifecycleCallbacks(lifecycleCallbacks)
@@ -1701,23 +1713,44 @@ class NativeBridgePlugin(private val activity: Activity): Plugin(activity) {
      */
     @Command
     fun clip_url(invoke: Invoke) {
-        val args = try {
-            invoke.parseArgs(ClipUrlArgs::class.java)
-        } catch (e: Exception) {
-            invoke.reject(e.message ?: "Invalid clip_url args")
-            return
-        }
-        val controller = ClipUrlController(activity, args) { result ->
-            when (result) {
-                is ClipUrlResult.Success -> {
-                    val ret = JSObject()
-                    ret.put("html", result.html)
-                    invoke.resolve(ret)
+        val args = try { invoke.parseArgs(ClipUrlArgs::class.java) }
+        catch (e: Exception) { invoke.reject(e.message ?: "Invalid clip_url args"); return }
+        activity.runOnUiThread {
+            val taskId = args.taskId ?: java.util.UUID.randomUUID().toString()
+            pruneCancelledClips()
+            if (cancelledClips.containsKey(taskId)) { invoke.reject(ClipUrlController.CANCELLED_MESSAGE); return@runOnUiThread }
+            if (activeClips.containsKey(taskId)) { invoke.reject("Capture task already active"); return@runOnUiThread }
+            val controller = ClipUrlController(activity, args) { result ->
+                activeClips.remove(taskId)
+                when (result) {
+                    is ClipUrlResult.Success -> {
+                        val ret = JSObject()
+                        ret.put("html", result.html)
+                        ret.put("finalUrl", result.finalUrl)
+                        ret.put("baseUrl", result.baseUrl)
+                        invoke.resolve(ret)
+                    }
+                    is ClipUrlResult.Failure -> invoke.reject(result.message)
                 }
-                is ClipUrlResult.Failure -> invoke.reject(result.message)
             }
+            activeClips[taskId] = controller
+            controller.show()
         }
-        controller.show()
+    }
+
+    @Command
+    fun cancel_clip(invoke: Invoke) {
+        val args = try { invoke.parseArgs(CancelClipArgs::class.java) }
+        catch (e: Exception) { invoke.reject(e.message ?: "Invalid cancel args"); return }
+        val taskId = args.taskId
+        if (taskId.isNullOrBlank()) { invoke.reject("Invalid capture task"); return }
+        activity.runOnUiThread {
+            pruneCancelledClips()
+            if (cancelledClips.size >= 64) cancelledClips.keys.firstOrNull()?.let { cancelledClips.remove(it) }
+            cancelledClips[taskId] = android.os.SystemClock.elapsedRealtime()
+            activeClips[taskId]?.cancelCapture()
+            invoke.resolve()
+        }
     }
 
     /**

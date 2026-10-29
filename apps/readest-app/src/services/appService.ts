@@ -545,6 +545,10 @@ export abstract class BaseAppService implements AppService {
     return BookSvc.saveBookConfig(this.fs, book, config, settings);
   }
 
+  async getBookNavSource(book: Book) {
+    return BookSvc.getBookNavSource(this.fs, book);
+  }
+
   async loadBookNav(book: Book) {
     return BookSvc.loadBookNav(this.fs, book);
   }
@@ -561,9 +565,9 @@ export abstract class BaseAppService implements AppService {
     return saveFeedsToDisk(this.fs, feeds);
   }
 
-  async loadLibraryBooks(): Promise<Book[]> {
+  async loadLibraryBooks(hashes?: string[]): Promise<Book[]> {
     this.prepareLibraryRepository();
-    return LibrarySvc.loadLibraryBooks(this.fs, this.generateCoverImageUrl.bind(this));
+    return LibrarySvc.loadLibraryBooks(this.fs, this.generateCoverImageUrl.bind(this), hashes);
   }
 
   // Prompt for storage permission at most once per session (see saveLibraryBooks).

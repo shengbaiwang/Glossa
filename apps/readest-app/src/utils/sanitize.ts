@@ -75,6 +75,132 @@ export function sanitizeHtml(html: string): string {
   return DOMPurify.sanitize(html, HTML_OPTIONS);
 }
 
+/** Web articles need scientific and note structure in addition to the generic
+ * file converter's subset. SVG is restricted to inert geometry, never links,
+ * external paints, embedded HTML, animation or resource-loading elements. */
+export function sanitizeArticleHtml(html: string): string {
+  const purify = DOMPurify(window);
+  purify.addHook('uponSanitizeAttribute', (node, event) => {
+    if (node.namespaceURI !== 'http://www.w3.org/2000/svg') return;
+    if (
+      ['href', 'xlink:href', 'src'].includes(event.attrName) ||
+      /url\s*\(/i.test(event.attrValue)
+    ) {
+      event.keepAttr = false;
+    }
+  });
+  return purify.sanitize(html, {
+    ...HTML_OPTIONS,
+    ALLOWED_TAGS: [
+      ...(HTML_OPTIONS.ALLOWED_TAGS ?? []),
+      'div',
+      'article',
+      'aside',
+      'caption',
+      'tfoot',
+      'colgroup',
+      'col',
+      'math',
+      'mrow',
+      'mi',
+      'mn',
+      'mo',
+      'mtext',
+      'mspace',
+      'ms',
+      'mfrac',
+      'msqrt',
+      'mroot',
+      'msup',
+      'msub',
+      'msubsup',
+      'munder',
+      'mover',
+      'munderover',
+      'mtable',
+      'mtr',
+      'mtd',
+      'menclose',
+      'mpadded',
+      'mphantom',
+      'mmultiscripts',
+      'mprescripts',
+      'none',
+      'semantics',
+      'annotation',
+      'svg',
+      'g',
+      'path',
+      'rect',
+      'circle',
+      'ellipse',
+      'line',
+      'polyline',
+      'polygon',
+      'text',
+      'tspan',
+      'title',
+      'desc',
+    ],
+    ALLOWED_ATTR: [
+      ...(HTML_OPTIONS.ALLOWED_ATTR ?? []),
+      'role',
+      'scope',
+      'headers',
+      'start',
+      'value',
+      'type',
+      'lang',
+      'dir',
+      'xmlns',
+      'display',
+      'mathvariant',
+      'mathsize',
+      'mathcolor',
+      'stretchy',
+      'fence',
+      'separator',
+      'accent',
+      'accentunder',
+      'columnalign',
+      'rowalign',
+      'columnspan',
+      'rowspan',
+      'encoding',
+      'viewBox',
+      'width',
+      'height',
+      'd',
+      'x',
+      'y',
+      'x1',
+      'x2',
+      'y1',
+      'y2',
+      'cx',
+      'cy',
+      'r',
+      'rx',
+      'ry',
+      'points',
+      'fill',
+      'stroke',
+      'stroke-width',
+      'transform',
+      'text-anchor',
+    ],
+    FORBID_TAGS: [
+      ...(HTML_OPTIONS.FORBID_TAGS ?? []),
+      'foreignObject',
+      'annotation-xml',
+      'use',
+      'image',
+      'animate',
+      'set',
+    ],
+  });
+}
+
 /** Keep images inert until a Markdown snapshot resolves their permitted bytes. */
 export function sanitizeMarkdownHtml(html: string): DocumentFragment {
   const purify = DOMPurify(window);
@@ -98,5 +224,9 @@ export function sanitizeMarkdownHtml(html: string): DocumentFragment {
  * Readability still work — it only removes anything executable.
  */
 export function sanitizeForParsing(html: string): string {
-  return DOMPurify.sanitize(html, { WHOLE_DOCUMENT: true });
+  return DOMPurify.sanitize(html, {
+    WHOLE_DOCUMENT: true,
+    ADD_TAGS: ['meta', 'link'],
+    FORBID_TAGS: ['base'],
+  });
 }

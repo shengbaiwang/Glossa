@@ -7,7 +7,6 @@ export const LIBRARY_DISPLAY_KEYS = [
   'libraryListScale',
   'libraryShowAuthor',
   'libraryShowProgress',
-  'librarySkeuomorphicCovers',
   'libraryRecentShelfEnabled',
   'librarySortBy',
   'librarySortByAuto',

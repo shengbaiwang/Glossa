@@ -16,7 +16,7 @@ export function useLibraryRefresh(
       void appService
         .loadLibraryBooks()
         .then((rows) => {
-          if (active && request === sequence) useLibraryStore.getState().setLibrary(rows);
+          if (active && request === sequence) useLibraryStore.getState().setLibrary(rows, true);
         })
         .catch(() => {});
     };

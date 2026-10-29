@@ -114,6 +114,7 @@ it('generates from a real click, updates live chapter navigation, regenerates an
   ]);
   expect(readingView.renderer).toBe(renderer);
   expect(readingView.lastLocation?.cfi).toBe(location);
+  expect(readingView.lastLocation?.tocItem?.label).toBe('Chapter 1 Copper');
   for (const entry of bookDoc.toc!) {
     await readingView.goTo(entry.href);
     expect(readingView.lastLocation?.tocItem?.label).toBe(entry.label);

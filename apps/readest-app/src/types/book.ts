@@ -72,6 +72,12 @@ export interface BookImportProgress {
   elapsedMs: number;
 }
 
+export interface BookWebSource {
+  originalUrl: string;
+  url: string;
+  referrerUrl?: string;
+}
+
 export interface ImportBookOptions {
   onProgress?: (progress: BookImportProgress) => void;
   /** Fires once after persistence and cleanup, or a terminal failure. */
@@ -85,6 +91,8 @@ export interface ImportBookOptions {
   /** Applied atomically only when creating a new persistent record. */
   initialGroup?: { id: string; name?: string };
   initialTags?: string[];
+  /** Source evidence applied only when creating a new record. */
+  initialWebSource?: BookWebSource;
   /** Whether to copy the file into the Books directory. Defaults to true. */
   saveBook?: boolean;
   /** Whether to extract and save a cover image. Defaults to true. */
@@ -143,6 +151,7 @@ export interface Book {
   title: string; // editable title, initially the original filename without its extension
   originalFilename?: string; // source name retained even when the managed copy is renamed
   sourceTitle?: string; // parsed when the book is imported and used to locate the file
+  webSource?: BookWebSource;
   author: string;
   group?: string; // deprecated in favor of groupId and groupName
   groupId?: string;
