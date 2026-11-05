@@ -39,6 +39,7 @@
     "allow-verify-update-signature",
     "allow-install-nightly-update",
     "core:default",
+    "core:window:allow-set-size",
     "fs:default",
     "fs:read-all",
     "fs:write-all",

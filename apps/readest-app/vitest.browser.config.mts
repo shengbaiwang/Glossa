@@ -89,7 +89,7 @@ export default defineConfig({
         async pressPDFSelectionKey({ page }, key: string) {
           await page.keyboard.press(key);
         },
-        async clickPDFText({ page, frame }, point: { x: number; y: number }, shift = false) {
+        async clickPDFText({ page, frame }, point: { x: number; y: number }, shift = false, clickCount = 1) {
           const testFrame = await frame();
           const bounds = await testFrame.frameElement().then((element) => element.boundingBox());
           if (!bounds) throw new Error('Missing test frame');
@@ -97,7 +97,7 @@ export default defineConfig({
           const scale = bounds.width / width;
           if (shift) await page.keyboard.down('Shift');
           try {
-            await page.mouse.click(bounds.x + point.x * scale, bounds.y + point.y * scale);
+            await page.mouse.click(bounds.x + point.x * scale, bounds.y + point.y * scale, { clickCount });
           } finally {
             if (shift) await page.keyboard.up('Shift');
           }

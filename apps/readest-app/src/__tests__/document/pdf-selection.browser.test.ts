@@ -1,7 +1,7 @@
 import { afterEach, expect, it } from 'vitest';
 import { commands, page, userEvent } from 'vitest/browser';
 import { appendOCR } from 'foliate-js/pdf-ocr.js';
-import { setupOCRSelection } from 'foliate-js/pdf-selection.js';
+import { getPDFSelectionCaret, setupOCRSelection } from 'foliate-js/pdf-selection.js';
 import * as CFI from 'foliate-js/epubcfi.js';
 import { textWalker } from 'foliate-js/text-walker.js';
 import 'foliate-js/view.js';
@@ -13,7 +13,11 @@ import recognized from '@/__tests__/fixtures/data/glossa-ocr-pages.json';
 declare module 'vitest/browser' {
   interface BrowserCommands {
     pressPDFSelectionKey(key: string): Promise<void>;
-    clickPDFText(point: { x: number; y: number }, shift?: boolean): Promise<void>;
+    clickPDFText(
+      point: { x: number; y: number },
+      shift?: boolean,
+      clickCount?: number,
+    ): Promise<void>;
     doubleClickPDFText(point: { x: number; y: number }): Promise<void>;
     dragPDFHandle(
       from: { x: number; y: number },
@@ -116,6 +120,40 @@ it.each([
   expect(CFI.toRange(doc, CFI.parse(cfi))!.toString()).toBe('夏秋冬');
 });
 
+it('projects rotated OCR while its iframe is hidden without changing CFI or mouse endpoints', async () => {
+  const doc = await open();
+  const layer = doc.querySelector('.textLayer')!;
+  layer.replaceChildren();
+  frame.style.cssText =
+    'position:fixed;left:0;top:0;width:800px;height:600px;border:0;display:none';
+  const rotated = parseOCRPage(recognized[2], 2)!;
+  appendOCR(layer, rotated, { width: 800, height: 600 });
+  frame.style.display = 'block';
+  const spans = currentSpans(doc);
+  for (const span of spans) {
+    const word = rotated.lines.find((item) => item.text === span.textContent)!;
+    const rect = textRange(span).getBoundingClientRect();
+    expect(Math.abs(rect.left - word.x * 800)).toBeLessThan(1);
+    expect(Math.abs(rect.top - word.y * 600)).toBeLessThan(1);
+    expect(Math.abs(rect.width - word.width * 800)).toBeLessThan(1);
+    expect(Math.abs(rect.height - word.height * 600)).toBeLessThan(1);
+    expect(span.getBoundingClientRect().right).toBeLessThanOrEqual(802);
+  }
+  setupOCRSelection(layer);
+  const span = spans.find((item) => item.textContent === 'Chapter ')!;
+  const selected = textRange(span);
+  selected.setEnd(span.firstChild!, 7);
+  const box = selected.getBoundingClientRect(),
+    host = frame.getBoundingClientRect();
+  await commands.dragPDFText(
+    { x: host.x + box.left + 0.1, y: host.y + box.top + box.height / 2 },
+    { x: host.x + box.right - 0.1, y: host.y + box.top + box.height / 2 },
+  );
+  expect(doc.getSelection()!.toString()).toBe('Chapter');
+  const cfi = CFI.fromRange(doc.getSelection()!.getRangeAt(0));
+  expect(CFI.toRange(doc, CFI.parse(cfi))!.toString()).toBe('Chapter');
+});
+
 it('keeps multi-column block order and exact OCR characters through a real mouse selection', async () => {
   const material = {
     ...scan,
@@ -153,6 +191,53 @@ it('selects Hebrew glyphs in their visual direction beside mixed Latin text', as
     { x: host.x + box.left + 0.1, y: host.y + box.top + box.height / 2 },
   );
   expect(doc.getSelection()!.toString()).toBe('בגד');
+});
+
+it('keeps a native PDF drag on its character endpoints when the pointer crosses line whitespace', async () => {
+  const doc = await open(1, {
+    ...scan,
+    lines: [
+      {
+        text: 'First paragraph precise endpoints',
+        x: 0.1,
+        y: 0.15,
+        width: 0.65,
+        height: 0.04,
+        endLine: true,
+      },
+      {
+        text: 'Second paragraph stays separate',
+        x: 0.1,
+        y: 0.32,
+        width: 0.65,
+        height: 0.04,
+        endLine: true,
+      },
+    ],
+  });
+  // Native PDF.js spans use the same absolutely positioned and transformed
+  // glyph boxes, without the OCR projection wrapper or legacy CFI nodes.
+  doc.querySelectorAll('[data-pdf-legacy]').forEach((element) => element.remove());
+  doc.querySelector('[data-pdf-ocr-text]')!.removeAttribute('data-pdf-ocr-text');
+  setupOCRSelection(doc.querySelector('.textLayer'));
+  const first = currentSpans(doc)[0]!;
+  const node = first.firstChild!;
+  const box = textRange(first).getBoundingClientRect();
+  const end = getPDFSelectionCaret(doc, box.right + 12, box.top + box.height / 2);
+  expect(end?.node).toBe(node);
+  expect(end?.offset).toBe(node.textContent!.length);
+  const start = doc.createRange();
+  start.setStart(node, 6);
+  start.setEnd(node, 15);
+  const partial = start.getBoundingClientRect(),
+    host = frame.getBoundingClientRect();
+  await commands.dragPDFText(
+    { x: host.x + partial.left + 0.1, y: host.y + partial.top + partial.height / 2 },
+    { x: host.x + partial.right - 0.1, y: host.y + partial.top + partial.height / 2 },
+    0,
+    { x: host.x + box.right + 12, y: host.y + box.top + box.height / 2 },
+  );
+  expect(doc.getSelection()!.toString()).toBe('paragraph');
 });
 
 it('fits native selection rectangles to OCR boxes at several zoom levels, including spaces', async () => {
@@ -245,6 +330,46 @@ for (const ocr of [false, true]) {
   });
 }
 
+it('retains explicit native PDF double-click words and triple-click paragraphs', async () => {
+  await page.viewport(1200, 1200);
+  const bytes = await fetch('/src/__tests__/fixtures/data/glossa-reading-sample.pdf').then(
+    (response) => response.arrayBuffer(),
+  );
+  book = (await new DocumentLoader(new File([bytes], 'original.pdf')).open()).book;
+  view = document.createElement('foliate-view') as FoliateView;
+  view.style.cssText = 'display:block;width:600px;height:800px';
+  document.body.append(view);
+  await view.open(book);
+  view.renderer.setAttribute('spread', 'none');
+  view.renderer.setAttribute('zoom', 'fit-width');
+  await view.goTo(1);
+  await expect
+    .poll(
+      () =>
+        view!.renderer
+          .getContents()
+          .find((item) => item.index === 1)
+          ?.doc.querySelector('.textLayer')?.textContent,
+    )
+    .toContain('Copper');
+  let doc = view.renderer.getContents().find((item) => item.index === 1)!.doc;
+  const span = currentSpans(doc).find((element) => element.textContent?.startsWith('Copper'))!;
+  const range = doc.createRange();
+  range.setStart(span.firstChild!, 1);
+  range.setEnd(span.firstChild!, 4);
+  const target = view.getCFI(1, range);
+  await view.goTo(target);
+  doc = view.renderer.getContents().find((item) => item.index === 1)!.doc;
+  frame = doc.defaultView!.frameElement as HTMLIFrameElement;
+  const box = view.resolveCFI(target).anchor(doc).getBoundingClientRect();
+  const host = frame.getBoundingClientRect();
+  const position = { x: host.x + box.left + box.width / 2, y: host.y + box.top + box.height / 2 };
+  await commands.doubleClickPDFText(position);
+  expect(doc.getSelection()!.toString()).toBe('Copper');
+  await commands.clickPDFText(position, false, 3);
+  expect(doc.getSelection()!.toString().trim()).toBe('Copper marker 2 is the searchable line.');
+});
+
 it('drags through the visual row without collecting other titles, and keeps legacy and new CFIs distinct', async () => {
   const doc = await open();
   const spans = currentSpans(doc);
@@ -299,6 +424,30 @@ it('reinstalls OCR endpoint handling without duplicate listeners and leaves a ke
   doc.getSelection()!.removeAllRanges();
   await commands.dragPDFText(point(span), point(span, true));
   expect(doc.getSelection()!.toString()).toBe('');
+});
+
+it('cancels pending endpoint work when a released page is initialized again', async () => {
+  const doc = await open();
+  const layer = doc.querySelector('.textLayer')!;
+  setupOCRSelection(layer);
+  const box = textRange(currentSpans(doc)[0]!).getBoundingClientRect();
+  getPDFSelectionCaret(doc, box.left, box.top);
+  // Page retirement can win the race against a late PDF render calling setup.
+  frame.remove();
+  expect(doc.defaultView).toBeNull();
+  const failures: unknown[] = [];
+  const report = (event: ErrorEvent) => {
+    failures.push(event.error);
+    event.preventDefault();
+  };
+  window.addEventListener('error', report);
+  try {
+    setupOCRSelection(layer);
+    expect(getPDFSelectionCaret(doc, box.left, box.top)).toBeNull();
+    expect(failures).toEqual([]);
+  } finally {
+    window.removeEventListener('error', report);
+  }
 });
 
 it('keeps the visible bitmap and OCR targets together during superseded page renders', async () => {

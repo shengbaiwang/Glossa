@@ -101,6 +101,9 @@ final class NativeInput {
     }
 
     func geometryInfo(_ app: NSRunningApplication) throws -> [String: Any] {
+        // Each action batch explicitly prepares this verified test window.
+        // Individual events still reject a focus change during the gesture.
+        activated = false
         try foreground(app)
         let element = try window(app)
         guard let bounds = rectangle(element),
@@ -120,20 +123,32 @@ final class NativeInput {
         guard AXIsProcessTrusted(), CGPreflightPostEventAccess() else {
             throw InputError.invalid("Native input requires existing Accessibility permission")
         }
-        if !activated && foregroundPid() != app.processIdentifier {
+        if !activated {
             app.unhide()
             let root = AXUIElementCreateApplication(app.processIdentifier)
             AXUIElementSetAttributeValue(root, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
             if let windows = attribute(root, kAXWindowsAttribute) as? [AXUIElement],
                let window = windows.first { AXUIElementPerformAction(window, kAXRaiseAction as CFString) }
             app.activate(options: [.activateAllWindows])
+            // App activation and AX's focused-application notification can
+            // settle on different turns. Prepare the batch only after three
+            // consecutive confirmations; no input is posted while waiting.
+            var confirmations = 0
+            var observed: pid_t?
             for _ in 0..<75 {
-                if foregroundPid() == app.processIdentifier { break }
+                observed = foregroundPid()
+                confirmations = observed == app.processIdentifier ? confirmations + 1 : 0
+                if confirmations == 3 { break }
                 usleep(20_000)
             }
-        }
-        guard foregroundPid() == app.processIdentifier else {
-            throw InputError.invalid("Native input stopped: the isolated test app does not have foreground focus")
+            guard confirmations == 3 else {
+                throw InputError.invalid("Native input stopped: expected foreground PID \(app.processIdentifier), received \(observed ?? -1)")
+            }
+        } else {
+            let observed = foregroundPid()
+            guard observed == app.processIdentifier else {
+                throw InputError.invalid("Native input stopped: expected foreground PID \(app.processIdentifier), received \(observed ?? -1)")
+            }
         }
         activated = true
     }
@@ -274,13 +289,13 @@ final class NativeInput {
                 heldButtons.insert(button)
             } else {
                 eventType = button == 0 ? .leftMouseUp : button == 2 ? .rightMouseUp : .otherMouseUp
-                heldButtons.remove(button)
             }
             guard let event = CGEvent(mouseEventSource: source, mouseType: eventType, mouseCursorPosition: position, mouseButton: cgButton) else {
                 throw InputError.invalid("Could not construct native pointer event")
             }
             event.setIntegerValueField(.mouseEventClickState, value: Int64(item["clickCount"] as? Int ?? clickCount))
             try post(event, app)
+            if type == "up" { heldButtons.remove(button) }
         }
     }
 

@@ -349,6 +349,50 @@
 .glossa-pdf-scale button:disabled {
   opacity: 0.45;
 }
+/* Keep exact zoom entry and continuous adjustment in the existing scale menu. */
+.glossa-pdf-scale-entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  color: var(--glossa-ink);
+  direction: ltr;
+}
+.glossa-pdf-scale-entry .glossa-pdf-scale-input {
+  user-select: text;
+  cursor: text;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--glossa-border);
+  border-radius: 5px;
+  background: var(--glossa-surface);
+  color: var(--glossa-ink);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+.glossa-pdf-scale-slider {
+  display: block;
+  width: calc(100% - 16px);
+  min-width: 150px;
+  height: 32px;
+  margin: 0 8px;
+  padding: 0;
+  accent-color: var(--glossa-ink);
+  direction: ltr;
+}
+.glossa-pdf-scale-input:focus-visible,
+.glossa-pdf-scale-slider:focus-visible {
+  outline: 2px solid var(--glossa-ink);
+  outline-offset: 1px;
+}
+@media (pointer: coarse) {
+  .glossa-pdf-scale-entry .glossa-pdf-scale-input,
+  .glossa-pdf-scale-slider {
+    min-height: 44px;
+  }
+}
 .glossa-pdf-save-error {
   position: absolute;
   inset-inline-end: 0;

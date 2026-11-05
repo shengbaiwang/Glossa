@@ -162,14 +162,14 @@ function originalPDF() {
 }
 
 async function fitContent() {
-  await page.getByRole('button', { name: /^Zoom \d+%$/ }).click();
+  await page.getByRole('button', { name: /^Zoom [\d.]+%$/ }).click();
   await userEvent.click(screen.getByRole('menuitem', { name: 'Fit Content' }));
 }
 
 it('opens the zoom menu with Space without turning the PDF page', async () => {
   await open();
   const next = vi.spyOn(view, 'next');
-  screen.getByRole('button', { name: /^Zoom \d+%$/ }).focus();
+  screen.getByRole('button', { name: /^Zoom [\d.]+%$/ }).focus();
   await userEvent.keyboard(' ');
   expect(screen.getByRole('menuitem', { name: 'Fit Content' })).toBeTruthy();
   expect(next).not.toHaveBeenCalled();
@@ -197,7 +197,7 @@ for (const hidden of [false, true]) {
       await open(false, scrolled, { hidden });
       const doc = view.renderer.getContents().find((c) => c.index === 0)!.doc;
       // Open through the actual keyboard so an auto-hidden bar needs no synthetic click.
-      screen.getByRole('button', { name: /^Zoom \d+%$/ }).focus();
+      screen.getByRole('button', { name: /^Zoom [\d.]+%$/ }).focus();
       await userEvent.keyboard(' ');
       await userEvent.click(screen.getByRole('menuitem', { name: 'Fit Content' }));
       await expect.poll(() => save.mock.calls.length).toBe(2);

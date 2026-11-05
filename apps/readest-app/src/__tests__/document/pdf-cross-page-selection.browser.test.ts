@@ -80,12 +80,50 @@ function point(span: HTMLElement, end: boolean) {
   const range = span.ownerDocument.createRange();
   range.selectNodeContents(span);
   const box = range.getBoundingClientRect();
-  const frame = span.ownerDocument.defaultView!.frameElement!.getBoundingClientRect();
+  const iframe = span.ownerDocument.defaultView!.frameElement!;
+  const frame = iframe.getBoundingClientRect();
+  const scaleX = frame.width / iframe.clientWidth;
+  const scaleY = frame.height / iframe.clientHeight;
   return {
-    x: frame.left + (end ? box.right - 0.1 : box.left + 0.1),
-    y: frame.top + box.top + box.height / 2,
+    x: frame.left + (end ? box.right - 0.1 : box.left + 0.1) * scaleX,
+    y: frame.top + (box.top + box.height / 2) * scaleY,
   };
 }
+
+it.each([
+  0.75, 1.25,
+])('keeps glyph endpoints across CSS-scaled page previews (scale %s)', async (scale) => {
+  const [a, b] = await open(false);
+  await expect.poll(() => getComputedStyle(a!.defaultView!.frameElement!).transform).toBe('none');
+  view!.renderer.setAttribute('zoom-preview', '');
+  view!.renderer.setAttribute('scale-factor', `${40 * scale}`);
+  await expect
+    .poll(
+      () =>
+        a!.defaultView!.frameElement!.getBoundingClientRect().width /
+        a!.defaultView!.frameElement!.clientWidth,
+    )
+    .toBeCloseTo(scale);
+  const start = words(a!).at(-1)!;
+  const end = words(b!)[0]!;
+  await commands.dragPDFText(point(start, false), point(end, true));
+  const fragments = view!.getPDFSelection();
+  expect(fragments?.map((fragment) => fragment.index)).toEqual([0, 1]);
+  expect(fragments![0]!.range.toString().trim()).toBe(start.textContent!.trim());
+  expect(fragments![1]!.range.toString().trim()).toBe(end.textContent!.trim());
+});
+
+it('keeps an edge-adjacent single-page drag in the lightweight native selection path', async () => {
+  const [doc] = await open(false);
+  const span = words(doc!)[0]!;
+  // PDF text can start within the edge capture band (tight crop/zoom). Merely
+  // entering that band must not rebuild SVG previews on every pointer event.
+  span.style.top = '5px';
+  await commands.dragPDFText(point(span, false), point(span, true));
+  expect(doc!.getSelection()!.toString()).toBe(span.textContent);
+  expect(view!.getPDFSelection()).toBeNull();
+  expect(doc!.querySelector('[data-pdf-selection-preview]')).toBeNull();
+});
 
 it.each([
   false,

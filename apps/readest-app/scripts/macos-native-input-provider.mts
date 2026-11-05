@@ -156,6 +156,48 @@ class MacOSNativeProvider extends WebdriverBrowserProvider {
     // WDIO's Vitest command drops Playwright's position option. Preserve it so
     // a block-level answer is clicked on its actual word, as the spec requests.
     if (!project.browser) throw new Error('Native input requires an initialized browser project');
+    // Element commands create separate WDIO element objects, whose protocol
+    // methods do not inherit browser.overwriteCommand. Route Vitest's public
+    // click/fill commands through the verified native action bridge explicitly.
+    project.browser.registerCommand('__vitest_click', async (context, selector: string) => {
+      const element = await context.browser.$(selector);
+      await context.browser.performActions([{
+        type: 'pointer', id: 'native-element-click', parameters: { pointerType: 'mouse' },
+        actions: [
+          { type: 'pointerMove', origin: { [elementKey]: await element.elementId }, x: 0, y: 0 },
+          { type: 'pointerDown', button: 0 }, { type: 'pointerUp', button: 0 },
+        ],
+      }]);
+    });
+    project.browser.registerCommand('__vitest_fill', async (context, selector: string, value: string) => {
+      const element = await context.browser.$(selector);
+      await context.browser.performActions([{
+        type: 'pointer', id: 'native-fill-focus', parameters: { pointerType: 'mouse' },
+        actions: [
+          { type: 'pointerMove', origin: { [elementKey]: await element.elementId }, x: 0, y: 0 },
+          { type: 'pointerDown', button: 0 }, { type: 'pointerUp', button: 0 },
+        ],
+      }]);
+      await context.browser.performActions([{
+        type: 'key', id: 'native-fill-select', actions: [
+          { type: 'keyDown', value: '\uE03D' }, { type: 'keyDown', value: 'a' },
+          { type: 'keyUp', value: 'a' }, { type: 'keyUp', value: '\uE03D' },
+        ],
+      }]);
+      const characters = [...value];
+      // Keep each Quartz batch below its event budget, including long fixtures.
+      for (let offset = 0; offset < characters.length; offset += 96) {
+        await context.browser.performActions([{
+          type: 'key', id: 'native-fill-text', actions: characters.slice(offset, offset + 96)
+            .flatMap(value => [{ type: 'keyDown' as const, value }, { type: 'keyUp' as const, value }]),
+        }]);
+      }
+      if (!characters.length) await context.browser.performActions([{
+        type: 'key', id: 'native-fill-clear', actions: [
+          { type: 'keyDown', value: '\uE003' }, { type: 'keyUp', value: '\uE003' },
+        ],
+      }]);
+    });
     project.browser.registerCommand(
       '__vitest_dblClick',
       async (context, selector: string, options?: { position?: Point }) => {

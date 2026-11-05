@@ -89,6 +89,8 @@ it.each([
   let doc = view!.renderer.getContents().find((c) => c.index === 1)!.doc;
   expect(doc.querySelector('canvas')?.width).toBeGreaterThan(0);
   expect(doc.querySelector('[data-pdf-ocr-text]')).toBeNull();
+  // Keep the live slider preview active while background OCR arrives.
+  view!.renderer.setAttribute('zoom-preview', '');
   view!.renderer.setAttribute('scale-factor', '135');
   await expect.poll(() => doc.querySelector('[data-pdf-ocr-status]')).not.toBeNull();
   native.release!();
@@ -110,14 +112,30 @@ it.each([
   const probe = doc.createRange();
   probe.setStart(span.firstChild!, 0);
   probe.setEnd(span.firstChild!, 6);
+  // Range rectangles remain in iframe coordinates during a CSS zoom preview.
   const box = probe.getBoundingClientRect(),
-    host = (doc.defaultView!.frameElement as HTMLElement).getBoundingClientRect();
+    frame = doc.defaultView!.frameElement as HTMLElement,
+    host = frame.getBoundingClientRect(),
+    scaleX = host.width / frame.clientWidth,
+    scaleY = host.height / frame.clientHeight;
+  expect(scaleX).toBeCloseTo(1.35);
+  expect(scaleY).toBeCloseTo(1.35);
   await commands.dragPDFText(
-    { x: host.x + box.left + 0.5, y: host.y + box.top + box.height / 2 },
-    { x: host.x + box.right - 0.5, y: host.y + box.top + box.height / 2 },
+    {
+      x: host.x + (box.left + 0.5) * scaleX,
+      y: host.y + (box.top + box.height / 2) * scaleY,
+    },
+    {
+      x: host.x + (box.right - 0.5) * scaleX,
+      y: host.y + (box.top + box.height / 2) * scaleY,
+    },
   );
+  expect(span.isConnected).toBe(true);
   expect(doc.getSelection()!.toString()).toBe('Copper');
   const cfi = view!.getCFI(1, doc.getSelection()!.getRangeAt(0));
+  view!.renderer.removeAttribute('zoom-preview');
+  await expect.poll(() => frame.style.transform).toBe('none');
+  expect(view!.resolveCFI(cfi).anchor(doc).toString()).toBe('Copper');
   view!.close();
   view!.remove();
   await book!.destroy?.();

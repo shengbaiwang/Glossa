@@ -27,6 +27,9 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: [
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-dropdown-menu',
+      'tailwind-merge',
       '@supabase/supabase-js',
       '@tauri-apps/plugin-fs',
       '@tauri-apps/plugin-http',
@@ -52,6 +55,71 @@ export default defineConfig({
     setupFiles: ['./vitest.tauri.setup.ts'],
     testTimeout: 30000,
     browser: {
+      commands: {
+        async recordNativePDFEvidence(_context, evidence: Record<string, unknown>) {
+          console.info('Native PDF interaction evidence', JSON.stringify(evidence));
+        },
+        async nativeDragPDFText(
+          { browser },
+          from: { x: number; y: number },
+          to: { x: number; y: number },
+          via: { x: number; y: number },
+        ) {
+          const moves = [via, to].flatMap((end, leg) => {
+            const start = leg ? via : from;
+            return Array.from({ length: 8 }, (_, index) => ({
+              type: 'pointerMove' as const,
+              origin: 'viewport' as const,
+              x: start.x + (end.x - start.x) * (index + 1) / 8,
+              y: start.y + (end.y - start.y) * (index + 1) / 8,
+              duration: 16,
+            }));
+          });
+          try {
+            await browser.performActions([{
+              type: 'pointer', id: 'native-pdf-mouse',
+              parameters: { pointerType: 'mouse' },
+              actions: [
+                { type: 'pointerMove', origin: 'viewport', x: from.x, y: from.y },
+                { type: 'pointerDown', button: 0 },
+                ...moves,
+                { type: 'pointerUp', button: 0 },
+              ],
+            }]);
+          } finally { await browser.releaseActions(); }
+        },
+        async dragPDFText(
+          { browser },
+          from: { x: number; y: number },
+          to: { x: number; y: number },
+          pauseAtEndMs = 0,
+          via = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 },
+        ) {
+          const moves = [via, to].flatMap((end, leg) => {
+            const start = leg ? via : from;
+            return Array.from({ length: 8 }, (_, index) => ({
+              type: 'pointerMove' as const,
+              origin: 'viewport' as const,
+              x: start.x + (end.x - start.x) * (index + 1) / 8,
+              y: start.y + (end.y - start.y) * (index + 1) / 8,
+              duration: 16,
+            }));
+          });
+          try {
+            await browser.performActions([{
+              type: 'pointer', id: 'native-pdf-mouse',
+              parameters: { pointerType: 'mouse' },
+              actions: [
+                { type: 'pointerMove', origin: 'viewport', x: from.x, y: from.y },
+                { type: 'pointerDown', button: 0 },
+                ...moves,
+                { type: 'pause', duration: pauseAtEndMs },
+                { type: 'pointerUp', button: 0 },
+              ],
+            }]);
+          } finally { await browser.releaseActions(); }
+        },
+      },
       enabled: true,
       ui: process.env.GLOSSA_MACOS_INPUT_PID ? false : undefined,
       provider: (process.env.GLOSSA_MACOS_INPUT_PID ? macosNativeWebdriverio : webdriverio)({
