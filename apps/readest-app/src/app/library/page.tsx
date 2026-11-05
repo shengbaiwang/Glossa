@@ -176,6 +176,7 @@ const LibraryPageWithSearchParams = () => {
 const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchParams | null }) => {
   const router = useAppRouter();
   const { envConfig, appService } = useEnv();
+  const refreshLibrary = useLibraryRefresh(appService);
   const { token, user } = useAuth();
   const {
     library: libraryBooks,
@@ -507,9 +508,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         // changes the reader just persisted.
         const appService = await envConfig.getAppService();
         const settings = await appService.loadSettings();
-        const library = await appService.loadLibraryBooks();
         setSettings(mergeLibraryDisplay(settings, useSettingsStore.getState().settings));
-        setLibrary(library, true);
+        refreshLibrary();
       });
       return () => {
         unlisten.then((fn) => fn());
@@ -517,7 +517,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
     }
     return;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appService, envConfig]);
+  }, [appService, envConfig, refreshLibrary]);
 
   const handleImportBookFiles = useCallback(
     async (event: CustomEvent) => {
@@ -1096,7 +1096,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // per-folder in the Import-from-Folder dialog) and import newly-added books
   // on library open and app focus. Desktop + Android only (iOS security-scoped
   // bookmarks are out of scope).
-  useLibraryRefresh(appService);
 
   useAutoImportFolders({
     enabled:
@@ -1189,27 +1188,6 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         return false;
       }
     };
-  useEffect(() => {
-    if (!appService) return;
-    let active = true;
-    const reload = () => {
-      void appService
-        .loadLibraryBooks()
-        .then((rows) => {
-          if (active) useLibraryStore.getState().setLibrary(rows, true);
-        })
-        .catch(() => {});
-    };
-    const channel =
-      typeof BroadcastChannel === 'undefined'
-        ? null
-        : new BroadcastChannel('glossa-library-removal');
-    if (channel) channel.onmessage = reload;
-    return () => {
-      active = false;
-      channel?.close();
-    };
-  }, [appService]);
 
   const handleUpdateMetadata = async (book: Book, metadata: BookMetadata, tags: string[]) => {
     // Build a NEW book object instead of mutating `book` in place. <BookCover>

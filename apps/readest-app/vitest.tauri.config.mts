@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 import { webdriverio } from '@vitest/browser-webdriverio';
 import { loadEnvFile } from './vitest.env.mts';
+import { macosNativeWebdriverio } from './scripts/macos-native-input-provider.mts';
 
 // Load .env and .env.tauri so tauri tests have the same env as the desktop app.
 const env = {
@@ -52,7 +53,8 @@ export default defineConfig({
     testTimeout: 30000,
     browser: {
       enabled: true,
-      provider: webdriverio({
+      ui: process.env.GLOSSA_MACOS_INPUT_PID ? false : undefined,
+      provider: (process.env.GLOSSA_MACOS_INPUT_PID ? macosNativeWebdriverio : webdriverio)({
         hostname: '127.0.0.1',
         port: 4445,
         capabilities: {

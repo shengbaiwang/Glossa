@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   native: false,
   fetch: vi.fn(),
   get: vi.fn(),
+  status: vi.fn(),
   set: vi.fn(),
   clear: vi.fn(),
 }));
@@ -11,12 +12,14 @@ vi.mock('@/services/environment', () => ({ isTauriAppPlatform: () => mocks.nativ
 vi.mock('@tauri-apps/plugin-http', () => ({ fetch: mocks.fetch }));
 vi.mock('@/utils/bridge', () => ({
   getSecureItem: mocks.get,
+  getSecureItemStatus: mocks.status,
   setSecureItem: mocks.set,
   clearSecureItem: mocks.clear,
 }));
 
 import {
   getActiveProviderConfig,
+  activateProviderConfig,
   getProviderStatus,
   getSavedProviderConfigs,
   listProviderModels,
@@ -49,14 +52,17 @@ function sse(parts: string[]) {
   );
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   localStorage.clear();
   mocks.native = false;
   mocks.fetch.mockReset();
-  mocks.get.mockReset().mockResolvedValue({});
+  mocks.get.mockReset().mockResolvedValue({ value: 'synthetic-native-key' });
+  mocks.status.mockReset().mockResolvedValue({ status: 'missing' });
   mocks.set.mockReset().mockResolvedValue({ success: true });
   mocks.clear.mockReset().mockResolvedValue({ success: true });
   vi.stubGlobal('fetch', mocks.fetch);
+  await saveProviderConfig(config, 'synthetic-key');
+  localStorage.clear();
 });
 
 it('preserves a safe rate-limit category and Retry-After delay without response content', async () => {
@@ -79,6 +85,8 @@ describe('reading model configuration', () => {
       await saveProviderConfig({ ...config, id: `custom-${index}` });
     }
     expect(getSavedProviderConfigs()).toHaveLength(31);
+    expect(getActiveProviderConfig()).toBeNull();
+    await activateProviderConfig({ ...config, id: 'custom-30' });
     expect(getActiveProviderConfig()?.id).toBe('custom-30');
   });
 
@@ -100,6 +108,7 @@ describe('reading model configuration', () => {
       { ...config, apiKey: 'synthetic-secret' } as ProviderConfig,
       'synthetic-secret',
     );
+    await activateProviderConfig(config);
     expect(getActiveProviderConfig()).toEqual(config);
     expect(JSON.stringify(localStorage)).not.toContain('synthetic-secret');
     expect(await getProviderStatus()).toMatchObject({ configured: true, storage: 'session' });
@@ -110,7 +119,8 @@ describe('reading model configuration', () => {
     await saveProviderConfig(config, 'synthetic-secret');
     const key = mocks.set.mock.calls[0]![0].key;
     await getProviderStatus({ ...config, baseUrl: 'https://other.example/v1' });
-    expect(mocks.get.mock.calls[0]![0].key).not.toBe(key);
+    expect(mocks.status.mock.calls[0]![0].key).not.toBe(key);
+    expect(mocks.get).not.toHaveBeenCalled();
   });
 
   it('does not replace saved settings when secure storage fails or echo its error', async () => {
@@ -136,6 +146,7 @@ describe('OpenAI-compatible transport', () => {
     expect(
       await streamCompletion({
         config: { ...config, baseUrl: 'https://openrouter.ai/api/v1' },
+        apiKeyOverride: 'synthetic-test-key',
         messages,
         onMetrics,
       }),
@@ -253,6 +264,7 @@ describe('OpenAI-compatible transport', () => {
 
   it('streams split SSE events, ignores reasoning text, and uses an authenticated redirect-free request', async () => {
     await saveProviderConfig(config, 'synthetic-secret');
+    await activateProviderConfig(config);
     mocks.fetch.mockResolvedValue(
       sse([
         'data: {"choices":[{"delta":{"reasoning_content":"hidden"}}]}\r\n\r\n',
@@ -272,6 +284,7 @@ describe('OpenAI-compatible transport', () => {
 
   it('validates model lists and removes duplicate IDs', async () => {
     await saveProviderConfig(config, 'synthetic-secret');
+    await activateProviderConfig(config);
     mocks.fetch.mockResolvedValue(
       Response.json({ data: [{ id: 'a' }, { id: 4 }, { id: 'a' }, { id: 'b' }] }),
     );
@@ -280,6 +293,7 @@ describe('OpenAI-compatible transport', () => {
 
   it('does not expose server bodies or network errors', async () => {
     await saveProviderConfig(config, 'synthetic-secret');
+    await activateProviderConfig(config);
     mocks.fetch.mockResolvedValue(
       new Response('synthetic-secret and document text', { status: 401 }),
     );
@@ -294,6 +308,7 @@ describe('OpenAI-compatible transport', () => {
 
   it('rejects truncated output instead of treating it as complete notes', async () => {
     await saveProviderConfig(config, 'synthetic-secret');
+    await activateProviderConfig(config);
     mocks.fetch.mockResolvedValue(
       sse([
         'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n',
@@ -367,6 +382,7 @@ describe('OpenAI-compatible transport', () => {
 
   it('does not start a request after cancellation', async () => {
     await saveProviderConfig(config, 'synthetic-secret');
+    await activateProviderConfig(config);
     const controller = new AbortController();
     controller.abort();
     await expect(streamCompletion({ messages, signal: controller.signal })).rejects.toMatchObject({
@@ -377,6 +393,7 @@ describe('OpenAI-compatible transport', () => {
 
   it('releases a stream when the server sends DONE without closing the connection', async () => {
     await saveProviderConfig(config, 'synthetic-secret');
+    await activateProviderConfig(config);
     const cancel = vi.fn();
     mocks.fetch.mockResolvedValue(
       new Response(
@@ -399,6 +416,7 @@ describe('OpenAI-compatible transport', () => {
 
   it('cancels the underlying response reader during generation', async () => {
     await saveProviderConfig(config, 'synthetic-secret');
+    await activateProviderConfig(config);
     const controller = new AbortController();
     const cancel = vi.fn();
     mocks.fetch.mockResolvedValue(
@@ -455,10 +473,24 @@ describe('reasoning model completion budget', () => {
     mocks.fetch.mockResolvedValue(
       sse(['data: {"choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\n']),
     );
-    await expect(streamCompletion({ config, messages, maxTokens: 65536 })).resolves.toBe('OK');
+    await expect(
+      streamCompletion({
+        apiKeyOverride: 'synthetic-test-key',
+        config,
+        messages,
+        maxTokens: 65536,
+      }),
+    ).resolves.toBe('OK');
     expect(JSON.parse(mocks.fetch.mock.calls[0]![1].body).max_tokens).toBe(65536);
     mocks.fetch.mockClear();
-    await expect(streamCompletion({ config, messages, maxTokens: 65537 })).rejects.toThrow();
+    await expect(
+      streamCompletion({
+        apiKeyOverride: 'synthetic-test-key',
+        config,
+        messages,
+        maxTokens: 65537,
+      }),
+    ).rejects.toThrow();
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
   it.each([
@@ -473,7 +505,9 @@ describe('reasoning model completion budget', () => {
         ? sse([`data: ${JSON.stringify(payload)}\n\n`])
         : new Response(JSON.stringify(payload), { headers: { 'Content-Type': type } }),
     );
-    await expect(streamCompletion({ config, messages })).rejects.toMatchObject({ code: 'length' });
+    await expect(
+      streamCompletion({ apiKeyOverride: 'synthetic-test-key', config, messages }),
+    ).rejects.toMatchObject({ code: 'length' });
   });
   it.each([
     ['https://open.bigmodel.cn/api/paas/v4', 'glm-5.3-flash', 'low'],
@@ -484,7 +518,11 @@ describe('reasoning model completion budget', () => {
     mocks.fetch.mockResolvedValue(
       sse(['data: {"choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\n']),
     );
-    await streamCompletion({ config: { ...config, baseUrl, model }, messages });
+    await streamCompletion({
+      apiKeyOverride: 'synthetic-test-key',
+      config: { ...config, baseUrl, model },
+      messages,
+    });
     const request = JSON.parse(mocks.fetch.mock.calls[0]![1].body);
     expect(request.reasoning_effort).toBe(effort);
     expect(request.thinking).toBeUndefined();
@@ -494,6 +532,7 @@ describe('reasoning model completion budget', () => {
       sse(['data: {"choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\n']),
     );
     await streamCompletion({
+      apiKeyOverride: 'synthetic-test-key',
       config: {
         ...config,
         baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
@@ -506,7 +545,11 @@ describe('reasoning model completion budget', () => {
     mocks.fetch.mockResolvedValue(
       sse(['data: {"choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\n']),
     );
-    await streamCompletion({ config: { ...config, reasoningEffort: 'high' }, messages });
+    await streamCompletion({
+      apiKeyOverride: 'synthetic-test-key',
+      config: { ...config, reasoningEffort: 'high' },
+      messages,
+    });
     expect(JSON.parse(mocks.fetch.mock.calls[1]![1].body).reasoning_effort).toBeUndefined();
   });
   it('uses the service-specific output parameter and the saved cap', async () => {
@@ -514,6 +557,7 @@ describe('reasoning model completion budget', () => {
       sse(['data: {"choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\n']),
     );
     await streamCompletion({
+      apiKeyOverride: 'synthetic-test-key',
       config: { ...config, baseUrl: 'https://api.openai.com/v1', model: 'gpt-5', maxTokens: 2048 },
       messages,
     });
@@ -542,6 +586,7 @@ describe('reasoning model completion budget', () => {
       sse(['data: {"choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\n']),
     );
     await streamCompletion({
+      apiKeyOverride: 'synthetic-test-key',
       config: validateProviderConfig({
         ...config,
         baseUrl: 'https://api.openai.com/v1',
@@ -560,7 +605,12 @@ it('sends JSON mode only for a structured task and classifies explicit rejection
       JSON.stringify({ choices: [{ message: { content: '{}' }, finish_reason: 'stop' }] }),
     ),
   );
-  await streamCompletion({ config, messages, responseFormat: { type: 'json_object' } });
+  await streamCompletion({
+    apiKeyOverride: 'synthetic-test-key',
+    config,
+    messages,
+    responseFormat: { type: 'json_object' },
+  });
   expect(JSON.parse(mocks.fetch.mock.calls[0]![1].body).response_format).toEqual({
     type: 'json_object',
   });
@@ -573,7 +623,12 @@ it('sends JSON mode only for a structured task and classifies explicit rejection
     ),
   );
   await expect(
-    streamCompletion({ config, messages, responseFormat: { type: 'json_object' } }),
+    streamCompletion({
+      apiKeyOverride: 'synthetic-test-key',
+      config,
+      messages,
+      responseFormat: { type: 'json_object' },
+    }),
   ).rejects.toMatchObject({ code: 'unsupported_format' });
   expect(mocks.fetch).toHaveBeenCalledTimes(2);
 });

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { formatKeyForDisplay, filterPlatformKeys, matchesShortcut } from '../../utils/shortcutKeys';
+import {
+  eventToShortcut,
+  formatKeyForDisplay,
+  filterPlatformKeys,
+  matchesShortcut,
+  shortcutsEqual,
+} from '../../utils/shortcutKeys';
 
 const evt = (
   key: string,
@@ -20,8 +26,8 @@ const evt = (
 
 describe('formatKeyForDisplay', () => {
   describe('Mac platform', () => {
-    it('maps ctrl to ⌘', () => {
-      expect(formatKeyForDisplay('ctrl+f', true)).toBe('⌘F');
+    it('distinguishes physical Control from Command', () => {
+      expect(formatKeyForDisplay('ctrl+f', true)).toBe('⌃F');
     });
 
     it('maps cmd to ⌘', () => {
@@ -43,6 +49,10 @@ describe('formatKeyForDisplay', () => {
   });
 
   describe('non-Mac platform', () => {
+    it('distinguishes the system key from Control', () => {
+      expect(formatKeyForDisplay('cmd+f', false)).toBe('Win+F');
+      expect(formatKeyForDisplay('meta+f', false)).toBe('Win+F');
+    });
     it('maps ctrl to Ctrl', () => {
       expect(formatKeyForDisplay('ctrl+f', false)).toBe('Ctrl+F');
     });
@@ -179,5 +189,54 @@ describe('matchesShortcut', () => {
 
   it('returns false for an empty key list', () => {
     expect(matchesShortcut(evt('p', { shiftKey: true }), [])).toBe(false);
+  });
+
+  it('matches and displays a literal plus key without losing its modifiers', () => {
+    const event = evt('+', { ctrlKey: true, shiftKey: true });
+    expect(eventToShortcut(event)).toBe('ctrl+shift++');
+    expect(matchesShortcut(event, ['ctrl+shift++'])).toBe(true);
+    expect(matchesShortcut(evt('+', { ctrlKey: true }), ['ctrl+shift++'])).toBe(false);
+    expect(formatKeyForDisplay('ctrl+shift++', false)).toBe('Ctrl+Shift++');
+    expect(formatKeyForDisplay('+', true)).toBe('+');
+  });
+});
+
+describe('eventToShortcut', () => {
+  it('records canonical modifier names and preserves space', () => {
+    expect(eventToShortcut(evt('A', { metaKey: true, altKey: true, shiftKey: true }))).toBe(
+      'cmd+opt+shift+a',
+    );
+    expect(eventToShortcut(evt(' ', { shiftKey: true }))).toBe('shift+ ');
+  });
+
+  it.each([
+    'Control',
+    'Meta',
+    'Alt',
+    'Shift',
+    'AltGraph',
+    'Dead',
+    'Unidentified',
+    'Process',
+  ])('ignores %s', (key) => {
+    expect(eventToShortcut(evt(key))).toBeNull();
+  });
+
+  it('ignores composition input', () => {
+    expect(eventToShortcut({ ...evt('a'), isComposing: true })).toBeNull();
+  });
+});
+
+describe('shortcutsEqual', () => {
+  it('compares modifier aliases, order, and key case semantically', () => {
+    expect(shortcutsEqual('ctrl+opt+shift+A', 'shift+ALT+CTRL+a')).toBe(true);
+    expect(shortcutsEqual('cmd+x', 'meta+X')).toBe(true);
+    expect(shortcutsEqual('shift+ctrl++', 'CTRL+SHIFT++')).toBe(true);
+  });
+
+  it('distinguishes physical modifiers and rejects malformed bindings', () => {
+    expect(shortcutsEqual('ctrl+x', 'cmd+x')).toBe(false);
+    expect(shortcutsEqual('shift+a', 'a')).toBe(false);
+    expect(shortcutsEqual('ctrl+', 'ctrl+')).toBe(false);
   });
 });

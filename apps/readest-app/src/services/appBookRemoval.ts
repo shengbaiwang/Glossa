@@ -16,7 +16,7 @@ export function removalScope(settings: SystemSettings, _: TranslationFunc, local
   if (local) return _('External originals are kept.');
   const providers = getEnabledFileSyncBackends(settings);
   return providers.length
-    ? _('Also applies to devices synced through {{providers}}.', {
+    ? _('Changes sync through {{providers}}.', {
         providers: cloudProvidersDisplayName(providers),
       })
     : '';

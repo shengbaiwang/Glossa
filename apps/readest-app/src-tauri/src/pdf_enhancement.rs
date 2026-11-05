@@ -91,9 +91,17 @@ static JOB: OnceLock<Mutex<Option<Job>>> = OnceLock::new();
 static SOURCE_SESSIONS: OnceLock<Mutex<HashMap<String, SourceSession>>> = OnceLock::new();
 static NEXT_JOB: AtomicU64 = AtomicU64::new(1);
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
-static CACHE_LOCK: Mutex<()> = Mutex::new(());
+pub(crate) static CACHE_LOCK: Mutex<()> = Mutex::new(());
 fn jobs() -> &'static Mutex<Option<Job>> {
     JOB.get_or_init(|| Mutex::new(None))
+}
+#[cfg(target_os = "macos")]
+pub(crate) fn local_pdf_ocr_busy() -> Result<bool, String> {
+    Ok(jobs()
+        .lock()
+        .map_err(error)?
+        .as_ref()
+        .is_some_and(|job| job.status.state == "running"))
 }
 fn error(_: impl std::fmt::Debug) -> String {
     "pdf_storage_error".into()
@@ -415,7 +423,7 @@ pub async fn pdf_read_ocr_page(
 }
 
 #[cfg(target_os = "macos")]
-fn helper(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn helper(app: &AppHandle) -> Result<PathBuf, String> {
     use std::os::unix::fs::PermissionsExt;
     let bytes = include_bytes!(concat!(env!("OUT_DIR"), "/glossa-pdf-ocr"));
     let digest = format!("{:x}", Md5::digest(bytes));
@@ -462,7 +470,9 @@ pub async fn pdf_start_ocr(
             let version = ocr_version(detect, contents, heading)?;
             let _cache_guard = CACHE_LOCK.lock().map_err(error)?;
             let mut guard = jobs().lock().map_err(error)?;
-            if guard.as_ref().is_some_and(|j| j.status.state == "running") {
+            if guard.as_ref().is_some_and(|j| j.status.state == "running")
+                || crate::metadata_image::is_busy()
+            {
                 return Err("pdf_ocr_busy".into());
             }
             pages.sort_unstable();

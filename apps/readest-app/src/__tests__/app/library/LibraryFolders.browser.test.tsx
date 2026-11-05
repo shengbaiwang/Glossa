@@ -14,6 +14,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { DEFAULT_SYSTEM_SETTINGS } from '@/services/constants';
 import { LibraryGroupByType, SystemSettings } from '@/types/settings';
 import { Book, BooksGroup } from '@/types/book';
+import type { RemovalResult } from '@/services/bookRemovalService';
 import { md5Fingerprint } from '@/utils/md5';
 import { useLibraryTransfer } from '@/app/library/utils/libraryTransfer';
 import '@/styles/globals.css';
@@ -28,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   saveLibraryBooks: vi.fn(),
   openBook: vi.fn(),
   importBooks: vi.fn(),
+  removeBooks: vi.fn(),
   router: {},
   insets: { top: 0, right: 0, bottom: 0, left: 0 },
 }));
@@ -136,6 +138,7 @@ function Shelf({ direct = false } = {}) {
         handleBookUpload={transfer}
         handleBookDownload={transfer}
         handleBookDelete={transfer}
+        onRemoveBooks={mocks.removeBooks}
         handleBookPurge={transfer}
         handleShowDetailsBook={noop}
         handleLibraryNavigation={(group) => {
@@ -175,6 +178,7 @@ function DirectShelf() {
 beforeEach(() => {
   useLibraryTransfer.setState({
     clipboard: undefined,
+    pendingDeleteIds: undefined,
     drag: undefined,
     dragAccepted: false,
     restores: new Map(),
@@ -183,6 +187,20 @@ beforeEach(() => {
   mocks.search = 'groupBy=group';
   mocks.saveSettings.mockResolvedValue(undefined);
   mocks.saveLibraryBooks.mockResolvedValue(undefined);
+  mocks.removeBooks.mockImplementation(async (books: Book[]) => {
+    const ids = new Set(books.map((book) => book.hash));
+    const rows = useLibraryStore
+      .getState()
+      .library.map((book) => (ids.has(book.hash) ? { ...book, deletedAt: 100 } : book));
+    useLibraryStore.getState().setLibrary(rows);
+    return {
+      id: 'test-removal',
+      books: rows,
+      completed: [...ids],
+      failed: [],
+      pending: [],
+    } satisfies RemovalResult;
+  });
   window.history.replaceState(null, '', '?groupBy=group');
   document.documentElement.setAttribute('data-page', 'library');
   document.documentElement.setAttribute('data-theme', 'default-light');
@@ -722,6 +740,9 @@ it('deletes a selected empty folder instead of asking to delete zero books', asy
   const card = await screen.findByRole('button', { name: '文学' });
   fireEvent.contextMenu(card, { clientX: 100, clientY: 150 });
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete group' }));
+  expect(screen.getByRole('alertdialog', { name: 'Delete group “文学”?' })).toBeTruthy();
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Delete group' }));
   await waitFor(() => expect(useSettingsStore.getState().settings.libraryFolders).toEqual([]));
   expect(screen.queryByText('Confirm Deletion')).toBeNull();
 });
@@ -734,14 +755,16 @@ it('deletes a nonempty branch safely and restores it with keyboard undo', async 
   });
   useLibraryStore.getState().setLibrary([{ ...original, groupName: 'A/B/C', progress: [1, 4] }]);
   render(<DirectShelf />);
+  await eventDispatcher.dispatch('delete-books', { ids: [md5Fingerprint('A/B')] });
+  const nestedDialog = await screen.findByRole('alertdialog', { name: 'Delete group “B”?' });
+  expect(within(nestedDialog).getByText('A › B')).toBeTruthy();
+  await userEvent.click(within(nestedDialog).getByRole('button', { name: 'Cancel' }));
   await userEvent.click(
     page.getByRole('navigation').getByRole('button', { name: 'A', exact: true }),
     { button: 'right' },
   );
   await userEvent.click(screen.getByRole('menuitem', { name: 'Delete group' }));
-  expect(
-    screen.getByText('Books and subgroups move up one level. Reading data is kept.'),
-  ).toBeTruthy();
+  expect(screen.getByText('Files and subgroups move up one level.')).toBeTruthy();
   await userEvent.click(screen.getByRole('button', { name: 'Delete group' }));
   await waitFor(() => expect(useLibraryStore.getState().library[0]?.groupName).toBe('B/C'));
   screen.getByRole('navigation').querySelector<HTMLButtonElement>('[aria-label="B"]')!.focus();
@@ -890,7 +913,7 @@ it('keeps keyboard focus on each saved group through four nested levels', async 
   await page.viewport(1100, 780);
   render(<DirectShelf />);
   const nav = within(screen.getByRole('navigation'));
-  await userEvent.click(screen.getByRole('button', { name: 'My Groups' }));
+  fireEvent.contextMenu(screen.getByRole('button', { name: 'All Groups' }));
   await userEvent.click(screen.getByRole('menuitem', { name: 'New group' }));
   let path = '';
   for (const name of ['Root', 'Second', 'Third', 'Fourth']) {
@@ -925,9 +948,8 @@ it('aligns new root and nested folder icons and names with the existing rows', a
   for (const parent of ['', 'A/B']) {
     const trigger = parent
       ? nav.querySelector<HTMLButtonElement>(`[aria-label="${parent}"]`)!
-      : screen.getByRole('button', { name: 'My Groups' });
-    if (parent) fireEvent.contextMenu(trigger);
-    else await userEvent.click(trigger);
+      : screen.getByRole('button', { name: 'All Groups' });
+    fireEvent.contextMenu(trigger);
     await userEvent.click(
       screen.getByRole('menuitem', { name: parent ? 'New subgroup' : 'New group' }),
     );
@@ -1121,4 +1143,251 @@ it.each([
   await userEvent.dblClick(first);
   expect(mocks.openBook).toHaveBeenCalledExactlyOnceWith(original);
   expect(document.querySelector('.glossa-book-selection')).toBeNull();
+});
+
+it.each([
+  'grid',
+  'list',
+] as const)('moves selected books and articles to a sidebar group from %s and safely undoes', async (view) => {
+  await page.viewport(1100, 780);
+  useSettingsStore.getState().setSettings({
+    ...useSettingsStore.getState().settings,
+    libraryViewMode: view,
+    libraryFolders: ['历史', '历史/文章'],
+  });
+  const article: Book = {
+    ...original,
+    hash: 'b'.repeat(32),
+    title: '原创文章',
+    format: 'MD',
+    progress: [37, 100],
+  };
+  useLibraryStore.getState().setLibrary([original, article]);
+  render(<DirectShelf />);
+  const first = page.getByRole('main').getByRole('button', { name: original.title, exact: true });
+  const second = page.getByRole('main').getByRole('button', { name: article.title, exact: true });
+  await userEvent.click(first);
+  await userEvent.keyboard('{Meta>}');
+  await userEvent.click(second);
+  await userEvent.keyboard('{/Meta}');
+  expect(useLibraryStore.getState().getSelectedBooks()).toHaveLength(2);
+  const destination = page
+    .getByRole('navigation')
+    .getByRole('button', { name: '历史/文章', exact: true });
+  await first.dropTo(destination);
+  await waitFor(() =>
+    expect(useLibraryStore.getState().library.map((book) => book.groupName)).toEqual([
+      '历史/文章',
+      '历史/文章',
+    ]),
+  );
+  expect(mocks.saveLibraryBooks).toHaveBeenCalledWith(
+    expect.arrayContaining([
+      expect.objectContaining({ hash: original.hash, groupName: '历史/文章' }),
+      expect.objectContaining({ hash: article.hash, groupName: '历史/文章', progress: [37, 100] }),
+    ]),
+  );
+  expect(mocks.openBook).not.toHaveBeenCalled();
+  await userEvent.click(destination);
+  await userEvent.keyboard('{Meta>}z{/Meta}');
+  await waitFor(() =>
+    expect(useLibraryStore.getState().library.every((book) => !book.groupName)).toBe(true),
+  );
+  expect(useLibraryStore.getState().library.find((book) => book.hash === article.hash)).toEqual(
+    expect.objectContaining({ title: article.title, progress: [37, 100] }),
+  );
+});
+
+it('keeps the original group after a failed sidebar move and allows the same drag to retry', async () => {
+  await page.viewport(1100, 780);
+  useSettingsStore.getState().setSettings({
+    ...useSettingsStore.getState().settings,
+    libraryFolders: ['文章'],
+  });
+  useLibraryStore.getState().setLibrary([original]);
+  mocks.saveLibraryBooks.mockRejectedValueOnce(new Error('disk unavailable'));
+  render(<DirectShelf />);
+  const source = page.getByRole('main').getByRole('button', { name: original.title, exact: true });
+  const destination = page
+    .getByRole('navigation')
+    .getByRole('button', { name: '文章', exact: true });
+  await source.dropTo(destination);
+  await screen.findByText('Unable to save folders. Please try again.');
+  expect(useLibraryStore.getState().library[0]?.groupName ?? '').toBe('');
+  expect(useLibraryTransfer.getState().drag).toBeUndefined();
+  await source.dropTo(destination);
+  await waitFor(() => expect(useLibraryStore.getState().library[0]?.groupName).toBe('文章'));
+  expect(useLibraryStore.getState().library).toHaveLength(1);
+  expect(mocks.openBook).not.toHaveBeenCalled();
+});
+
+it.each([
+  'grid',
+  'list',
+] as const)('shows All Groups without loose books and marquee-moves groups in %s', async (view) => {
+  await page.viewport(1100, 780);
+  mocks.search = 'groupBy=group&section=all-groups';
+  window.history.replaceState(null, '', `?${mocks.search}`);
+  useSettingsStore.getState().setSettings({
+    ...useSettingsStore.getState().settings,
+    libraryFolders: ['A', 'A/Child', 'B', 'Destination'],
+    libraryViewMode: view,
+    libraryRecentShelfEnabled: true,
+  });
+  useLibraryStore.getState().setLibrary([
+    { ...original, progress: [1, 10] },
+    { ...original, hash: 'nested', title: 'Nested', groupName: 'A/Child' },
+  ]);
+  render(<DirectShelf />);
+  const shelf = screen.getByRole('main', { name: 'Bookshelf' });
+  expect(await within(shelf).findByRole('heading', { name: 'All Groups' })).toBeVisible();
+  expect(within(shelf).getByText('3 groups')).toBeVisible();
+  expect(within(shelf).queryByRole('button', { name: original.title })).toBeNull();
+  expect(within(shelf).queryByRole('heading', { name: 'Continue Reading' })).toBeNull();
+  const a = (await within(shelf).findByRole('button', { name: /^A$/ })).getBoundingClientRect();
+  const b = (await within(shelf).findByRole('button', { name: /^B$/ })).getBoundingClientRect();
+  await commands.dragPDFText(
+    { x: Math.min(a.left, b.left) - 8, y: Math.min(a.top, b.top) - 8 },
+    { x: Math.max(a.right, b.right) + 8, y: Math.max(a.bottom, b.bottom) - 2 },
+  );
+  await waitFor(() =>
+    expect(useLibraryStore.getState().getSelectedBooks().sort()).toEqual(
+      [md5Fingerprint('A'), md5Fingerprint('B')].sort(),
+    ),
+  );
+  await page.screenshot({
+    path: `../../../../../../.glossa-dev/qa/all-groups-selected-${view}.png`,
+  });
+  await page
+    .getByRole('main', { name: 'Bookshelf' })
+    .getByRole('button', { name: 'A', exact: true })
+    .dropTo(page.getByRole('navigation').getByRole('button', { name: 'Destination', exact: true }));
+  await waitFor(() =>
+    expect(useSettingsStore.getState().settings.libraryFolders).toEqual([
+      'Destination',
+      'Destination/A',
+      'Destination/A/Child',
+      'Destination/B',
+    ]),
+  );
+  expect(useLibraryStore.getState().library.find((book) => book.hash === 'nested')?.groupName).toBe(
+    'Destination/A/Child',
+  );
+  const destination = page
+    .getByRole('navigation')
+    .getByRole('button', { name: 'Destination', exact: true });
+  await userEvent.click(destination, { button: 'right' });
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Undo' }));
+  await waitFor(() =>
+    expect(useSettingsStore.getState().settings.libraryFolders).toEqual([
+      'A',
+      'A/Child',
+      'B',
+      'Destination',
+    ]),
+  );
+});
+
+it('deletes files from a sidebar group outside the current shelf only after opting in, and retries failures', async () => {
+  await page.viewport(1100, 780);
+  useSettingsStore.getState().setSettings({
+    ...useSettingsStore.getState().settings,
+    libraryFolders: ['A', 'A/Nested', 'Other'],
+  });
+  const nested: Book = { ...original, groupName: 'A/Nested', progress: [2, 5] };
+  const kept = { ...original, hash: 'b'.repeat(32), title: 'Other book', groupName: 'Other' };
+  useLibraryStore.getState().setLibrary([nested, kept]);
+  mocks.search = `groupBy=group&group=${md5Fingerprint('Other')}`;
+  window.history.replaceState(null, '', `?${mocks.search}`);
+  render(<DirectShelf />);
+  await userEvent.click(
+    page.getByRole('navigation').getByRole('button', { name: 'A', exact: true }),
+    { button: 'right' },
+  );
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Delete group' }));
+  const choice = screen.getByRole('checkbox', {
+    name: 'Also delete files (including subgroups, 1 total)',
+  });
+  const description = screen.getByText('Files and subgroups move up one level.');
+  expect(
+    choice.compareDocumentPosition(description) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect((choice as HTMLInputElement).checked).toBe(false);
+  expect(screen.getByRole('button', { name: 'Delete group' })).toBeTruthy();
+  await userEvent.click(choice);
+  expect(screen.getByRole('button', { name: 'Delete group and files' })).toBeTruthy();
+  await userEvent.click(choice);
+  expect(screen.getByText('Files and subgroups move up one level.')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Delete group' })).toBeTruthy();
+  await userEvent.click(choice);
+  mocks.removeBooks.mockResolvedValueOnce({
+    id: 'failed',
+    books: [nested, kept],
+    completed: [],
+    failed: [nested.hash],
+    pending: [],
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Delete group and files' }));
+  await screen.findByRole('alert');
+  expect(useSettingsStore.getState().settings.libraryFolders).toContain('A');
+  expect((choice as HTMLInputElement).checked).toBe(true);
+  await userEvent.click(screen.getByRole('button', { name: 'Delete group and files' }));
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  expect(mocks.removeBooks.mock.calls[1]?.[0]).toEqual([nested]);
+  expect(useLibraryStore.getState().library[0]).toMatchObject({ deletedAt: 100, progress: [2, 5] });
+  expect(useLibraryStore.getState().library[1]).toEqual(kept);
+  expect(useSettingsStore.getState().settings.libraryFolders).toEqual(['Nested', 'Other']);
+});
+
+it('refuses to delete changed folder membership after the confirmation opens', async () => {
+  useSettingsStore
+    .getState()
+    .setSettings({ ...useSettingsStore.getState().settings, libraryFolders: ['A'] });
+  useLibraryStore.getState().setLibrary([{ ...original, groupName: 'A' }]);
+  render(<DirectShelf />);
+  await eventDispatcher.dispatch('delete-books', { ids: [md5Fingerprint('A')] });
+  await userEvent.click(await screen.findByRole('checkbox'));
+  useLibraryStore
+    .getState()
+    .setLibrary([
+      ...useLibraryStore.getState().library,
+      { ...original, hash: 'c'.repeat(32), groupName: 'A' },
+    ]);
+  await userEvent.click(screen.getByRole('button', { name: 'Delete group and files' }));
+  await screen.findByRole('alert');
+  expect(screen.getByRole('alert').textContent).toBe(
+    'These items have changed. Select them again.',
+  );
+  expect(mocks.removeBooks).not.toHaveBeenCalled();
+  expect(useSettingsStore.getState().settings.libraryFolders).toEqual(['A']);
+});
+
+it('opens a pending sidebar group deletion after leaving Recently Deleted, and consumes it once', async () => {
+  useSettingsStore
+    .getState()
+    .setSettings({ ...useSettingsStore.getState().settings, libraryFolders: ['A'] });
+  useLibraryTransfer.setState({ pendingDeleteIds: [md5Fingerprint('A')] });
+  const mounted = render(<DirectShelf />);
+  expect(await screen.findByRole('alertdialog')).toBeTruthy();
+  expect(useLibraryTransfer.getState().pendingDeleteIds).toBeUndefined();
+  await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  mounted.unmount();
+  render(<DirectShelf />);
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+});
+
+it('creates an empty group inline from the All Groups empty state', async () => {
+  await page.viewport(1100, 780);
+  mocks.search = 'groupBy=group&section=all-groups';
+  window.history.replaceState(null, '', `?${mocks.search}`);
+  useLibraryStore.getState().setLibrary([original]);
+  render(<Shelf />);
+  expect(await screen.findByRole('heading', { name: 'No groups yet' })).toBeVisible();
+  await userEvent.click(screen.getByRole('button', { name: 'New group' }));
+  const input = await screen.findByRole('textbox', { name: 'Group name' });
+  await userEvent.fill(input, 'Research');
+  await userEvent.keyboard('{Enter}');
+  await screen.findByRole('button', { name: 'Research' });
+  expect(useSettingsStore.getState().settings.libraryFolders).toEqual(['Research']);
+  expect(screen.queryByRole('button', { name: original.title })).toBeNull();
 });

@@ -33,6 +33,36 @@
 .glossa-removal-description .glossa-removal-caption {
   margin-top: 6px;
 }
+.glossa-removal-dialog.glossa-group-removal-dialog {
+  gap: 12px;
+  padding-block: 20px;
+  font-weight: 400;
+}
+.glossa-group-removal-dialog .glossa-dialog-title {
+  overflow-wrap: anywhere;
+}
+.glossa-removal-dialog.glossa-group-removal-dialog .glossa-removal-targets {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--glossa-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.glossa-group-removal-option {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+.glossa-group-removal-option .checkbox {
+  flex-shrink: 0;
+}
+.glossa-group-removal-dialog .btn {
+  font-weight: 400;
+}
 .glossa-removal-details {
   font-size: 13px;
 }
@@ -173,7 +203,12 @@
   border-color: var(--glossa-ink);
 }
 [data-eink='true']
-  :is(.glossa-removal-caption, .glossa-removal-details > summary, .glossa-deleted-book p) {
+  :is(
+    .glossa-removal-caption,
+    .glossa-removal-details > summary,
+    .glossa-deleted-book p,
+    .glossa-group-removal-dialog .glossa-removal-targets
+  ) {
   color: var(--glossa-ink);
 }
 @media (max-width: 540px) {

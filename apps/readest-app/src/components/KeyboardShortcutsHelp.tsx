@@ -3,7 +3,8 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { GLOSSA_ISSUES_URL } from '@/services/constants';
 import { isMacPlatform } from '@/services/environment';
 import { getShortcutsForDisplay } from '@/helpers/shortcuts';
-import { formatKeyForDisplay } from '@/utils/shortcutKeys';
+import { formatKeyForDisplay, matchesShortcut } from '@/utils/shortcutKeys';
+import { useShortcutConfig } from '@/hooks/useShortcuts';
 import Dialog from './Dialog';
 import Link from './Link';
 
@@ -21,8 +22,9 @@ export const KeyboardShortcutsHelp = () => {
   const _ = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const isMac = isMacPlatform();
+  const shortcuts = useShortcutConfig();
 
-  const sections = useMemo(() => getShortcutsForDisplay(isMac), [isMac]);
+  const sections = useMemo(() => getShortcutsForDisplay(isMac, shortcuts), [isMac, shortcuts]);
 
   // Split sections into two balanced columns by item count
   const [leftColumn, rightColumn] = useMemo(() => {
@@ -90,22 +92,30 @@ export const KeyboardShortcutsHelp = () => {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== '?') return;
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        !matchesShortcut(event, shortcuts.onOpenShortcutsHelp.keys)
+      )
+        return;
 
       const activeElement = document.activeElement as HTMLElement;
       const isInteractive =
         activeElement.tagName === 'INPUT' ||
         activeElement.tagName === 'TEXTAREA' ||
-        activeElement.isContentEditable;
+        activeElement.isContentEditable ||
+        activeElement.closest('[data-shortcut-recorder]');
       if (isInteractive) return;
 
       event.preventDefault();
       setIsOpen((prev) => !prev);
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+    // Handle top-window keys before the reader's matching action so a toggle
+    // is not immediately followed by a second open. Iframe keys keep that action.
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
+  }, [shortcuts]);
 
   const handleClose = () => {
     setIsOpen(false);

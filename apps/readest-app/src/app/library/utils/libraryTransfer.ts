@@ -59,6 +59,7 @@ export function isLibraryTransferCurrent(
 /** The move clipboard is local to this library session; it never duplicates book records. */
 export const useLibraryTransfer = create<{
   clipboard?: LibraryTransfer;
+  pendingDeleteIds?: string[];
   drag?: LibraryTransfer;
   dragAccepted: boolean;
   restores: Map<string, () => void>;

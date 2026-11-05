@@ -462,6 +462,14 @@ pub struct GetSecureItemResponse {
     pub error: Option<String>,
 }
 
+/// Metadata only: existence does not imply permission to read a secret.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecureItemStatusResponse {
+    pub status: String,
+    pub error: Option<String>,
+}
+
 /// Result of a deep e-ink full screen refresh. `success: false` means no
 /// known e-ink controller responded on this device (e.g. a non-e-ink
 /// Android phone) — not a hard error.

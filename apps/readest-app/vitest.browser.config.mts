@@ -134,6 +134,7 @@ export default defineConfig({
         contextOptions: {
           viewport: { width: 1920, height: 1080 },
           deviceScaleFactor: 2,
+          hasTouch: process.env.GLOSSA_BROWSER_TOUCH === '1',
         },
       }),
       instances: [{ browser: 'chromium' }],

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useLibraryBookEdits } from '@/app/library/hooks/useLibraryBookEdits';
 import { useLibraryStore } from '@/store/libraryStore';
 import type { Book } from '@/types/book';
+import { getLocalBookFilename } from '@/utils/book';
 const mocks = vi.hoisted(() => ({ save: vi.fn(async (_books: Book[]) => {}) }));
 vi.mock('@/context/EnvContext', () => ({
   useEnv: () => ({ envConfig: { getAppService: async () => ({ saveLibraryBooks: mocks.save }) } }),
@@ -187,4 +188,69 @@ it('rejects blank titles and normalizes tags without creating duplicate entries'
     await result.current.apply([original], 'tags', [' history ', 'history', '', 'research']);
   });
   expect(current().tags).toEqual(['history', 'research']);
+});
+
+it('confirms only selected metadata fields and safely undoes without losing reading progress', async () => {
+  const { result } = renderHook(useLibraryBookEdits);
+  await act(async () => {
+    expect(
+      await result.current.applyMetadata(original, {
+        publisher: 'Local Press',
+        translator: 'Translator',
+      }),
+    ).toBe(true);
+  });
+  expect(current()).toMatchObject({
+    title: 'Original',
+    author: 'Author',
+    tags: ['old'],
+    metadata: {
+      title: 'Embedded',
+      publisher: 'Local Press',
+      translator: 'Translator',
+      identifier: 'identity',
+    },
+  });
+  useLibraryStore.getState().setLibrary([{ ...current(), progress: [88, 100] }]);
+  await act(async () => {
+    await result.current.undo();
+  });
+  expect(current().metadata).toEqual(original.metadata);
+  expect(current().progress).toEqual([88, 100]);
+});
+
+it('rejects a stale confirmation and keeps a failed confirmation retryable', async () => {
+  const { result } = renderHook(useLibraryBookEdits);
+  useLibraryStore
+    .getState()
+    .setLibrary([{ ...original, metadataUpdatedAt: 3, author: 'Personal author' }]);
+  await act(async () => {
+    expect(await result.current.applyMetadata(original, { author: 'Detected author' })).toBe(false);
+  });
+  expect(current().author).toBe('Personal author');
+  mocks.save.mockRejectedValueOnce(new Error('disk'));
+  const expected = current();
+  await act(async () => {
+    expect(await result.current.applyMetadata(expected, { publisher: 'Retry Press' })).toBe(false);
+  });
+  expect(current().metadata?.publisher).toBeUndefined();
+  await act(async () => {
+    expect(await result.current.applyMetadata(current(), { publisher: 'Retry Press' })).toBe(true);
+  });
+  expect(current().title).toBe('Original');
+});
+
+it('keeps the managed file path when adopting a title on a legacy record', async () => {
+  const path = getLocalBookFilename(original);
+  const { result } = renderHook(useLibraryBookEdits);
+  await act(async () => {
+    expect(await result.current.applyMetadata(original, { title: 'Formal title' })).toBe(true);
+  });
+  expect(current().title).toBe('Formal title');
+  expect(getLocalBookFilename(current())).toBe(path);
+  await act(async () => {
+    await result.current.undo();
+  });
+  expect(current().title).toBe('Original');
+  expect(getLocalBookFilename(current())).toBe(path);
 });

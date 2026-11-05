@@ -34,7 +34,7 @@ import {
   ModelServiceError,
   providerCapabilities,
   providerIdentity,
-  saveProviderConfig,
+  activateProviderConfig,
   type ProviderConfig,
   type ReasoningEffort,
 } from '@/glossa/ai/provider';
@@ -321,10 +321,22 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
   useEffect(() => {
     let active = true,
       sequence = 0;
+    let previous = '';
     const refresh = async () => {
       const ticket = ++sequence;
-      stopRequest.current?.();
       const next = getActiveProviderConfig();
+      const identity = JSON.stringify(
+        next && [
+          next.id,
+          next.baseUrl,
+          next.model,
+          next.reasoningEffort,
+          next.maxTokens,
+          next.capabilityOverrides,
+        ],
+      );
+      if (identity !== previous) stopRequest.current?.();
+      previous = identity;
       setConfig(next);
       setReady(false);
       if (!next) return;
@@ -401,7 +413,7 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
   const updateEffort = async (value: string) => {
     if (!config) return;
     try {
-      await saveProviderConfig({
+      await activateProviderConfig({
         ...config,
         reasoningEffort: (value || undefined) as ReasoningEffort | undefined,
       });

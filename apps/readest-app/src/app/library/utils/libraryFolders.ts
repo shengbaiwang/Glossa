@@ -222,3 +222,13 @@ export function removeFolders(books: Book[], paths: string[], selection: string[
   }
   return result;
 }
+
+/** Selected containers include their descendants, without expanding sibling names. */
+export function booksInFolders(books: Book[], paths: string[]): Book[] {
+  return books.filter(
+    (book) =>
+      !book.deletedAt &&
+      !book.duplicateOf &&
+      paths.some((path) => contains(path, book.groupName ?? '')),
+  );
+}

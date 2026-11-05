@@ -11,6 +11,7 @@ describe('bundled official modules', () => {
       'conversation',
       'mindmap',
       'pdfAutoContents',
+      'metadataRecognition',
       'webImport',
     ]);
     for (const module of OFFICIAL_MODULES)

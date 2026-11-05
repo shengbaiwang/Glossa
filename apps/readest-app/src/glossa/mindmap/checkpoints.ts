@@ -134,6 +134,7 @@ export async function getMapCheckpointKey(input: {
       config.model,
       config.reasoningEffort ?? null,
       config.maxTokens ?? null,
+      config.capabilityOverrides ?? null,
     ],
   });
 }

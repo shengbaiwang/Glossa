@@ -2,19 +2,31 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, SlidersHorizontal, X } from '@/components/GlossaIcons';
 import { useTranslation } from '@/hooks/useTranslation';
 import {
+  activateProviderConfig,
+  getCachedProviderModels,
+  getProviderModelConfig,
+  getProviderModels,
   getSavedProviderConfigs,
+  isProviderEnabled,
   listProviderModels,
-  saveProviderConfig,
+  setProviderModelFavorite,
   ModelServiceError,
   type ProviderConfig,
+  type ProviderPurpose,
 } from '@/glossa/ai/provider';
 
 interface Props {
   config: ProviderConfig | null;
   ready: boolean;
   openSettings: () => void;
+  purpose?: ProviderPurpose;
 }
-export default function ConversationModelPicker({ config, ready, openSettings }: Props) {
+export default function ConversationModelPicker({
+  config,
+  ready,
+  openSettings,
+  purpose = 'conversation',
+}: Props) {
   const _ = useTranslation();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState(config);
@@ -23,51 +35,68 @@ export default function ConversationModelPicker({ config, ready, openSettings }:
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [, setRevision] = useState(0);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const mounted = useRef(true);
-  const configs = getSavedProviderConfigs();
+  const discovery = useRef<AbortController | null>(null);
+  const configs = getSavedProviderConfigs().filter((item) => isProviderEnabled(item.id));
   const available = configs.length ? configs : config ? [config] : [];
+  const profiles = selected ? getProviderModels(selected) : [];
+
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      discovery.current?.abort();
     };
   }, []);
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      discovery.current?.abort();
+      return;
+    }
     search.current?.focus();
-    const outside = (e: PointerEvent) => {
-      if (e.target instanceof Node && !root.current?.contains(e.target)) setOpen(false);
+    const outside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !root.current?.contains(event.target)) setOpen(false);
     };
     document.addEventListener('pointerdown', outside);
     return () => document.removeEventListener('pointerdown', outside);
   }, [open]);
   useEffect(() => {
-    if (!open || !selected) return;
-    const controller = new AbortController();
-    setModels([]);
+    discovery.current?.abort();
+    setLoading(false);
     setError('');
+    // Opening or changing the service reads only local model metadata.
+    setModels(selected ? (getCachedProviderModels(selected)?.models ?? []) : []);
+  }, [selected?.id, selected?.baseUrl]);
+
+  const refresh = async () => {
+    if (!selected || loading) return;
+    discovery.current?.abort();
+    const controller = new AbortController();
+    discovery.current = controller;
     setLoading(true);
-    void listProviderModels(selected, controller.signal)
-      .then((values) => {
-        if (!controller.signal.aborted) setModels(values);
-      })
-      .catch(() => {
-        // A manually entered model remains usable when /models is unsupported.
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [open, selected]);
+    setError('');
+    try {
+      const values = await listProviderModels(selected, controller.signal);
+      if (mounted.current && !controller.signal.aborted) setModels(values);
+    } catch (cause) {
+      if (mounted.current && !controller.signal.aborted)
+        setError(
+          cause instanceof ModelServiceError ? cause.message : 'Unable to fetch models. Try again.',
+        );
+    } finally {
+      if (mounted.current && discovery.current === controller) setLoading(false);
+    }
+  };
   const choose = async (model: string) => {
     if (!selected || !model.trim() || saving) return;
     setSaving(true);
     setError('');
     try {
-      await saveProviderConfig({ ...selected, model: model.trim() });
+      await activateProviderConfig(getProviderModelConfig(selected, model.trim()), purpose);
       if (mounted.current) {
         setOpen(false);
         trigger.current?.focus();
@@ -83,16 +112,44 @@ export default function ConversationModelPicker({ config, ready, openSettings }:
       if (mounted.current) setSaving(false);
     }
   };
-  const filtered = [...new Set([selected?.model ?? '', ...models])].filter(
-    (model) => model && model.toLowerCase().includes(query.toLowerCase()),
-  );
+  const favorite = (model: string) => {
+    if (!selected) return;
+    try {
+      setProviderModelFavorite(
+        selected,
+        model,
+        !profiles.find((profile) => profile.model === model)?.favorite,
+      );
+      setRevision((value) => value + 1);
+    } catch (cause) {
+      setError(
+        cause instanceof ModelServiceError
+          ? cause.message
+          : 'Unable to save model settings on this device.',
+      );
+    }
+  };
+  const filtered = [
+    ...new Set([...profiles.map((profile) => profile.model), selected?.model ?? '', ...models]),
+  ]
+    .filter((model) => model && model.toLowerCase().includes(query.toLowerCase()))
+    .sort((a, b) => {
+      const first = profiles.find((profile) => profile.model === a);
+      const second = profiles.find((profile) => profile.model === b);
+      return (
+        Number(Boolean(second?.favorite)) - Number(Boolean(first?.favorite)) ||
+        (second?.lastUsedAt ?? 0) - (first?.lastUsedAt ?? 0) ||
+        a.localeCompare(b)
+      );
+    });
+
   return (
     <div
       className='glossa-chat-model-picker'
       ref={root}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape' && open) {
-          e.stopPropagation();
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && open) {
+          event.stopPropagation();
           setOpen(false);
           trigger.current?.focus();
         }
@@ -105,11 +162,12 @@ export default function ConversationModelPicker({ config, ready, openSettings }:
         aria-label={_('Choose model')}
         aria-expanded={open}
         onClick={() => {
-          if (!config) {
+          const next = config ?? available[0];
+          if (!next) {
             openSettings();
             return;
           }
-          setSelected(config);
+          setSelected(next);
           setQuery('');
           setOpen(!open);
         }}
@@ -130,15 +188,15 @@ export default function ConversationModelPicker({ config, ready, openSettings }:
             <select
               aria-label={_('Model service')}
               value={selected?.id ?? ''}
-              disabled={saving}
-              onChange={(e) => {
-                setSelected(available.find((c) => c.id === e.target.value) ?? null);
+              disabled={saving || loading}
+              onChange={(event) => {
+                setSelected(available.find((item) => item.id === event.target.value) ?? null);
                 setQuery('');
               }}
             >
-              {available.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
+              {available.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
                 </option>
               ))}
             </select>
@@ -162,30 +220,44 @@ export default function ConversationModelPicker({ config, ready, openSettings }:
             value={query}
             maxLength={240}
             disabled={saving}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
               if (
-                e.key === 'Enter' &&
-                !e.nativeEvent.isComposing &&
-                e.nativeEvent.keyCode !== 229
+                event.key === 'Enter' &&
+                !event.nativeEvent.isComposing &&
+                event.nativeEvent.keyCode !== 229
               ) {
-                e.preventDefault();
-                e.stopPropagation();
+                event.preventDefault();
+                event.stopPropagation();
                 if (query.trim()) void choose(query);
               }
             }}
           />
           <div className='glossa-chat-model-options' aria-busy={loading || saving}>
             {filtered.map((model) => (
-              <button
-                type='button'
-                key={model}
-                disabled={saving}
-                onClick={() => void choose(model)}
-              >
-                <span>{model}</span>
-                {model === config?.model && selected?.id === config.id && <Check size={14} />}
-              </button>
+              <div key={model} className='flex min-w-0 items-center'>
+                <button
+                  type='button'
+                  className='min-w-0 flex-1'
+                  disabled={saving}
+                  onClick={() => void choose(model)}
+                >
+                  <span className='min-w-0 break-all'>{model}</span>
+                  {model === config?.model && selected?.id === config.id && <Check size={14} />}
+                </button>
+                <button
+                  type='button'
+                  className='!w-11 shrink-0 !justify-center'
+                  aria-label={_('Favorite model') + ': ' + model}
+                  aria-pressed={Boolean(
+                    profiles.find((profile) => profile.model === model)?.favorite,
+                  )}
+                  disabled={saving}
+                  onClick={() => favorite(model)}
+                >
+                  {profiles.find((profile) => profile.model === model)?.favorite ? '★' : '☆'}
+                </button>
+              </div>
             ))}
             {query.trim() && !filtered.includes(query.trim()) && (
               <button type='button' disabled={saving} onClick={() => void choose(query)}>
@@ -193,17 +265,20 @@ export default function ConversationModelPicker({ config, ready, openSettings }:
                 <Check size={14} />
               </button>
             )}
-            {loading && (
-              <span className='glossa-chat-pending' role='status'>
-                {_('Loading…')}
-              </span>
-            )}
           </div>
           {error && (
             <p className='glossa-chat-message' role='alert'>
               {_(error)}
             </p>
           )}
+          <button
+            type='button'
+            className='glossa-chat-manage-models'
+            disabled={loading || saving}
+            onClick={() => void refresh()}
+          >
+            {loading ? _('Fetching models...') : _('Refresh models')}
+          </button>
           <button
             type='button'
             className='glossa-chat-manage-models'

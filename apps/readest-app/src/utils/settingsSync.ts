@@ -74,6 +74,7 @@ export interface SettingsSyncPayload {
   /** Explicit module edits only; contains no book data or credentials. */
   officialModules?: OfficialModulePreferences;
   pdfContentsOnImport?: boolean;
+  metadataRecognitionOnImport?: boolean;
   /** Only included after an explicit folder mutation; routine stale saves never broadcast it. */
   libraryFolders?: string[];
   /** Same-device import destinations follow explicit group edits, never routine saves. */
@@ -94,6 +95,7 @@ export const mergeSyncedGlobalSettings = (
     | 'cloudSyncProviders'
     | 'officialModules'
     | 'pdfContentsOnImport'
+    | 'metadataRecognitionOnImport'
     | 'libraryFolders'
     | 'autoImportFolderGroups'
   >,
@@ -112,6 +114,8 @@ export const mergeSyncedGlobalSettings = (
   }
   if (typeof payload.pdfContentsOnImport === 'boolean')
     merged.pdfContentsOnImport = payload.pdfContentsOnImport;
+  if (typeof payload.metadataRecognitionOnImport === 'boolean')
+    merged.metadataRecognitionOnImport = payload.metadataRecognitionOnImport;
   if (payload.libraryFolders) merged.libraryFolders = payload.libraryFolders;
   if (payload.autoImportFolderGroups)
     merged.autoImportFolderGroups = payload.autoImportFolderGroups;
@@ -148,6 +152,7 @@ export const broadcastGlobalSettings = async (
     includeLibraryFolders?: boolean;
     officialModules?: OfficialModulePreferences;
     pdfContentsOnImport?: boolean;
+    metadataRecognitionOnImport?: boolean;
   } = {},
 ): Promise<void> => {
   if (!isTauriAppPlatform()) return;
@@ -162,6 +167,8 @@ export const broadcastGlobalSettings = async (
     if (opts.officialModules) payload.officialModules = opts.officialModules;
     if (typeof opts.pdfContentsOnImport === 'boolean')
       payload.pdfContentsOnImport = opts.pdfContentsOnImport;
+    if (typeof opts.metadataRecognitionOnImport === 'boolean')
+      payload.metadataRecognitionOnImport = opts.metadataRecognitionOnImport;
     if (opts.includeLibraryFolders) {
       payload.libraryFolders = settings.libraryFolders ?? [];
       payload.autoImportFolderGroups = settings.autoImportFolderGroups ?? {};

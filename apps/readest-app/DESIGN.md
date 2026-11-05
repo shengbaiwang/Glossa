@@ -673,6 +673,12 @@ Use the same application settings dialog and shortcut as the reader.
 Deletion and recovery (2026-10-27): use one compact paper confirmation with the
 book name, short consequence and explicit action. Ordinary deletion remains
 reversible; both ordinary and permanent deletion use red, with theme ink on e-ink.
+Group deletion (2026-10-30) names the group in its title and shows its path as
+small supporting text with ` › ` separators and no inset box. Place the unframed,
+44px file-deletion option before its changing consequence. Keep files by default;
+when included, say they move to Recently Deleted and change the action to Delete
+group and files. Keep reading-data/original-file retention and conditional sync
+information in a quiet footer. Use regular body/action weight and compact spacing.
 Place the labelled delete action below all details and last in in-app menus.
 Details opens deletion directly, while clearing a download belongs in More. Recently
 Deleted is a book list with Restore and Delete permanently on each row; selected

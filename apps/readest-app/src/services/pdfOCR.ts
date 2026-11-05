@@ -92,3 +92,13 @@ export function recognizePDFPages(
     callerSignal.removeEventListener('abort', abort);
   });
 }
+
+/** Share the same single native OCR owner with embedded-image recognition. */
+export function enqueueLocalOCRTask<T>(run: () => Promise<T>, signal: AbortSignal): Promise<T> {
+  const task = pending.then(async () => {
+    signal.throwIfAborted();
+    return run();
+  });
+  pending = task.catch(() => {});
+  return until(task, signal);
+}

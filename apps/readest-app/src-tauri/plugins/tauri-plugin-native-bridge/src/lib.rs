@@ -10,6 +10,10 @@ pub use models::*;
 mod desktop;
 #[cfg(mobile)]
 mod mobile;
+#[cfg(target_os = "macos")]
+mod secure_status;
+#[cfg(target_os = "macos")]
+mod secure_broker;
 #[cfg(desktop)]
 mod secure_storage;
 
@@ -93,6 +97,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::is_sync_keychain_available,
             commands::set_secure_item,
             commands::get_secure_item,
+            commands::get_secure_item_status,
             commands::clear_secure_item,
             commands::refresh_eink_screen,
             commands::update_reading_widget,

@@ -6,6 +6,18 @@ import type { BookMetadata } from '@/libs/document';
 import { Book } from '@/types/book';
 import BookDetailModal from '@/components/metadata/BookDetailModal';
 import { DropdownProvider } from '@/context/DropdownContext';
+import type { MetadataRecognition } from '@/glossa/metadata/types';
+
+const metadata = vi.hoisted(() => ({
+  load: vi.fn<() => Promise<MetadataRecognition | null>>(async () => null),
+  verify: vi.fn(),
+}));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock('@/glossa/metadata/storage', () => ({
+  loadMetadataRecognition: metadata.load,
+  saveMetadataRecognition: vi.fn(),
+}));
+vi.mock('@/glossa/metadata/recognize', () => ({ verifyMetadataSource: metadata.verify }));
 
 vi.mock('@/hooks/useTranslation', () => ({
   useTranslation: () => (s: string) => s,
@@ -345,4 +357,51 @@ it('passes the detail Stop action to the running deletion signal', async () => {
   expect(captured?.aborted).toBe(true);
   finish(false);
   await waitFor(() => expect(screen.queryByTestId('delete-confirm')).toBeNull());
+});
+
+it('recognizes and adopts metadata in reader details for a stored book without an edit handler', async () => {
+  const book = { ...makeBook(), downloadedAt: 2, contentFingerprint: 'a'.repeat(64) };
+  useLibraryStore.setState({ libraryLoaded: true, library: [book] });
+  metadata.load.mockResolvedValueOnce({
+    version: 1,
+    fingerprint: book.contentFingerprint,
+    complete: true,
+    candidates: [
+      {
+        id: 'publisher',
+        field: 'publisher',
+        value: 'Reader Details Press',
+        confidence: 'supported',
+        source: {
+          kind: 'text',
+          label: 'Copyright page',
+          excerpt: 'Publisher: Reader Details Press',
+        },
+      },
+    ],
+  });
+  metadata.verify.mockResolvedValueOnce(book.contentFingerprint);
+  render(
+    <DropdownProvider>
+      <BookDetailModal book={book} isOpen onClose={vi.fn()} />
+    </DropdownProvider>,
+  );
+  await screen.findByRole('button', { name: 'Recognize again' });
+  expect(screen.queryByTitle('Edit Metadata')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Title' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Fill empty fields' }));
+  await waitFor(() =>
+    expect(useLibraryStore.getState().library[0]?.metadata?.publisher).toBe('Reader Details Press'),
+  );
+  expect(useLibraryStore.getState().library[0]?.title).toBe(book.title);
+  expect(appSvc.saveLibraryBooks).toHaveBeenCalledOnce();
+});
+
+it('keeps transient reader details without a stored record free of adoption actions', () => {
+  render(
+    <DropdownProvider>
+      <BookDetailModal book={makeBook()} isOpen onClose={vi.fn()} />
+    </DropdownProvider>,
+  );
+  expect(screen.queryByRole('region', { name: 'Metadata recognition' })).toBeNull();
 });

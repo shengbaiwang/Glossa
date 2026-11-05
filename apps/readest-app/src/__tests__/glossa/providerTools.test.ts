@@ -11,6 +11,7 @@ vi.mock('@/utils/bridge', () => ({
 
 import {
   streamToolCompletion,
+  saveProviderConfig,
   type ToolCall,
   type ToolDefinition,
   type ToolCompletionMessage,
@@ -43,7 +44,7 @@ const call: ToolCall = {
   type: 'function',
   function: { name: 'search_book', arguments: '{"query":"自由"}' },
 };
-const request = { config, messages, tools };
+const request = { config, messages, tools, apiKeyOverride: 'synthetic-tool-key' };
 
 function event(delta: unknown, finishReason?: string) {
   return `data: ${JSON.stringify({ choices: [{ delta, finish_reason: finishReason ?? null }] })}\n\n`;
@@ -61,9 +62,11 @@ function sse(parts: string[]) {
   );
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   mocks.fetch.mockReset();
   vi.stubGlobal('fetch', mocks.fetch);
+  await saveProviderConfig(config, 'synthetic-tool-key');
+  localStorage.clear();
 });
 
 describe('bounded tool completion transport', () => {

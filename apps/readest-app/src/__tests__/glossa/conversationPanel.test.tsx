@@ -13,6 +13,7 @@ const f = vi.hoisted(() => ({
   saveConfig: vi.fn(),
   location: 'one',
   model: 'fixture',
+  serviceName: 'Fixture',
   baseUrl: 'http://localhost:1234/v1',
   effort: undefined as string | undefined,
   sectionHref: undefined as string | undefined,
@@ -77,7 +78,7 @@ vi.mock('@/glossa/ai/provider', async (original) => ({
   ...(await original<typeof import('@/glossa/ai/provider')>()),
   getActiveProviderConfig: () => ({
     id: 'fixture',
-    name: 'Fixture',
+    name: f.serviceName,
     baseUrl: f.baseUrl,
     model: f.model,
     ...(f.effort ? { reasoningEffort: f.effort } : {}),
@@ -85,7 +86,7 @@ vi.mock('@/glossa/ai/provider', async (original) => ({
   getSavedProviderConfigs: () => [
     {
       id: 'fixture',
-      name: 'Fixture',
+      name: f.serviceName,
       baseUrl: f.baseUrl,
       model: f.model,
       ...(f.effort ? { reasoningEffort: f.effort } : {}),
@@ -94,6 +95,8 @@ vi.mock('@/glossa/ai/provider', async (original) => ({
   getProviderStatus: f.status,
   listProviderModels: f.list,
   saveProviderConfig: f.saveConfig,
+  activateProviderConfig: f.saveConfig,
+  getCachedProviderModels: () => ({ models: ['fixture', 'second-model'], updatedAt: 1 }),
 }));
 import ConversationPanel from '@/glossa/ui/ConversationPanel';
 import { MODEL_SETTINGS_EVENT } from '@/glossa/ai/provider';
@@ -104,6 +107,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   f.location = 'one';
   f.model = 'fixture';
+  f.serviceName = 'Fixture';
   f.baseUrl = 'http://localhost:1234/v1';
   f.effort = undefined;
   f.sectionHref = undefined;
@@ -442,7 +446,10 @@ it('accepts a manual model if listing is unavailable and closes the picker with 
   });
   fireEvent.click(screen.getByRole('button', { name: 'manual-model' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-  expect(f.saveConfig).toHaveBeenCalledWith(expect.objectContaining({ model: 'manual-model' }));
+  expect(f.saveConfig).toHaveBeenCalledWith(
+    expect.objectContaining({ model: 'manual-model' }),
+    'conversation',
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
   fireEvent.keyDown(screen.getByRole('textbox', { name: 'Search or enter model' }), {
     key: 'Escape',
@@ -505,6 +512,21 @@ it('stops immediately, preserves partial text and ignores a late completion afte
   expect(f.save.mock.calls[0]![0].sessions[0].turns[0].status).toBe('stopped');
   expect(f.save.mock.calls[0]![0].sessions[0].turns[0].usage.requests[0].usage).toBeUndefined();
   expect(f.save.mock.calls[0]![0].sessions[0].turns[0].usage.requests[0].cost).toBeUndefined();
+});
+it('keeps an active reply running when unrelated model metadata changes', async () => {
+  holdReply();
+  mount();
+  await typeQuestion('Continue the explanation');
+  send();
+  await waitFor(() => expect(f.generate).toHaveBeenCalledOnce());
+  const signal = f.generate.mock.calls[0]![0].signal as AbortSignal;
+  act(() => {
+    f.serviceName = 'Renamed service';
+    window.dispatchEvent(new Event(MODEL_SETTINGS_EVENT));
+  });
+  await waitFor(() => expect(f.status).toHaveBeenCalledTimes(2));
+  expect(signal.aborted).toBe(false);
+  expect(screen.getByRole('button', { name: 'Stop reply' })).toBeTruthy();
 });
 it('cancels on model change and on close, preserving a question with no reply', async () => {
   holdReply();

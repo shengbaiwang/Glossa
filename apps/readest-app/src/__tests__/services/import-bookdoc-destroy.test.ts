@@ -291,6 +291,35 @@ describe('importBook BookDoc lifecycle', () => {
     await vi.waitFor(() => expect(mockDestroy).toHaveBeenCalledTimes(1));
   });
 
+  it('schedules metadata only after the book is durable and its import parser is released', async () => {
+    setupMockBookDoc();
+    const books: Book[] = [];
+    const prepare = vi.spyOn(service, 'prepareBookMetadata').mockImplementation(async (book) => {
+      expect(mockDestroy).toHaveBeenCalledOnce();
+      expect(books.some((saved) => saved.hash === book.hash)).toBe(true);
+      expect(service.getFs().writeFile).toHaveBeenCalled();
+    });
+    const imported = await service.importBook(
+      new File(['metadata-fixture'], '本机识别.pdf'),
+      books,
+    );
+    expect(imported).not.toBeNull();
+    expect(prepare).toHaveBeenCalledOnce();
+  });
+
+  it('does not schedule metadata for transient or failed imports', async () => {
+    setupMockBookDoc();
+    const prepare = vi.spyOn(service, 'prepareBookMetadata').mockResolvedValue(undefined);
+    service.getFs().openFile.mockResolvedValue(new File(['preview'], '预览.pdf'));
+    await service.importBook('/preview.pdf', [], { transient: true });
+    expect(prepare).not.toHaveBeenCalled();
+    setupMockBookDoc();
+    service.getFs().openFile.mockReset();
+    service.getFs().writeFile.mockRejectedValueOnce(new Error('disk full'));
+    await expect(service.importBook(new File(['failed'], '失败.pdf'), [])).rejects.toThrow();
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
   it('skips the PDF plugin before opening files when disabled', async () => {
     pdf.supported = true;
     useSettingsStore.setState({

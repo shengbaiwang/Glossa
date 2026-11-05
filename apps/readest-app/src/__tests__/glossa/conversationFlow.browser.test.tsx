@@ -10,6 +10,7 @@ import type {
   ProviderConfig,
   ToolCompletionRequest,
 } from '@/glossa/ai/provider';
+import * as provider from '@/glossa/ai/provider';
 import {
   hasUnsavedConversations,
   loadConversations,
@@ -23,6 +24,7 @@ import { withPurgedBookData } from '@/services/bookDataLifecycle';
 import { loadBookDataConflicts, discardBookDataConflict } from '@/services/bookDataConflicts';
 import '@/styles/globals.css';
 import '@/styles/glossa.css';
+const screenshotRoot = `../../../../../.glossa-dev/qa/${process.env['NEXT_PUBLIC_APP_PLATFORM'] === 'tauri' ? 'model-management-20261030/tauri-' : ''}`;
 const f = vi.hoisted(() => ({
   complete: vi.fn(),
   officialModules: {} as { conversation?: boolean; mindmap?: boolean },
@@ -60,26 +62,35 @@ vi.mock('@/store/settingsStore', () => ({
     }),
   }),
 }));
-vi.mock('@/glossa/ai/provider', async (original) => ({
-  ...(await original<typeof import('@/glossa/ai/provider')>()),
-  getActiveProviderConfig: () => f.config,
-  getSavedProviderConfigs: () => [f.config],
-  listProviderModels: async () => ['fixture-model', 'second-model'],
-  saveProviderConfig: async (config: ProviderConfig) => {
+vi.mock('@/glossa/ai/provider', { spy: true });
+let view: FoliateView | undefined;
+beforeEach(() => {
+  vi.mocked(provider.getActiveProviderConfig).mockImplementation(() => f.config);
+  vi.mocked(provider.getSavedProviderConfigs).mockImplementation(() => [f.config]);
+  vi.mocked(provider.listProviderModels).mockResolvedValue(['fixture-model', 'second-model']);
+  vi.mocked(provider.getCachedProviderModels).mockReturnValue({
+    models: ['fixture-model', 'second-model'],
+    updatedAt: 1,
+  });
+  vi.mocked(provider.activateProviderConfig).mockImplementation(async (config: ProviderConfig) => {
     f.config = config;
     window.dispatchEvent(new Event('glossa-model-settings-changed'));
     return config;
-  },
-  getProviderStatus: async () => ({ configured: true }),
-  validateProviderConfig: (value: ProviderConfig) => value,
-  streamCompletion: f.complete,
-  streamToolCompletion: async (request: ToolCompletionRequest) => ({
-    text: await f.complete(request),
-    toolCalls: [],
-  }),
-}));
-let view: FoliateView | undefined;
-beforeEach(() => {
+  });
+  vi.mocked(provider.getProviderStatus).mockResolvedValue({
+    configured: true,
+    hasApiKey: true,
+    credentialStatus: 'present',
+    storage: 'keychain',
+  });
+  vi.mocked(provider.validateProviderConfig).mockImplementation((value) => value as ProviderConfig);
+  vi.mocked(provider.streamCompletion).mockImplementation((request) => f.complete(request));
+  vi.mocked(provider.streamToolCompletion).mockImplementation(
+    async (request: ToolCompletionRequest) => ({
+      text: await f.complete(request),
+      toolCalls: [],
+    }),
+  );
   f.complete.mockReset();
   f.officialModules = {};
   f.translations = {};
@@ -284,7 +295,8 @@ it('hides absent fields in the Chinese usage card and keeps expanded details wit
     expect(popup.textContent).toContain('834 毫秒');
     expect(popup.scrollWidth).toBeLessThanOrEqual(popup.clientWidth);
     await page.screenshot({
-      path: `../../../../../.glossa-dev/qa/conversation-usage-sparse-zh-${width}.png`,
+      save: true,
+      path: `${screenshotRoot}conversation-usage-sparse-zh-${width}.png`,
     });
     screen.getByRole('button', { name: zhCN['Reply usage'] }).focus();
     await userEvent.keyboard('{ArrowDown}');
@@ -298,7 +310,8 @@ it('hides absent fields in the Chinese usage card and keeps expanded details wit
     expect(popup.getBoundingClientRect().top).toBeGreaterThanOrEqual(12);
     expect(popup.getBoundingClientRect().bottom).toBeLessThanOrEqual(588);
     await page.screenshot({
-      path: `../../../../../.glossa-dev/qa/conversation-usage-expanded-zh-${width}.png`,
+      save: true,
+      path: `${screenshotRoot}conversation-usage-expanded-zh-${width}.png`,
     });
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: zhCN['Reply usage'] })).toBeNull();
@@ -362,7 +375,8 @@ it('shows recorded usage on hover, survives reload, and fits narrow themed viewp
     expect(bounds.right).toBeLessThanOrEqual(width - 12);
     expect(bounds.bottom).toBeLessThanOrEqual(788);
     await page.screenshot({
-      path: `../../../../../.glossa-dev/qa/conversation-usage-${theme}-${width}-${eink}.png`,
+      save: true,
+      path: `${screenshotRoot}conversation-usage-${theme}-${width}-${eink}.png`,
     });
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'Reply usage' })).toBeNull();
@@ -374,6 +388,83 @@ it('shows recorded usage on hover, survives reload, and fits narrow themed viewp
   }
   expect(chatCalls()).toHaveLength(1);
 });
+it.runIf(process.env['NEXT_PUBLIC_APP_PLATFORM'] === 'tauri')(
+  'opens sparse and recorded usage through existing tap and keyboard paths in WKWebView',
+  async () => {
+    const zhCN: Record<string, string> = await (
+      await fetch('/locales/zh-CN/translation.json')
+    ).json();
+    for (const sparse of [true, false]) {
+      f.translations = sparse ? zhCN : {};
+      const t = (key: string) => f.translations[key] ?? key;
+      await page.viewport(320, 600);
+      const panel = render(
+        <div style={{ position: 'fixed', inset: 0 }}>
+          <div style={{ position: 'absolute', bottom: 24, right: 16 }}>
+            <ConversationUsage
+              answer={{
+                id: 'native-usage-path',
+                question: 'Test?',
+                text: 'Answer',
+                createdAt: 1,
+                status: 'complete',
+                provider: f.config,
+                usage: {
+                  elapsedMs: 66800,
+                  firstTextMs: 834,
+                  requests: [
+                    {
+                      id: 'one',
+                      elapsedMs: 66800,
+                      outputBudget: 8192,
+                      finished: true,
+                      ...(!sparse ? { cost: { amount: 0.0971, currency: 'USD' } } : {}),
+                      usage: {
+                        inputTokens: 1200,
+                        outputTokens: 180,
+                        totalTokens: 1380,
+                        ...(!sparse ? { cachedTokens: 800 } : {}),
+                      },
+                    },
+                  ],
+                },
+              }}
+            />
+          </div>
+        </div>,
+      );
+      await page.getByRole('button', { name: t('Reply usage') }).click();
+      const popup = await screen.findByRole('dialog', { name: t('Reply usage') });
+      expect(popup.textContent).toContain('1,200');
+      if (sparse) {
+        for (const label of ['Cost', 'Cache read tokens', 'Not provided'])
+          expect(popup.textContent).not.toContain(t(label));
+      } else expect(popup.textContent).toContain('US$0.0971');
+      const trigger = screen.getByRole('button', { name: t('Reply usage') });
+      trigger.focus();
+      await userEvent.keyboard('{ArrowDown}');
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByRole('button', { name: t('More information') }),
+        ),
+      );
+      await page.getByRole('button', { name: t('More information') }).click();
+      await waitFor(() => expect(popup.textContent).toContain(t('Output limit')));
+      expect(popup.scrollWidth).toBeLessThanOrEqual(popup.clientWidth);
+      expect(popup.getBoundingClientRect().left).toBeGreaterThanOrEqual(12);
+      expect(popup.getBoundingClientRect().right).toBeLessThanOrEqual(window.innerWidth - 12);
+      await page.screenshot({
+        save: true,
+        path: `${screenshotRoot}conversation-usage-tap-keyboard-${sparse}-${window.innerWidth}x${window.innerHeight}.png`,
+      });
+      await userEvent.keyboard('{Escape}');
+      expect(screen.queryByRole('dialog', { name: t('Reply usage') })).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+      panel.unmount();
+    }
+    expect(f.complete).not.toHaveBeenCalled();
+  },
+);
 it('chats beside a real EPUB with book evidence, restores history, changes models and creates a fresh conversation', async () => {
   f.complete.mockImplementation(async (request: CompletionRequest) => answer(request));
   const { book, doc, panel, wrapper } = await setup();
@@ -400,7 +491,8 @@ it('chats beside a real EPUB with book evidence, restores history, changes model
   fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
   await screen.findByRole('button', { name: 'second-model' });
   await page.screenshot({
-    path: '../../../../../.glossa-dev/qa/conversation-simple-model-picker.png',
+    save: true,
+    path: `${screenshotRoot}conversation-simple-model-picker.png`,
   });
   fireEvent.click(screen.getByRole('button', { name: 'second-model' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -422,7 +514,8 @@ it('chats beside a real EPUB with book evidence, restores history, changes model
     expect(sidebar.scrollWidth).toBeLessThanOrEqual(width);
     expect(screen.getByRole('textbox').getBoundingClientRect().bottom).toBeLessThan(900);
     await page.screenshot({
-      path: `../../../../../.glossa-dev/qa/conversation-simple-${theme}-${width}.png`,
+      save: true,
+      path: `${screenshotRoot}conversation-simple-${theme}-${width}.png`,
     });
   }
   await waitFor(async () =>
@@ -442,7 +535,8 @@ it('chats beside a real EPUB with book evidence, restores history, changes model
   expect(sessions.textContent).toContain('聊个新问题');
   expect(sessions.textContent).toContain('先找到作者回答的问题，再看理由如何支持结论');
   await page.screenshot({
-    path: '../../../../../.glossa-dev/qa/conversation-session-picker.png',
+    save: true,
+    path: `${screenshotRoot}conversation-session-picker.png`,
   });
   const first = Array.from(sessions.querySelectorAll('button')).find((option) =>
     option
@@ -475,7 +569,8 @@ it('keeps partial replies on stop and protects IndexedDB isolation', async () =>
   await screen.findByText('已经收到的内容。');
   expect(document.querySelector('.glossa-chat-cursor')).toBeTruthy();
   await page.screenshot({
-    path: '../../../../../.glossa-dev/qa/conversation-streaming-cursor.png',
+    save: true,
+    path: `${screenshotRoot}conversation-streaming-cursor.png`,
   });
   fireEvent.click(await screen.findByRole('button', { name: 'Stop reply' }));
   await screen.findByText('Stopped');
@@ -508,7 +603,8 @@ it('sends the prompt chosen in the composer picker as the system message', async
   fireEvent.click(screen.getByRole('button', { name: 'Choose prompt' }));
   fireEvent.click(await screen.findByRole('button', { name: '只给结论' }));
   await page.screenshot({
-    path: '../../../../../.glossa-dev/qa/conversation-prompt-picker.png',
+    save: true,
+    path: `${screenshotRoot}conversation-prompt-picker.png`,
   });
   await ask('这条用哪个提示词？');
   const request = chatCalls()[0]!;
@@ -547,7 +643,8 @@ it('keeps the composer and model menu usable in a short narrow window', async ()
   expect(menu.bottom).toBeLessThan(480);
   expect(sidebar.scrollWidth).toBeLessThanOrEqual(320);
   await page.screenshot({
-    path: '../../../../../.glossa-dev/qa/conversation-simple-narrow-menu.png',
+    save: true,
+    path: `${screenshotRoot}conversation-simple-narrow-menu.png`,
   });
 });
 it('preserves answer versions, restores a renamed history and lays out math, code and the conversation menu', async () => {
@@ -612,7 +709,8 @@ it('preserves answer versions, restores a renamed history and lays out math, cod
     expect(getComputedStyle(renameInput).outlineStyle).toBe('none');
     expect(getComputedStyle(renameInput).borderWidth).toBe('0px');
     await page.screenshot({
-      path: `../../../../../.glossa-dev/qa/conversation-inline-rename-${theme}-${width}.png`,
+      save: true,
+      path: `${screenshotRoot}conversation-inline-rename-${theme}-${width}.png`,
     });
   }
   document.documentElement.dir = 'ltr';
@@ -659,7 +757,8 @@ it('preserves answer versions, restores a renamed history and lays out math, cod
     expect(menu.right).toBeLessThanOrEqual(bounds.right);
     expect(sidebar.scrollWidth).toBeLessThanOrEqual(width);
     await page.screenshot({
-      path: `../../../../../.glossa-dev/qa/conversation-audit-${theme}-${width}.png`,
+      save: true,
+      path: `${screenshotRoot}conversation-audit-${theme}-${width}.png`,
     });
     fireEvent.keyDown(screen.getByRole('dialog', { name: 'Conversation menu' }), { key: 'Escape' });
   }
@@ -677,7 +776,8 @@ it('preserves answer versions, restores a renamed history and lays out math, cod
   expect(sendBounds.top).toBeGreaterThan(0);
   expect(sidebar.scrollWidth).toBeLessThanOrEqual(320);
   await page.screenshot({
-    path: '../../../../../.glossa-dev/qa/conversation-audit-long-input-narrow.png',
+    save: true,
+    path: `${screenshotRoot}conversation-audit-long-input-narrow.png`,
   });
 });
 

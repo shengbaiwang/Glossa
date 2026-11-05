@@ -73,13 +73,20 @@ vi.mock('@/components/settings/LangPanel', () => ({ default: () => null }));
 vi.mock('@/components/settings/IntegrationsPanel', () => ({
   default: () => <div>Cloud sync providers</div>,
 }));
+vi.mock('@/components/settings/ShortcutsPanel', () => ({
+  default: () => (
+    <div data-testid='shortcuts-panel' data-setting-id='settings.shortcuts.bindings'>
+      Shortcut preferences
+    </div>
+  ),
+}));
 vi.mock('@/components/settings/SpeechPanel', () => ({ default: () => <p>Speech preferences</p> }));
 vi.mock('@/components/AboutContent', () => ({ default: () => <p>Version and licenses</p> }));
 vi.mock('@/components/settings/MiscPanel', () => ({ default: () => null }));
 vi.mock('@/glossa/ui/ModelSettingsPanel', () => ({ default: () => null }));
 vi.mock('@/glossa/ui/PromptSettingsPanel', () => ({ default: () => null }));
 
-const panels = ['Account', 'General', 'Reading', 'Library & Sync', 'Plugins', 'About'];
+const panels = ['Account', 'General', 'Reading', 'Library & Sync', 'Shortcuts', 'Plugins', 'About'];
 beforeEach(() => {
   fixture.settings.officialModules = {};
   vi.stubGlobal(
@@ -113,14 +120,14 @@ it('keeps application categories in the global settings dialog', () => {
   }
 });
 
-it('offers six application categories with reading controls nested inside Reading', () => {
+it('offers seven application categories with reading controls nested inside Reading', () => {
   render(<SettingsDialog bookKey='' />);
   const navigation = screen.getByRole('navigation', { name: 'Settings Panels' });
   expect(
     within(navigation)
       .getAllByRole('button')
       .map((button) => button.textContent),
-  ).toEqual(['Account', 'General', 'Reading', 'Library & Sync', 'Plugins', 'About']);
+  ).toEqual(['Account', 'General', 'Reading', 'Library & Sync', 'Shortcuts', 'Plugins', 'About']);
   expect(screen.queryByRole('button', { name: 'Font' })).toBeNull();
   fireEvent.click(within(navigation).getByRole('button', { name: 'Reading' }));
   fireEvent.click(screen.getByRole('button', { name: 'Layout' }));
@@ -178,6 +185,7 @@ it('limits Aa to reading appearance even when a global panel was previously sele
     expect(screen.getByRole('button', { name })).toBeTruthy();
   }
   for (const name of [
+    'Shortcuts',
     'Plugins',
     'Cloud Sync',
     'Model Services',
@@ -263,4 +271,32 @@ it.each([
   render(<SettingsDialog bookKey='' />);
   expect(screen.getByRole('button', { name: 'Plugins' }).getAttribute('aria-pressed')).toBe('true');
   expect(screen.getByText('Plugin controls')).toBeTruthy();
+});
+
+it('opens and remembers the dedicated shortcuts settings page', () => {
+  const view = render(<SettingsDialog bookKey='' />);
+  fireEvent.click(screen.getByRole('button', { name: 'Shortcuts' }));
+  expect(localStorage.getItem('lastApplicationSettingsPanel')).toBe('Shortcuts');
+  expect(screen.getByTestId('shortcuts-panel')).toBeTruthy();
+  view.unmount();
+  render(<SettingsDialog bookKey='' />);
+  expect(screen.getByRole('button', { name: 'Shortcuts' }).getAttribute('aria-pressed')).toBe(
+    'true',
+  );
+  expect(screen.getByTestId('shortcuts-panel')).toBeTruthy();
+});
+
+it('accepts shortcuts panel requests and search deep links', async () => {
+  fixture.requestedPanel = 'Shortcuts';
+  const view = render(<SettingsDialog bookKey='' />);
+  expect(screen.getByTestId('shortcuts-panel')).toBeTruthy();
+  view.unmount();
+  fixture.requestedPanel = null;
+  localStorage.clear();
+  fixture.activeSettingsItemId = 'settings.shortcuts.bindings';
+  render(<SettingsDialog bookKey='' />);
+  await waitFor(() => expect(screen.getByTestId('shortcuts-panel')).toBeTruthy());
+  expect(screen.getByRole('button', { name: 'Shortcuts' }).getAttribute('aria-pressed')).toBe(
+    'true',
+  );
 });

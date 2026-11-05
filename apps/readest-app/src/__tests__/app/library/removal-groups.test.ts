@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { removeFolders } from '@/app/library/utils/libraryFolders';
+import { booksInFolders, removeFolders } from '@/app/library/utils/libraryFolders';
 import type { Book } from '@/types/book';
 it('dissolves selected containers once and keeps every nested book and personal field', () => {
   const books: Book[] = [
@@ -19,4 +19,23 @@ it('dissolves selected containers once and keeps every nested book and personal 
   expect(result.books).toHaveLength(1);
   expect(result.books[0]).toMatchObject({ title: 'Mine', groupName: 'C', progress: [3, 9] });
   expect(result.books[0]?.deletedAt).toBeUndefined();
+});
+
+it('includes descendant files once while excluding sibling prefixes and already removed records', () => {
+  const base: Book = {
+    hash: 'one',
+    title: 'Mine',
+    author: 'A',
+    format: 'EPUB',
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  const books = [
+    { ...base, groupName: 'A' },
+    { ...base, hash: 'nested', groupName: 'A/B' },
+    { ...base, hash: 'sibling', groupName: 'AB' },
+    { ...base, hash: 'removed', groupName: 'A', deletedAt: 20 },
+    { ...base, hash: 'duplicate', groupName: 'A', duplicateOf: 'one' },
+  ];
+  expect(booksInFolders(books, ['A', 'A/B']).map((book) => book.hash)).toEqual(['one', 'nested']);
 });

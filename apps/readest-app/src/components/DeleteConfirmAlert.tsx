@@ -5,6 +5,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 const DeleteConfirmAlert: React.FC<{
   title: string;
   message: string;
+  className?: string;
   books?: { hash: string; title: string }[];
   scope?: string;
   details?: string;
@@ -12,12 +13,16 @@ const DeleteConfirmAlert: React.FC<{
   confirmLabel?: string;
   destructive?: boolean;
   showPurgeToggle?: boolean;
+  children?: React.ReactNode;
+  footer?: React.ReactNode;
+  errorMessage?: string;
   onCancel: () => void;
   onStop?: () => void;
   onConfirm: (purgeData: boolean) => void | Promise<void>;
 }> = ({
   title,
   message,
+  className,
   books,
   scope,
   details,
@@ -25,13 +30,17 @@ const DeleteConfirmAlert: React.FC<{
   confirmLabel,
   destructive = false,
   showPurgeToggle = false,
+  children,
+  footer,
+  errorMessage,
   onCancel,
   onStop,
   onConfirm,
 }) => {
   const _ = useTranslation();
   const titleId = useId(),
-    messageId = useId();
+    messageId = useId(),
+    footerId = useId();
   const [purgeData, setPurgeData] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState(false);
@@ -77,10 +86,13 @@ const DeleteConfirmAlert: React.FC<{
       role='alertdialog'
       aria-modal='true'
       aria-labelledby={titleId}
-      aria-describedby={messageId}
+      aria-describedby={footer ? `${messageId} ${footerId}` : messageId}
       aria-busy={processing}
       tabIndex={-1}
-      className='glossa-dialog-card glossa-removal-dialog eink-bordered mx-4 flex w-full flex-col'
+      className={clsx(
+        'glossa-dialog-card glossa-removal-dialog eink-bordered mx-4 flex w-full flex-col',
+        className,
+      )}
       onKeyDown={(event) => {
         event.stopPropagation();
         if (event.key === 'Escape') {
@@ -126,6 +138,7 @@ const DeleteConfirmAlert: React.FC<{
           </ul>
         </div>
       )}
+      {children && <fieldset disabled={processing}>{children}</fieldset>}
       <div className='glossa-removal-description'>
         <p id={messageId}>{message}</p>
         {scope && <p className='glossa-removal-caption'>{scope}</p>}
@@ -156,7 +169,8 @@ const DeleteConfirmAlert: React.FC<{
           />
         </label>
       )}
-      {error && <p role='alert'>{_('Could not finish. Please try again.')}</p>}
+      {footer && <div id={footerId}>{footer}</div>}
+      {error && <p role='alert'>{errorMessage || _('Could not finish. Please try again.')}</p>}
       <div className='glossa-dialog-actions flex flex-wrap justify-end gap-2'>
         <button
           ref={cancel}

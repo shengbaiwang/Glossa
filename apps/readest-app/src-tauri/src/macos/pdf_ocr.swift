@@ -4,6 +4,7 @@ import Foundation
 import PDFKit
 import Vision
 import CoreText
+import ImageIO
 
 struct Word: Codable {
     let text: String
@@ -383,9 +384,36 @@ func recognizePages(source: URL, output: URL, indices: [Int], detect: Bool, cont
     if let failure { throw failure }
 }
 
+// Embedded images use a separate bounded result, leaving reading text/CFI sidecars intact.
+func recognizeEmbeddedImage(source: URL, output: URL) throws {
+    guard let image = CGImageSourceCreateWithURL(source as CFURL, nil),
+          let props = CGImageSourceCopyPropertiesAtIndex(image, 0, nil) as? [CFString: Any],
+          let width = props[kCGImagePropertyPixelWidth] as? Int,
+          let height = props[kCGImagePropertyPixelHeight] as? Int,
+          width > 0, height > 0, width <= 20000, height <= 20000,
+          width * height <= 16000000 else { throw NSError(domain: "image_limit", code: 1) }
+    let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+        kCGImageSourceThumbnailMaxPixelSize: 2400, kCGImageSourceCreateThumbnailWithTransform: true]
+    guard let raster = CGImageSourceCreateThumbnailAtIndex(image, 0, options as CFDictionary) else { throw NSError(domain: "image", code: 1) }
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    request.usesLanguageCorrection = false
+    let supported = try request.supportedRecognitionLanguages()
+    request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US"].filter { supported.contains($0) }
+    if #available(macOS 13, *) { request.automaticallyDetectsLanguage = true }
+    try VNImageRequestHandler(cgImage: raster, options: [:]).perform([request])
+    let text = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+    guard text.count <= 24000 else { throw NSError(domain: "text_limit", code: 1) }
+    try text.write(to: output, atomically: true, encoding: .utf8)
+}
+
 #if !PDF_OCR_TEST
 do {
     var args = CommandLine.arguments
+    if args.count == 4 && args[1] == "--image" {
+        try recognizeEmbeddedImage(source: URL(fileURLWithPath: args[2]), output: URL(fileURLWithPath: args[3]))
+        exit(0)
+    }
     let detect = args.count > 1 && args[1] == "--detect"
     let contents = args.count > 1 && args[1] == "--contents"
     let heading = args.count > 1 && args[1] == "--heading"

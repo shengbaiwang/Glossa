@@ -69,6 +69,20 @@ function createMockOptions(
 }
 
 describe('buildCommandRegistry', () => {
+  it('finds keyboard shortcuts and opens their dedicated settings page', () => {
+    const options = createMockOptions();
+    const items = buildCommandRegistry(options);
+    const item = searchCommands('快捷键', items).find(
+      ({ item }) => item.id === 'settings.shortcuts.bindings',
+    )?.item;
+    expect(item).toBeDefined();
+    item!.action();
+    expect(options.openSettingsPanel).toHaveBeenCalledWith(
+      'Shortcuts',
+      'settings.shortcuts.bindings',
+    );
+  });
+
   it('finds plugin switches and opens their dedicated settings menu', () => {
     const options = createMockOptions();
     const items = buildCommandRegistry(options);

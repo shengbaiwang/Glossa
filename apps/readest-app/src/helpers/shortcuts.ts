@@ -1,5 +1,5 @@
 import { stubTranslation as _ } from '@/utils/misc';
-import { filterPlatformKeys } from '@/utils/shortcutKeys';
+import { filterPlatformKeys, isValidShortcut } from '@/utils/shortcutKeys';
 
 export type ShortcutEntry = {
   keys: string[];
@@ -7,7 +7,7 @@ export type ShortcutEntry = {
   section: string;
 };
 
-const DEFAULT_SHORTCUTS = {
+export const DEFAULT_SHORTCUTS = {
   onSwitchSideBar: {
     keys: ['ctrl+Tab', 'opt+Tab', 'alt+Tab'],
     description: _('Switch Sidebar Tab'),
@@ -247,13 +247,19 @@ type ShortcutDisplaySection = {
   items: ShortcutDisplayItem[];
 };
 
-export const getShortcutsForDisplay = (isMac: boolean): ShortcutDisplaySection[] => {
-  const shortcuts = loadShortcuts();
+export const getShortcutsForDisplay = (
+  isMac: boolean,
+  shortcuts: ShortcutConfig = loadShortcuts(),
+): ShortcutDisplaySection[] => {
   return SHORTCUT_SECTIONS.map((section) => {
     const itemMap = new Map<string, ShortcutDisplayItem>();
-    for (const entry of Object.values(shortcuts)) {
+    for (const [action, entry] of Object.entries(shortcuts)) {
       if (entry.section !== section) continue;
-      const keys = filterPlatformKeys(entry.keys, isMac);
+      const defaultKeys = DEFAULT_SHORTCUTS[action as keyof ShortcutConfig].keys;
+      const isDefault =
+        entry.keys.length === defaultKeys.length &&
+        entry.keys.every((key, index) => key === defaultKeys[index]);
+      const keys = isDefault ? filterPlatformKeys(entry.keys, isMac) : [...entry.keys];
       const existing = itemMap.get(entry.description);
       if (existing) {
         // Merge keys for entries with the same description
@@ -272,17 +278,29 @@ export const getShortcutsForDisplay = (isMac: boolean): ShortcutDisplaySection[]
 
 // Load shortcuts from localStorage or fallback to defaults
 export const loadShortcuts = (): ShortcutConfig => {
-  if (typeof localStorage === 'undefined') return DEFAULT_SHORTCUTS;
-  const customShortcuts = JSON.parse(localStorage.getItem('customShortcuts') || '{}');
-  const result = { ...DEFAULT_SHORTCUTS };
-  for (const [key, value] of Object.entries(customShortcuts)) {
-    const shortcutKey = key as keyof ShortcutConfig;
-    if (shortcutKey in result) {
-      // Custom overrides only replace keys, preserving description and section
-      if (Array.isArray(value)) {
+  const result = Object.fromEntries(
+    Object.entries(DEFAULT_SHORTCUTS).map(([key, entry]) => [
+      key,
+      { ...entry, keys: [...entry.keys] },
+    ]),
+  ) as ShortcutConfig;
+  try {
+    if (typeof localStorage === 'undefined') return result;
+    const customShortcuts: unknown = JSON.parse(localStorage.getItem('customShortcuts') || '{}');
+    if (!customShortcuts || typeof customShortcuts !== 'object' || Array.isArray(customShortcuts))
+      return result;
+    for (const [key, value] of Object.entries(customShortcuts)) {
+      if (
+        Object.hasOwn(result, key) &&
+        Array.isArray(value) &&
+        value.every((shortcut) => typeof shortcut === 'string' && isValidShortcut(shortcut))
+      ) {
+        const shortcutKey = key as keyof ShortcutConfig;
         result[shortcutKey] = { ...result[shortcutKey], keys: value };
       }
     }
+  } catch {
+    // A damaged or inaccessible preference must not disable keyboard navigation.
   }
   return result;
 };
@@ -295,4 +313,5 @@ export const saveShortcuts = (shortcuts: ShortcutConfig) => {
     keysOnly[key] = entry.keys;
   }
   localStorage.setItem('customShortcuts', JSON.stringify(keysOnly));
+  window.dispatchEvent(new Event('shortcutUpdate'));
 };

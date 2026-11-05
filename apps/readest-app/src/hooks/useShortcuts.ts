@@ -6,17 +6,29 @@ export type KeyActionHandlers = {
   [K in keyof ShortcutConfig]?: (event?: KeyboardEvent | MessageEvent) => void;
 };
 
-const useShortcuts = (actions: KeyActionHandlers, dependencies: React.DependencyList = []) => {
+export const useShortcutConfig = () => {
   const [shortcuts, setShortcuts] = useState<ShortcutConfig>(loadShortcuts);
 
   useEffect(() => {
     const handleShortcutUpdate = () => {
       setShortcuts(loadShortcuts());
     };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === 'customShortcuts' || event.key === null) handleShortcutUpdate();
+    };
 
     window.addEventListener('shortcutUpdate', handleShortcutUpdate);
-    return () => window.removeEventListener('shortcutUpdate', handleShortcutUpdate);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('shortcutUpdate', handleShortcutUpdate);
+      window.removeEventListener('storage', handleStorage);
+    };
   }, []);
+  return shortcuts;
+};
+
+const useShortcuts = (actions: KeyActionHandlers, dependencies: React.DependencyList = []) => {
+  const shortcuts = useShortcutConfig();
 
   const processKeyEvent = (eventLike: ShortcutEventLike, event: KeyboardEvent | MessageEvent) => {
     // FIXME: This is a temporary fix to disable Back button navigation

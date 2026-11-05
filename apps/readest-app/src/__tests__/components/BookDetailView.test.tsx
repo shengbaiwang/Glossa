@@ -53,6 +53,22 @@ vi.mock('next/image', () => ({
 
 afterEach(() => cleanup());
 
+it.each(['2024', '2024-05'])('keeps publication date precision for %s', (published) => {
+  const { getByText } = renderView({
+    metadata: {
+      title: 'Title',
+      author: 'Author',
+      language: 'en',
+      published,
+      translator: 'Test Translator',
+      isbn: '9780306406157',
+    },
+  });
+  expect(getByText(published)).toBeTruthy();
+  expect(getByText('Test Translator')).toBeTruthy();
+  expect(getByText('9780306406157')).toBeTruthy();
+});
+
 const makeBook = (overrides?: Partial<Book>): Book =>
   ({
     hash: 'abc123',

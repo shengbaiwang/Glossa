@@ -309,6 +309,14 @@ pub(crate) async fn get_secure_item<R: Runtime>(
 }
 
 #[command]
+pub(crate) async fn get_secure_item_status<R: Runtime>(
+    app: AppHandle<R>,
+    payload: GetSecureItemRequest,
+) -> Result<SecureItemStatusResponse> {
+    app.native_bridge().get_secure_item_status(payload)
+}
+
+#[command]
 pub(crate) async fn clear_secure_item<R: Runtime>(
     app: AppHandle<R>,
     payload: GetSecureItemRequest,

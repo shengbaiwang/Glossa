@@ -38,7 +38,7 @@ describe('plugin manifest draft', () => {
     expect(manifest.id).toBe('org.example.outline');
     expect(Object.keys(pluginLoaders)).toEqual(PLUGINS.map((plugin) => plugin.id));
     expect(manifest.id in pluginLoaders).toBe(false);
-    expect(PLUGINS).toHaveLength(4);
+    expect(PLUGINS).toHaveLength(5);
   });
   it('accepts explicit panel and import activation without allowing automatic startup', () => {
     const manifest = pluginManifestSchema.parse(example);

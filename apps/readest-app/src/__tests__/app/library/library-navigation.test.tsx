@@ -4,6 +4,7 @@ import LibraryNavigation from '@/app/library/components/LibraryNavigation';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { md5Fingerprint } from '@/utils/md5';
+import { useLibraryTransfer } from '@/app/library/utils/libraryTransfer';
 import { DEFAULT_SYSTEM_SETTINGS } from '@/services/constants';
 import { SystemSettings, LibraryGroupByType } from '@/types/settings';
 
@@ -44,6 +45,7 @@ beforeEach(() => {
     openSettingsDialog: mocks.openSettingsDialog,
   });
   useLibraryStore.getState().setLibrary([]);
+  useLibraryTransfer.setState({ pendingDeleteIds: undefined });
 });
 
 describe('LibraryNavigation', () => {
@@ -51,7 +53,7 @@ describe('LibraryNavigation', () => {
     mocks.search = new URLSearchParams('groupBy=group');
     render(<LibraryNavigation onNavigate={vi.fn()} />);
     expect(screen.queryByRole('button', { name: 'New group' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'My Groups' }));
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'All Groups' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'New group' }));
     fireEvent.submit(screen.getByRole('textbox').closest('form')!);
     await waitFor(() =>
@@ -107,7 +109,7 @@ describe('LibraryNavigation', () => {
         .getAllByRole('button')
         .map((button) => button.textContent),
     ).toEqual(['All Books', 'Recently Deleted']);
-    expect(screen.getByRole('region', { name: 'My Groups' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'All Groups' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '文学/小说' })).toBeTruthy();
     expect(
       within(browse)
@@ -145,11 +147,11 @@ describe('LibraryNavigation', () => {
     fireEvent.keyDown(books, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Recently Deleted' }));
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'My Groups' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'All Groups' }));
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(screen.getByRole('button', { name: '文学' }));
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' });
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'My Groups' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'All Groups' }));
     fireEvent.keyDown(document.activeElement!, { key: 'End' });
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' });
@@ -281,7 +283,7 @@ describe('LibraryNavigation', () => {
 
 it('creates a root group with the keyboard shortcut without adding a bottom action', () => {
   render(<LibraryNavigation onNavigate={vi.fn()} />);
-  const heading = screen.getByRole('button', { name: 'My Groups' });
+  const heading = screen.getByRole('button', { name: 'All Groups' });
   heading.focus();
   fireEvent.keyDown(heading, { key: 'N', ctrlKey: true, shiftKey: true });
   expect(screen.getByRole('textbox')).toBe(document.activeElement);
@@ -295,4 +297,38 @@ it('keeps old subject navigation readable as all books with no subject entry', (
     'page',
   );
   expect(screen.queryByRole('button', { name: 'Subjects' })).toBeNull();
+});
+
+it('opens all groups from the heading and clears this section for other destinations', () => {
+  mocks.search = new URLSearchParams(
+    'section=recently-deleted&groupBy=author&group=old&q=paper&search=contents&view=list',
+  );
+  const view = render(<LibraryNavigation onNavigate={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'All Groups' }));
+  const params = new URLSearchParams(mocks.navigate.mock.lastCall?.[1]);
+  expect(params.get('section')).toBe('all-groups');
+  expect(params.get('q')).toBeNull();
+  expect(params.get('search')).toBeNull();
+  expect(params.get('view')).toBe('list');
+  expect(params.get('groupBy')).toBe('group');
+  expect(params.get('group')).toBe('');
+  mocks.search = params;
+  view.rerender(<LibraryNavigation onNavigate={vi.fn()} />);
+  expect(screen.getByRole('button', { name: 'All Groups' }).getAttribute('aria-current')).toBe(
+    'page',
+  );
+  fireEvent.click(screen.getByRole('button', { name: '历史' }));
+  expect(new URLSearchParams(mocks.navigate.mock.lastCall?.[1]).get('section')).toBeNull();
+});
+
+it.each([
+  'section=recently-deleted',
+  'groupBy=none',
+])('opens confirmation for sidebar deletion when the shelf is absent in %s', (query) => {
+  mocks.search = new URLSearchParams(query);
+  render(<LibraryNavigation onNavigate={vi.fn()} />);
+  fireEvent.contextMenu(screen.getByRole('button', { name: '历史' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete group' }));
+  expect(useLibraryTransfer.getState().pendingDeleteIds).toEqual([md5Fingerprint('历史')]);
+  expect(new URLSearchParams(mocks.navigate.mock.lastCall?.[1]).get('section')).toBe('all-groups');
 });

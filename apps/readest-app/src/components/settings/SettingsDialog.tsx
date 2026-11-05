@@ -24,6 +24,7 @@ import {
   Info,
   Volume,
   CircleUserRound,
+  Keyboard,
 } from '@/components/GlossaIcons';
 import { getDirFromUILanguage } from '@/utils/rtl';
 import { getCommandPaletteShortcut } from '@/services/environment';
@@ -41,7 +42,9 @@ import ApplicationPanel from './ApplicationPanel';
 import PluginsPanel, { type PluginSettingsTarget } from './PluginsPanel';
 import SettingsScopeControl from './SettingsScopeControl';
 import ReadingDisplayControls from './ReadingDisplayControls';
+import { recordLibraryDiagnostic } from '@/utils/libraryDiagnostics';
 import SpeechPanel from './SpeechPanel';
+import ShortcutsPanel from './ShortcutsPanel';
 import AboutContent from '@/components/AboutContent';
 import {
   SettingsWindowResizeHandles,
@@ -60,6 +63,7 @@ export type SettingsPanelType =
   | 'General'
   | 'Data'
   | 'Plugins'
+  | 'Shortcuts'
   | 'Font'
   | 'Layout'
   | 'Theme'
@@ -115,6 +119,10 @@ const SettingsDialog: React.FC<{
 
   const scope = explicitScope ?? settingsDialogScope ?? 'application';
   const reading = scope === 'reading';
+  useEffect(() => {
+    recordLibraryDiagnostic('settings-mounted', { reading });
+    return () => recordLibraryDiagnostic('settings-unmounted', { reading });
+  }, [reading]);
   const panelBookKey = reading ? bookKey : '';
   const windowGeometry = useSettingsWindowGeometry(!reading && !appService?.isMobile);
   const [pluginSettingsTarget, setPluginSettingsTarget] = useState<PluginSettingsTarget | null>(
@@ -129,6 +137,7 @@ const SettingsDialog: React.FC<{
     { tab: 'Account', icon: CircleUserRound, label: _('Account') },
     { tab: 'General', icon: Settings2, label: _('Startup & Window') },
     { tab: 'Data', icon: Database, label: _('Library Data') },
+    { tab: 'Shortcuts', icon: Keyboard, label: _('Shortcuts') },
     { tab: 'Plugins', icon: Puzzle, label: _('Plugins') },
     { tab: 'ReadingTheme', icon: Palette, label: _('Colors & Annotations') },
     { tab: 'Dictionaries', icon: Languages, label: _('Dictionaries') },
@@ -184,6 +193,7 @@ const SettingsDialog: React.FC<{
       tabs: ['Font', 'Layout', 'ReadingTheme', 'Control', 'Dictionaries', 'Speech', 'Custom'],
     },
     { id: 'Library', label: _('Library & Sync'), icon: Database, tabs: ['Data', 'Integrations'] },
+    { id: 'Shortcuts', label: _('Shortcuts'), icon: Keyboard, tabs: ['Shortcuts'] },
     { id: 'Plugins', label: _('Plugins'), icon: Puzzle, tabs: ['Plugins'] },
     { id: 'About', label: _('About'), icon: Info, tabs: ['About'] },
   ];
@@ -270,6 +280,7 @@ const SettingsDialog: React.FC<{
     Speech: null,
     About: null,
     Plugins: null,
+    Shortcuts: null,
     Data: null,
     Font: null,
     Layout: null,
@@ -319,6 +330,7 @@ const SettingsDialog: React.FC<{
         account: 'Account',
         general: 'General',
         plugins: 'Plugins',
+        shortcuts: 'Shortcuts',
         data: 'Data',
         models: 'Plugins',
         control: 'Control',
@@ -332,11 +344,14 @@ const SettingsDialog: React.FC<{
         setPluginSettingsTarget(
           settingId === 'settings.plugins.pdfContentsOnImport'
             ? 'pdfAutoContents'
-            : panelKey === 'models' || settingId === 'settings.plugins.models'
-              ? 'models'
-              : panelKey === 'conversation' || settingId === 'settings.plugins.prompts'
-                ? 'conversation'
-                : null,
+            : settingId === 'settings.plugins.metadataRecognitionOnImport' ||
+                settingId === 'settings.plugins.metadataRecognition'
+              ? 'metadataRecognition'
+              : panelKey === 'models' || settingId === 'settings.plugins.models'
+                ? 'models'
+                : panelKey === 'conversation' || settingId === 'settings.plugins.prompts'
+                  ? 'conversation'
+                  : null,
         );
       }
       const targetPanel = [
@@ -577,6 +592,7 @@ const SettingsDialog: React.FC<{
           {(activePanel === 'Account' || activePanel === 'General' || activePanel === 'Data') && (
             <ApplicationPanel section={activePanel} />
           )}
+          {activePanel === 'Shortcuts' && <ShortcutsPanel />}
           {activePanel === 'Plugins' && (
             <PluginsPanel
               key={pluginSettingsTarget ?? 'grid'}

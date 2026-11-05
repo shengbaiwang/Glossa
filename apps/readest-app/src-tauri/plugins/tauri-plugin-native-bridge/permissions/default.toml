@@ -45,6 +45,7 @@ permissions = [
   "allow-is-sync-keychain-available",
   "allow-set-secure-item",
   "allow-get-secure-item",
+  "allow-get-secure-item-status",
   "allow-clear-secure-item",
   "allow-refresh-eink-screen",
   "allow-update-reading-widget",

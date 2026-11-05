@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 import { prepareGlossaCloudConfig } from './glossa-cloud-config.mjs';
+import {
+  provisionCredentialHelper,
+  resolveSigningIdentity,
+  verifySignedCode,
+} from './glossa-macos-signing.mjs';
 
 const REQUIRED_NODE_MAJOR = 24;
 const GLOSSA_IDENTIFIER = 'app.glossa.reader';
@@ -32,7 +37,10 @@ const node24Candidates = [
 const currentNodeMajor = Number.parseInt(process.versions.node.split('.')[0] ?? '', 10);
 if (process.platform !== 'darwin') {
   fail('the app bundle can only be built on macOS.');
-} else if (currentNodeMajor !== REQUIRED_NODE_MAJOR && process.env.GLOSSA_BUILD_REEXECUTED !== '1') {
+} else if (
+  currentNodeMajor !== REQUIRED_NODE_MAJOR &&
+  process.env.GLOSSA_BUILD_REEXECUTED !== '1'
+) {
   const node24 = node24Candidates[0];
   if (!node24) {
     fail(
@@ -51,6 +59,25 @@ if (process.platform !== 'darwin') {
 } else if (!existsSync(configAbsolutePath)) {
   fail(`missing Tauri config: apps/readest-app/${configPath}`);
 } else {
+  // Resolve before the expensive frontend/Rust build. Missing/changed signing
+  // credentials must never produce another ad-hoc installation.
+  let signingIdentity;
+  let credentialHelper;
+  try {
+    signingIdentity = resolveSigningIdentity();
+    credentialHelper = provisionCredentialHelper(signingIdentity);
+  } catch (error) {
+    fail(error.message);
+    process.exit(1);
+  }
+  const signingConfigPath = resolve(repositoryRoot, '.glossa-build', 'signing.config.json');
+  mkdirSync(dirname(signingConfigPath), { recursive: true });
+  writeFileSync(
+    signingConfigPath,
+    JSON.stringify({
+      bundle: { macOS: { signingIdentity: signingIdentity.fingerprint } },
+    }),
+  );
   const homeDirectory = process.env.HOME ?? '';
   const toolDirectories = [
     dirname(process.execPath),
@@ -71,6 +98,10 @@ if (process.platform !== 'darwin') {
     DBUS_ID: GLOSSA_IDENTIFIER,
     NEXT_PUBLIC_GLOSSA_RUNTIME_ID: GLOSSA_IDENTIFIER,
     KEEP_SOURCEMAPS: '1',
+    APPLE_SIGNING_IDENTITY: signingIdentity.fingerprint,
+    GLOSSA_SIGNING_FINGERPRINT: signingIdentity.fingerprint,
+    GLOSSA_CREDENTIAL_HELPER_CDHASH: credentialHelper.cdhash,
+    ...(signingIdentity.keychain ? { APPLE_SIGNING_KEYCHAIN: signingIdentity.keychain } : {}),
   };
 
   const cargo = spawnSync('cargo', ['--version'], {
@@ -86,6 +117,7 @@ if (process.platform !== 'darwin') {
         'Building the isolated Glossa macOS app.',
         `Identifier: ${GLOSSA_IDENTIFIER}`,
         `Build output: ${targetDirectory}`,
+        `Signing identity: ${signingIdentity.name} (${signingIdentity.fingerprint})`,
       ].join('\n') + '\n',
     );
 
@@ -104,6 +136,8 @@ if (process.platform !== 'darwin') {
         configPath,
         '--config',
         cloudConfig.configPath,
+        '--config',
+        signingConfigPath,
         '--bundles',
         'app',
       ],
@@ -118,23 +152,11 @@ if (process.platform !== 'darwin') {
     } else if (!existsSync(appPath)) {
       fail(`Tauri reported success but ${appPath} was not created.`);
     } else {
-      const sign = spawnSync(
-        '/usr/bin/codesign',
-        ['--force', '--deep', '--sign', '-', '--identifier', GLOSSA_IDENTIFIER, appPath],
-        { cwd: repositoryRoot, stdio: 'inherit' },
-      );
-      if (sign.status !== 0) {
-        fail(`ad-hoc code signing exited with status ${sign.status ?? 'unknown'}.`);
-      } else {
-        const verify = spawnSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', appPath], {
-          cwd: repositoryRoot,
-          stdio: 'inherit',
-        });
-        if (verify.status !== 0) {
-          fail(`code-sign verification exited with status ${verify.status ?? 'unknown'}.`);
-        } else {
-          process.stdout.write(`Glossa.app is ready at ${appPath}\n`);
-        }
+      try {
+        verifySignedCode(appPath, GLOSSA_IDENTIFIER, signingIdentity);
+        process.stdout.write(`Glossa.app is ready at ${appPath}\n`);
+      } catch (error) {
+        fail(error.message);
       }
     }
   }

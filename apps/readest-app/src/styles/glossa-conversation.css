@@ -910,6 +910,7 @@
 }
 .glossa-chat-menu-heading select {
   width: 0;
+  height: 44px;
   flex: 1;
   min-width: 0;
   background: transparent;
@@ -959,6 +960,12 @@
   padding: 10px 8px 4px;
   border-top: 1px solid var(--glossa-border);
   color: var(--glossa-muted);
+}
+.glossa-chat-model-menu :is(button, input, select) {
+  min-height: 44px !important;
+}
+.glossa-chat-model-menu .glossa-chat-menu-heading > button {
+  min-width: 44px;
 }
 .glossa-chat-message {
   flex-shrink: 0;

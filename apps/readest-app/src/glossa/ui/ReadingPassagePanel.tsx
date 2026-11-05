@@ -80,7 +80,7 @@ function ReadingPassageBook<T extends PassageResult>(props: Props<T>) {
     let sequence = 0;
     const refresh = async () => {
       const ticket = ++sequence;
-      const next = getActiveProviderConfig();
+      const next = getActiveProviderConfig('mindmap');
       setConfig(next);
       setProviderReady(false);
       setProviderError('');

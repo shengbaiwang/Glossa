@@ -21,9 +21,17 @@ fn lock_storage() -> Result<MutexGuard<'static, ()>> {
 
 fn service_name(identifier: &str) -> String {
     match identifier {
-        "app.glossa.reader" => "Glossa Safe Storage".into(),
-        "app.glossa.reader.dev" => "Glossa Dev Safe Storage".into(),
+        "app.glossa.reader" => "Glossa Credentials v2".into(),
+        "app.glossa.reader.dev" => "Glossa Dev Credentials v2".into(),
         other => format!("Glossa Safe Storage ({other})"),
+    }
+}
+
+fn previous_service(service: &str) -> Option<&'static str> {
+    match service {
+        "Glossa Credentials v2" => Some("Glossa Safe Storage"),
+        "Glossa Dev Credentials v2" => Some("Glossa Dev Safe Storage"),
+        _ => None,
     }
 }
 
@@ -32,15 +40,44 @@ pub(crate) trait SecretStore {
     fn write(&self, service: &str, account: &str, value: &[u8]) -> Result<()>;
 }
 
-pub(crate) struct SystemStore;
+pub(crate) struct SystemStore {
+    #[cfg(target_os = "macos")]
+    identifier: String,
+}
 
 impl SecretStore for SystemStore {
     fn read(&self, service: &str, account: &str) -> Result<Vec<u8>> {
+        #[cfg(target_os = "macos")]
+        if crate::secure_broker::configured() {
+            let current = service_name(&self.identifier);
+            if service != current
+                && Some(service) != previous_service(&current)
+                && service != LEGACY_SERVICE
+            {
+                return Err(Error::NoDefaultStore);
+            }
+            return crate::secure_broker::read(
+                &self.identifier,
+                service == LEGACY_SERVICE,
+                Some(service) == previous_service(&current),
+                account,
+            );
+        }
         Entry::new(service, account)?.get_secret()
     }
 
     fn write(&self, service: &str, account: &str, value: &[u8]) -> Result<()> {
-        Entry::new(service, account)?.set_secret(value)
+        #[cfg(target_os = "macos")]
+        if crate::secure_broker::configured() {
+            if service != service_name(&self.identifier) {
+                return Err(Error::NoDefaultStore);
+            }
+            return crate::secure_broker::write(&self.identifier, account, value);
+        }
+        Entry::new(service, account)?.set_secret(value)?;
+        #[cfg(target_os = "macos")]
+        crate::secure_status::mark(service, account, value == [0])?;
+        Ok(())
     }
 }
 
@@ -53,7 +90,43 @@ impl SecureStorage {
     pub(crate) fn for_app(identifier: &str) -> Self {
         Self {
             service: service_name(identifier),
-            store: SystemStore,
+            store: SystemStore {
+                #[cfg(target_os = "macos")]
+                identifier: identifier.to_owned(),
+            },
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(crate) fn status(&self, account: &str) -> crate::models::SecureItemStatusResponse {
+        // No transaction mutex: a pending interactive read must not block UI metadata.
+        // No copy/migration here; only an explicit read may access legacy secret data.
+        let mut result = crate::secure_status::query(&self.service, account);
+        if matches!(result, Ok(crate::secure_status::Presence::Absent)) {
+            if let Some(previous) = previous_service(&self.service) {
+                result = crate::secure_status::query(previous, account);
+            }
+        }
+        if matches!(result, Ok(crate::secure_status::Presence::Absent))
+            && self.service == "Glossa Credentials v2"
+        {
+            result = crate::secure_status::query(LEGACY_SERVICE, account);
+        }
+        match result {
+            Ok(crate::secure_status::Presence::Present) => {
+                crate::models::SecureItemStatusResponse {
+                    status: "present".into(),
+                    error: None,
+                }
+            }
+            Ok(_) => crate::models::SecureItemStatusResponse {
+                status: "missing".into(),
+                error: None,
+            },
+            Err(_) => crate::models::SecureItemStatusResponse {
+                status: "unavailable".into(),
+                error: Some("Secure storage status is unavailable".into()),
+            },
         }
     }
 
@@ -79,7 +152,27 @@ impl<S: SecretStore> SecureStorage<S> {
                 )),
             },
             Err(Error::NoEntry) => {
-                let legacy = self.store.read(LEGACY_SERVICE, account)?;
+                let previous = previous_service(&self.service)
+                    .map(|service| self.store.read(service, account))
+                    .unwrap_or(Err(Error::NoEntry));
+                let legacy = match previous {
+                    Ok(record) => match record.as_slice() {
+                        [0] => {
+                            self.store.write(&self.service, account, &[0])?;
+                            return Err(Error::NoEntry);
+                        }
+                        [1, secret @ ..] => secret.to_vec(),
+                        _ => {
+                            return Err(Error::BadStoreFormat(
+                                "Invalid previous Glossa credential record".into(),
+                            ))
+                        }
+                    },
+                    Err(Error::NoEntry) if self.service == "Glossa Credentials v2" => {
+                        self.store.read(LEGACY_SERVICE, account)?
+                    }
+                    Err(error) => return Err(error),
+                };
                 let value = String::from_utf8(legacy).map_err(|_| {
                     Error::BadStoreFormat("Invalid legacy credential encoding".into())
                 })?;
@@ -165,13 +258,27 @@ mod tests {
 
     #[test]
     fn credentials_use_glossa_branding_and_runtime_isolation() {
-        assert_eq!(service_name("app.glossa.reader"), "Glossa Safe Storage");
+        assert_eq!(service_name("app.glossa.reader"), "Glossa Credentials v2");
         assert_eq!(
             service_name("app.glossa.reader.dev"),
-            "Glossa Dev Safe Storage"
+            "Glossa Dev Credentials v2"
         );
         assert_ne!(service_name("test.one"), service_name("test.two"));
         assert_ne!(service_name("test.one"), service_name("app.glossa.reader"));
+    }
+
+    #[test]
+    fn development_never_reads_legacy_daily_credentials() {
+        let storage = SecureStorage {
+            service: service_name("app.glossa.reader.dev"),
+            store: MemoryStore::default(),
+        };
+        storage
+            .store
+            .write(LEGACY_SERVICE, "provider", b"daily-key")
+            .unwrap();
+        assert!(matches!(storage.get("provider"), Err(Error::NoEntry)));
+        assert_eq!(storage.store.reads.borrow().len(), 2);
     }
 
     #[test]
@@ -191,7 +298,67 @@ mod tests {
             .deny_service
             .replace(Some(LEGACY_SERVICE.into()));
         assert_eq!(storage.get(SYNC_ACCOUNT).unwrap(), "legacy-passphrase");
-        assert_eq!(storage.store.reads.borrow().len(), 3);
+        assert_eq!(storage.store.reads.borrow().len(), 4);
+    }
+
+    #[test]
+    fn previous_glossa_records_are_copied_once_and_tombstones_block_legacy() {
+        let storage = storage();
+        storage
+            .store
+            .write("Glossa Safe Storage", "provider", b"\x01previous-key")
+            .unwrap();
+        assert_eq!(storage.get("provider").unwrap(), "previous-key");
+        storage
+            .store
+            .deny_service
+            .replace(Some("Glossa Safe Storage".into()));
+        assert_eq!(storage.get("provider").unwrap(), "previous-key");
+        storage.store.deny_service.replace(None);
+        storage
+            .store
+            .write("Glossa Safe Storage", "cleared", &[0])
+            .unwrap();
+        storage
+            .store
+            .write(LEGACY_SERVICE, "cleared", b"must-not-return")
+            .unwrap();
+        assert!(matches!(storage.get("cleared"), Err(Error::NoEntry)));
+        assert_eq!(
+            storage.store.entries.borrow()[&(storage.service.clone(), "cleared".into())],
+            [0]
+        );
+        storage
+            .store
+            .deny_service
+            .replace(Some("Glossa Safe Storage".into()));
+        assert!(matches!(
+            storage.get("unavailable"),
+            Err(Error::NoStorageAccess(_))
+        ));
+    }
+
+    #[test]
+    fn development_migrates_only_its_own_previous_records() {
+        let storage = SecureStorage {
+            service: service_name("app.glossa.reader.dev"),
+            store: MemoryStore::default(),
+        };
+        storage
+            .store
+            .write("Glossa Dev Safe Storage", "provider", b"\x01dev-key")
+            .unwrap();
+        storage
+            .store
+            .write("Glossa Safe Storage", "provider", b"\x01daily-key")
+            .unwrap();
+        assert_eq!(storage.get("provider").unwrap(), "dev-key");
+        assert!(storage
+            .store
+            .reads
+            .borrow()
+            .iter()
+            .all(|(service, _)| service != "Glossa Safe Storage" && service != LEGACY_SERVICE));
     }
 
     #[test]

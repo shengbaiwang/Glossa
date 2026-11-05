@@ -31,6 +31,7 @@ import ModelSettingsPanel from '@/glossa/ui/ModelSettingsPanel';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   mocks.save.mockImplementation(async (config) => config);
   mocks.status.mockResolvedValue({ configured: true, hasApiKey: true, storage: 'session' });
   mocks.list.mockResolvedValue(['reader-model', 'other-model']);
@@ -47,7 +48,7 @@ describe('model service settings', () => {
     expect(input.value).toBe('');
     expect(input.type).toBe('password');
     fireEvent.change(input, { target: { value: 'synthetic-secret' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Use this service' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save service' }));
     await screen.findByText('Model service saved.');
     expect(mocks.save).toHaveBeenCalledWith(mocks.active, 'synthetic-secret');
     expect(input.value).toBe('');
@@ -60,7 +61,7 @@ describe('model service settings', () => {
     fireEvent.change(models, { target: { value: 'other-model' } });
     expect((screen.getByLabelText('Model name') as HTMLInputElement).value).toBe('other-model');
     fireEvent.click(screen.getByRole('button', { name: 'Test connection' }));
-    await screen.findByText('Connection successful. This model is ready.');
+    await screen.findByText('Chat connection successful.');
     expect(mocks.test.mock.calls[0]![0].model).toBe('other-model');
   });
 
@@ -106,11 +107,61 @@ describe('model service settings', () => {
     const effort = await screen.findByLabelText('Reasoning effort');
     fireEvent.change(effort, { target: { value: 'high' } });
     fireEvent.change(screen.getByLabelText('Output limit'), { target: { value: '2048' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Use this service' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save service' }));
     await screen.findByText('Model service saved.');
     expect(mocks.save).toHaveBeenCalledWith(
       expect.objectContaining({ reasoningEffort: 'high', maxTokens: 2048 }),
       undefined,
     );
   });
+});
+
+it('tests and discovers a draft without saving or changing the active model', async () => {
+  render(<ModelSettingsPanel />);
+  fireEvent.change(screen.getByLabelText('API Key'), { target: { value: 'synthetic-draft-key' } });
+  fireEvent.change(screen.getByLabelText('Model name'), { target: { value: 'draft-model' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Test connection' }));
+  await screen.findByText('Chat connection successful.');
+  expect(mocks.save).not.toHaveBeenCalled();
+  expect(mocks.test).toHaveBeenCalledWith(
+    expect.objectContaining({ model: 'draft-model' }),
+    expect.any(AbortSignal),
+    'synthetic-draft-key',
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Fetch models' }));
+  await screen.findByRole('combobox', { name: 'Available models' });
+  expect(mocks.save).not.toHaveBeenCalled();
+  expect(mocks.list).toHaveBeenCalledWith(
+    expect.objectContaining({ model: 'draft-model' }),
+    expect.any(AbortSignal),
+    { apiKey: 'synthetic-draft-key' },
+  );
+  expect((screen.getByLabelText('API Key') as HTMLInputElement).value).toBe('synthetic-draft-key');
+});
+
+it('checks credential metadata only when its endpoint identity changes', async () => {
+  render(<ModelSettingsPanel />);
+  await waitFor(() => expect(mocks.status).toHaveBeenCalledTimes(1));
+  fireEvent.change(screen.getByLabelText('Service name'), { target: { value: 'Renamed service' } });
+  fireEvent.change(screen.getByLabelText('Model name'), { target: { value: 'new-model' } });
+  fireEvent.change(screen.getByLabelText('Output limit'), { target: { value: '4096' } });
+  expect(mocks.status).toHaveBeenCalledTimes(1);
+  fireEvent.change(screen.getByLabelText('API Base URL'), {
+    target: { value: 'https://other.example/v1' },
+  });
+  await waitFor(() => expect(mocks.status).toHaveBeenCalledTimes(2));
+});
+
+it('keeps an unavailable credential distinct from an empty key', async () => {
+  mocks.status.mockResolvedValue({
+    configured: true,
+    hasApiKey: false,
+    credentialStatus: 'unavailable',
+  });
+  render(<ModelSettingsPanel />);
+  await waitFor(() =>
+    expect((screen.getByLabelText('API Key') as HTMLInputElement).placeholder).toBe(
+      'Authorization may be needed when connecting.',
+    ),
+  );
 });

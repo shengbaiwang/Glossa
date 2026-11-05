@@ -54,6 +54,8 @@ fn main() {
             "pdf_clear_legacy_caches",
             "pdf_read_ocr_page",
             "pdf_start_ocr",
+            "metadata_recognize_image",
+            "metadata_cancel_image_ocr",
             "pdf_ocr_status",
             "pdf_cancel_ocr",
             "pdf_save_outline",

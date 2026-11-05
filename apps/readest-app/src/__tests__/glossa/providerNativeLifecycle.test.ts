@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 vi.mock('@/services/environment', () => ({ isTauriAppPlatform: () => true }));
 vi.mock('@/utils/bridge', () => ({
-  getSecureItem: vi.fn().mockResolvedValue({}),
+  getSecureItem: vi.fn().mockResolvedValue({ value: 'synthetic-native-key' }),
   setSecureItem: vi.fn(),
   clearSecureItem: vi.fn(),
 }));

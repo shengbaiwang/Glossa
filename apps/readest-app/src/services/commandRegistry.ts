@@ -11,6 +11,7 @@ import {
   Share2 as RiShareLine,
   MessageCircle as RiChat1Line,
   CircleUserRound,
+  Keyboard,
 } from '@/components/GlossaIcons';
 import { Palette as VscSymbolColor } from '@/components/GlossaIcons';
 import { Hand as LiaHandPointerSolid } from '@/components/GlossaIcons';
@@ -161,6 +162,7 @@ const panelIcons: Record<SettingsPanelType, IconType> = {
   Account: CircleUserRound,
   General: Settings2,
   Plugins: Puzzle,
+  Shortcuts: Keyboard,
   Data: Database,
   Font: RiFontSize,
   Layout: RiDashboardLine,
@@ -601,6 +603,14 @@ export const buildCommandRegistry = (options: CommandRegistryOptions): CommandIt
   items.push(
     createSettingsItem(
       {
+        id: 'settings.shortcuts.bindings',
+        labelKey: _('Shortcuts'),
+        keywords: ['keyboard', 'shortcut', 'hotkey', 'keybinding', '快捷键', '按键'],
+      },
+      'Shortcuts',
+    ),
+    createSettingsItem(
+      {
         id: 'settings.speech.rate',
         labelKey: _('Speed'),
         keywords: ['speech', 'read aloud', 'speed', '朗读', '语速'],
@@ -656,6 +666,18 @@ export const buildCommandRegistry = (options: CommandRegistryOptions): CommandIt
   );
 
   // add font panel items
+  items.push(
+    createSettingsItem(
+      {
+        id: 'settings.plugins.metadataRecognitionOnImport',
+        labelKey: 'Recognize metadata on import',
+        keywords: ['metadata', 'ISBN', 'copyright', 'import', '元数据', '版权页', '导入'],
+        section: _('Metadata recognition'),
+      },
+      'Plugins',
+    ),
+  );
+
   for (const [id, labelKey, keywords] of [
     ['models', 'Model Services', ['model', 'API', '模型', '密钥']],
     ['prompts', 'Prompts', ['conversation', 'prompt', '对话', '提示词']],

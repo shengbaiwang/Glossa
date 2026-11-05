@@ -30,6 +30,7 @@ mod epub_parser;
 mod import_io;
 #[cfg(target_os = "macos")]
 mod macos;
+mod metadata_image;
 mod mobi_parser;
 mod nightly_update;
 mod parser_common;
@@ -448,6 +449,8 @@ pub fn run() {
             pdf_enhancement::pdf_clear_legacy_caches,
             pdf_enhancement::pdf_read_ocr_page,
             pdf_enhancement::pdf_start_ocr,
+            metadata_image::metadata_recognize_image,
+            metadata_image::metadata_cancel_image_ocr,
             pdf_enhancement::pdf_ocr_status,
             pdf_enhancement::pdf_cancel_ocr,
             pdf_enhancement::pdf_save_outline,

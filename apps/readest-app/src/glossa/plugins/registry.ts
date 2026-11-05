@@ -35,6 +35,16 @@ export const PLUGINS = [
     capabilities: ['local-pdf-contents'],
   }),
   defineBundledPlugin({
+    id: 'metadataRecognition',
+    author: 'Glossa',
+    name: 'Metadata recognition',
+    version: '1.0.0',
+    apiVersion: 1,
+    activation: ['book-metadata', 'persistent-import'],
+    format: ['EPUB', 'PDF', 'MOBI', 'AZW', 'AZW3', 'CBZ', 'FB2', 'FBZ', 'TXT', 'MD'],
+    capabilities: ['local-book-metadata'],
+  }),
+  defineBundledPlugin({
     id: 'webImport',
     author: 'Glossa',
     name: 'Import webpage',
@@ -52,11 +62,14 @@ export const isPluginEnabled = (
   settings: Pick<SystemSettings, 'officialModules'> | undefined,
   id: PluginId,
 ): boolean => settings?.officialModules?.[id] !== false;
-export const PANEL_PLUGINS = PLUGINS.filter((plugin) => plugin.id !== 'webImport').filter(
-  (plugin) =>
-    typeof plugin.activation === 'string'
-      ? plugin.activation === 'reader-panel'
-      : plugin.activation.includes('reader-panel'),
+type ReaderPanelPlugin = Extract<
+  (typeof PLUGINS)[number],
+  { id: 'conversation' | 'mindmap' | 'pdfAutoContents' }
+>;
+export const PANEL_PLUGINS = PLUGINS.filter((plugin): plugin is ReaderPanelPlugin =>
+  typeof plugin.activation === 'string'
+    ? plugin.activation === 'reader-panel'
+    : (plugin.activation as readonly string[]).includes('reader-panel'),
 );
 
 /** Keep availability consistent at tab selection, rendering and lazy activation. */

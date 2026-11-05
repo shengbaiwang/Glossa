@@ -368,6 +368,17 @@ impl<R: Runtime> NativeBridge<R> {
 }
 
 impl<R: Runtime> NativeBridge<R> {
+    pub fn get_secure_item_status(
+        &self,
+        payload: GetSecureItemRequest,
+    ) -> crate::Result<SecureItemStatusResponse> {
+        self.0
+            .run_mobile_plugin("get_secure_item_status", payload)
+            .map_err(Into::into)
+    }
+}
+
+impl<R: Runtime> NativeBridge<R> {
     pub fn clear_secure_item(
         &self,
         payload: GetSecureItemRequest,

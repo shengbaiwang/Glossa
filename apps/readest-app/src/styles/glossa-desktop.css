@@ -84,6 +84,7 @@
 
   .glossa-library-navigation {
     --glossa-icon-navigation: 18px;
+    position: relative;
     display: flex;
     flex: 0 0 208px;
     flex-direction: column;
@@ -99,8 +100,27 @@
     gap: 24px;
     min-height: 0;
     overflow-y: auto;
-    scrollbar-gutter: stable;
-    padding-inline-end: 8px;
+    scrollbar-width: none;
+  }
+
+  .glossa-library-navigation-categories::-webkit-scrollbar {
+    display: none;
+  }
+
+  .glossa-library-sidebar-resize {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    width: 7px;
+    cursor: col-resize;
+    touch-action: none;
+    user-select: none;
+    z-index: 2;
+  }
+
+  .glossa-library-sidebar-resize:focus-visible {
+    outline: 1px solid var(--glossa-ink);
+    outline-offset: -2px;
   }
 
   .glossa-library-navigation-section {

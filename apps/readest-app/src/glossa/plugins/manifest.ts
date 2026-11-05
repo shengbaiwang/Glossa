@@ -3,8 +3,25 @@ import { valid } from 'semver';
 
 /** Draft v1 package metadata. Parsing a manifest never registers or executes code. */
 export const PLUGIN_API_VERSION = 1;
-const formatSchema = z.enum(['EPUB', 'PDF', 'WEB', 'MD']);
-const activationSchema = z.enum(['reader-panel', 'persistent-import', 'library-import']);
+const formatSchema = z.enum([
+  'EPUB',
+  'PDF',
+  'WEB',
+  'MD',
+  'MOBI',
+  'AZW',
+  'AZW3',
+  'CBZ',
+  'FB2',
+  'FBZ',
+  'TXT',
+]);
+const activationSchema = z.enum([
+  'reader-panel',
+  'persistent-import',
+  'library-import',
+  'book-metadata',
+]);
 export const pluginManifestSchema = z
   .object({
     id: z
@@ -22,7 +39,7 @@ export const pluginManifestSchema = z
       ),
     apiVersion: z.literal(PLUGIN_API_VERSION),
     activation: z.union([activationSchema, z.array(activationSchema).min(1).max(2)]),
-    format: z.union([formatSchema, z.array(formatSchema).min(1).max(4)]),
+    format: z.union([formatSchema, z.array(formatSchema).min(1).max(11)]),
     capabilities: z
       .array(
         z.enum([
@@ -31,6 +48,7 @@ export const pluginManifestSchema = z
           'verified-sources',
           'local-pdf-contents',
           'web-page-capture',
+          'local-book-metadata',
         ]),
       )
       .max(4),

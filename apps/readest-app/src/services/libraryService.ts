@@ -65,7 +65,7 @@ export async function saveLibraryBooks(
   options?: SaveLibraryBooksOptions,
 ): Promise<Book[]> {
   const saved = await withLibraryLock(fs, () => saveLibraryBooksUnlocked(fs, books, options));
-  notifyLibraryUpdated();
+  notifyLibraryUpdated(options?.replace ? undefined : books.map((book) => book.hash));
   return saved;
 }
 

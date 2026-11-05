@@ -4,11 +4,15 @@ import { useEnv } from '@/context/EnvContext';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { eventDispatcher } from '@/utils/event';
+import { getPrimaryLanguage } from '@/utils/book';
+import { metadataPatchSchema, type MetadataPatch } from '@/glossa/metadata/confirm';
 
-type Field = 'title' | 'author' | 'tags' | 'readingStatus';
+type Field = 'title' | 'author' | 'tags' | 'readingStatus' | 'metadata';
 type Change = { before: Book; after: Book; field: Field };
 const same = (a: Book, b: Book, field: Field) =>
   JSON.stringify(a[field]) === JSON.stringify(b[field]) &&
+  (field !== 'metadata' ||
+    (a.title === b.title && a.author === b.author && a.primaryLanguage === b.primaryLanguage)) &&
   (field === 'readingStatus'
     ? a.readingStatusUpdatedAt === b.readingStatusUpdatedAt
     : a.metadataUpdatedAt === b.metadataUpdatedAt);
@@ -23,6 +27,9 @@ const restore = (current: Book, saved: Book, field: Field, stamp: number): Book 
   return {
     ...current,
     [field]: saved[field],
+    ...(field === 'metadata'
+      ? { title: saved.title, author: saved.author, primaryLanguage: saved.primaryLanguage }
+      : {}),
     metadata: saved.metadata,
     metadataUpdatedAt: stamp,
     updatedAt: stamp,
@@ -124,7 +131,11 @@ export function useLibraryBookEdits() {
     }
   }, [persist, _]);
   const apply = useCallback(
-    async (books: Book[], field: Field, value: string | string[] | undefined) => {
+    async (
+      books: Book[],
+      field: Exclude<Field, 'metadata'>,
+      value: string | string[] | undefined,
+    ) => {
       if (busy.current) return false;
       if (field === 'title' && (typeof value !== 'string' || !value.trim())) return false;
       busy.current = true;
@@ -192,5 +203,63 @@ export function useLibraryBookEdits() {
   const clearUndo = useCallback(() => {
     history.current = [];
   }, []);
-  return { apply, undo, canUndo: () => history.current.length > 0, clearUndo };
+  const applyMetadata = useCallback(
+    async (expected: Book, patch: MetadataPatch) => {
+      if (busy.current) return false;
+      const parsed = metadataPatchSchema.safeParse(patch);
+      if (!parsed.success || !Object.keys(parsed.data).length) return false;
+      const before = useLibraryStore.getState().library.find((b) => b.hash === expected.hash);
+      if (!before || before.deletedAt || !same(before, expected, 'metadata')) {
+        void eventDispatcher.dispatch('toast', {
+          type: 'info',
+          message: _('Book information changed. Review the current values and retry.'),
+        });
+        return false;
+      }
+      busy.current = true;
+      try {
+        const stamp = Math.max(Date.now(), before.metadataUpdatedAt ?? 0) + 1;
+        const metadata = {
+          title: before.title,
+          author: before.author,
+          language: before.primaryLanguage ?? '',
+          ...before.metadata,
+          ...parsed.data,
+        };
+        const after: Book = {
+          ...before,
+          metadata,
+          updatedAt: stamp,
+          metadataUpdatedAt: stamp,
+          ...(parsed.data.title !== undefined
+            ? { title: parsed.data.title, sourceTitle: before.sourceTitle || before.title }
+            : {}),
+          ...(parsed.data.author !== undefined ? { author: parsed.data.author } : {}),
+          ...(parsed.data.language !== undefined
+            ? { primaryLanguage: getPrimaryLanguage(parsed.data.language) }
+            : {}),
+        };
+        const changes: Change[] = [{ before, after, field: 'metadata' }];
+        await persist(changes);
+        history.current = changes;
+        void eventDispatcher.dispatch('toast', {
+          type: 'success',
+          message: _('Changes saved'),
+          timeout: 4500,
+          action: { label: _('Undo'), onClick: undo },
+        });
+        return true;
+      } catch {
+        void eventDispatcher.dispatch('toast', {
+          type: 'error',
+          message: _('Failed to save changes'),
+        });
+        return false;
+      } finally {
+        busy.current = false;
+      }
+    },
+    [persist, undo, _],
+  );
+  return { apply, applyMetadata, undo, canUndo: () => history.current.length > 0, clearUndo };
 }

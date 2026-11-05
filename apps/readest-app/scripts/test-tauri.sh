@@ -13,10 +13,13 @@ DEV_PID=''
 TAURI_PID=''
 DEV_LOG=''
 TAURI_LOG=''
+NATIVE_INPUT_DIR=''
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DOTENV="${APP_DIR}/node_modules/.bin/dotenv"
 NEXT="${APP_DIR}/node_modules/.bin/next"
 TAURI="${APP_DIR}/node_modules/.bin/tauri"
+# Native input may only bind to the isolated app started by this invocation.
+unset GLOSSA_MACOS_INPUT_PID GLOSSA_MACOS_INPUT_EXECUTABLE GLOSSA_MACOS_INPUT_HELPER
 
 port_in_use() {
   lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
@@ -45,6 +48,35 @@ stop_process_tree() {
   kill -TERM "$pid" 2>/dev/null || true
 }
 
+is_descendant() {
+  local candidate="$1"
+  local ancestor="$2"
+  while [[ "$candidate" =~ ^[0-9]+$ ]] && (( candidate > 1 )); do
+    [[ "$candidate" == "$ancestor" ]] && return 0
+    candidate=$(ps -p "$candidate" -o ppid= 2>/dev/null | tr -d '[:space:]')
+  done
+  return 1
+}
+
+configure_native_input() {
+  local listener executable expected
+  listener=$(lsof -nP -t -iTCP:"$WEBDRIVER_PORT" -sTCP:LISTEN | sort -u)
+  if [[ ! "$listener" =~ ^[0-9]+$ ]] || ! is_descendant "$listener" "$TAURI_PID"; then
+    echo 'ERROR: Native input requires one WebDriver listener owned by this test invocation.' >&2
+    exit 1
+  fi
+  executable=$(lsof -nP -a -p "$listener" -d txt -Fn | awk '/^n/ && !found {sub(/^n/, ""); print; found=1}')
+  expected="${APP_DIR}/../../target/debug/glossa"
+  if [[ -z "$executable" || ! "$executable" -ef "$expected" ]]; then
+    echo 'ERROR: The WebDriver listener is not the isolated repository debug executable.' >&2
+    exit 1
+  fi
+  export GLOSSA_MACOS_INPUT_PID="$listener"
+  export GLOSSA_MACOS_INPUT_EXECUTABLE="$executable"
+  export GLOSSA_MACOS_INPUT_HELPER="${NATIVE_INPUT_DIR}/macos-input"
+  echo "Native input is restricted to this test's WebDriver process ${listener}."
+}
+
 cleanup() {
   stop_process_tree "$TAURI_PID"
   stop_process_tree "$DEV_PID"
@@ -52,6 +84,7 @@ cleanup() {
   [[ -n "$DEV_PID" ]] && wait "$DEV_PID" 2>/dev/null || true
   [[ -n "$DEV_LOG" ]] && rm -f "$DEV_LOG"
   [[ -n "$TAURI_LOG" ]] && rm -f "$TAURI_LOG"
+  [[ -n "$NATIVE_INPUT_DIR" ]] && rm -rf "$NATIVE_INPUT_DIR"
   return 0
 }
 
@@ -123,6 +156,14 @@ if [[ ! -x "$DOTENV" || ! -x "$NEXT" || ! -x "$TAURI" ]]; then
   exit 1
 fi
 
+if [[ "$(uname -s)" == 'Darwin' ]]; then
+  NATIVE_INPUT_DIR=$(mktemp -d -t glossa-tauri-native.XXXXXX)
+  echo 'Compiling the test-only macOS native input helper...'
+  xcrun swiftc -module-cache-path "${NATIVE_INPUT_DIR}/module-cache" \
+    "${APP_DIR}/../../scripts/native/glossa-webdriver-input.swift" \
+    -o "${NATIVE_INPUT_DIR}/macos-input"
+fi
+
 if [[ -n "${GLOSSA_TAURI_TEST_DEV_URL:-}" ]]; then
   echo "Using existing local frontend at ${DEV_URL}; its process is not owned by this test."
   curl --silent --show-error --max-time 10 --output /dev/null "$DEV_URL"
@@ -138,6 +179,9 @@ TAURI_CONFIG=$(printf '{"identifier":"com.bilingify.readest.webdriver-test","bui
 "$DOTENV" -e .env.tauri -- "$TAURI" dev --features webdriver --config "$TAURI_CONFIG" >"$TAURI_LOG" 2>&1 &
 TAURI_PID=$!
 wait_for_http_response "http://127.0.0.1:${WEBDRIVER_PORT}/status" "$TAURI_PID" 'Tauri WebDriver' "$TAURI_LOG"
+if [[ -n "$NATIVE_INPUT_DIR" ]]; then
+  configure_native_input
+fi
 
 echo 'WebDriver is ready. Running Tauri tests...'
 pnpm vitest --config vitest.tauri.config.mts --watch=false "$@"

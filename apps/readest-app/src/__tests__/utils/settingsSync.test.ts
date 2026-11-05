@@ -227,6 +227,23 @@ describe('broadcastGlobalSettings: readestCloud in the emitted payload', () => {
 });
 
 describe('official module window synchronization', () => {
+  test('broadcasts metadata import preference only after explicit edits and preserves false', async () => {
+    const settings = { ...local, metadataRecognitionOnImport: true };
+    await broadcastGlobalSettings(settings);
+    expect(vi.mocked(emit).mock.calls.at(-1)?.[1]).not.toHaveProperty(
+      'metadataRecognitionOnImport',
+    );
+    await broadcastGlobalSettings(settings, { metadataRecognitionOnImport: false });
+    const payload = vi.mocked(emit).mock.calls.at(-1)?.[1] as SettingsSyncPayload;
+    expect(mergeSyncedGlobalSettings(settings, payload).metadataRecognitionOnImport).toBe(false);
+    expect(mergeSyncedGlobalSettings(settings, globals).metadataRecognitionOnImport).toBe(true);
+    expect(
+      mergeSyncedGlobalSettings(settings, {
+        ...globals,
+        metadataRecognitionOnImport: 'true',
+      } as unknown as SettingsSyncPayload).metadataRecognitionOnImport,
+    ).toBe(true);
+  });
   test('syncs only explicit automatic import preferences, including false', async () => {
     const settings = { ...local, pdfContentsOnImport: true };
     await broadcastGlobalSettings(settings);

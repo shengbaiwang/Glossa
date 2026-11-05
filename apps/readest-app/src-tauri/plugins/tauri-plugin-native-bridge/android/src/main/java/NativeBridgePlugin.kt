@@ -1497,6 +1497,18 @@ class NativeBridgePlugin(private val activity: Activity): Plugin(activity) {
     }
 
     @Command
+    fun get_secure_item_status(invoke: Invoke) {
+        val args = invoke.parseArgs(SecureItemGetArgs::class.java)
+        val ret = JSObject()
+        try {
+            ret.put("status", if (openSecureItemsPrefs().contains(args.key)) "present" else "missing")
+        } catch (_: Exception) {
+            ret.put("status", "unavailable")
+        }
+        invoke.resolve(ret)
+    }
+
+    @Command
     fun clear_secure_item(invoke: Invoke) {
         val args = invoke.parseArgs(SecureItemGetArgs::class.java)
         val ret = JSObject()

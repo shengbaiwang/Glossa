@@ -359,6 +359,7 @@ export abstract class BaseAppService implements AppService {
       saveBookConfig: this.saveBookConfig.bind(this),
       generateCoverImageUrl: this.generateCoverImageUrl.bind(this),
       preparePDF: this.prepareBookContents.bind(this),
+      prepareMetadata: this.prepareBookMetadata.bind(this),
       // Pass the host platform through so the in-place fast path and the
       // lookup index can normalize source paths consistently on
       // case-insensitive filesystems (macOS / iOS / Windows).
@@ -373,8 +374,19 @@ export abstract class BaseAppService implements AppService {
       saveBookConfig: this.saveBookConfig.bind(this),
       generateCoverImageUrl: this.generateCoverImageUrl.bind(this),
       preparePDF: this.prepareBookContents.bind(this),
+      prepareMetadata: this.prepareBookMetadata.bind(this),
       osPlatform: this.osPlatform,
     });
+  }
+
+  async prepareBookMetadata(book: Book, signal?: AbortSignal): Promise<void> {
+    if (
+      useSettingsStore.getState().settings.metadataRecognitionOnImport !== true ||
+      signal?.aborted
+    )
+      return;
+    const plugin = await pluginLoaders.metadataRecognition();
+    await plugin.recognizeImportedBookMetadata(book, { getAppService: async () => this }, signal);
   }
 
   async prepareBookContents(book: Book, document?: BookDoc, signal?: AbortSignal): Promise<void> {

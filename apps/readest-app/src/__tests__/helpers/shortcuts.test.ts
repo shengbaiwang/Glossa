@@ -1,4 +1,19 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+
+beforeEach(() => {
+  const values = new Map<string, string>();
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: (key: string) => values.delete(key),
+  });
+});
+
+afterEach(() => {
+  localStorage.removeItem('customShortcuts');
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 const getModule = async () => {
   return await import('../../helpers/shortcuts');
@@ -18,6 +33,62 @@ describe('Shortcut entry structure', () => {
       expect(entry, `${name} should have description`).toHaveProperty('description');
       expect(typeof entry.description, `${name}.description should be a string`).toBe('string');
       expect(entry, `${name} should have section`).toHaveProperty('section');
+    }
+  });
+});
+
+describe('custom shortcut persistence', () => {
+  it('keeps defaults when preference storage is unavailable', async () => {
+    const mod = await getModule();
+    vi.spyOn(localStorage, 'getItem').mockImplementation(() => {
+      throw new Error('denied');
+    });
+    expect(mod.loadShortcuts()).toEqual(mod.DEFAULT_SHORTCUTS);
+  });
+  it.each([
+    '{broken',
+    'null',
+    '[]',
+    '42',
+  ])('ignores malformed stored configuration %s', async (stored) => {
+    const mod = await getModule();
+    localStorage.setItem('customShortcuts', stored);
+    expect(mod.loadShortcuts()).toEqual(mod.DEFAULT_SHORTCUTS);
+  });
+
+  it('validates stored arrays while preserving disabled actions', async () => {
+    const mod = await getModule();
+    localStorage.setItem(
+      'customShortcuts',
+      JSON.stringify({
+        onGoRight: [],
+        onGoLeft: ['ctrl+x', 12],
+        onZoomIn: ['ctrl++'],
+        unknownAction: ['q'],
+      }),
+    );
+    const shortcuts = mod.loadShortcuts();
+    expect(shortcuts.onGoRight.keys).toEqual([]);
+    expect(shortcuts.onGoLeft.keys).toEqual(mod.DEFAULT_SHORTCUTS.onGoLeft.keys);
+    expect(shortcuts.onZoomIn.keys).toEqual(['ctrl++']);
+    expect(shortcuts).not.toHaveProperty('unknownAction');
+  });
+
+  it('notifies mounted listeners only after successful persistence', async () => {
+    const mod = await getModule();
+    const changed = vi.fn(() => expect(mod.loadShortcuts().onGoRight.keys).toEqual(['x']));
+    window.addEventListener('shortcutUpdate', changed);
+    try {
+      const shortcuts = mod.loadShortcuts();
+      mod.saveShortcuts({ ...shortcuts, onGoRight: { ...shortcuts.onGoRight, keys: ['x'] } });
+      expect(changed).toHaveBeenCalledTimes(1);
+      vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+        throw new Error('quota');
+      });
+      expect(() => mod.saveShortcuts(shortcuts)).toThrow('quota');
+      expect(changed).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener('shortcutUpdate', changed);
     }
   });
 });
@@ -57,6 +128,32 @@ describe('No identical keybinding lists across actions (#3675)', () => {
 });
 
 describe('getShortcutsForDisplay', () => {
+  it('shows every custom binding even when its modifier uses another platform spelling', async () => {
+    const mod = await getModule();
+    const shortcuts = mod.loadShortcuts();
+    shortcuts.onToggleSideBar.keys = ['s', 'opt+y'];
+    const general = mod
+      .getShortcutsForDisplay(false, shortcuts)
+      .find((section) => section.section === 'General');
+    expect(general?.items.find((item) => item.description === 'Toggle Sidebar')?.keys).toEqual([
+      's',
+      'opt+y',
+    ]);
+  });
+
+  it('shows custom Control and Command bindings together on Mac', async () => {
+    const mod = await getModule();
+    const shortcuts = mod.loadShortcuts();
+    shortcuts.onShowSearchBar.keys = ['ctrl+x', 'cmd+y'];
+    const general = mod
+      .getShortcutsForDisplay(true, shortcuts)
+      .find((section) => section.section === 'General');
+    expect(general?.items.find((item) => item.description === 'Search in Book')?.keys).toEqual([
+      'ctrl+x',
+      'cmd+y',
+    ]);
+  });
+
   it('returns sections in the correct order', async () => {
     const mod = await getModule();
     const result = mod.getShortcutsForDisplay(true);

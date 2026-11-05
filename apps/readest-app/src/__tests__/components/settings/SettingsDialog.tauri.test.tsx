@@ -76,6 +76,13 @@ vi.mock('@/components/settings/ReadingDisplayControls', () => ({ default: () => 
 vi.mock('@/components/settings/FontPanel', () => ({ default: () => null }));
 vi.mock('@/components/settings/LayoutPanel', () => ({ default: () => null }));
 vi.mock('@/components/settings/ThemePanel', () => ({ default: () => null }));
+vi.mock('@/components/settings/ShortcutsPanel', () => ({
+  default: () => (
+    <div data-testid='shortcuts-panel' data-setting-id='settings.shortcuts.bindings'>
+      Shortcut preferences
+    </div>
+  ),
+}));
 vi.mock('@/components/settings/ControlPanel', () => ({ default: () => null }));
 vi.mock('@/components/settings/LangPanel', () => ({ default: () => null }));
 vi.mock('@/components/settings/IntegrationsPanel', () => ({ default: () => null }));
@@ -118,7 +125,7 @@ it('separates account from cloud sync in the native settings window', () => {
     within(navigation)
       .getAllByRole('button')
       .map((button) => button.textContent),
-  ).toEqual(['Account', 'General', 'Reading', 'Library & Sync', 'Plugins', 'About']);
+  ).toEqual(['Account', 'General', 'Reading', 'Library & Sync', 'Shortcuts', 'Plugins', 'About']);
   fireEvent.click(within(navigation).getByRole('button', { name: 'Account' }));
   expect(screen.getByRole('button', { name: 'Sign In' })).toBeTruthy();
   fireEvent.click(within(navigation).getByRole('button', { name: 'Library & Sync' }));

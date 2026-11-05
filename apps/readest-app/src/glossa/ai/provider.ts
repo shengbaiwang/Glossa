@@ -1,7 +1,7 @@
 import { md5 } from 'js-md5';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { isTauriAppPlatform } from '@/services/environment';
-import { clearSecureItem, getSecureItem, setSecureItem } from '@/utils/bridge';
+import { clearSecureItem, getSecureItem, getSecureItemStatus, setSecureItem } from '@/utils/bridge';
 import { stubTranslation as _ } from '@/utils/misc';
 import { readProviderCost, readTokenUsage, type CompletionMetrics } from './usage';
 
@@ -16,6 +16,21 @@ export const REASONING_EFFORTS: readonly ReasoningEffort[] = [
   'max',
 ];
 
+export type ProviderPurpose = 'conversation' | 'mindmap';
+export interface ProviderCapabilityOverrides {
+  reasoningEfforts?: ReasoningEffort[];
+  maxTokensParam?: 'max_tokens' | 'max_completion_tokens';
+  tools?: boolean;
+  json?: boolean;
+}
+export interface ProviderModelProfile {
+  model: string;
+  reasoningEffort?: ReasoningEffort;
+  maxTokens?: number;
+  capabilityOverrides?: ProviderCapabilityOverrides;
+  favorite: boolean;
+  lastUsedAt?: number;
+}
 export interface ProviderConfig {
   id: string;
   name: string;
@@ -26,6 +41,7 @@ export interface ProviderConfig {
   reasoningEffort?: ReasoningEffort;
   /** Preferred output cap in tokens for conversation replies. */
   maxTokens?: number;
+  capabilityOverrides?: ProviderCapabilityOverrides;
 }
 
 export interface ProviderCapabilities {
@@ -34,10 +50,25 @@ export interface ProviderCapabilities {
   /** Sent when no explicit effort is chosen. */
   defaultReasoningEffort?: ReasoningEffort;
   maxTokensParam: 'max_tokens' | 'max_completion_tokens';
+  tools?: boolean;
+  json?: boolean;
 }
 
 /** Keep capabilities in one place so no request sends a guessed vendor parameter. */
 export function providerCapabilities(config: ProviderConfig): ProviderCapabilities {
+  const known = inferredProviderCapabilities(config);
+  const overrides = validateCapabilityOverrides(config.capabilityOverrides);
+  if (!overrides) return known;
+  const result = { ...known, ...overrides };
+  if (
+    result.defaultReasoningEffort &&
+    !result.reasoningEfforts.includes(result.defaultReasoningEffort)
+  )
+    delete result.defaultReasoningEffort;
+  return result;
+}
+
+function inferredProviderCapabilities(config: ProviderConfig): ProviderCapabilities {
   let host = '';
   try {
     host = new URL(config.baseUrl).hostname;
@@ -91,6 +122,8 @@ export interface CompletionRequest {
   onDelta?: (delta: string) => void;
   maxTokens?: number;
   onMetrics?: (metrics: CompletionMetrics) => void;
+  /** An explicitly entered draft credential; never persisted or included in diagnostics. */
+  apiKeyOverride?: string;
   /** Opt-in for structured tasks; never imposed on ordinary conversations. */
   responseFormat?: { type: 'json_object' };
 }
@@ -128,7 +161,16 @@ export interface ToolCompletionResult {
 }
 
 export const MODEL_SETTINGS_EVENT = 'glossa-model-settings-changed';
-const STORAGE_KEY = 'glossa.study-models.v1';
+const LEGACY_STORAGE_KEY = 'glossa.study-models.v1';
+export const MODEL_STORAGE_KEY = 'glossa.study-models.v2';
+const STORAGE_KEY = MODEL_STORAGE_KEY;
+const MODEL_CATALOG_KEY = 'glossa.study-model-catalog.v1';
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === STORAGE_KEY || event.key === LEGACY_STORAGE_KEY || event.key === null)
+      window.dispatchEvent(new Event(MODEL_SETTINGS_EVENT));
+  });
+}
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_TOOL_CALLS = 8;
 const MAX_TOOL_ARGUMENT_CHARS = 8192;
@@ -191,6 +233,38 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function validateCapabilityOverrides(value: unknown): ProviderCapabilityOverrides | undefined {
+  if (value === undefined) return;
+  if (!isRecord(value)) throw new ModelServiceError(_('The model settings are invalid.'));
+  const result: ProviderCapabilityOverrides = {};
+  if (value['reasoningEfforts'] !== undefined) {
+    if (
+      !Array.isArray(value['reasoningEfforts']) ||
+      value['reasoningEfforts'].some((item) => !REASONING_EFFORTS.includes(item))
+    )
+      throw new ModelServiceError(_('The model settings are invalid.'));
+    result.reasoningEfforts = REASONING_EFFORTS.filter((effort) =>
+      (value['reasoningEfforts'] as unknown[]).includes(effort),
+    );
+  }
+  if (value['maxTokensParam'] !== undefined) {
+    if (
+      value['maxTokensParam'] !== 'max_tokens' &&
+      value['maxTokensParam'] !== 'max_completion_tokens'
+    )
+      throw new ModelServiceError(_('The model settings are invalid.'));
+    result.maxTokensParam = value['maxTokensParam'];
+  }
+  for (const field of ['tools', 'json'] as const) {
+    if (value[field] !== undefined) {
+      if (typeof value[field] !== 'boolean')
+        throw new ModelServiceError(_('The model settings are invalid.'));
+      result[field] = value[field];
+    }
+  }
+  return Object.keys(result).length ? result : undefined;
+}
+
 export function validateProviderConfig(value: unknown): ProviderConfig {
   if (
     !isRecord(value) ||
@@ -221,6 +295,7 @@ export function validateProviderConfig(value: unknown): ProviderConfig {
   ) {
     throw new ModelServiceError(_('The model settings are invalid.'));
   }
+  const capabilityOverrides = validateCapabilityOverrides(value['capabilityOverrides']);
   // Explicit field selection prevents accidental key persistence from a form object.
   return {
     id: value['id'],
@@ -229,36 +304,267 @@ export function validateProviderConfig(value: unknown): ProviderConfig {
     model: value['model'].trim(),
     ...(reasoningEffort ? { reasoningEffort: reasoningEffort as ReasoningEffort } : {}),
     ...(maxTokens !== undefined ? { maxTokens: maxTokens as number } : {}),
+    ...(capabilityOverrides ? { capabilityOverrides } : {}),
   };
 }
 
+interface ProviderConnection {
+  revision: string;
+  id: string;
+  name: string;
+  baseUrl: string;
+  enabled: boolean;
+  models: ProviderModelProfile[];
+  lastModel: string;
+}
 interface StoredProviders {
-  activeId: string | null;
-  providers: ProviderConfig[];
+  version: 2;
+  connections: ProviderConnection[];
+  defaults: Partial<Record<ProviderPurpose, { providerId: string; model: string }>>;
 }
-
+const emptySettings = (): StoredProviders => ({ version: 2, connections: [], defaults: {} });
+function profileFromConfig(
+  config: ProviderConfig,
+  previous?: ProviderModelProfile,
+): ProviderModelProfile {
+  return {
+    model: config.model,
+    ...(config.reasoningEffort ? { reasoningEffort: config.reasoningEffort } : {}),
+    ...(config.maxTokens !== undefined ? { maxTokens: config.maxTokens } : {}),
+    ...(config.capabilityOverrides ? { capabilityOverrides: config.capabilityOverrides } : {}),
+    favorite: previous?.favorite ?? false,
+    ...(previous?.lastUsedAt ? { lastUsedAt: previous.lastUsedAt } : {}),
+  };
+}
+function configFromConnection(
+  connection: ProviderConnection,
+  model = connection.lastModel,
+): ProviderConfig {
+  const profile = connection.models.find((item) => item.model === model);
+  return validateProviderConfig({ ...connection, ...profile, model });
+}
 function readSettings(): StoredProviders {
+  let raw: unknown;
   try {
-    const raw: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
-    if (!isRecord(raw) || !Array.isArray(raw['providers'])) {
-      return { activeId: null, providers: [] };
-    }
-    return {
-      activeId: typeof raw['activeId'] === 'string' ? raw['activeId'] : null,
-      providers: raw['providers'].map(validateProviderConfig),
-    };
+    const current = localStorage.getItem(STORAGE_KEY);
+    raw = JSON.parse(current ?? localStorage.getItem(LEGACY_STORAGE_KEY) ?? 'null');
   } catch {
-    return { activeId: null, providers: [] };
+    return emptySettings();
   }
+  if (!isRecord(raw)) return emptySettings();
+  const settings = emptySettings();
+  if (raw['version'] === 2 && Array.isArray(raw['connections'])) {
+    for (const value of raw['connections']) {
+      try {
+        if (!isRecord(value) || !Array.isArray(value['models'])) continue;
+        const base = validateProviderConfig({ ...value, model: '' });
+        const models: ProviderModelProfile[] = [];
+        for (const entry of value['models']) {
+          try {
+            if (!isRecord(entry)) continue;
+            const config = validateProviderConfig({ ...base, ...entry });
+            if (!config.model || models.some((item) => item.model === config.model)) continue;
+            models.push({
+              ...profileFromConfig(config),
+              favorite: entry['favorite'] === true,
+              ...(typeof entry['lastUsedAt'] === 'number' && Number.isFinite(entry['lastUsedAt'])
+                ? { lastUsedAt: entry['lastUsedAt'] }
+                : {}),
+            });
+          } catch {
+            /* One malformed model must not hide other saved connections. */
+          }
+        }
+        settings.connections.push({
+          revision: typeof value['revision'] === 'string' ? value['revision'] : 'initial',
+          id: base.id,
+          name: base.name,
+          baseUrl: base.baseUrl,
+          enabled: value['enabled'] !== false,
+          models,
+          lastModel:
+            typeof value['lastModel'] === 'string' &&
+            models.some((item) => item.model === value['lastModel'])
+              ? value['lastModel']
+              : (models[0]?.model ?? ''),
+        });
+      } catch {
+        /* Keep unrelated valid connections available. */
+      }
+    }
+    if (isRecord(raw['defaults'])) {
+      for (const purpose of ['conversation', 'mindmap'] as const) {
+        const selected = raw['defaults'][purpose];
+        if (
+          isRecord(selected) &&
+          typeof selected['providerId'] === 'string' &&
+          typeof selected['model'] === 'string'
+        )
+          settings.defaults[purpose] = {
+            providerId: selected['providerId'],
+            model: selected['model'],
+          };
+      }
+    }
+  } else if (Array.isArray(raw['providers'])) {
+    for (const value of raw['providers']) {
+      try {
+        const config = validateProviderConfig(value);
+        settings.connections.push({
+          revision: 'legacy',
+          id: config.id,
+          name: config.name,
+          baseUrl: config.baseUrl,
+          enabled: true,
+          models: config.model ? [profileFromConfig(config)] : [],
+          lastModel: config.model,
+        });
+        if (config.id === raw['activeId']) {
+          settings.defaults.conversation = { providerId: config.id, model: config.model };
+          settings.defaults.mindmap = { providerId: config.id, model: config.model };
+        }
+      } catch {
+        /* Preserve valid legacy entries and leave the original migration source intact. */
+      }
+    }
+  }
+  return settings;
 }
-
+function writeSettings(settings: StoredProviders) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    throw new ModelServiceError(_('Unable to save model settings on this device.'));
+  }
+  window.dispatchEvent(new Event(MODEL_SETTINGS_EVENT));
+}
 export function getSavedProviderConfigs(): ProviderConfig[] {
-  return readSettings().providers;
+  return readSettings().connections.map((connection) => configFromConnection(connection));
 }
-
-export function getActiveProviderConfig(): ProviderConfig | null {
+export function isProviderEnabled(id: string): boolean {
+  return readSettings().connections.find((item) => item.id === id)?.enabled ?? true;
+}
+export function getActiveProviderConfig(
+  purpose: ProviderPurpose = 'conversation',
+): ProviderConfig | null {
   const settings = readSettings();
-  return settings.providers.find((provider) => provider.id === settings.activeId) ?? null;
+  const selected = settings.defaults[purpose];
+  const connection = settings.connections.find(
+    (item) => item.id === selected?.providerId && item.enabled,
+  );
+  return connection && selected && connection.models.some((item) => item.model === selected.model)
+    ? configFromConnection(connection, selected.model)
+    : null;
+}
+export function getProviderModels(config: ProviderConfig): ProviderModelProfile[] {
+  const connection = readSettings().connections.find(
+    (item) => item.id === config.id && item.baseUrl === normalizeBaseUrl(config.baseUrl),
+  );
+  return connection?.models ?? [];
+}
+export function getProviderModelConfig(config: ProviderConfig, model: string): ProviderConfig {
+  const profile = getProviderModels(config).find((item) => item.model === model);
+  return validateProviderConfig({
+    id: config.id,
+    name: config.name,
+    baseUrl: config.baseUrl,
+    model,
+    ...profile,
+  });
+}
+export function setProviderEnabled(id: string, enabled: boolean): void {
+  const settings = readSettings();
+  const connection = settings.connections.find((item) => item.id === id);
+  if (!connection) return;
+  connection.enabled = enabled;
+  connection.revision = crypto.randomUUID();
+  writeSettings(settings);
+}
+export function setProviderModelFavorite(
+  config: ProviderConfig,
+  model: string,
+  favorite: boolean,
+): void {
+  const settings = readSettings();
+  const connection = settings.connections.find(
+    (item) => item.id === config.id && item.baseUrl === normalizeBaseUrl(config.baseUrl),
+  );
+  if (!connection) return;
+  let profile = connection.models.find((item) => item.model === model);
+  if (!profile) {
+    const valid = validateProviderConfig({
+      id: config.id,
+      name: config.name,
+      baseUrl: config.baseUrl,
+      model,
+    });
+    if (!valid.model) return;
+    profile = profileFromConfig(valid);
+    connection.models.push(profile);
+  }
+  profile.favorite = favorite;
+  connection.revision = crypto.randomUUID();
+  writeSettings(settings);
+}
+export function removeProviderModel(config: ProviderConfig, model: string): void {
+  const settings = readSettings();
+  const connection = settings.connections.find(
+    (item) => item.id === config.id && item.baseUrl === normalizeBaseUrl(config.baseUrl),
+  );
+  if (!connection) return;
+  connection.models = connection.models.filter((item) => item.model !== model);
+  connection.revision = crypto.randomUUID();
+  if (connection.lastModel === model) connection.lastModel = connection.models[0]?.model ?? '';
+  for (const purpose of ['conversation', 'mindmap'] as const)
+    if (
+      settings.defaults[purpose]?.providerId === config.id &&
+      settings.defaults[purpose]?.model === model
+    )
+      delete settings.defaults[purpose];
+  writeSettings(settings);
+}
+export async function activateProviderConfig(
+  config: ProviderConfig,
+  purpose: ProviderPurpose = 'conversation',
+): Promise<ProviderConfig> {
+  const input = validateProviderConfig(config);
+  if (!input.model) throw new ModelServiceError(_('Enter a model name first.'));
+  if (!isProviderEnabled(input.id))
+    throw new ModelServiceError(_('Enable this model service first.'));
+  const valid = await saveProviderConfig(input);
+  const settings = readSettings();
+  const connection = settings.connections.find((item) => item.id === valid.id);
+  if (
+    !connection ||
+    !connection.models.some((item) => item.model === valid.model) ||
+    JSON.stringify(configFromConnection(connection, valid.model)) !== JSON.stringify(valid)
+  )
+    throw new ModelServiceError(_('The model settings changed. Reload them and try again.'));
+  if (!connection.enabled) throw new ModelServiceError(_('Enable this model service first.'));
+  settings.defaults[purpose] = { providerId: valid.id, model: valid.model };
+  const profile = connection.models.find((item) => item.model === valid.model)!;
+  profile.lastUsedAt = Date.now();
+  connection.revision = crypto.randomUUID();
+  writeSettings(settings);
+  return valid;
+}
+export async function deleteProviderConfig(config: ProviderConfig): Promise<void> {
+  const settings = readSettings();
+  const connection = settings.connections.find((item) => item.id === config.id);
+  if (!connection) return;
+  if (connection.baseUrl !== normalizeBaseUrl(config.baseUrl))
+    throw new ModelServiceError(_('The model settings changed. Reload them and try again.'));
+  const expected = JSON.stringify(connection);
+  await clearProviderApiKey(config);
+  // Re-read after asynchronous secure storage access; preserve unrelated concurrent edits.
+  const latest = readSettings();
+  const current = latest.connections.find((item) => item.id === config.id);
+  if (!current || JSON.stringify(current) !== expected)
+    throw new ModelServiceError(_('The model settings changed. Reload them and try again.'));
+  latest.connections = latest.connections.filter((item) => item.id !== config.id);
+  for (const purpose of ['conversation', 'mindmap'] as const)
+    if (latest.defaults[purpose]?.providerId === config.id) delete latest.defaults[purpose];
+  writeSettings(latest);
 }
 
 function secretKey(config: ProviderConfig): string {
@@ -301,14 +607,33 @@ export async function saveProviderConfig(
     }
   }
   const settings = readSettings();
-  settings.providers = [...settings.providers.filter((item) => item['id'] !== config.id), config];
-  settings.activeId = config.id;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-  } catch {
-    throw new ModelServiceError(_('Unable to save model settings on this device.'));
+  let connection = settings.connections.find((item) => item.id === config.id);
+  if (!connection) {
+    connection = {
+      revision: crypto.randomUUID(),
+      id: config.id,
+      name: config.name,
+      baseUrl: config.baseUrl,
+      enabled: true,
+      models: [],
+      lastModel: '',
+    };
+    settings.connections.push(connection);
   }
-  window.dispatchEvent(new Event(MODEL_SETTINGS_EVENT));
+  // Capability and catalog metadata belongs to the endpoint that declared it.
+  if (connection.baseUrl !== config.baseUrl) connection.models = [];
+  connection.revision = crypto.randomUUID();
+  connection.name = config.name;
+  connection.baseUrl = config.baseUrl;
+  connection.lastModel = config.model;
+  if (config.model) {
+    const previous = connection.models.find((item) => item.model === config.model);
+    connection.models = [
+      ...connection.models.filter((item) => item.model !== config.model),
+      profileFromConfig(config, previous),
+    ];
+  }
+  writeSettings(settings);
   return config;
 }
 
@@ -328,11 +653,35 @@ export async function clearProviderApiKey(config: ProviderConfig): Promise<void>
 
 export async function getProviderStatus(config = getActiveProviderConfig()) {
   const storage = isTauriAppPlatform() ? ('keychain' as const) : ('session' as const);
-  if (!config) return { configured: false, hasApiKey: false, storage };
+  if (!config)
+    return { configured: false, hasApiKey: false, storage, credentialStatus: 'missing' as const };
   const valid = validateProviderConfig(config);
-  const hasApiKey = Boolean(await readApiKey(valid));
+  let credentialStatus: 'present' | 'missing' | 'unavailable' = 'unavailable';
+  if (!isTauriAppPlatform())
+    credentialStatus = sessionKeys.has(secretKey(valid)) ? 'present' : 'missing';
+  else {
+    try {
+      const result = await getSecureItemStatus({ key: secretKey(valid) });
+      if (
+        result.status === 'present' ||
+        result.status === 'missing' ||
+        result.status === 'unavailable'
+      )
+        credentialStatus = result.status;
+    } catch {
+      /* A locked or unsupported keychain is not a missing credential. */
+    }
+  }
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(valid.baseUrl).hostname);
-  return { configured: Boolean(valid.model && (hasApiKey || local)), hasApiKey, storage };
+  return {
+    // Metadata never grants access: request() still obtains the credential on explicit use.
+    configured: Boolean(
+      valid.model && isProviderEnabled(valid.id) && (credentialStatus !== 'missing' || local),
+    ),
+    hasApiKey: credentialStatus === 'present',
+    storage,
+    credentialStatus,
+  };
 }
 
 function abortError(): DOMException {
@@ -359,9 +708,16 @@ async function request(
   signal?: AbortSignal,
   body?: object,
   toolRequest = false,
+  apiKeyOverride?: string,
 ): Promise<Response> {
   checkAbort(signal);
-  const key = await readApiKey(config);
+  if (!isProviderEnabled(config.id))
+    throw new ModelServiceError(_('Enable this model service first.'));
+  const key = apiKeyOverride === undefined ? await readApiKey(config) : apiKeyOverride.trim();
+  if (key.length > 4096 || /[\r\n]/.test(key))
+    throw new ModelServiceError(_('The API key is invalid.'));
+  if (!key && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(config.baseUrl).hostname))
+    throw new ModelServiceError(_('Enter an API key for this model service.'));
   checkAbort(signal);
   const headers = {
     'Content-Type': 'application/json',
@@ -397,7 +753,7 @@ async function request(
         );
       if (rejected === 'usage' && isRecord(body) && body['stream_options']) {
         const { stream_options: _usage, ...withoutUsage } = body;
-        return request(config, path, signal, withoutUsage, toolRequest);
+        return request(config, path, signal, withoutUsage, toolRequest, apiKeyOverride);
       }
       if (rejected === 'tools' && toolRequest)
         throw new ModelServiceError(
@@ -550,13 +906,74 @@ function responseChoices(value: unknown): unknown[] {
   return value['choices'];
 }
 
+export interface ProviderModelCatalog {
+  models: string[];
+  updatedAt: number;
+}
+function catalogId(config: ProviderConfig): string {
+  return `${config.id}:${normalizeBaseUrl(config.baseUrl)}`;
+}
+function readCatalogs(): Record<string, ProviderModelCatalog> {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(MODEL_CATALOG_KEY) ?? '{}');
+    if (!isRecord(value)) return {};
+    const valid: Record<string, ProviderModelCatalog> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      if (
+        !isRecord(entry) ||
+        !Array.isArray(entry['models']) ||
+        typeof entry['updatedAt'] !== 'number' ||
+        !Number.isFinite(entry['updatedAt'])
+      )
+        continue;
+      valid[key] = {
+        updatedAt: entry['updatedAt'],
+        models: entry['models']
+          .filter(
+            (model): model is string =>
+              typeof model === 'string' &&
+              !!model.trim() &&
+              model.length <= 240 &&
+              !/[\r\n]/.test(model),
+          )
+          .slice(0, 2048),
+      };
+    }
+    return valid;
+  } catch {
+    return {};
+  }
+}
+export function getCachedProviderModels(config: ProviderConfig): ProviderModelCatalog | null {
+  try {
+    return readCatalogs()[catalogId(config)] ?? null;
+  } catch {
+    return null;
+  }
+}
+function cacheProviderModels(config: ProviderConfig, models: string[]) {
+  const catalogs = readCatalogs();
+  catalogs[catalogId(config)] = { models: models.slice(0, 2048), updatedAt: Date.now() };
+  const bounded = Object.fromEntries(
+    Object.entries(catalogs)
+      .sort((a, b) => b[1].updatedAt - a[1].updatedAt)
+      .slice(0, 64),
+  );
+  try {
+    localStorage.setItem(MODEL_CATALOG_KEY, JSON.stringify(bounded));
+  } catch {
+    /* Discovery succeeds even if its optional cache is full. */
+  }
+}
+
 export async function listProviderModels(
   value: ProviderConfig,
   signal?: AbortSignal,
+  options: { apiKey?: string; cache?: boolean } = {},
 ): Promise<string[]> {
   const config = validateProviderConfig(value);
   try {
-    const response = await request(config, 'models', signal);
+    const response = await request(config, 'models', signal, undefined, false, options.apiKey);
     let text = '';
     await consumeText(response, signal, (part) => {
       text += part;
@@ -566,7 +983,7 @@ export async function listProviderModels(
       throw new ModelServiceError(
         _('The service did not return a model list. Enter a model name manually.'),
       );
-    return [
+    const models = [
       ...new Set(
         data['data'].flatMap((item: unknown) =>
           isRecord(item) &&
@@ -579,6 +996,9 @@ export async function listProviderModels(
         ),
       ),
     ].sort();
+    checkAbort(signal);
+    if (options.cache !== false) cacheProviderModels(config, models);
+    return models;
   } catch (error) {
     throw safeRequestError(error, signal);
   }
@@ -705,6 +1125,7 @@ async function streamModelCompletion(
     maxTokens,
     onMetrics,
     responseFormat,
+    apiKeyOverride,
   }: Omit<CompletionRequest, 'messages'> & { messages: ToolCompletionMessage[] },
   toolSettings?: {
     tools: ToolDefinition[];
@@ -716,6 +1137,16 @@ async function streamModelCompletion(
   const config = validateProviderConfig(input);
   if (!config.model) throw new ModelServiceError(_('Enter a model name first.'));
   const capabilities = providerCapabilities(config);
+  if (toolSettings && capabilities.tools === false)
+    throw new ModelServiceError(
+      _('This model service does not support reading tools.'),
+      'unsupported_tools',
+    );
+  if (responseFormat && capabilities.json === false)
+    throw new ModelServiceError(
+      _('This model service does not support JSON output.'),
+      'unsupported_format',
+    );
   const budget = maxTokens ?? config.maxTokens ?? 6000;
   if (
     !messages.length ||
@@ -770,6 +1201,7 @@ async function streamModelCompletion(
           : {}),
       },
       !!toolSettings,
+      apiKeyOverride,
     );
     let output = '';
     let buffer = '';
@@ -966,11 +1398,15 @@ async function streamModelCompletion(
 export async function testProviderConnection(
   config: ProviderConfig,
   signal?: AbortSignal,
-): Promise<void> {
+  apiKey?: string,
+): Promise<{ checked: 'chat'; elapsedMs: number }> {
+  const started = performance.now();
   await streamCompletion({
     config,
     signal,
+    apiKeyOverride: apiKey,
     messages: [{ role: 'user', content: 'Reply with OK.' }],
-    maxTokens: 32,
+    maxTokens: 512,
   });
+  return { checked: 'chat', elapsedMs: performance.now() - started };
 }

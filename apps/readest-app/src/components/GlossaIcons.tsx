@@ -629,3 +629,12 @@ export function Puzzle(props: GlossaIconProps) {
     </Icon>
   );
 }
+
+export function Keyboard(props: GlossaIconProps) {
+  return (
+    <Icon {...props}>
+      <rect x='3' y='5.5' width='18' height='13' rx='2.5' />
+      <path d='M6.5 9h.01M10 9h.01M13.5 9h.01M17 9h.01M6.5 12h.01M10 12h.01M13.5 12h.01M17 12h.01M7.5 15h9' />
+    </Icon>
+  );
+}

@@ -48,6 +48,7 @@ Default permissions for the plugin
 - `allow-is-sync-keychain-available`
 - `allow-set-secure-item`
 - `allow-get-secure-item`
+- `allow-get-secure-item-status`
 - `allow-clear-secure-item`
 - `allow-refresh-eink-screen`
 - `allow-update-reading-widget`
@@ -478,6 +479,32 @@ Enables the get_secure_item command without any pre-configured scope.
 <td>
 
 Denies the get_secure_item command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`native-bridge:allow-get-secure-item-status`
+
+</td>
+<td>
+
+Enables the get_secure_item_status command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`native-bridge:deny-get-secure-item-status`
+
+</td>
+<td>
+
+Denies the get_secure_item_status command without any pre-configured scope.
 
 </td>
 </tr>

@@ -334,6 +334,7 @@ export interface ImportBookInternalOptions extends ImportBookOptions {
   saveBookConfig: (book: Book, config: BookConfig) => Promise<void>;
   generateCoverImageUrl: (book: Book) => Promise<string>;
   preparePDF?: (book: Book, document: BookDoc | undefined, signal?: AbortSignal) => Promise<void>;
+  prepareMetadata?: (book: Book, signal?: AbortSignal) => Promise<void>;
   /** Only used to fall back when an early duplicate changes before commit. */
   skipKnownContent?: boolean;
   /** Normalizes device-local source path hints consistently with the lookup index. */
@@ -613,6 +614,8 @@ async function prepareBookImport(
                 if (replacement) await replacement.schedule(result);
                 await releaseResources();
                 if (replacement) return;
+                if (!transient && options.prepareMetadata)
+                  void options.prepareMetadata(result, options.signal).catch(() => {});
                 if (
                   result.format === 'PDF' &&
                   options.retryPDFContents !== false &&
@@ -1122,6 +1125,8 @@ async function prepareBookImport(
     const schedule = async (result: Book) => {
       // Background work owns its own document and opens it only when scheduled.
       await releaseResources();
+      if (!transient && (saveBook || inPlace) && options.prepareMetadata)
+        void options.prepareMetadata(result, options.signal).catch(() => {});
       if (
         format === 'PDF' &&
         !transient &&

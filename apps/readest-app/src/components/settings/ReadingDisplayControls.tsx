@@ -52,11 +52,11 @@ const ReadingDisplayControls: React.FC<{
   );
   const [webtoonMode, setWebtoonMode] = useState(viewSettings!.webtoonMode ?? false);
 
-  const [zoomLevel, setZoomLevel] = useState(viewSettings!.zoomLevel!);
+  const [zoomLevel, setZoomLevel] = useState(viewSettings.zoomLevel ?? 100);
   const [contrast, setContrast] = useState(viewSettings!.contrast ?? 100);
-  const [zoomMode, setZoomMode] = useState(viewSettings!.zoomMode!);
-  const [spreadMode, setSpreadMode] = useState(viewSettings!.spreadMode!);
-  const [keepCoverSpread, setKeepCoverSpread] = useState(viewSettings!.keepCoverSpread!);
+  const [zoomMode, setZoomMode] = useState(viewSettings.zoomMode ?? 'fit-page');
+  const [spreadMode, setSpreadMode] = useState(viewSettings.spreadMode ?? 'auto');
+  const [keepCoverSpread, setKeepCoverSpread] = useState(viewSettings.keepCoverSpread ?? false);
   useEffect(() => {
     onRegisterReset(() => {
       if (!appService) return;
@@ -124,7 +124,7 @@ const ReadingDisplayControls: React.FC<{
   }, [isScrolledMode]);
 
   useEffect(() => {
-    if (webtoonMode === viewSettings.webtoonMode) return;
+    if (webtoonMode === (viewSettings.webtoonMode ?? false)) return;
     viewSettings.webtoonMode = webtoonMode;
     getView(bookKey)?.renderer.setAttribute('scroll-gap', getScrollGapAttr(webtoonMode));
     if (webtoonMode) {
@@ -143,7 +143,7 @@ const ReadingDisplayControls: React.FC<{
   }, [webtoonMode]);
 
   useEffect(() => {
-    if (zoomLevel === viewSettings.zoomLevel) return;
+    if (zoomLevel === (viewSettings.zoomLevel ?? 100)) return;
     saveViewSettings(envConfig, bookKey, 'zoomLevel', zoomLevel, false, true, true);
     if (bookData.bookDoc?.rendition?.layout === 'pre-paginated') {
       getView(bookKey)?.renderer.setAttribute('scale-factor', zoomLevel);
@@ -152,13 +152,13 @@ const ReadingDisplayControls: React.FC<{
   }, [zoomLevel]);
 
   useEffect(() => {
-    if (contrast === viewSettings.contrast) return;
+    if (contrast === (viewSettings.contrast ?? 100)) return;
     saveViewSettings(envConfig, bookKey, 'contrast', contrast, false, true, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contrast]);
 
   useEffect(() => {
-    if (zoomMode === viewSettings.zoomMode) return;
+    if (zoomMode === (viewSettings.zoomMode ?? 'fit-page')) return;
     viewSettings.zoomMode = zoomMode;
     getView(bookKey)?.renderer.setAttribute('zoom', zoomMode);
     setViewSettings(bookKey, viewSettings);
@@ -167,7 +167,7 @@ const ReadingDisplayControls: React.FC<{
   }, [zoomMode]);
 
   useEffect(() => {
-    if (spreadMode === viewSettings.spreadMode) return;
+    if (spreadMode === (viewSettings.spreadMode ?? 'auto')) return;
     viewSettings.spreadMode = spreadMode;
     getView(bookKey)?.renderer.setAttribute('spread', spreadMode);
     setViewSettings(bookKey, viewSettings);
@@ -176,7 +176,7 @@ const ReadingDisplayControls: React.FC<{
   }, [spreadMode]);
 
   useEffect(() => {
-    if (keepCoverSpread === viewSettings.keepCoverSpread) return;
+    if (keepCoverSpread === (viewSettings.keepCoverSpread ?? false)) return;
     if (!bookData?.bookDoc?.sections?.length) return;
     viewSettings.keepCoverSpread = keepCoverSpread;
     const coverSide = bookData.bookDoc.dir === 'rtl' ? 'right' : 'left';

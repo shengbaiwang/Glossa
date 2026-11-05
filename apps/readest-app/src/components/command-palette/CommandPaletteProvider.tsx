@@ -2,6 +2,8 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useShortcutConfig } from '@/hooks/useShortcuts';
+import { matchesShortcut } from '@/utils/shortcutKeys';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useThemeStore } from '@/store/themeStore';
 import { useEnv } from '@/context/EnvContext';
@@ -58,6 +60,7 @@ export const CommandPaletteProvider: React.FC<CommandPaletteProviderProps> = ({ 
 
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const shortcuts = useShortcutConfig();
 
   const isDesktop = isTauriAppPlatform() && !appService?.isMobile;
 
@@ -176,11 +179,19 @@ export const CommandPaletteProvider: React.FC<CommandPaletteProviderProps> = ({ 
     [close],
   );
 
-  // keyboard shortcut handler (Ctrl/Cmd+Shift+P)
+  // Capture before open dialogs, while leaving a shortcut recorder in control.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
-      if (isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === 'p') {
+      if (
+        e.defaultPrevented ||
+        e.isComposing ||
+        document.activeElement?.closest('[data-shortcut-recorder]')
+      )
+        return;
+      const focused = document.activeElement as HTMLElement | null;
+      const isEditing = focused?.matches('input, textarea') || focused?.isContentEditable;
+      if (isEditing && !e.ctrlKey && !e.metaKey) return;
+      if (matchesShortcut(e, shortcuts.onOpenCommandPalette.keys)) {
         e.preventDefault();
         e.stopPropagation();
         setSettingsDialogOpen(false);
@@ -190,7 +201,7 @@ export const CommandPaletteProvider: React.FC<CommandPaletteProviderProps> = ({ 
 
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
-  }, [toggle, setSettingsDialogOpen]);
+  }, [toggle, setSettingsDialogOpen, shortcuts]);
 
   const value = useMemo(
     () => ({

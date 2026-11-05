@@ -111,6 +111,13 @@ vi.mock('@/components/settings/DialogMenu', () => ({ default: () => null }));
 vi.mock('@/components/settings/ReadingDisplayControls', () => ({ default: () => null }));
 vi.mock('@/components/settings/LayoutPanel', () => ({ default: () => null }));
 vi.mock('@/components/settings/ThemePanel', () => ({ default: () => null }));
+vi.mock('@/components/settings/ShortcutsPanel', () => ({
+  default: () => (
+    <div data-testid='shortcuts-panel' data-setting-id='settings.shortcuts.bindings'>
+      Shortcut preferences
+    </div>
+  ),
+}));
 vi.mock('@/components/settings/ControlPanel', () => ({ default: () => null }));
 vi.mock('@/components/settings/LangPanel', () => ({ default: () => null }));
 vi.mock('@/components/settings/IntegrationsPanel', () => ({ default: () => null }));
@@ -177,7 +184,9 @@ it('shows readable global categories and switches to a grouped selector on narro
       .getAllByRole('button')
       .filter((button) => button.matches('.glossa-settings-navigation button'))
       .map((button) => button.textContent),
-  ).toEqual(['Account', 'General', 'Reading', 'Library & Sync', 'Plugins', 'About'].map(t));
+  ).toEqual(
+    ['Account', 'General', 'Reading', 'Library & Sync', 'Shortcuts', 'Plugins', 'About'].map(t),
+  );
   expect(screen.queryByRole('radiogroup')).toBeNull();
   const startup = screen
     .getByRole('button', { name: t('Startup & Window') })
@@ -336,4 +345,21 @@ it('gives plugins a dedicated category in wide, narrow, dark and RTL/e-ink setti
   await page.screenshot({
     path: '../../../../../../.glossa-dev/qa/plugin-menu-narrow-rtl-eink.png',
   });
+});
+
+it('opens the shortcuts page from global navigation and the narrow category selector', async () => {
+  await page.viewport(1440, 900);
+  const view = render(<SettingsDialog bookKey='' scope='application' />);
+  fireEvent.click(screen.getByRole('button', { name: t('Shortcuts') }));
+  expect(screen.getByTestId('shortcuts-panel')).toBeTruthy();
+  expect(localStorage.getItem('lastApplicationSettingsPanel')).toBe('Shortcuts');
+  boundsOK(view.container.querySelector('.modal-box')!);
+  await page.viewport(320, 720);
+  const category = screen.getByRole('combobox', { name: t('Settings Panels') });
+  expect((category as HTMLSelectElement).value).toBe('Shortcuts');
+  fireEvent.change(category, { target: { value: 'General' } });
+  expect(screen.queryByTestId('shortcuts-panel')).toBeNull();
+  fireEvent.change(category, { target: { value: 'Shortcuts' } });
+  expect(screen.getByTestId('shortcuts-panel')).toBeTruthy();
+  boundsOK(view.container.querySelector('.modal-box')!);
 });

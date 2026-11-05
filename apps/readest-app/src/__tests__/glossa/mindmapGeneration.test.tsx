@@ -1,8 +1,9 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { Book } from '@/types/book';
 import type { BookDoc } from '@/libs/document';
 import type { ReadingMindmap } from '@/glossa/mindmap/types';
+import type { ProviderConfig } from '@/glossa/ai/provider';
 
 const f = vi.hoisted(() => ({
   generate: vi.fn(),
@@ -10,6 +11,7 @@ const f = vi.hoisted(() => ({
   read: vi.fn(),
   use: vi.fn(),
   checkpoint: vi.fn(),
+  config: {} as ProviderConfig,
 }));
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (key: string) => key }));
 vi.mock('@/glossa/harness/epub', () => ({
@@ -26,12 +28,7 @@ vi.mock('@/glossa/mindmap/explore', () => ({
 }));
 vi.mock('@/glossa/ai/provider', async (original) => ({
   ...(await original<typeof import('@/glossa/ai/provider')>()),
-  getActiveProviderConfig: () => ({
-    id: 'fixture',
-    name: 'Fixture',
-    model: 'model',
-    baseUrl: 'https://example.test/v1',
-  }),
+  getActiveProviderConfig: () => ({ ...f.config }),
   getProviderStatus: async () => ({ configured: true }),
 }));
 vi.mock('@/glossa/ui/ConversationModelPicker', () => ({
@@ -45,6 +42,7 @@ vi.mock('@/glossa/mindmap/checkpoints', () => ({
   mapCheckpointStore: { load: f.checkpoint },
 }));
 import MindmapGeneration from '@/glossa/ui/MindmapGeneration';
+import { MODEL_SETTINGS_EVENT } from '@/glossa/ai/provider';
 const props = {
   book: { hash: 'book', title: 'Book', format: 'EPUB' } as Book,
   bookDoc: {} as BookDoc,
@@ -53,6 +51,13 @@ const props = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  f.use.mockReset();
+  f.config = {
+    id: 'fixture',
+    name: 'Fixture',
+    model: 'model',
+    baseUrl: 'https://example.test/v1',
+  };
   f.checkpoint.mockResolvedValue({ checkpoint: null });
 });
 afterEach(cleanup);
@@ -166,4 +171,73 @@ it('labels zero progress as a retry and restores a safe validation error without
   expect((await screen.findByRole('alert')).textContent).toContain('outside the supplied evidence');
   expect(f.generate).not.toHaveBeenCalled();
   expect(f.read).not.toHaveBeenCalled();
+});
+
+it('keeps a generated map available after unrelated settings updates and a service rename', async () => {
+  const map = { id: 'generated-awaiting-save' } as ReadingMindmap;
+  f.generate.mockResolvedValue(map);
+  f.use.mockImplementationOnce(() => {
+    throw new Error('Synthetic save failure');
+  });
+  render(<MindmapGeneration {...props} />);
+  fireEvent.change(screen.getByRole('combobox', { name: 'Map range' }), {
+    target: { value: 'book' },
+  });
+  const generate = screen.getByRole('button', { name: 'Generate mind map' });
+  await waitFor(() => expect(generate.hasAttribute('disabled')).toBe(false));
+  fireEvent.click(generate);
+  await screen.findByRole('button', { name: 'Use generated map' });
+  const saveError = screen.getByRole('alert').textContent;
+  const checkpointReads = f.checkpoint.mock.calls.length;
+  await act(async () => {
+    window.dispatchEvent(new Event(MODEL_SETTINGS_EVENT));
+  });
+  f.config = { ...f.config, name: 'Renamed service' };
+  await act(async () => {
+    window.dispatchEvent(new Event(MODEL_SETTINGS_EVENT));
+  });
+  expect(screen.getByRole('alert').textContent).toBe(saveError);
+  fireEvent.click(screen.getByRole('button', { name: 'Use generated map' }));
+  expect(f.use).toHaveBeenCalledTimes(2);
+  expect(f.use).toHaveBeenLastCalledWith(map);
+  expect(f.generate).toHaveBeenCalledTimes(1);
+  expect(f.checkpoint).toHaveBeenCalledTimes(checkpointReads);
+});
+
+it.each([
+  'model',
+  'capabilities',
+])('keeps active work on an unchanged default, but cancels a changed mind-map %s', async (change) => {
+  let finish!: (map: ReadingMindmap) => void;
+  f.generate.mockImplementation(
+    () =>
+      new Promise<ReadingMindmap>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render(<MindmapGeneration {...props} />);
+  fireEvent.change(screen.getByRole('combobox', { name: 'Map range' }), {
+    target: { value: 'book' },
+  });
+  const generate = screen.getByRole('button', { name: 'Generate mind map' });
+  await waitFor(() => expect(generate.hasAttribute('disabled')).toBe(false));
+  fireEvent.click(generate);
+  await screen.findByRole('button', { name: 'Stop' });
+  const signal = f.generate.mock.calls[0]![0].signal as AbortSignal;
+  await act(async () => {
+    window.dispatchEvent(new Event(MODEL_SETTINGS_EVENT));
+  });
+  expect(signal.aborted).toBe(false);
+  expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy();
+  f.config =
+    change === 'model'
+      ? { ...f.config, model: 'another-model' }
+      : { ...f.config, capabilityOverrides: { json: false } };
+  await act(async () => {
+    window.dispatchEvent(new Event(MODEL_SETTINGS_EVENT));
+    finish({ id: 'stale-map' } as ReadingMindmap);
+  });
+  expect(signal.aborted).toBe(true);
+  expect(f.use).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: 'Use generated map' })).toBeNull();
 });

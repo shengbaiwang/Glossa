@@ -3,14 +3,20 @@ import { generateBookConversation } from '@/glossa/harness/bookConversation';
 import { createBookReadingScope } from '@/glossa/harness/scope';
 import type { ChapterSource } from '@/glossa/context/types';
 import { createReplyUsage, sumReplyCosts, sumReplyTokens } from '@/glossa/conversation/usage';
+import { saveProviderConfig } from '@/glossa/ai/provider';
 
 const mocks = vi.hoisted(() => ({ fetch: vi.fn() }));
 vi.mock('@/services/environment', () => ({ isTauriAppPlatform: () => false }));
 vi.mock('@/utils/bridge', () => ({ getSecureItem: async () => ({}) }));
-beforeEach(() => {
+beforeEach(async () => {
   localStorage.clear();
   mocks.fetch.mockReset();
   vi.stubGlobal('fetch', mocks.fetch);
+  await saveProviderConfig(
+    { id: 'test', name: 'Test', baseUrl: 'https://models.example/v1', model: 'test' },
+    'synthetic-book-transport-key',
+  );
+  localStorage.clear();
 });
 
 it.each([

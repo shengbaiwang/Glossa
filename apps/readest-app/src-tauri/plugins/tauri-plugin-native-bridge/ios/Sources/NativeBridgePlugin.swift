@@ -1507,6 +1507,21 @@ class NativeBridgePlugin: Plugin {
     }
   }
 
+  @objc public func get_secure_item_status(_ invoke: Invoke) {
+    do {
+      let args = try invoke.parseArgs(SecureItemGetArgs.self)
+      var query = secureItemBaseQuery(args.key)
+      query[kSecReturnAttributes as String] = true
+      query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+      query[kSecMatchLimit as String] = kSecMatchLimitOne
+      let status = SecItemCopyMatching(query as CFDictionary, nil)
+      invoke.resolve(["status": status == errSecSuccess ? "present" :
+        (status == errSecItemNotFound ? "missing" : "unavailable")])
+    } catch {
+      invoke.resolve(["status": "unavailable"])
+    }
+  }
+
   @objc public func clear_secure_item(_ invoke: Invoke) {
     do {
       let args = try invoke.parseArgs(SecureItemGetArgs.self)

@@ -223,6 +223,17 @@ textarea.glossa-metadata-input {
   }
 }
 @media (pointer: coarse) {
+  .glossa-metadata-recognition :is(button, summary) {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .glossa-metadata-recognition button:not(.btn) {
+    display: inline-flex;
+    align-items: center;
+  }
+  .glossa-metadata-recognition summary {
+    padding-block: 12px;
+  }
   .glossa-metadata-dialog .dialog-header button {
     width: 44px;
     height: 44px;

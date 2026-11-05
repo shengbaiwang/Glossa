@@ -1,5 +1,5 @@
 const MODIFIER_MAP_MAC: Record<string, string> = {
-  ctrl: '⌘',
+  ctrl: '⌃',
   cmd: '⌘',
   alt: '⌥',
   opt: '⌥',
@@ -9,7 +9,7 @@ const MODIFIER_MAP_MAC: Record<string, string> = {
 
 const MODIFIER_MAP_OTHER: Record<string, string> = {
   ctrl: 'Ctrl',
-  cmd: 'Ctrl',
+  cmd: 'Win',
   alt: 'Alt',
   opt: 'Alt',
   shift: 'Shift',
@@ -31,21 +31,51 @@ const SPECIAL_KEYS: Record<string, string> = {
   enter: 'Enter',
 };
 
-export const formatKeyForDisplay = (key: string, isMac: boolean): string => {
-  const parts = key.split('+');
-  const modMap = isMac ? MODIFIER_MAP_MAC : MODIFIER_MAP_OTHER;
-
-  const modifiers: string[] = [];
-  let baseKey = '';
-
-  for (const part of parts) {
-    const lower = part.toLowerCase();
-    if (MODIFIERS.has(lower)) {
-      modifiers.push(modMap[lower]!);
-    } else {
-      baseKey = part;
-    }
+const parseShortcut = (shortcut: string) => {
+  const plusKey = shortcut === '+' || shortcut.endsWith('++');
+  const prefix = shortcut.slice(0, -2);
+  const parts = plusKey ? (prefix ? prefix.split('+') : []) : shortcut.split('+');
+  const key = plusKey ? '+' : parts.pop();
+  if (
+    !key ||
+    MODIFIERS.has(key.toLowerCase()) ||
+    parts.some((part) => !MODIFIERS.has(part.toLowerCase()))
+  ) {
+    return null;
   }
+  const modifiers = parts.map((part) => part.toLowerCase());
+  return {
+    modifiers,
+    ctrlKey: modifiers.includes('ctrl'),
+    altKey: modifiers.includes('alt') || modifiers.includes('opt'),
+    metaKey: modifiers.includes('meta') || modifiers.includes('cmd'),
+    shiftKey: modifiers.includes('shift'),
+    key,
+  };
+};
+
+export const isValidShortcut = (shortcut: string): boolean => parseShortcut(shortcut) !== null;
+
+export const shortcutsEqual = (left: string, right: string): boolean => {
+  const a = parseShortcut(left);
+  const b = parseShortcut(right);
+  return (
+    a !== null &&
+    b !== null &&
+    a.key.toLowerCase() === b.key.toLowerCase() &&
+    a.ctrlKey === b.ctrlKey &&
+    a.altKey === b.altKey &&
+    a.metaKey === b.metaKey &&
+    a.shiftKey === b.shiftKey
+  );
+};
+
+export const formatKeyForDisplay = (key: string, isMac: boolean): string => {
+  const parsed = parseShortcut(key);
+  if (!parsed) return key;
+  const modMap = isMac ? MODIFIER_MAP_MAC : MODIFIER_MAP_OTHER;
+  const modifiers = parsed.modifiers.map((modifier) => modMap[modifier]!);
+  const baseKey = parsed.key;
 
   // Map special keys or capitalize single characters
   const lowerBase = baseKey.toLowerCase();
@@ -69,15 +99,31 @@ export type ShortcutEventLike = Pick<
   'key' | 'ctrlKey' | 'altKey' | 'metaKey' | 'shiftKey'
 >;
 
-const parseShortcut = (shortcut: string) => {
-  const keys = shortcut.toLowerCase().split('+');
-  return {
-    ctrlKey: keys.includes('ctrl'),
-    altKey: keys.includes('alt') || keys.includes('opt'),
-    metaKey: keys.includes('meta') || keys.includes('cmd'),
-    shiftKey: keys.includes('shift'),
-    key: keys.find((k) => !MODIFIERS.has(k)),
-  };
+export const eventToShortcut = (
+  event: ShortcutEventLike & { isComposing?: boolean },
+): string | null => {
+  const ignoredKeys = [
+    'control',
+    'meta',
+    'alt',
+    'shift',
+    'altgraph',
+    'capslock',
+    'fn',
+    'fnlock',
+    'dead',
+    'unidentified',
+    'process',
+  ];
+  if (event.isComposing || !event.key || ignoredKeys.includes(event.key.toLowerCase())) return null;
+  const modifiers = [
+    event.ctrlKey ? 'ctrl' : '',
+    event.metaKey ? 'cmd' : '',
+    event.altKey ? 'opt' : '',
+    event.shiftKey ? 'shift' : '',
+  ].filter(Boolean);
+  const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+  return [...modifiers, key].join('+');
 };
 
 // Whether a keyboard event matches any of the given shortcut strings. `alt`/`opt`
@@ -87,7 +133,8 @@ export const matchesShortcut = (event: ShortcutEventLike, keys: string[]): boole
   return keys.some((shortcut) => {
     const parsed = parseShortcut(shortcut);
     return (
-      parsed.key === key &&
+      parsed !== null &&
+      parsed.key.toLowerCase() === key &&
       parsed.ctrlKey === event.ctrlKey &&
       parsed.altKey === event.altKey &&
       parsed.metaKey === event.metaKey &&

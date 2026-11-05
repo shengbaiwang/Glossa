@@ -25,6 +25,7 @@ export async function getMapInventoryKey(
       config.model,
       config.reasoningEffort ?? null,
       config.maxTokens ?? null,
+      config.capabilityOverrides ?? null,
     ],
     sources: sources.map((source) => ({
       ...sourceWire(source, access),

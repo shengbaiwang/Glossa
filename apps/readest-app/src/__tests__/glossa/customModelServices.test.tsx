@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
   getActiveProviderConfig,
+  activateProviderConfig,
   getProviderStatus,
   getSavedProviderConfigs,
   saveProviderConfig,
@@ -28,18 +29,19 @@ async function addService(name: string, key = '') {
   });
   fireEvent.change(screen.getByLabelText('Model name'), { target: { value: `${name}-model` } });
   fireEvent.change(screen.getByLabelText('API Key'), { target: { value: key } });
-  fireEvent.click(screen.getByRole('button', { name: 'Use this service' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save service' }));
 }
 
 it('saves multiple named services, restores them on reopen, and edits without duplicating', async () => {
   const view = render(<ModelSettingsPanel />);
   await addService('First', 'synthetic-first-key');
   await screen.findByText('Model service saved.');
-  const first = getActiveProviderConfig()!;
+  const first = getSavedProviderConfigs()[0]!;
+  expect(getActiveProviderConfig()).toBeNull();
   expect(screen.getByRole('option', { name: 'First' })).toBeTruthy();
   await addService('Second');
   await screen.findByText('Model service saved.');
-  const second = getActiveProviderConfig()!;
+  const second = getSavedProviderConfigs().find((config) => config.id !== first.id)!;
   expect(first.id).not.toBe(second.id);
   expect(getSavedProviderConfigs()).toHaveLength(2);
   expect(await getProviderStatus(first)).toMatchObject({ hasApiKey: true });
@@ -49,17 +51,20 @@ it('saves multiple named services, restores them on reopen, and edits without du
   view.unmount();
   render(<ModelSettingsPanel />);
   const picker = screen.getByRole('combobox', { name: 'Model service' }) as HTMLSelectElement;
-  expect(picker.value).toBe(second.id);
+  expect(picker.value).toBe(first.id);
   expect(screen.getByRole('option', { name: 'First' })).toBeTruthy();
   expect(screen.getByRole('option', { name: 'Second' })).toBeTruthy();
   fireEvent.change(picker, { target: { value: first.id } });
   expect((screen.getByLabelText('Model name') as HTMLInputElement).value).toBe('First-model');
   fireEvent.change(screen.getByLabelText('Service name'), { target: { value: 'Renamed' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Use this service' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save service' }));
   await screen.findByText('Model service saved.');
   expect(screen.getByRole('option', { name: 'Renamed' })).toBeTruthy();
   expect(screen.queryByRole('option', { name: 'First' })).toBeNull();
-  expect(getActiveProviderConfig()).toMatchObject({ id: first.id, name: 'Renamed' });
+  expect(getActiveProviderConfig()).toBeNull();
+  expect(getSavedProviderConfigs()).toContainEqual(
+    expect.objectContaining({ id: first.id, name: 'Renamed' }),
+  );
   expect(getSavedProviderConfigs()).toHaveLength(2);
 });
 
@@ -88,6 +93,7 @@ it('does not add a menu entry or replace the active service when saving fails', 
     baseUrl: 'https://existing.example/v1',
     model: 'existing-model',
   });
+  await activateProviderConfig(saved);
   render(<ModelSettingsPanel />);
   const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
     throw new Error('Storage unavailable');
@@ -97,7 +103,7 @@ it('does not add a menu entry or replace the active service when saving fails', 
   expect(screen.queryByRole('option', { name: 'Unsaved' })).toBeNull();
   expect(getActiveProviderConfig()).toEqual(saved);
   setItem.mockRestore();
-  fireEvent.click(screen.getByRole('button', { name: 'Use this service' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save service' }));
   await waitFor(() => expect(getSavedProviderConfigs()).toHaveLength(2));
   expect(await screen.findByRole('option', { name: 'Unsaved' })).toBeTruthy();
 });

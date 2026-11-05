@@ -17,6 +17,7 @@ import ApplicationSettingsButton from '@/components/settings/ApplicationSettings
 import { LibraryGroupByType } from '@/types/settings';
 import { navigateToLibrary } from '@/utils/nav';
 import { md5Fingerprint } from '@/utils/md5';
+import { eventDispatcher } from '@/utils/event';
 import { ensureLibraryGroupByType, getLibraryCategoryLabel } from '../utils/libraryUtils';
 import {
   folderLabel,
@@ -37,7 +38,7 @@ import { useLibraryClipboard } from '../hooks/useLibraryClipboard';
 import { useLibraryItemDrop } from '../hooks/useLibraryItemDrop';
 import { useFolderDrag, type FolderDrop } from '../hooks/useFolderDrag';
 import FolderNameEditor from './FolderNameEditor';
-import FolderDeleteDialog from './FolderDeleteDialog';
+import { useLibrarySidebarResize } from '../hooks/useLibrarySidebarResize';
 import BookContextMenuPopup, { type BookContextMenuItem } from './BookContextMenuPopup';
 
 export default function LibraryNavigation({ onNavigate }: { onNavigate: () => void }) {
@@ -46,6 +47,7 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
   const searchParams = useSearchParams();
   const { settings } = useSettingsStore();
   const { library } = useLibraryStore();
+  const sidebar = useLibrarySidebarResize();
   const folders = useLibraryFolders();
   const clipboard = useLibraryClipboard(folders);
   const navRef = useRef<HTMLElement>(null);
@@ -54,7 +56,6 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
   const [menu, setMenu] = useState<{ path: string; x: number; y: number; moving?: boolean } | null>(
     null,
   );
-  const [deleting, setDeleting] = useState<string | null>(null);
   const branchTransfer = useRef<LibraryTransfer | undefined>(undefined);
   const dragOrigin = useRef<string | null>(null);
   const [creatingWithItems, setCreatingWithItems] = useState<LibraryTransfer | null>(null);
@@ -68,9 +69,14 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
   const visible = paths.filter(
     (p) => !paths.some((a) => collapsed.has(a) && p.startsWith(a + '/')),
   );
-  const navigate = (category: LibraryGroupByType, path = '') => {
+  const navigate = (category: LibraryGroupByType, path = '', section = '') => {
     const params = new URLSearchParams(searchParams?.toString());
     params.delete('section');
+    if (section) params.set('section', section);
+    if (section === 'all-groups') {
+      params.delete('q');
+      params.delete('search');
+    }
     params.set('groupBy', category);
     params.set('group', path ? md5Fingerprint(path) : '');
     onNavigate();
@@ -151,7 +157,7 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
   };
   const { drag, start, suppressClick } = useFolderDrag({
     root: navRef,
-    disabled: folders.busy || !!editing || !!deleting,
+    disabled: folders.busy || !!editing,
     onMenu: (path, position) => setMenu(path === null ? null : { path, ...position }),
     onDrop: moveBranch,
     onExpand: expand,
@@ -188,7 +194,7 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
   useLibraryItemDrop({
     root: navRef,
     name: 'navigation',
-    disabled: folders.busy || !!editing || !!deleting,
+    disabled: folders.busy || !!editing,
     move: folders.moveItems,
     hover: (path) => {
       const previous = new Set(collapsed);
@@ -227,12 +233,16 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
     setMenu({ path, x: rect.left, y: rect.bottom });
   };
   const remove = (path: string) => {
+    const ids = [md5Fingerprint(path)];
     if (
-      paths.some((p) => p.startsWith(path + '/')) ||
-      library.some((b) => !b.deletedAt && b.groupName === path)
-    )
-      setDeleting(path);
-    else void folders.remove(path);
+      searchParams?.get('section') === 'recently-deleted' ||
+      (groupBy !== LibraryGroupByType.Group && !library.some((book) => !book.deletedAt))
+    ) {
+      useLibraryTransfer.setState({ pendingDeleteIds: ids });
+      navigate(LibraryGroupByType.Group, '', 'all-groups');
+      return;
+    }
+    void eventDispatcher.dispatch('delete-books', { ids });
   };
   const createFromSelection = (parent: string, ids: string[]) => {
     const snapshot = captureCurrentLibraryTransfer(ids);
@@ -243,7 +253,7 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
   const menuItems: BookContextMenuItem[] = menu?.moving
     ? [
         {
-          text: _('My Groups'),
+          text: _('All Groups'),
           action: () => void moveBranch(menu.path, { path: '', edge: 'inside' }),
         },
         ...paths
@@ -346,6 +356,7 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
       ref={navRef}
       id='library-navigation'
       className='glossa-library-navigation'
+      style={{ flexBasis: sidebar.width }}
       aria-label={_('Library')}
       onKeyDown={(event) => {
         if (
@@ -459,7 +470,7 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
         </section>
         <section
           className='glossa-library-navigation-section glossa-library-my-folders'
-          aria-label={_('My Groups')}
+          aria-label={_('All Groups')}
           onContextMenu={(event) => {
             if ((event.target as HTMLElement).closest('form')) return;
             event.preventDefault();
@@ -474,7 +485,14 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
               data-nav-focus
               aria-haspopup='menu'
               {...dropProps('')}
-              onClick={(event) => openMenu('', event.currentTarget)}
+              aria-current={
+                groupBy === LibraryGroupByType.Group &&
+                searchParams?.get('section') === 'all-groups' &&
+                !groupId
+                  ? 'page'
+                  : undefined
+              }
+              onClick={() => navigate(LibraryGroupByType.Group, '', 'all-groups')}
               onKeyDown={(event) => {
                 if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
                   event.preventDefault();
@@ -482,7 +500,7 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
                 }
               }}
             >
-              {_('My Groups')}
+              {_('All Groups')}
             </button>
           </h2>
           {visible.map((path) => {
@@ -647,16 +665,6 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
           }}
         />
       )}
-      {deleting !== null && (
-        <FolderDeleteDialog
-          path={deleting}
-          onConfirm={() => folders.remove(deleting)}
-          onClose={() => {
-            setFocusPath(folderParent(deleting));
-            setDeleting(null);
-          }}
-        />
-      )}
       {drag && (
         <div
           className='glossa-folder-drag-preview'
@@ -666,6 +674,12 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
           {dragError || folderLabel(drag.path)}
         </div>
       )}
+      <div
+        {...sidebar.resizeProps}
+        className='glossa-library-sidebar-resize'
+        aria-label={_('Resize sidebar')}
+        aria-controls='library-navigation'
+      />
       <div className='glossa-library-navigation-footer'>
         <ApplicationSettingsButton variant='navigation' />
       </div>

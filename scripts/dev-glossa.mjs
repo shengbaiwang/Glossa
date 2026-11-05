@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 
 import { prepareGlossaCloudConfig } from './glossa-cloud-config.mjs';
+import { provisionCredentialHelper, resolveSigningIdentity } from './glossa-macos-signing.mjs';
 
 const REQUIRED_NODE_MAJOR = 24;
 const GLOSSA_IDENTIFIER = 'app.glossa.reader.dev';
@@ -47,7 +48,9 @@ if (currentNodeMajor !== REQUIRED_NODE_MAJOR && process.env.GLOSSA_DEV_REEXECUTE
 } else if (currentNodeMajor !== REQUIRED_NODE_MAJOR) {
   fail(`Node ${REQUIRED_NODE_MAJOR} could not be activated.`);
 } else if (process.env.NEXT_PUBLIC_PORTABLE_APP) {
-  fail('portable mode is forbidden for Glossa Dev because it can collide with the development executable. Unset NEXT_PUBLIC_PORTABLE_APP.');
+  fail(
+    'portable mode is forbidden for Glossa Dev because it can collide with the development executable. Unset NEXT_PUBLIC_PORTABLE_APP.',
+  );
 } else {
   const homeDirectory = process.env.HOME ?? '';
   const toolDirectories = [
@@ -69,6 +72,30 @@ if (currentNodeMajor !== REQUIRED_NODE_MAJOR && process.env.GLOSSA_DEV_REEXECUTE
     NEXT_PUBLIC_GLOSSA_RUNTIME_ID: GLOSSA_IDENTIFIER,
     READEST_DISABLE_UPDATER: '1',
   };
+  let signingRunnerConfig;
+  if (process.platform === 'darwin') {
+    try {
+      const identity = resolveSigningIdentity();
+      const helper = provisionCredentialHelper(identity);
+      commandEnvironment.GLOSSA_SIGNING_FINGERPRINT = identity.fingerprint;
+      commandEnvironment.GLOSSA_CREDENTIAL_HELPER_CDHASH = helper.cdhash;
+      commandEnvironment.GLOSSA_MACOS_SIGNING_IDENTITY = identity.fingerprint;
+      if (identity.keychain) commandEnvironment.GLOSSA_MACOS_SIGNING_KEYCHAIN = identity.keychain;
+      signingRunnerConfig = resolve(repositoryRoot, '.glossa-dev', 'signing-runner.toml');
+      mkdirSync(dirname(signingRunnerConfig), { recursive: true });
+      const runner = JSON.stringify([
+        process.execPath,
+        resolve(repositoryRoot, 'scripts/glossa-dev-runner.mjs'),
+      ]);
+      writeFileSync(
+        signingRunnerConfig,
+        `[target.aarch64-apple-darwin]\nrunner = ${runner}\n[target.x86_64-apple-darwin]\nrunner = ${runner}\n`,
+      );
+    } catch (error) {
+      fail(error.message);
+      process.exit(1);
+    }
+  }
 
   const cargo = spawnSync('cargo', ['--version'], {
     cwd: repositoryRoot,
@@ -101,7 +128,9 @@ if (currentNodeMajor !== REQUIRED_NODE_MAJOR && process.env.GLOSSA_DEV_REEXECUTE
       '--config',
       cloudConfig.configPath,
     ];
-    if (requestedArgs.length > 0) tauriArguments.push('--', '--', ...requestedArgs);
+    if (signingRunnerConfig)
+      tauriArguments.push('--', '--config', signingRunnerConfig, '--', ...requestedArgs);
+    else if (requestedArgs.length > 0) tauriArguments.push('--', '--', ...requestedArgs);
 
     process.stdout.write(
       [

@@ -374,6 +374,25 @@ impl<R: Runtime> NativeBridge<R> {
         }
     }
 
+    pub fn get_secure_item_status(
+        &self,
+        payload: GetSecureItemRequest,
+    ) -> crate::Result<SecureItemStatusResponse> {
+        #[cfg(target_os = "macos")]
+        {
+            Ok(self.secure_storage().status(&payload.key))
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = payload;
+            // Never retrieve a secret merely to decorate the settings UI.
+            Ok(SecureItemStatusResponse {
+                status: "unavailable".into(),
+                error: None,
+            })
+        }
+    }
+
     pub fn clear_secure_item(
         &self,
         payload: GetSecureItemRequest,

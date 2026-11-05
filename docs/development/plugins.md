@@ -1,6 +1,6 @@
 # Glossa 插件开发草案（API 1）
 
-设置中的一级「插件」菜单统一管理内置插件。当前仅加载随应用审核、构建的对话、导图、PDF 自动目录与网页导入；第三方区域预留在同一页，尚未开放安装。下面是供后续开发讨论和源码贡献使用的元数据契约，不是可安装包格式，也不承诺兼容 Obsidian API。
+设置中的一级「插件」菜单统一管理内置插件。当前仅加载随应用审核、构建的对话、导图、PDF 自动目录、书籍元数据识别与网页导入；第三方区域预留在同一页，尚未开放安装。下面是供后续开发讨论和源码贡献使用的元数据契约，不是可安装包格式，也不承诺兼容 Obsidian API。
 
 ## 清单
 
@@ -13,9 +13,9 @@
 | `author` | 非空作者名称，最多 120 字符 |
 | `version` | 语义版本，如 `0.1.0`，允许预发布及构建元数据；不接受 `v1.0.0`、`1` 或首尾空白 |
 | `apiVersion` | 必须为 `1`；与应用版本分开演进，不接受未知版本 |
-| `activation` | `reader-panel`（用户打开面板）、`persistent-import`（持久导入／主动重导入）或 `library-import`（主动网页导入／系统分享），同时支持上述值的非空数组；保留旧单值兼容 |
-| `format` | `EPUB`、`PDF`、`WEB`、`MD`，或这些值的非空数组；兼容旧单值清单，仅描述实际支持的格式。对话支持 EPUB／MD，导图仍仅 EPUB |
-| `capabilities` | 最多四项：`reading-harness`、`model-provider`、`verified-sources`、`local-pdf-contents`、`web-page-capture` |
+| `activation` | `reader-panel`（用户打开面板）、`persistent-import`（持久导入／主动重导入）、`book-metadata`（书籍信息中的主动识别）或 `library-import`（主动网页导入／系统分享），同时支持上述值的非空数组；保留旧单值兼容 |
+| `format` | `EPUB`、`PDF`、`WEB`、`MD`、`MOBI`、`AZW`、`AZW3`、`CBZ`、`FB2`、`FBZ`、`TXT`，或这些值的非空数组；兼容旧单值清单，仅描述实际支持的格式。对话支持 EPUB／MD，导图仍仅 EPUB；元数据插件为现有本机书籍格式读取基础元数据，版权页文字与本机 OCR 识别以 EPUB／PDF 为首版范围 |
+| `capabilities` | 最多四项：`reading-harness`、`model-provider`、`verified-sources`、`local-pdf-contents`、`local-book-metadata`、`web-page-capture` |
 
 未知字段会被拒绝；没有 `main`、远程 URL 或可执行路径字段。能力列表描述可信源码的依赖，不是向外部代码发放的权限，也不构成安全沙箱。开关仍只接受内置已知 ID；外部清单不能通过设置字段加入加载表。草案改变时须同步示例、内置清单及契约测试，破坏兼容性的变更提升 API 版本。
 
@@ -28,6 +28,14 @@
 5. 用原创材料和隔离存储验证按需加载、停用取消、迟到结果、保存失败、重开历史与设置导航。更新设计及进度中的真实验收边界。
 
 当前 `defineBundledPlugin` 只供可信源码构建使用，不是外部注册 API。新增内置插件需代码审查及应用重建。
+
+## 书籍元数据识别
+
+`metadataRecognition` 声明 `book-metadata`／`persistent-import` 和 `local-book-metadata`，不进入阅读器右侧标签。书籍信息打开时只读本机候选缓存；点击识别或扩大页数后才读取原书。插件缺省启用，独立偏好 `metadataRecognitionOnImport` 缺省关闭，只有明确开启后才在持久导入成功、导入解析器释放后排队识别；启用插件或打开内部设置均不启动任务。
+
+主动与自动识别共用单任务有界队列，排队项只保存书籍描述，轮到任务后再打开原书；本机 OCR 继续复用核心的资源准入。候选侧存绑定完整文件指纹，并与当前书籍信息、原始文件名和个人修改分开。识别成功不直接改写书名、作者等字段；确认、编辑或忽略候选在现有书籍信息中完成，采用与来源跳转均通过核心重新核验原书。联网补全与模型调用不在首版范围内。
+
+任务入口复用 `runPluginTask`。停用立即取消活动与排队任务，拒绝迟到结果；重新启用不续跑，已存候选、已确认信息及个人数据保留。成功持久保存候选后发布本机 `book-metadata-recognized` 事件，载荷仅含 `{ bookHash }`，供已打开的书籍信息按身份刷新缓存。
 
 ## 网页导入
 

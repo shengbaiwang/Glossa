@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-metadata-recognize-image"
+description = "Enables the metadata_recognize_image command without any pre-configured scope."
+commands.allow = ["metadata_recognize_image"]
+
+[[permission]]
+identifier = "deny-metadata-recognize-image"
+description = "Denies the metadata_recognize_image command without any pre-configured scope."
+commands.deny = ["metadata_recognize_image"]

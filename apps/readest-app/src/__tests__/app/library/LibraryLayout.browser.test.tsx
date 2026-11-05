@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import GroupItem from '@/app/library/components/GroupItem';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { page, userEvent } from 'vitest/browser';
+import { page, userEvent, commands } from 'vitest/browser';
 import BookItem from '@/app/library/components/BookItem';
 import RecentShelf from '@/app/library/components/RecentShelf';
 import LibraryHeader from '@/app/library/components/LibraryHeader';
@@ -14,7 +14,17 @@ import '@/styles/glossa.css';
 import '@/styles/glossa-library.css';
 import '@/styles/glossa-desktop.css';
 
-const mocks = vi.hoisted(() => ({ settings: vi.fn(), details: vi.fn(), search: '' }));
+const mocks = vi.hoisted(() => ({
+  settings: vi.fn(),
+  details: vi.fn(),
+  navigate: vi.fn(),
+  search: '',
+  insets: { top: 0, right: 0, bottom: 0, left: 0 },
+}));
+vi.mock('@/utils/nav', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/utils/nav')>()),
+  navigateToLibrary: (...args: unknown[]) => mocks.navigate(...args),
+}));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({}),
   useSearchParams: () => new URLSearchParams(mocks.search),
@@ -34,7 +44,7 @@ vi.mock('@/hooks/useMedianPageDurationSecs', () => ({
   useMedianPageDurationSecs: () => undefined,
 }));
 vi.mock('@/store/themeStore', () => ({
-  useThemeStore: () => ({ safeAreaInsets: { top: 0, right: 0, bottom: 0, left: 0 } }),
+  useThemeStore: () => ({ safeAreaInsets: mocks.insets }),
 }));
 vi.mock('@/store/libraryStore', () => ({
   useLibraryStore: () => ({ library: [], currentBookshelf: [] }),
@@ -108,14 +118,17 @@ it.each([
   }
 });
 
-it('places group expansion before its icon and reserves scrollbar space in both directions', async () => {
+it('places group expansion before its icon and hides the scrollbar in both directions', async () => {
   await page.viewport(1100, 380);
   document.documentElement.setAttribute('data-page', 'library');
   document.documentElement.setAttribute('data-theme', 'default-light');
   const { container } = render(<LibraryPreview />);
   const scroller = container.querySelector<HTMLElement>('.glossa-library-navigation-categories')!;
   scroller.style.overflowY = 'scroll';
-  expect(getComputedStyle(scroller).scrollbarGutter).toBe('stable');
+  expect(getComputedStyle(scroller).scrollbarWidth).toBe('none');
+  expect(getComputedStyle(scroller, '::-webkit-scrollbar').display).toBe('none');
+  scroller.scrollTop = 40;
+  expect(scroller.scrollTop).toBeGreaterThan(0);
   for (const dir of ['ltr', 'rtl']) {
     document.documentElement.dir = dir;
     const row = container.querySelector('[data-folder-row="历史"]')!;
@@ -252,6 +265,7 @@ afterEach(() => {
   document.body.classList.remove('bg-base-100', 'text-base-content');
   vi.clearAllMocks();
   mocks.search = '';
+  localStorage.removeItem('glossa-library-sidebar-width');
   for (const attr of ['dir', 'data-theme', 'data-eink', 'data-page'])
     document.documentElement.removeAttribute(attr);
 });
@@ -265,7 +279,7 @@ it('separates direct folders from the library and metadata with quiet, compact r
   const browse = screen.getByRole('region', { name: 'Browse' });
   const selected = screen.getByRole('button', { name: 'Tags' });
   const regular = screen.getByRole('button', { name: 'Authors' });
-  const groups = screen.getByRole('region', { name: 'My Groups' });
+  const groups = screen.getByRole('region', { name: 'All Groups' });
   expect(groups.getBoundingClientRect().top - library.getBoundingClientRect().bottom).toBe(24);
   expect(browse.getBoundingClientRect().top - groups.getBoundingClientRect().bottom).toBe(24);
   expect(getComputedStyle(regular).fontWeight).toBe('400');
@@ -582,4 +596,50 @@ it('keeps mixed fit covers aligned and changes columns with the content width', 
       path: `../../../../../../.glossa-dev/qa/library-fit-stack-${theme}.png`,
     });
   }
+});
+
+it('opens All Groups on click and keeps group actions in the context menu', async () => {
+  await page.viewport(1100, 780);
+  document.documentElement.setAttribute('data-page', 'library');
+  render(<LibraryPreview />);
+  await page.getByRole('button', { name: 'All Groups', exact: true }).click();
+  const query = new URLSearchParams(mocks.navigate.mock.lastCall?.[1]);
+  expect(query.get('groupBy')).toBe('group');
+  expect(query.get('group')).toBe('');
+  expect(query.get('section')).toBe('all-groups');
+  expect(screen.queryByRole('menu')).toBeNull();
+  const heading = screen.getByRole('button', { name: /^All Groups$/ });
+  heading.focus();
+  await userEvent.keyboard('{Shift>}{F10}{/Shift}');
+  expect(screen.getByRole('menuitem', { name: 'New group' })).toBeTruthy();
+});
+
+it('resizes the sidebar from its edge, persists width and supports keyboard and RTL', async () => {
+  await page.viewport(1100, 780);
+  document.documentElement.setAttribute('data-page', 'library');
+  const { unmount } = render(<LibraryPreview />);
+  const nav = screen.getByRole('navigation', { name: 'Library' });
+  const edge = screen.getByRole('separator', { name: 'Resize sidebar' });
+  const initial = nav.getBoundingClientRect().width;
+  const rect = edge.getBoundingClientRect();
+  await commands.dragPDFText(
+    { x: rect.x + rect.width / 2, y: rect.y + 80 },
+    { x: rect.x + rect.width / 2 + 90, y: rect.y + 80 },
+  );
+  expect(nav.getBoundingClientRect().width).toBeCloseTo(initial + 90, 0);
+  expect(Number(localStorage.getItem('glossa-library-sidebar-width'))).toBeCloseTo(initial + 90, 0);
+  edge.focus();
+  await userEvent.keyboard('{ArrowRight}');
+  expect(nav.getBoundingClientRect().width).toBeCloseTo(initial + 100, 0);
+  document.documentElement.dir = 'rtl';
+  await userEvent.keyboard('{ArrowLeft}');
+  expect(nav.getBoundingClientRect().width).toBeCloseTo(initial + 110, 0);
+  const saved = nav.getBoundingClientRect().width;
+  unmount();
+  render(<LibraryPreview />);
+  expect(screen.getByRole('navigation', { name: 'Library' }).getBoundingClientRect().width).toBe(
+    saved,
+  );
+  await page.viewport(390, 780);
+  expect(screen.queryByRole('separator', { name: 'Resize sidebar' })).toBeNull();
 });

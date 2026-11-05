@@ -4,6 +4,7 @@ import { OFFICIAL_MODULES, type OfficialModuleId } from '@/glossa/modules/regist
 import { useTranslation } from '@/hooks/useTranslation';
 import OfficialModuleSettings from './OfficialModuleSettings';
 import PDFContentsSettings from './PDFContentsSettings';
+import MetadataRecognitionSettings from './MetadataRecognitionSettings';
 import { BoxedList, SettingsRow } from './primitives';
 
 const ModelSettingsPanel = lazy(() => import('@/glossa/ui/ModelSettingsPanel'));
@@ -78,7 +79,8 @@ export default function PluginsPanel({
               <BoxedList>
                 <SettingsRow label={_('Save web articles to your library for offline reading.')} />
               </BoxedList>
-            ) : selected === 'pdfAutoContents' ? null : selected === 'conversation' &&
+            ) : selected === 'pdfAutoContents' ||
+              selected === 'metadataRecognition' ? null : selected === 'conversation' &&
               section === 'prompts' ? (
               <PromptSettingsPanel />
             ) : (
@@ -89,6 +91,9 @@ export default function PluginsPanel({
       ) : null}
       <div hidden={selected !== 'pdfAutoContents'}>
         <PDFContentsSettings />
+      </div>
+      <div hidden={selected !== 'metadataRecognition'}>
+        <MetadataRecognitionSettings />
       </div>
       <div hidden={Boolean(module)} className='space-y-6'>
         <OfficialModuleSettings

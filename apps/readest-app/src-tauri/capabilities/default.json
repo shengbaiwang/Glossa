@@ -236,6 +236,8 @@
     "allow-pdf-clear-legacy-caches",
     "allow-pdf-read-ocr-page",
     "allow-pdf-start-ocr",
+    "allow-metadata-recognize-image",
+    "allow-metadata-cancel-image-ocr",
     "allow-pdf-ocr-status",
     "allow-pdf-cancel-ocr",
     "allow-pdf-save-outline",

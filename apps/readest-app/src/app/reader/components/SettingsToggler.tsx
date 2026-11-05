@@ -6,6 +6,7 @@ import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
 import Button from '@/components/Button';
+import { recordLibraryDiagnostic } from '@/utils/libraryDiagnostics';
 
 interface SettingsTogglerProps {
   bookKey: string;
@@ -25,6 +26,7 @@ const SettingsToggler: React.FC<SettingsTogglerProps> = ({ bookKey }) => {
   const isOpen =
     isSettingsDialogOpen && settingsDialogScope === 'reading' && settingsDialogBookKey === bookKey;
   const handleToggleSettings = () => {
+    recordLibraryDiagnostic('reading-settings-toggle', { open: !isOpen });
     setHoveredBookKey('');
     if (isOpen) setSettingsDialogOpen(false);
     else openSettingsDialog('reading', bookKey);

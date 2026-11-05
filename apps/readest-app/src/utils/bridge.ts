@@ -419,6 +419,14 @@ export async function getSecureItem(request: GetSecureItemRequest): Promise<GetS
   });
 }
 
+/** Metadata only; never retrieves credentials or authorizes their use. */
+export async function getSecureItemStatus(request: GetSecureItemRequest): Promise<{
+  status: 'present' | 'missing' | 'unavailable';
+  error?: string;
+}> {
+  return invoke('plugin:native-bridge|get_secure_item_status', { payload: request });
+}
+
 export async function clearSecureItem(request: GetSecureItemRequest): Promise<SecureItemResponse> {
   return invoke<SecureItemResponse>('plugin:native-bridge|clear_secure_item', { payload: request });
 }

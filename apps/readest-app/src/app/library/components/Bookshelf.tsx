@@ -28,6 +28,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { removalScope } from '@/services/appBookRemoval';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useLibraryFolders } from '../hooks/useLibraryFolders';
+import { booksInFolders } from '../utils/libraryFolders';
 import { useLibraryClipboard } from '../hooks/useLibraryClipboard';
 import { useLibraryItemDrop } from '../hooks/useLibraryItemDrop';
 import {
@@ -245,6 +246,8 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const queryTerm = searchParams?.get('q')?.trim() || null;
   const { viewMode, sortBy, groupBy, thenSortBy, isAscending, isThenAscending, coverFit } =
     resolveLibraryDisplay(settings, searchParams);
+  const allGroups =
+    groupBy === LibraryGroupByType.Group && searchParams?.get('section') === 'all-groups';
   const sortOrder = isAscending ? 'asc' : 'desc';
   const thenSortOrder = isThenAscending ? 'asc' : 'desc';
   const showTimeRemaining =
@@ -257,7 +260,9 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const [importBookUrl] = useState(searchParams?.get('url') || '');
 
   const deletionController = useRef<AbortController | null>(null);
+  const [folderDeletionError, setFolderDeletionError] = useState('');
   const [groupPathsToDelete, setGroupPathsToDelete] = useState<string[]>([]);
+  const groupBooksToDelete = useRef<{ hash: string; path: string }[]>([]);
   const [deletionProgress, setDeletionProgress] = useState<RemovalResult | null>(null);
   useEffect(() => () => deletionController.current?.abort(), []);
   const isImportingBook = useRef(false);
@@ -279,16 +284,9 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const [creatingFolder, setCreatingFolder] = useState<string | null>(null);
   const [creatingWithItems, setCreatingWithItems] = useState<LibraryTransfer | null>(null);
   const [folderMenu, setFolderMenu] = useState<{ x: number; y: number } | null>(null);
-  const [deletingFolder, setDeletingFolder] = useState<string | null>(null);
   const removeFolder = async (path: string) => {
-    if (
-      folders.paths.some((p) => p.startsWith(`${path}/`)) ||
-      useLibraryStore.getState().library.some((book) => !book.deletedAt && book.groupName === path)
-    ) {
-      setDeletingFolder(path);
-      return false;
-    }
-    return folders.remove(path);
+    beginDeletion([md5Fingerprint(path)]);
+    return false;
   };
   const createFolder = async (parent: string, name: string) => {
     const path = creatingWithItems
@@ -366,12 +364,17 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       if (groupId && !manualGroupName) {
         return [];
       }
-      return generateBookshelfItems(filteredShelfBooks, groupName, queryTerm ? [] : folders.paths);
+      const items = generateBookshelfItems(
+        filteredShelfBooks,
+        groupName,
+        queryTerm ? [] : folders.paths,
+      );
+      return allGroups && !groupId ? items.filter((item) => 'books' in item) : items;
     } else {
       if (groupId) return filteredShelfBooks;
       return createBookGroups(filteredShelfBooks, groupBy);
     }
-  }, [filteredShelfBooks, groupBy, groupId, manualGroupName, queryTerm, folders.paths]);
+  }, [filteredShelfBooks, groupBy, groupId, manualGroupName, queryTerm, folders.paths, allGroups]);
 
   useEffect(() => {
     if (remappedGroup !== undefined) {
@@ -544,7 +547,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   // Navigation starts a fresh selection; progress refreshes preserve it.
   useEffect(() => {
     clearSelection();
-  }, [groupId, groupBy, queryTerm, clearSelection]);
+  }, [groupId, groupBy, queryTerm, allGroups, clearSelection]);
 
   // Only explicitly selected book identities are removed; groups never expand here.
   const getBooksToDelete = () => {
@@ -552,20 +555,34 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     return libraryBooks.filter((book) => wanted.has(book.hash) && !book.deletedAt);
   };
 
-  const confirmDelete = async () => {
-    if (deletionController.current) return;
+  const confirmDelete = async (includeGroupBooks = false) => {
+    if (deletionController.current) return false;
     const controller = new AbortController();
     deletionController.current = controller;
+    setFolderDeletionError('');
     try {
-      if (groupPathsToDelete.length) {
-        if (!(await folders.removeMany(groupPathsToDelete)))
-          throw new Error('Group removal failed');
-        setGroupPathsToDelete([]);
+      const current = useLibraryStore.getState().library;
+      const contained = booksInFolders(current, groupPathsToDelete);
+      if (includeGroupBooks) {
+        const expected = new Map(groupBooksToDelete.current.map((book) => [book.hash, book.path]));
+        if (
+          contained.some((book) => expected.get(book.hash) !== (book.groupName ?? '')) ||
+          current.some(
+            (book) =>
+              !book.deletedAt &&
+              expected.has(book.hash) &&
+              expected.get(book.hash) !== (book.groupName ?? ''),
+          )
+        ) {
+          setFolderDeletionError(_('These items have changed. Select them again.'));
+          throw new Error('These items have changed. Select them again.');
+        }
       }
-      const wanted = new Set(bookIdsToDelete);
-      const books = useLibraryStore
-        .getState()
-        .library.filter((book) => wanted.has(book.hash) && !book.deletedAt);
+      const wanted = new Set([
+        ...bookIdsToDelete,
+        ...(includeGroupBooks ? groupBooksToDelete.current.map((book) => book.hash) : []),
+      ]);
+      const books = current.filter((book) => wanted.has(book.hash) && !book.deletedAt);
       if (books.length) {
         if (onRemoveBooks) {
           const result = await onRemoveBooks(books, {
@@ -573,6 +590,8 @@ const Bookshelf: React.FC<BookshelfProps> = ({
             onProgress: setDeletionProgress,
           });
           setSelectedBooks([...result.failed, ...result.pending]);
+          if (result.failed.length || result.pending.length)
+            throw new Error('Book removal incomplete');
         } else {
           const remaining: string[] = [];
           for (const book of books) {
@@ -581,9 +600,16 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           }
           setSelectedBooks(remaining);
           await handlePushLibrary();
+          if (remaining.length) throw new Error('Book removal incomplete');
         }
-      } else setSelectedBooks([]);
+      }
+      // Keep the containers available when deletion is stopped or a file fails.
+      if (controller.signal.aborted) throw new Error('Book removal stopped');
+      if (groupPathsToDelete.length && !(await folders.removeMany(groupPathsToDelete)))
+        throw new Error('Group removal failed');
+      setSelectedBooks([]);
       setShowDeleteAlert(false);
+      return true;
     } finally {
       deletionController.current = null;
     }
@@ -591,20 +617,27 @@ const Bookshelf: React.FC<BookshelfProps> = ({
 
   const beginDeletion = (ids: string[]) => {
     const wanted = new Set(ids);
-    const groups =
-      groupBy === LibraryGroupByType.Group
-        ? sortedBookshelfItems.flatMap((item) =>
-            'books' in item && wanted.has(item.id) ? [item.name] : [],
-          )
-        : [];
-    // A selected container is dissolved. It never expands implicitly into book deletion.
-    const books = libraryBooks.filter((book) => wanted.has(book.hash) && !book.deletedAt);
+    // Resolve catalog paths too: a sidebar group need not be on the current shelf.
+    const groups = folders.paths.filter((path) => wanted.has(md5Fingerprint(path)));
+    const current = useLibraryStore.getState().library;
+    const books = current.filter((book) => wanted.has(book.hash) && !book.deletedAt);
     if (!groups.length && !books.length) return;
+    groupBooksToDelete.current = booksInFolders(current, groups).map((book) => ({
+      hash: book.hash,
+      path: book.groupName ?? '',
+    }));
+    setFolderDeletionError('');
     setGroupPathsToDelete(groups);
     setBookIdsToDelete(books.map((book) => book.hash));
     setDeletionProgress(null);
     setShowDeleteAlert(true);
   };
+  useEffect(() => {
+    const pending = useLibraryTransfer.getState().pendingDeleteIds;
+    if (!pending?.length) return;
+    useLibraryTransfer.setState({ pendingDeleteIds: undefined });
+    beginDeletion(pending);
+  }, []);
   const deleteSelectedBooks = async () => beginDeletion(getSelectedBooks());
 
   const groupSelectedBooks = () => {
@@ -640,7 +673,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     return () => {
       eventDispatcher.off('delete-books', handleDeleteBooksIntent);
     };
-  }, [sortedBookshelfItems]);
+  }, [sortedBookshelfItems, folders.paths]);
 
   useEffect(() => {
     const move = () => {
@@ -798,7 +831,11 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   // A top-level quick-resume strip: hidden while searching, inside a group, or
   // when nothing has been read yet. Selection is shared with the main collection.
   const showRecentShelf =
-    settings.libraryRecentShelfEnabled && !queryTerm && !groupId && recentBooks.length > 0;
+    settings.libraryRecentShelfEnabled &&
+    !allGroups &&
+    !queryTerm &&
+    !groupId &&
+    recentBooks.length > 0;
 
   const recentShelfHeader = useMemo(
     () =>
@@ -845,11 +882,14 @@ const Bookshelf: React.FC<BookshelfProps> = ({
         ? _('Search Results')
         : groupId
           ? null
-          : groupBy === LibraryGroupByType.None || groupBy === LibraryGroupByType.Group
-            ? _('All books')
-            : _(getLibraryCategoryLabel(groupBy)),
+          : allGroups
+            ? _('All Groups')
+            : groupBy === LibraryGroupByType.None || groupBy === LibraryGroupByType.Group
+              ? _('All books')
+              : _(getLibraryCategoryLabel(groupBy)),
       collectionCount:
-        !groupId && groupBy !== LibraryGroupByType.None && groupBy !== LibraryGroupByType.Group
+        !groupId &&
+        (allGroups || (groupBy !== LibraryGroupByType.None && groupBy !== LibraryGroupByType.Group))
           ? _('{{count}} groups', {
               count: currentBookshelfItems.filter((item) => 'books' in item).length,
             })
@@ -874,6 +914,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       settings.libraryListScale,
       recentShelfHeader,
       queryTerm,
+      allGroups,
       groupId,
       groupBy,
       filteredShelfBooks.length,
@@ -1189,13 +1230,6 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           ]}
         />
       )}
-      {deletingFolder !== null && (
-        <FolderDeleteDialog
-          path={deletingFolder}
-          onConfirm={() => folders.remove(deletingFolder)}
-          onClose={() => setDeletingFolder(null)}
-        />
-      )}
       {!contentSearch?.query.trim() && queryTerm && (
         <div className='flex shrink-0 justify-center px-4 pb-2'>
           <button
@@ -1241,7 +1275,9 @@ const Bookshelf: React.FC<BookshelfProps> = ({
                   <h2>
                     {_(
                       groupBy === LibraryGroupByType.Group && !queryTerm
-                        ? 'This folder is empty'
+                        ? allGroups && !groupId
+                          ? 'No groups yet'
+                          : 'This folder is empty'
                         : 'No books found',
                     )}
                   </h2>
@@ -1249,10 +1285,14 @@ const Bookshelf: React.FC<BookshelfProps> = ({
                     <button
                       type='button'
                       className='glossa-folder-action'
-                      onClick={(event) => handleImportBooks(event.currentTarget)}
+                      onClick={(event) =>
+                        allGroups && !groupId
+                          ? setCreatingFolder('')
+                          : handleImportBooks(event.currentTarget)
+                      }
                     >
                       <Plus size={18} />
-                      {_('Import Books')}
+                      {_(allGroups && !groupId ? 'New group' : 'Import Books')}
                     </button>
                   )}
                 </div>
@@ -1314,26 +1354,16 @@ const Bookshelf: React.FC<BookshelfProps> = ({
           />
         </ModalPortal>
       )}
-      {showDeleteAlert && (
-        <ModalPortal>
-          <DeleteConfirmAlert
-            destructive
-            title={_(groupPathsToDelete.length ? 'Delete selection?' : 'Delete books?')}
-            message={
-              groupPathsToDelete.length
-                ? _(
-                    'Dissolve {{groups}} group(s) and delete {{books}} selected book(s). Other books stay in the library.',
-                    { groups: groupPathsToDelete.length, books: getBooksToDelete().length },
-                  )
-                : _(
-                    'You can restore these {{count}} book(s) and their reading data from Recently Deleted.',
-                    { count: getBooksToDelete().length },
-                  )
+      {showDeleteAlert &&
+        (groupPathsToDelete.length ? (
+          <FolderDeleteDialog
+            paths={groupPathsToDelete}
+            errorMessage={folderDeletionError}
+            books={getBooksToDelete()}
+            containedBookCount={
+              groupBooksToDelete.current.filter((book) => !bookIdsToDelete.includes(book.hash))
+                .length
             }
-            books={[
-              ...groupPathsToDelete.map((path) => ({ hash: `group:${path}`, title: path })),
-              ...getBooksToDelete(),
-            ]}
             scope={
               deletionProgress
                 ? _('Completed {{done}} · Failed {{failed}} · Not started {{pending}}', {
@@ -1343,12 +1373,39 @@ const Bookshelf: React.FC<BookshelfProps> = ({
                   })
                 : removalScope(settings, _)
             }
-            onCancel={() => setShowDeleteAlert(false)}
+            onClose={() => setShowDeleteAlert(false)}
             onStop={() => deletionController.current?.abort()}
             onConfirm={confirmDelete}
           />
-        </ModalPortal>
-      )}
+        ) : (
+          <ModalPortal>
+            <DeleteConfirmAlert
+              destructive
+              title={_('Delete books?')}
+              message={_(
+                'You can restore these {{count}} book(s) and their reading data from Recently Deleted.',
+                {
+                  count: getBooksToDelete().length,
+                },
+              )}
+              books={getBooksToDelete()}
+              scope={
+                deletionProgress
+                  ? _('Completed {{done}} · Failed {{failed}} · Not started {{pending}}', {
+                      done: deletionProgress.completed.length,
+                      failed: deletionProgress.failed.length,
+                      pending: deletionProgress.pending.length,
+                    })
+                  : removalScope(settings, _)
+              }
+              onCancel={() => setShowDeleteAlert(false)}
+              onStop={() => deletionController.current?.abort()}
+              onConfirm={async () => {
+                await confirmDelete();
+              }}
+            />
+          </ModalPortal>
+        ))}
     </div>
   );
 };

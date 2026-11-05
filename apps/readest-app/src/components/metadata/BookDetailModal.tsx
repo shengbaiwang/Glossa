@@ -376,6 +376,7 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
                 fileSize={fileSize}
                 shareEnabled={shareEnabled}
                 onInlineEdit={handleBookMetadataUpdate ? handleInlineEdit : undefined}
+                onMetadataApply={storedBook ? bookEdits.applyMetadata : undefined}
                 onSend={
                   appService &&
                   (appService.isMacOSApp || appService.isIOSApp || appService.isAndroidApp)

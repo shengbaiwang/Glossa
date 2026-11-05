@@ -66,7 +66,7 @@ it.each([
     </main>,
   );
   const cards = [...view.container.querySelectorAll('.glossa-plugin-card')];
-  expect(cards).toHaveLength(4);
+  expect(cards).toHaveLength(5);
   if (fixture.width === 760) {
     expect(cards[0]!.getBoundingClientRect().top).toBe(cards[1]!.getBoundingClientRect().top);
     expect(cards[0]!.getBoundingClientRect().left).not.toBe(cards[1]!.getBoundingClientRect().left);
@@ -106,6 +106,20 @@ it.each([
   await userEvent.click(onImport);
   await waitFor(() => expect(onImport.disabled).toBe(false));
   expect(onImport.checked).toBe(false);
+  expect(useSettingsStore.getState().settings.officialModules).toBeUndefined();
+  await userEvent.click(screen.getByRole('button', { name: '返回插件' }));
+  await userEvent.click(
+    screen.getByRole('button', {
+      name: `${zh['Metadata recognition'] ?? 'Metadata recognition'} - 设置`,
+    }),
+  );
+  const metadataOnImport = screen.getByRole('checkbox', {
+    name: zh['Recognize metadata on import'] ?? 'Recognize metadata on import',
+  }) as HTMLInputElement;
+  expect(metadataOnImport.checked).toBe(false);
+  await userEvent.click(metadataOnImport);
+  await waitFor(() => expect(metadataOnImport.disabled).toBe(false));
+  expect(metadataOnImport.checked).toBe(true);
   expect(useSettingsStore.getState().settings.officialModules).toBeUndefined();
   expect(f.providerSave).not.toHaveBeenCalled();
   expect(f.models).not.toHaveBeenCalled();

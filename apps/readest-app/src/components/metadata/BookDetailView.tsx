@@ -13,6 +13,8 @@ import {
 import { Book } from '@/types/book';
 import { BookMetadata } from '@/libs/document';
 import InlineTextEditor from '@/components/InlineTextEditor';
+import MetadataRecognition from './MetadataRecognition';
+import type { MetadataPatch } from '@/glossa/metadata/confirm';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useEnv } from '@/context/EnvContext';
@@ -38,6 +40,7 @@ interface BookDetailViewProps {
   shareEnabled?: boolean;
   onEdit?: () => void;
   onInlineEdit?: (field: 'title' | 'author' | 'tags', value: string) => Promise<boolean>;
+  onMetadataApply?: (expected: Book, patch: MetadataPatch) => Promise<boolean>;
   onSend?: () => void;
   onDelete?: () => void;
   onDeleteLocalCopy?: () => void;
@@ -55,6 +58,7 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
   shareEnabled,
   onEdit,
   onInlineEdit,
+  onMetadataApply,
   onSend,
   onDelete,
   onDeleteLocalCopy,
@@ -88,6 +92,12 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
   // Export and Share both read the book file off disk; `fileSize` is only
   // non-null when getBookFileSize could actually open the local copy.
   const hasLocalFile = fileSize !== null;
+  const publishedDate = metadata?.published;
+  // A bibliographic year/month is not a complete date; never invent January 1.
+  const publishedLabel =
+    publishedDate && /^\d{4}(?:-\d{2})?$/.test(publishedDate)
+      ? publishedDate
+      : formatDate(publishedDate, true);
 
   const toggleSeriesCollapse = () => {
     saveSysSettings(envConfig, 'metadataSeriesCollapsed', !settings.metadataSeriesCollapsed);
@@ -215,6 +225,7 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
         </div>
       </div>
 
+      {onMetadataApply && <MetadataRecognition book={book} onApply={onMetadataApply} />}
       <div className='text-base-content my-4'>
         <div className='metadata-others'>
           <button
@@ -244,9 +255,7 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
                 </div>
                 <div className='overflow-hidden pe-1 text-end sm:text-start'>
                   <span className='font-bold'>{_('Published')}</span>
-                  <p className='text-neutral-content text-sm'>
-                    {formatDate(metadata?.published, true) || _('Unknown')}
-                  </p>
+                  <p className='text-neutral-content text-sm'>{publishedLabel || _('Unknown')}</p>
                 </div>
                 <div className='overflow-hidden'>
                   <span className='font-bold'>{_('Updated')}</span>
@@ -291,6 +300,18 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
                     {metadata?.identifier || _('Unknown')}
                   </p>
                 </div>
+                {metadata?.translator && (
+                  <div className='overflow-hidden'>
+                    <span className='font-bold'>{_('Translator')}</span>
+                    <p className='text-neutral-content text-sm'>{metadata.translator}</p>
+                  </div>
+                )}
+                {metadata?.isbn && (
+                  <div className='overflow-hidden'>
+                    <span className='font-bold'>ISBN</span>
+                    <p className='text-neutral-content text-sm'>{metadata.isbn}</p>
+                  </div>
+                )}
                 {/*
                   Calibre custom columns embedded in the OPF (#4811). Column
                   names are user content, not translation keys. The identifier

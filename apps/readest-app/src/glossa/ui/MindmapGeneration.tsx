@@ -25,6 +25,8 @@ const errorText = (error: unknown) =>
 
 function useMapGeneration() {
   const [config, setConfig] = useState<ProviderConfig | null>(null);
+  // Display names may change without invalidating generation or saved progress.
+  const [requestConfig, setRequestConfig] = useState<ProviderConfig | null>(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -37,13 +39,27 @@ function useMapGeneration() {
   useEffect(() => {
     let alive = true,
       revision = 0;
+    let previous = '';
     const refresh = async () => {
       const ticket = ++revision;
-      cancel();
-      const next = getActiveProviderConfig();
+      const next = getActiveProviderConfig('mindmap');
+      const identity = JSON.stringify(
+        next && [
+          next.id,
+          next.baseUrl,
+          next.model,
+          next.reasoningEffort,
+          next.maxTokens,
+          next.capabilityOverrides,
+        ],
+      );
+      if (identity !== previous) {
+        cancel();
+        setRequestConfig(next);
+      }
+      previous = identity;
       setConfig(next);
       setReady(false);
-      setError('');
       if (!next) return;
       try {
         const status = await getProviderStatus(next);
@@ -61,14 +77,14 @@ function useMapGeneration() {
     };
   }, []);
   const run = async (work: (config: ProviderConfig, signal: AbortSignal) => Promise<void>) => {
-    if (!config || !ready || busy) return;
+    if (!requestConfig || !ready || busy) return;
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
     setBusy(true);
     setError('');
     try {
-      await work(config, controller.signal);
+      await work(requestConfig, controller.signal);
     } catch (cause) {
       if (!controller.signal.aborted) setError(errorText(cause));
     } finally {
@@ -79,7 +95,7 @@ function useMapGeneration() {
     const settings = useSettingsStore.getState();
     settings.openSettingsDialog('application', '', 'Models');
   };
-  return { config, ready, busy, error, run, cancel, openSettings };
+  return { config, requestConfig, ready, busy, error, run, cancel, openSettings };
 }
 
 export default function MindmapGeneration(
@@ -135,7 +151,7 @@ function OverviewForm(
     setResumeError('');
     setSavedFailure('');
     const read = async () => {
-      if (!model.config || (props.kind === 'chapter' && !chapterId)) {
+      if (!model.requestConfig || (props.kind === 'chapter' && !chapterId)) {
         setProgress(null);
         setChecking(false);
         return;
@@ -145,7 +161,7 @@ function OverviewForm(
           bookId: props.book.hash,
           title,
           target: props.kind === 'book' ? { kind: 'book' } : { kind: 'chapter', chapterId },
-          config: model.config,
+          config: model.requestConfig,
         });
         const { checkpoint } = await mapCheckpointStore.load(key, {
           bookId: props.book.hash,
@@ -182,7 +198,7 @@ function OverviewForm(
       alive = false;
     };
   }, [
-    model.config,
+    model.requestConfig,
     model.busy,
     props.book.hash,
     props.kind,
@@ -192,7 +208,7 @@ function OverviewForm(
   ]);
   useEffect(() => {
     setResult(null);
-  }, [model.config, props.book.hash, chapterId]);
+  }, [model.requestConfig, props.book.hash, chapterId]);
   const generate = (restart = false) =>
     model.run(async (config, signal) => {
       if (!access) return;
@@ -243,6 +259,7 @@ function OverviewForm(
       )}
       {!access && <p role='status'>{_('Reading ranges are available for reflowable EPUBs.')}</p>}
       <ConversationModelPicker
+        purpose='mindmap'
         config={model.config}
         ready={model.ready}
         openSettings={model.openSettings}
@@ -350,6 +367,7 @@ export function BranchGeneration(
     >
       <strong dir='auto'>{node?.label}</strong>
       <ConversationModelPicker
+        purpose='mindmap'
         config={model.config}
         ready={model.ready}
         openSettings={model.openSettings}

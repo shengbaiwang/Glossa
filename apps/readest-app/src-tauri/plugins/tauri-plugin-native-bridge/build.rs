@@ -40,6 +40,7 @@ const COMMANDS: &[&str] = &[
     "clip_url",
     "set_secure_item",
     "get_secure_item",
+    "get_secure_item_status",
     "clear_secure_item",
     "refresh_eink_screen",
     "update_reading_widget",
@@ -51,6 +52,8 @@ const COMMANDS: &[&str] = &[
 ];
 
 fn main() {
+    println!("cargo:rerun-if-env-changed=GLOSSA_SIGNING_FINGERPRINT");
+    println!("cargo:rerun-if-env-changed=GLOSSA_CREDENTIAL_HELPER_CDHASH");
     tauri_plugin::Builder::new(COMMANDS)
         .android_path("android")
         .ios_path("ios")

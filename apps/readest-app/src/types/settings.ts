@@ -360,6 +360,8 @@ export interface SystemSettings {
   officialModules?: import('@/glossa/plugins/registry').PluginPreferences;
   /** Optional plugin behavior; missing values preserve automatic import preparation. */
   pdfContentsOnImport?: boolean;
+  /** Explicitly opt in to local candidate recognition after durable imports. */
+  metadataRecognitionOnImport?: boolean;
   version: number;
   migrationVersion: number;
   localBooksDir: string;
