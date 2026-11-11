@@ -13,6 +13,7 @@ import recognized from '@/__tests__/fixtures/data/glossa-ocr-pages.json';
 declare module 'vitest/browser' {
   interface BrowserCommands {
     pressPDFSelectionKey(key: string): Promise<void>;
+    panPDFText(from: { x: number; y: number }, to: { x: number; y: number }): Promise<void>;
     clickPDFText(
       point: { x: number; y: number },
       shift?: boolean,
@@ -506,3 +507,48 @@ it('keeps the visible bitmap and OCR targets together during superseded page ren
     observer.disconnect();
   }
 });
+
+for (const scrolled of [false, true]) {
+  it(`pans over text with Space without selecting or changing page (${scrolled})`, async () => {
+    const bytes = await fetch('/src/__tests__/fixtures/data/glossa-reading-sample.pdf').then((r) =>
+      r.arrayBuffer(),
+    );
+    book = (await new DocumentLoader(new File([bytes], 'original.pdf')).open()).book;
+    view = document.createElement('foliate-view') as FoliateView;
+    view.style.cssText = 'display:block;width:600px;height:400px';
+    document.body.append(view);
+    await view.open(book);
+    view.renderer.setAttribute('spread', 'none');
+    view.renderer.setAttribute('zoom', 'original-size');
+    view.renderer.setAttribute('scale-factor', '200');
+    if (scrolled) view.renderer.setAttribute('flow', 'scrolled');
+    await view.goTo(1);
+    const r = view.renderer;
+    await expect
+      .poll(() =>
+        r
+          .getContents()
+          .find((c) => c.index === 1)
+          ?.doc.querySelector('.textLayer span'),
+      )
+      .toBeTruthy();
+    const doc = r.getContents().find((c) => c.index === 1)!.doc;
+    const word = doc.querySelector<HTMLElement>('.textLayer span')!;
+    const range = doc.createRange();
+    range.selectNodeContents(word);
+    const text = range.getBoundingClientRect();
+    const iframe = doc.defaultView!.frameElement!;
+    const frameRect = iframe.getBoundingClientRect();
+    const scale = frameRect.width / iframe.clientWidth;
+    const from = {
+      x: frameRect.left + (text.left + text.width / 2) * scale,
+      y: frameRect.top + (text.top + text.height / 2) * scale,
+    };
+    const before = { x: r.scrollLeft, y: r.scrollTop };
+    await commands.panPDFText(from, { x: from.x - 60, y: from.y - 40 });
+    expect(r.scrollLeft - before.x).toBeCloseTo(60, 0);
+    expect(r.scrollTop - before.y).toBeCloseTo(40, 0);
+    expect(doc.getSelection()?.toString() ?? '').toBe('');
+    expect(r.index).toBe(1);
+  });
+}

@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useCallback, useState, type CSSProperties } from 'react';
 import { BookCollection } from '@/components/GlossaIcons';
 import FolderNameEditor from './FolderNameEditor';
 import { useEnv } from '@/context/EnvContext';
@@ -31,10 +31,22 @@ const GroupItem: React.FC<GroupItemProps> = ({
   const _ = useTranslation();
   const { appService } = useEnv();
   const firstBook = group.books[0];
-  const [coverAspect, setCoverAspect] = useState<number | null>(null);
-  useEffect(() => {
-    setCoverAspect(null);
-  }, [firstBook?.hash, firstBook?.coverImageUrl, firstBook?.metadata?.coverImageUrl]);
+  const coverVersion =
+    firstBook?.coverHash || firstBook?.coverUpdatedAt
+      ? `${firstBook.coverHash ?? ''}:${firstBook.coverUpdatedAt ?? ''}`
+      : '';
+  const coverIdentity = JSON.stringify([
+    firstBook?.hash,
+    firstBook?.metadata?.coverImageUrl || firstBook?.coverImageUrl,
+    coverVersion,
+  ]);
+  const [loadedCover, setLoadedCover] = useState<{ identity: string; ratio: number } | null>(null);
+  const coverAspect = loadedCover?.identity === coverIdentity ? loadedCover.ratio : null;
+  const handleCoverAspect = useCallback(
+    (ratio: number) => setLoadedCover({ identity: coverIdentity, ratio }),
+    [coverIdentity],
+  );
+  const handleCoverError = useCallback(() => setLoadedCover(null), []);
   const coverStyle =
     mode === 'grid' && coverAspect
       ? {
@@ -117,8 +129,8 @@ const GroupItem: React.FC<GroupItemProps> = ({
                     isPreview
                     mode={mode}
                     coverFit='fit'
-                    onAspectRatioChange={index === 0 ? setCoverAspect : undefined}
-                    onImageError={index === 0 ? () => setCoverAspect(null) : undefined}
+                    onAspectRatioChange={index === 0 ? handleCoverAspect : undefined}
+                    onImageError={index === 0 ? handleCoverError : undefined}
                     imageClassName='rounded-[2px]'
                   />
                 </div>

@@ -57,8 +57,8 @@ describe('reader footer navigation', () => {
       hasPointerCapture: () => true,
     });
     fireEvent.pointerDown(slider);
-    fireEvent.change(slider, { target: { value: '45' } });
-    fireEvent.change(slider, { target: { value: '63' } });
+    fireEvent.input(slider, { target: { value: '45' } });
+    fireEvent.input(slider, { target: { value: '63' } });
     expect(slider.getAttribute('aria-valuetext')).toBe('63%');
     expect(config.navigationHandlers.onProgressChange).not.toHaveBeenCalled();
     fireEvent.pointerUp(slider);
@@ -114,7 +114,7 @@ describe('reader footer navigation', () => {
     render(<NavigationPanel {...config} bottomOffset='64px' forceMobileLayout />);
     const slider = screen.getByRole('slider');
     fireEvent.keyDown(slider, { key: 'ArrowRight' });
-    fireEvent.change(slider, { target: { value: '21' } });
+    fireEvent.input(slider, { target: { value: '21' } });
     expect(config.navigationHandlers.onProgressChange).not.toHaveBeenCalled();
     fireEvent.keyUp(slider, { key: 'ArrowRight' });
     expect(config.navigationHandlers.onProgressChange).toHaveBeenCalledExactlyOnceWith(21);

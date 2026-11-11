@@ -7,6 +7,7 @@ import PDFContentsSettings from './PDFContentsSettings';
 import MetadataRecognitionSettings from './MetadataRecognitionSettings';
 import { BoxedList, SettingsRow } from './primitives';
 
+const ReadingTimePanel = lazy(() => import('@/glossa/plugins/ReadingTimePanel'));
 const ModelSettingsPanel = lazy(() => import('@/glossa/ui/ModelSettingsPanel'));
 const PromptSettingsPanel = lazy(() => import('@/glossa/ui/PromptSettingsPanel'));
 export type PluginSettingsTarget = OfficialModuleId | 'models';
@@ -75,7 +76,9 @@ export default function PluginsPanel({
             </div>
           )}
           <Suspense fallback={<p role='status'>{_('Loading...')}</p>}>
-            {selected === 'webImport' ? (
+            {selected === 'readingTime' ? (
+              <ReadingTimePanel />
+            ) : selected === 'webImport' ? (
               <BoxedList>
                 <SettingsRow label={_('Save web articles to your library for offline reading.')} />
               </BoxedList>

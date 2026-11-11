@@ -124,6 +124,7 @@ export const CommandPaletteProvider: React.FC<CommandPaletteProviderProps> = ({ 
         toggleOpenLastBooks,
         showAbout,
         isDesktop,
+        isMacOSApp: appService?.isMacOSApp,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -137,6 +138,7 @@ export const CommandPaletteProvider: React.FC<CommandPaletteProviderProps> = ({ 
       toggleOpenLastBooks,
       showAbout,
       isDesktop,
+      appService?.isMacOSApp,
     ],
   );
 

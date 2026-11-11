@@ -575,6 +575,7 @@ export interface CommandRegistryOptions {
   toggleOpenLastBooks: () => void;
   showAbout: () => void;
   isDesktop: boolean;
+  isMacOSApp?: boolean;
   // TODO: add reader-specific actions when reader is open (tts, bookmark, etc.)
 }
 
@@ -630,6 +631,7 @@ export const buildCommandRegistry = (options: CommandRegistryOptions): CommandIt
   );
 
   for (const module of OFFICIAL_MODULES) {
+    if (module.id === 'readingTime' && !options.isMacOSApp) continue;
     items.push(
       createSettingsItem(
         {

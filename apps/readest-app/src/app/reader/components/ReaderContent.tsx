@@ -21,7 +21,13 @@ import { UnlistenFn } from '@tauri-apps/api/event';
 import { tauriHandleClose, tauriHandleOnCloseWindow } from '@/utils/window';
 import { isTauriAppPlatform } from '@/services/environment';
 import { uniqueId } from '@/utils/misc';
-import { throttle } from '@/utils/throttle';
+import { isPluginEnabled } from '@/glossa/plugins/registry';
+import {
+  closeReadingSession,
+  pauseReadingActivity,
+  startReadingActivity,
+  supportsReadingTime,
+} from '@/glossa/plugins/readingActivity';
 import { eventDispatcher } from '@/utils/event';
 import {
   closeReaderWindowOrGoToLibrary,
@@ -62,11 +68,24 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
   const [showDetailsBook, setShowDetailsBook] = useState<Book | null>(null);
 
   const isInitiating = useRef(false);
+  const closingBooks = useRef<Promise<void> | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorLoading, setErrorLoading] = useState(false);
 
   useBookShortcuts({ sideBarBookKey, bookKeys });
   useGamepad();
+  const timeEnabled = useSettingsStore((s) => isPluginEnabled(s.settings, 'readingTime'));
+  const hasBooks = bookKeys.length > 0;
+  useEffect(() => {
+    if (!appService || !supportsReadingTime(appService) || !timeEnabled || !hasBooks) return;
+    const lifetime = new AbortController();
+    void startReadingActivity(appService, lifetime.signal).catch(() => {});
+    return () => lifetime.abort();
+  }, [appService, timeEnabled, hasBooks]);
+
+  useEffect(() => {
+    if (showDetailsBook || isTransferQueueOpen) pauseReadingActivity();
+  }, [showDetailsBook, isTransferQueueOpen]);
 
   useEffect(() => {
     if (isInitiating.current) return;
@@ -160,6 +179,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
 
   const saveConfigAndCloseBook = async (bookKey: string, keepTTSAlive = false) => {
     console.log('Closing book', bookKey);
+    const flushReadingTime = closeReadingSession(bookKey);
 
     const viewState = getViewState(bookKey);
     if (viewState?.isPrimary && appService?.isDesktopApp) {
@@ -178,7 +198,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
     eventDispatcher.dispatch(keepTTSAlive ? 'tts-close-book' : 'tts-stop', {
       bookKey,
     });
-    await saveBookConfig(bookKey);
+    await Promise.all([saveBookConfig(bookKey), flushReadingTime]);
     clearViewState(bookKey);
   };
 
@@ -197,19 +217,24 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
 
   // Also wired directly to beforeunload/quit-app/window-close, which pass an
   // event object: only a literal `true` keeps TTS alive.
-  const handleCloseBooks = throttle(async (keepTTSAlive?: unknown) => {
-    const settings = useSettingsStore.getState().settings;
-    await Promise.all(
-      bookKeys.map(async (key) => await saveConfigAndCloseBook(key, keepTTSAlive === true)),
-    );
-    await saveSettings(envConfig, settings);
-  }, 200);
+  const handleCloseBooks = (keepTTSAlive?: unknown) => {
+    if (closingBooks.current) return closingBooks.current;
+    const close = async () => {
+      const settings = useSettingsStore.getState().settings;
+      await Promise.all(bookKeys.map((key) => saveConfigAndCloseBook(key, keepTTSAlive === true)));
+      await saveSettings(envConfig, settings);
+    };
+    closingBooks.current = close().finally(() => {
+      closingBooks.current = null;
+    });
+    return closingBooks.current;
+  };
 
   const handleCloseBooksToLibrary = async () => {
     // SPA navigation in the main window (or on web) keeps the webview alive:
     // TTS may continue headless. Non-main Tauri windows close their webview
     // below, but their per-window TTS dies with the window either way.
-    handleCloseBooks(true);
+    await handleCloseBooks(true);
     if (isTauriAppPlatform()) {
       const currentWindow = getCurrentWindow();
       if (currentWindow.label === 'main') {
@@ -229,7 +254,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
     // Header X / pane close: an SPA-side close on web and the main window.
     // The Tauri reader-window branches below destroy their webview, which
     // takes the per-window TTS with it either way.
-    saveConfigAndCloseBook(bookKey, true);
+    await saveConfigAndCloseBook(bookKey, true);
     if (sideBarBookKey === bookKey) {
       setSideBarBookKey(getNextBookKey(sideBarBookKey));
     }

@@ -4,9 +4,40 @@ import type { SystemSettings } from '@/types/settings';
 import { useSettingsStore } from '@/store/settingsStore';
 import PluginsPanel from '@/components/settings/PluginsPanel';
 
-const f = vi.hoisted(() => ({ save: vi.fn() }));
+const f = vi.hoisted(() => ({
+  save: vi.fn(),
+  appService: {
+    isMacOSApp: false,
+    loadLibraryBooks: async () => [{ hash: 'sample', title: 'Field notes' }],
+  },
+  refreshTime: vi.fn(),
+  setTimeEnabled: vi.fn(),
+}));
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (key: string) => key }));
-vi.mock('@/context/EnvContext', () => ({ useEnv: () => ({ envConfig: {} }) }));
+vi.mock('@/context/EnvContext', () => ({
+  useEnv: () => ({
+    envConfig: {},
+    appService: f.appService,
+  }),
+}));
+vi.mock('@/glossa/plugins/readingTime', () => ({
+  getReadingTimeClient: () => ({
+    refresh: f.refreshTime,
+    setEnabled: f.setTimeEnabled,
+    getSnapshot: () => ({ error: false }),
+  }),
+}));
+vi.mock('@/services/statistics/statisticsDb', () => ({
+  StatisticsDb: {
+    open: async () => ({
+      getReadingTimeSummary: async () => ({
+        todayMs: 60_000,
+        totalMs: 180_000,
+        books: [{ bookHash: 'sample', durationMs: 180_000 }],
+      }),
+    }),
+  },
+}));
 vi.mock('@/utils/settingsSync', () => ({ broadcastGlobalSettings: vi.fn() }));
 vi.mock('@/glossa/ui/ModelSettingsPanel', () => ({
   default: () => <p>Shared model configuration</p>,
@@ -15,6 +46,9 @@ vi.mock('@/glossa/ui/PromptSettingsPanel', () => ({
   default: () => <p>Personal conversation prompts</p>,
 }));
 beforeEach(() => {
+  f.appService.isMacOSApp = false;
+  f.refreshTime.mockReset();
+  f.setTimeEnabled.mockReset();
   f.save.mockReset().mockResolvedValue(undefined);
   useSettingsStore.setState({ settings: {} as SystemSettings, saveSettings: f.save });
 });
@@ -126,5 +160,27 @@ it('opens webpage plugin information without loading model settings or making re
   fireEvent.click(screen.getByRole('button', { name: 'Back to plugins' }));
   expect(document.activeElement).toBe(
     screen.getByRole('button', { name: 'Import webpage - Settings' }),
+  );
+});
+
+it('opens and returns from the Mac reading time summary even when the plugin is disabled', async () => {
+  f.appService.isMacOSApp = true;
+  render(<PluginsPanel />);
+  const toggle = screen.getByRole('checkbox', { name: 'Reading time' }) as HTMLInputElement;
+  expect(toggle.checked).toBe(true);
+  expect(f.refreshTime).not.toHaveBeenCalled();
+  fireEvent.click(toggle);
+  await waitFor(() => expect(f.setTimeEnabled).toHaveBeenCalledWith(false));
+
+  fireEvent.click(screen.getByRole('button', { name: 'Reading time - Settings' }));
+  await screen.findByText('Field notes');
+  expect(screen.getByText('Today')).toBeTruthy();
+  expect(screen.getByText('All time')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Back to plugins' }));
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'Reading time - Settings' }),
+  );
+  expect((screen.getByRole('checkbox', { name: 'Reading time' }) as HTMLInputElement).checked).toBe(
+    false,
   );
 });

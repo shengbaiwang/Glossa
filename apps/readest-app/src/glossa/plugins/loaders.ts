@@ -4,6 +4,7 @@ export const pluginLoaders = {
   mindmap: () => import('@/glossa/ui/MindmapPanel'),
   pdfAutoContents: () => import('./pdfAutoContents'),
   metadataRecognition: () => import('./metadataRecognition'),
+  readingTime: () => import('./readingTime'),
   webImport: () => import('./webImport'),
 };
 export const pluginPanelLoaders = {

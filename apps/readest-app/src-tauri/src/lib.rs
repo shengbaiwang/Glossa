@@ -423,6 +423,8 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_oauth::init())
         .invoke_handler(tauri::generate_handler![
+            #[cfg(target_os = "macos")]
+            macos::reading_time::reading_time,
             start_server,
             download_file,
             upload_file,
@@ -830,7 +832,8 @@ pub fn run() {
                     // A programmatic exit emits ExitRequested before the window-state
                     // plugin performs its final save. Restore any zeroed frame while
                     // the window is still hidden so live geometry remains valid.
-                    tauri::RunEvent::ExitRequested { .. } => {
+                    tauri::RunEvent::ExitRequested { api, code, .. } => {
+                        macos::reading_time::finish_before_exit(app_handle, &api, code);
                         if let Some(window) = app_handle.get_webview_window("main") {
                             macos::window::restore_main_window_frame(&window);
                         }

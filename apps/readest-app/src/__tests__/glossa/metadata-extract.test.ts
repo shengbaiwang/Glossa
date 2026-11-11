@@ -4,6 +4,7 @@ import {
   deduplicateCandidates,
   extractCopyrightMetadata,
   extractFileMetadata,
+  extractFrontMatterAuthors,
   scoreCopyrightPage,
 } from '@/glossa/metadata/extract';
 import { metadataRecognitionSchema, metadataSourceSchema } from '@/glossa/metadata/types';
@@ -26,6 +27,68 @@ it('accepts archive-relative evidence paths and rejects external or malformed li
 });
 
 describe('local bibliographic candidate extraction', () => {
+  it('locates a fragmented CIP heading before its statement without using a later CIP footer', () => {
+    const text =
+      'Library of Congress C a t a l o g i n g - i n - P u b l i c a t i o n Data\nResearch / A l i c e   W r i t e r,\nISBN 9780306406157\nC I P';
+    expect(extractCopyrightMetadata(text, source)).toContainEqual(
+      expect.objectContaining({ field: 'author', value: 'Alice Writer' }),
+    );
+  });
+
+  it('preserves English word boundaries while normalizing spaced Chinese copyright markers', () => {
+    expect(
+      scoreCopyrightPage(
+        'Copyright 2020 A. Writer\nPublished by Original Press\nISBN 9780306406157',
+      ),
+    ).toBeGreaterThanOrEqual(5);
+    const text =
+      'Library of Congress Cataloging in Publication Data\nResearch / Alice Writer.\nISBN 9780306406157';
+    expect(scoreCopyrightPage(text)).toBeGreaterThanOrEqual(5);
+    expect(extractCopyrightMetadata(text, source)).toContainEqual(
+      expect.objectContaining({ field: 'author', value: 'Alice Writer' }),
+    );
+  });
+
+  it('keeps editors as a fallback across separate copyright lines, giving explicit writers priority', () => {
+    const result = extractCopyrightMetadata('主编：王五\n作者：张三\n李四编\n赵六译', source);
+    expect(result.filter((item) => item.field === 'author').map((item) => item.value)).toEqual([
+      '张三',
+    ]);
+    expect(result).toContainEqual(expect.objectContaining({ field: 'translator', value: '赵六' }));
+    expect(
+      extractCopyrightMetadata('主编：王五\n李四编', source)
+        .filter((item) => item.field === 'author')
+        .map((item) => item.value),
+    ).toEqual(['王五', '李四']);
+  });
+
+  it('normalizes Chinese name and responsibility spacing while retaining raw evidence', () => {
+    const text = '作者：张 三；李 四\n研究 所组 译';
+    const result = extractCopyrightMetadata(text, source);
+    expect(result).toContainEqual(
+      expect.objectContaining({
+        field: 'author',
+        value: '张三; 李四',
+        source: expect.objectContaining({ excerpt: '作者：张 三；李 四' }),
+      }),
+    );
+    expect(result).toContainEqual(
+      expect.objectContaining({
+        field: 'translator',
+        value: '研究所',
+        source: expect.objectContaining({ excerpt: '研究 所组 译' }),
+      }),
+    );
+  });
+
+  it('does not mistake role words within an explicitly labelled name for a suffix', () => {
+    const result = extractCopyrightMetadata('作者：原始作者\n译者：原始译者', source);
+    expect(result).toContainEqual(expect.objectContaining({ field: 'author', value: '原始作者' }));
+    expect(result).toContainEqual(
+      expect.objectContaining({ field: 'translator', value: '原始译者' }),
+    );
+  });
+
   it('reads structured contributors, language maps and identifiers without mutating metadata', () => {
     const raw = {
       title: { zh: '空间研究', en: 'Spatial Studies' },
@@ -262,6 +325,191 @@ describe('local bibliographic candidate extraction', () => {
         .filter((candidate) => candidate.field === 'title')
         .every((candidate) => candidate.confidence === 'review'),
     ).toBe(true);
+  });
+
+  it('routes embedded responsibility roles instead of treating every creator as an author', () => {
+    const result = extractFileMetadata({
+      title: '山川',
+      language: 'zh',
+      author: [
+        { name: '张三', role: 'aut' },
+        { name: '李四', role: 'trl' },
+        { name: '王五', role: 'edt' },
+      ],
+      contributor: [
+        { name: '赵六', role: 'trl' },
+        { name: '制作软件', role: 'bkp' },
+      ],
+    } as unknown as BookMetadata);
+    expect(result.filter((item) => item.field === 'author').map((item) => item.value)).toEqual([
+      '张三',
+    ]);
+    expect(result).toContainEqual(
+      expect.objectContaining({ field: 'translator', value: '李四; 赵六' }),
+    );
+  });
+
+  it('separates mixed free-text authors, translators and ancillary contributors', () => {
+    for (const [raw, author, translator] of [
+      ['〔美〕A. Writer;李四译', '〔美〕A. Writer', '李四'],
+      ['张三 著、李四 注、王五 笺疏、赵六 整理', '张三', undefined],
+      ['张三著李四译', '张三', '李四'],
+    ]) {
+      const result = extractFileMetadata({ title: '', language: 'zh', author: raw! });
+      expect(result.filter((item) => item.field === 'author').map((item) => item.value)).toEqual([
+        author,
+      ]);
+      expect(
+        result.filter((item) => item.field === 'translator').map((item) => item.value),
+      ).toEqual(translator ? [translator] : []);
+    }
+    expect(extractFileMetadata({ title: '', language: '', author: 'https://example.org' })).toEqual(
+      [],
+    );
+  });
+
+  it('recognizes spaced labels, slash separators and compact responsibility clauses', () => {
+    const text = '版权信息\n书 名 / 山川\n作 者 / 张三 著\n译 者 / 李四 译\n出版发行 / 研究出版社';
+    expect(scoreCopyrightPage(text)).toBeGreaterThanOrEqual(5);
+    const result = extractCopyrightMetadata(text, source);
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: 'author', value: '张三' }),
+        expect.objectContaining({ field: 'translator', value: '李四' }),
+        expect.objectContaining({ field: 'publisher', value: '研究出版社' }),
+      ]),
+    );
+    expect(extractCopyrightMetadata('作者：张三著；李四译；王五校', source)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: 'author', value: '张三' }),
+        expect.objectContaining({ field: 'translator', value: '李四' }),
+      ]),
+    );
+    for (const item of result) expect(text).toContain(item.source.excerpt);
+  });
+
+  it('joins bounded multiline CIP responsibility statements and retains all coauthors', () => {
+    const text =
+      '图书在版编目（CIP）数据\n山川 / （法）A. Writer，（法）B.\nReader主编；李四，王五译.— 北京：研究出版\n社，2020.5\nISBN 9780306406157';
+    const result = extractCopyrightMetadata(text, source);
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: 'title', value: '山川' }),
+        expect.objectContaining({ field: 'author', value: '(法)A. Writer; (法)B. Reader' }),
+        expect.objectContaining({ field: 'translator', value: '李四; 王五' }),
+      ]),
+    );
+    for (const item of result) expect(text).toContain(item.source.excerpt);
+    expect(result.some((item) => item.field === 'author' && item.value.includes('ISBN'))).toBe(
+      false,
+    );
+  });
+
+  it('reads an English CIP author without mistaking a copyright holder or designer for the author', () => {
+    const text =
+      'Library of Congress Cataloging-in-Publication Data\nWriter, Alice.\nResearch and evidence / Alice Writer.\np. cm.\nISBN 9780306406157\nCopyright © 2020 Example Press\nBook design by Other Person';
+    expect(extractCopyrightMetadata(text, source)).toContainEqual(
+      expect.objectContaining({ field: 'author', value: 'Alice Writer' }),
+    );
+    expect(
+      extractCopyrightMetadata(
+        'Copyright © 2020 Example Press\nBook design by Other Person',
+        source,
+      ).some((item) => item.field === 'author'),
+    ).toBe(false);
+  });
+
+  it('recovers spaced Latin signals, Unicode ISBN dashes and edition dates on print-date rows', () => {
+    const text =
+      'C o p y r i g h t © 2020\nISBN 978–0–306–40615–7\n2020年5月北京第1版 2022年6月第2次印刷';
+    expect(scoreCopyrightPage(text)).toBeGreaterThanOrEqual(5);
+    expect(extractCopyrightMetadata(text, source)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: 'isbn', value: '9780306406157' }),
+        expect.objectContaining({ field: 'published', value: '2020-05' }),
+      ]),
+    );
+  });
+
+  it('does not read slash credit labels, postal codes or series editors as book authors', () => {
+    const text =
+      '图书在版编目(CIP)数据\n山川 / 张三著.—北京:研究出版社,2020\nISBN 9780306406157\n校者/李四\n出版人/王五\n责任编辑/赵六 文稿编辑/陈七\n地址：北京市研究路1号 邮编\n书号/ISBN 9780306406157\n(研究译丛/李四主编)';
+    expect(
+      extractCopyrightMetadata(text, source)
+        .filter((item) => item.field === 'author')
+        .map((item) => item.value),
+    ).toEqual(['张三']);
+  });
+
+  it('does not stop wrapped CIP responsibility at an editorial word inside the book title', () => {
+    const text =
+      '图书在版编目(CIP)数据\n新编世界史.第2卷 / (英)A.B.\nWriter编；研究所组译.—北京：研究出版社，2020\nISBN 9780306406157';
+    expect(extractCopyrightMetadata(text, source)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: 'author', value: '(英)A.B. Writer' }),
+        expect.objectContaining({ field: 'translator', value: '研究所' }),
+      ]),
+    );
+  });
+
+  it('requires independent front-matter corroboration before interpreting an unlabelled author line', () => {
+    const pages = [
+      {
+        text: 'Original research\nALICE WRITER\nExample Press',
+        source: { ...source, pageIndex: 1 },
+      },
+      {
+        text: 'Copyright © Alice Writer 2020\nAll rights reserved',
+        source: { ...source, pageIndex: 2 },
+      },
+    ];
+    expect(extractFrontMatterAuthors(pages)).toEqual([
+      expect.objectContaining({
+        field: 'author',
+        value: 'ALICE WRITER',
+        source: expect.objectContaining({ pageIndex: 1, excerpt: 'ALICE WRITER' }),
+      }),
+    ]);
+    expect(extractFrontMatterAuthors(pages.slice(1))).toEqual([]);
+    expect(
+      extractFrontMatterAuthors([
+        { text: 'Example University Press', source },
+        { text: 'Copyright © 2020 Example University Press', source },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('keeps real names ending in a responsibility character and the original embedded evidence', () => {
+    const result = extractFileMetadata({ title: '', language: 'zh', author: '张译;李四译' });
+    expect(result).toContainEqual(
+      expect.objectContaining({
+        field: 'author',
+        value: '张译',
+        source: expect.objectContaining({ excerpt: '张译;李四译' }),
+      }),
+    );
+  });
+
+  it('reads explicit early cover credits but excludes contents and chapter bylines', () => {
+    expect(
+      extractFrontMatterAuthors([{ index: 0, text: '张三 著\n研究出版社', source }]),
+    ).toContainEqual(expect.objectContaining({ field: 'author', value: '张三' }));
+    expect(
+      extractFrontMatterAuthors([{ index: 1, text: '目录\n第一章\n李四 著\n研究出版社', source }]),
+    ).toEqual([]);
+    expect(extractFrontMatterAuthors([{ index: 8, text: '李四 著\n研究出版社', source }])).toEqual(
+      [],
+    );
+  });
+
+  it('prefers explicit writers over cover series editors and keeps contributor punctuation out of names', () => {
+    expect(
+      extractFrontMatterAuthors([
+        { index: 0, text: '李四◎主编\n山川\n张三◎著\n王五◎译\n研究出版社', source },
+      ])
+        .filter((item) => item.field === 'author')
+        .map((item) => item.value),
+    ).toEqual(['张三']);
   });
 
   it('validates bounded cached results and rejects unexpected fields or invalid evidence locations', () => {

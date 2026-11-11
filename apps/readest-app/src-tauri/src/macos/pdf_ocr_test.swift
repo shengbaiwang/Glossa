@@ -119,6 +119,19 @@ for index in 0..<16 where index != 4 {
 }
 let batchProgress = try JSONDecoder().decode(Progress.self, from: Data(contentsOf: batchRoot.appendingPathComponent("progress.json")))
 assert(batchProgress.completed == 16 && batchProgress.total == 16)
+// Independent contents evidence can read through an inaccurate embedded OCR
+// layer; the normal reading cache must retain its native text offsets.
+let nativeCheckpoint = RecognitionCheckpoint(PageText(index: 0, native: true, lines: []))
+assert(needsRecognition(nativeCheckpoint, index: 0, detect: false, contents: true))
+assert(needsRecognition(nativeCheckpoint, index: 0, detect: false, heading: true))
+let visualRoot = batchRoot.appendingPathComponent("contents", isDirectory: true)
+try FileManager.default.createDirectory(at: visualRoot, withIntermediateDirectories: true)
+try recognizePages(source: batchSource, output: visualRoot, indices: [0], detect: false, contents: true)
+let visualPage = try JSONDecoder().decode(PageText.self, from: Data(contentsOf: visualRoot.appendingPathComponent("page-0.json")))
+assert(!visualPage.native && !visualPage.lines.isEmpty)
+assert(visualPage.lines.map({ $0.text }).joined().contains("Native"))
+let readingBytesAfterEvidence = try Data(contentsOf: preservedTarget)
+assert(readingBytesAfterEvidence == preservedBytes)
 do {
     try recognizePages(source: batchSource, output: batchRoot, indices: [-1, 1], detect: false, contents: false)
     assertionFailure("a failed page must stop the batch")

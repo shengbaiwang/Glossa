@@ -81,8 +81,9 @@ export interface Renderer extends HTMLElement {
   ) => void;
   hideLoupe?: () => void;
   destroyLoupe?: () => void;
+  setZoom?: (mode: string, level: number, preview?: boolean) => void;
   pinchZoom?: (ratio: number) => void;
-  pinchEnd?: () => void;
+  pinchEnd?: (cancel?: boolean) => number | void;
   destroy: () => void;
 }
 

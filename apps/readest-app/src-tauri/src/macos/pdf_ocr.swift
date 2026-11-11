@@ -29,7 +29,7 @@ struct PageText: Codable {
 }
 struct Progress: Codable { let completed: Int; let total: Int }
 let preciseRecognizer = "vision-multiscale-1"
-let contentsRecognizer = "vision-contents-1"
+let contentsRecognizer = "vision-contents-2"
 let headingRecognizer = "vision-heading-1"
 
 struct RecognitionPass {
@@ -66,6 +66,10 @@ struct RecognitionCheckpoint: Decodable {
 
 func needsRecognition(_ saved: RecognitionCheckpoint?, index: Int, detect: Bool, contents: Bool = false, heading: Bool = false) -> Bool {
     guard let saved, saved.index == index else { return true }
+    // Only independent evidence sidecars may look through embedded text.
+    // A prior native marker predates this recovery and contains no evidence.
+    if saved.native && (contents || heading) { return true }
+    if contents && saved.recognizer != contentsRecognizer { return true }
     // Nonempty and native layers own durable text offsets. Never replace them.
     // A legacy empty layer has no text offsets and gets one versioned recovery.
     return !detect && !saved.native && !saved.hasText && (saved.recognizer != (heading ? headingRecognizer : contents ? contentsRecognizer : preciseRecognizer) || saved.emptyReason == "no_word_boxes")
@@ -107,12 +111,25 @@ func write<T: Encodable>(_ value: T, to url: URL) throws {
 
 func recognize(_ page: PDFPage, index: Int, detect: Bool = false, contents: Bool = false, heading: Bool = false) throws -> PageText {
     // Preserve the native text layer, including its original CFI text offsets.
-    if !(page.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+    if !contents && !heading && !(page.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         return PageText(index: index, native: true, lines: [])
     }
     var bounds = page.bounds(for: .cropBox).size
     if abs(page.rotation) % 180 == 90 { bounds = NSSize(width: bounds.height, height: bounds.width) }
     guard bounds.width > 0, bounds.height > 0 else { throw NSError(domain: "page", code: 1) }
+    if contents {
+        // Dense tables need the larger raster for short folios and similar
+        // Chinese glyphs. Retain the other precise pass for uncovered rows.
+        let detailed = try recognizeAtScale(page, bounds: bounds, detect: false, longestEdge: 3200)
+        let compact = try recognizeAtScale(page, bounds: bounds, detect: false, longestEdge: 1200)
+        let medium = try recognizeAtScale(page, bounds: bounds, detect: false, longestEdge: 2400)
+        if detailed.words.isEmpty && compact.words.isEmpty && medium.words.isEmpty && [detailed, compact, medium].contains(where: { $0.emptyReason == "no_word_boxes" }) {
+            throw NSError(domain: "ocr_word_boxes_missing", code: 1)
+        }
+        return PageText(index: index, native: false, lines: detailed.words, recognizer: contentsRecognizer,
+                        emptyReason: detailed.words.isEmpty && compact.words.isEmpty && medium.words.isEmpty ? "no_observations" : nil,
+                        alternatives: [compact.words, medium.words])
+    }
     if heading {
         // Upper interior excludes running heads and footers. Both precise scales
         // remain independent; a successful first reading never hides the second.

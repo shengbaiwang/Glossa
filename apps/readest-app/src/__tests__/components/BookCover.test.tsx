@@ -4,17 +4,10 @@ import { render, cleanup, fireEvent, act } from '@testing-library/react';
 import BookCover from '@/components/BookCover';
 import { Book } from '@/types/book';
 
-vi.mock('next/image', () => ({
-  __esModule: true,
-  default: (props: Record<string, unknown>) => {
-    // biome-ignore lint/a11y/useAltText: test mock; alt comes from spread props
-    return <img {...props} />;
-  },
-}));
-
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 function load(image: HTMLImageElement) {
@@ -124,6 +117,39 @@ describe('BookCover', () => {
     expect(container.querySelector('.fallback-cover')?.getAttribute('aria-hidden')).toBe('false');
   });
 
+  it('recognizes an image loaded before hydration and publishes its dimensions only once', () => {
+    vi.spyOn(HTMLImageElement.prototype, 'complete', 'get').mockReturnValue(true);
+    vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(600);
+    vi.spyOn(HTMLImageElement.prototype, 'naturalHeight', 'get').mockReturnValue(900);
+    const onAspectRatioChange = vi.fn();
+    const book = makeBook();
+    const { container, rerender } = render(
+      <BookCover book={book} onAspectRatioChange={onAspectRatioChange} />,
+    );
+    fireEvent.load(container.querySelector('img')!);
+    rerender(
+      <BookCover book={{ ...book, progress: [1, 10] }} onAspectRatioChange={onAspectRatioChange} />,
+    );
+    expect(onAspectRatioChange).toHaveBeenCalledExactlyOnceWith(600 / 900);
+    expect(container.querySelector('.fallback-cover')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('recovers a cached failure even when its error event happened before hydration', () => {
+    vi.useFakeTimers();
+    vi.spyOn(HTMLImageElement.prototype, 'complete', 'get').mockReturnValue(true);
+    const width = vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(0);
+    const height = vi.spyOn(HTMLImageElement.prototype, 'naturalHeight', 'get').mockReturnValue(0);
+    const onImageError = vi.fn();
+    const { container } = render(<BookCover book={makeBook()} onImageError={onImageError} />);
+    expect(onImageError).toHaveBeenCalledOnce();
+    expect(container.querySelector('img')).toBeNull();
+    width.mockReturnValue(600);
+    height.mockReturnValue(900);
+    act(() => vi.advanceTimersByTime(750));
+    expect(container.querySelector('img')?.getAttribute('aria-hidden')).toBe('false');
+    expect(container.querySelector('.fallback-cover')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
   it('clears the successful image after removal before the same source is added again', () => {
     const book = makeBook();
     const { container, rerender } = render(<BookCover book={book} />);
@@ -147,18 +173,22 @@ describe('BookCover', () => {
     expect(container.querySelector('img')!.getAttribute('src')).toBe(url);
   });
 
-  it('passes loading="lazy" to crop-mode Image', () => {
+  it('loads mounted crop-mode covers without waiting for idle or hover', () => {
     const { container } = render(<BookCover book={makeBook()} coverFit='crop' />);
     const img = container.querySelector('img.cover-image');
     expect(img).toBeTruthy();
-    expect(img?.getAttribute('loading')).toBe('lazy');
+    expect(img?.getAttribute('loading')).toBe('eager');
+    expect(img?.getAttribute('decoding')).toBe('sync');
+    expect(img?.classList.contains('invisible')).toBe(false);
   });
 
-  it('passes loading="lazy" to fit-mode Image', () => {
+  it('loads mounted fit-mode covers without waiting for idle or hover', () => {
     const { container } = render(<BookCover book={makeBook()} coverFit='fit' />);
     const img = container.querySelector('img.cover-image');
     expect(img).toBeTruthy();
-    expect(img?.getAttribute('loading')).toBe('lazy');
+    expect(img?.getAttribute('loading')).toBe('eager');
+    expect(img?.getAttribute('decoding')).toBe('sync');
+    expect(img?.classList.contains('invisible')).toBe(false);
   });
 
   it('reports natural aspect ratio via onAspectRatioChange when fit-mode image loads', () => {

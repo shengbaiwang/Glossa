@@ -103,14 +103,30 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   // establish readiness and membership, while preserving newer personal edits
   // made in memory while disk rows and cover URLs were loading.
   setLibrary: (books, complete = false) => {
+    const current = new Map(get().library.map((book) => [book.hash, book]));
     if (complete) {
-      const current = new Map(get().library.map((book) => [book.hash, book]));
       books = books.map((book) => {
         const previous = current.get(book.hash);
         return previous ? mergeLibraryBook(previous, book) : book;
       });
     }
-    books = books.map(withoutSubjects);
+    books = books.map((book) => {
+      const previous = current.get(book.hash);
+      // Database/sync receipts omit WebView-local cover URLs. That omission
+      // must not erase artwork on an otherwise unchanged book. Explicit null,
+      // a new cover version or completed file removal still invalidates it.
+      if (
+        book.coverImageUrl === undefined &&
+        previous?.coverImageUrl &&
+        book.coverHash === previous.coverHash &&
+        book.coverUpdatedAt === previous.coverUpdatedAt &&
+        !(book.localRemoval?.mode === 'local' && book.localRemoval.local === 'complete') &&
+        !(book.removal?.mode === 'purge' && book.removal.local === 'complete')
+      ) {
+        book = { ...book, coverImageUrl: previous.coverImageUrl };
+      }
+      return withoutSubjects(book);
+    });
     set({
       library: books,
       libraryLoaded: complete || get().libraryLoaded,

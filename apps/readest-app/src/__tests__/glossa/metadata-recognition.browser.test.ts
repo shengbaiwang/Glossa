@@ -45,14 +45,16 @@ async function localEnvironment(file: File, format: Book['format']) {
   return { book, env, sidecars };
 }
 
-function originalEPUB(options: { modificationOnly?: boolean; sharedContributor?: boolean } = {}) {
+function originalEPUB(
+  options: { modificationOnly?: boolean; sharedContributor?: boolean; mixedRoles?: boolean } = {},
+) {
   const files: Record<string, string> = {
     mimetype: 'application/epub+zip',
     'META-INF/container.xml':
       '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OPS/book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>',
     'OPS/book.opf': `<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
       <dc:identifier id="id">urn:isbn:9780306406157</dc:identifier><dc:title>原始书名</dc:title><dc:language>zh</dc:language>
-      <dc:creator id="writer">原始作者</dc:creator><meta refines="#writer" property="role" scheme="marc:relators">aut</meta>
+      <dc:creator id="writer">${options.mixedRoles ? '原始作者 著、注者 注、整理者 整理;原始译者译' : '原始作者'}</dc:creator><meta refines="#writer" property="role" scheme="marc:relators">aut</meta>
       <dc:contributor id="translator">${options.sharedContributor ? '原始作者' : '原始译者'}</dc:contributor><meta refines="#translator" property="role" scheme="marc:relators">trl</meta>
       <dc:publisher>元数据出版社</dc:publisher>${options.modificationOnly ? '<dc:date xmlns:opf="http://www.idpf.org/2007/opf" opf:event="modification">2025-10-10</dc:date>' : '<dc:date>2019</dc:date>'}<meta property="dcterms:modified">2025-10-10T00:00:00Z</meta></metadata>
       <manifest><item id="nav" href="nav.xhtml" properties="nav" media-type="application/xhtml+xml"/>${Array.from({ length: 60 }, (_, index) => `<item id="s${index}" href="s${index}.xhtml" media-type="application/xhtml+xml"/>`).join('')}</manifest>
@@ -187,6 +189,42 @@ it('keeps real EPUB contributor roles separate and its modification-only dc:date
     await opened.book.destroy?.();
   }
 });
+
+it('separates mixed creator text through the real EPUB parser and preserves the personal record', async () => {
+  const { book, env } = await localEnvironment(originalEPUB({ mixedRoles: true }), 'EPUB');
+  const before = structuredClone(book);
+  const result = await recognizeBookMetadata(book, env, new AbortController().signal);
+  expect(
+    result.candidates.filter((item) => item.field === 'author').map((item) => item.value),
+  ).toEqual(['原始作者']);
+  expect(
+    result.candidates.filter((item) => item.field === 'translator').map((item) => item.value),
+  ).toEqual(['原始译者']);
+  expect(book).toEqual(before);
+}, 30000);
+
+it('reads the author from an English PDF CIP statement with physical page evidence', async () => {
+  const file = originalPDF([
+    'Library of Congress Cataloging-in-Publication Data',
+    'Writer, Alice.',
+    'Research and evidence / Alice Writer.',
+    'p. cm.',
+    'ISBN 978-0-306-40615-7',
+  ]);
+  const { book, env } = await localEnvironment(file, 'PDF');
+  const result = await recognizeBookMetadata(book, env, new AbortController().signal);
+  expect(result.candidates).toContainEqual(
+    expect.objectContaining({
+      field: 'author',
+      value: 'Alice Writer',
+      source: expect.objectContaining({
+        kind: 'text',
+        pageIndex: 1,
+        excerpt: 'Research and evidence / Alice Writer.',
+      }),
+    }),
+  );
+}, 30000);
 
 it('does not treat an ISBN in a PDF bibliography as copyright-page metadata', async () => {
   const file = originalPDF([

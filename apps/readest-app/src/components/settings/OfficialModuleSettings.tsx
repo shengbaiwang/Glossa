@@ -2,7 +2,15 @@ import { useRef, useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { Ellipsis, Link, ListTree, MessageSquare, Search, Share2 } from '@/components/GlossaIcons';
+import {
+  Clock,
+  Ellipsis,
+  Link,
+  ListTree,
+  MessageSquare,
+  Search,
+  Share2,
+} from '@/components/GlossaIcons';
 import { Toggle } from '@/components/primitives/toggle';
 import { broadcastGlobalSettings } from '@/utils/settingsSync';
 import {
@@ -18,7 +26,7 @@ export default function OfficialModuleSettings({
   onOpenSettings: (id: OfficialModuleId) => void;
 }) {
   const _ = useTranslation();
-  const { envConfig } = useEnv();
+  const { envConfig, appService } = useEnv();
   const { settings } = useSettingsStore();
   const pending = useRef(false);
   const [saving, setSaving] = useState(false);
@@ -38,9 +46,14 @@ export default function OfficialModuleSettings({
     store.setSettings(next);
     try {
       await store.saveSettings(envConfig, next);
-      // Only explicit changes travel between windows; stale routine saves cannot reactivate a module.
-      if (useSettingsStore.getState().settings.officialModules?.[id] === enabled)
+      // Only explicit changes travel between windows.
+      if (useSettingsStore.getState().settings.officialModules?.[id] === enabled) {
+        if (id === 'readingTime' && appService?.isMacOSApp) {
+          const { getReadingTimeClient } = await import('@/glossa/plugins/readingTime');
+          await getReadingTimeClient(appService).setEnabled(enabled);
+        }
         await broadcastGlobalSettings(next, { officialModules: { [id]: enabled } });
+      }
     } catch {
       const current = useSettingsStore.getState().settings;
       if (current.officialModules?.[id] === enabled) {
@@ -55,12 +68,15 @@ export default function OfficialModuleSettings({
       setSaving(false);
     }
   };
+  const modules = OFFICIAL_MODULES.filter(
+    ({ id }) => id !== 'readingTime' || appService?.isMacOSApp,
+  );
   return (
     <>
       <section aria-label={_('Built-in plugins')}>
         <SectionTitle className='mb-2'>{_('Built-in plugins')}</SectionTitle>
         <div className='glossa-plugin-grid'>
-          {OFFICIAL_MODULES.map((module) => {
+          {modules.map((module) => {
             const enabled = isOfficialModuleEnabled(settings, module.id);
             const Icon =
               module.id === 'conversation'
@@ -71,7 +87,9 @@ export default function OfficialModuleSettings({
                     ? Link
                     : module.id === 'metadataRecognition'
                       ? Search
-                      : ListTree;
+                      : module.id === 'readingTime'
+                        ? Clock
+                        : ListTree;
             return (
               <article
                 key={module.id}

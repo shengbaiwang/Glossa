@@ -8,6 +8,7 @@
   },
   "windows": ["main"],
   "permissions": [
+    "allow-reading-time",
     "allow-start-server",
     "allow-download-file",
     "allow-upload-file",
@@ -40,6 +41,10 @@
     "allow-install-nightly-update",
     "core:default",
     "core:window:allow-set-size",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-set-visible-on-all-workspaces",
+    "core:window:allow-minimize",
+    "core:window:allow-unminimize",
     "fs:default",
     "fs:read-all",
     "fs:write-all",

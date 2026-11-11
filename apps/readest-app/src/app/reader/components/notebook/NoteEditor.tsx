@@ -5,6 +5,7 @@ import { TextSelection } from '@/utils/sel';
 import { md5Fingerprint } from '@/utils/md5';
 import { BookNote } from '@/types/book';
 import useShortcuts from '@/hooks/useShortcuts';
+import { reportReadingActivity } from '@/glossa/plugins/readingActivity';
 import TextEditor, { TextEditorRef } from '@/components/TextEditor';
 
 interface NoteEditorProps {
@@ -95,7 +96,12 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ bookKey, active, onSave, onEdit
 
   return (
     <div className='content booknote-item note-editor-container glossa-reader-note-editor eink-bordered bg-base-100 mt-2 rounded-xl border p-3'>
-      <div className='flex w-full'>
+      <div
+        className='flex w-full'
+        onInputCapture={(event) => {
+          if (active && event.nativeEvent.isTrusted) reportReadingActivity(bookKey, 'note');
+        }}
+      >
         <TextEditor
           ref={editorRef}
           value={note}

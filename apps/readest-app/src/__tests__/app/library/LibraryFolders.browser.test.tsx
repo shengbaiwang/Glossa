@@ -341,27 +341,21 @@ it('spring-opens a shelf destination and restores the origin and selection on ca
   render(<Shelf />);
   const source = await screen.findByRole('button', { name: original.title });
   await userEvent.click(source);
-  const dataTransfer = new DataTransfer();
-  fireEvent(source, new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer }));
-  expect(useLibraryTransfer.getState().drag?.selection).toEqual([original.hash]);
-  expect([...dataTransfer.types]).toContain('application/x-glossa-library-items');
   const target = await screen.findByRole('button', { name: 'Target' });
-  expect(target.isConnected).toBe(true);
-  fireEvent(
-    target,
-    new DragEvent('dragover', {
-      bubbles: true,
-      cancelable: true,
-      dataTransfer,
-      clientY: target.getBoundingClientRect().top + 20,
-    }),
+  const from = source.querySelector('.bookitem-main')!.getBoundingClientRect();
+  const to = target.getBoundingClientRect();
+  const dragging = commands.dragPDFText(
+    { x: from.left + from.width / 2, y: from.top + from.height / 2 },
+    { x: to.left + to.width / 2, y: to.top + 20 },
+    1800,
   );
-  expect(target.getAttribute('data-library-item-drop')).toBe('valid');
+  await waitFor(() => expect(target.getAttribute('data-library-item-drop')).toBe('valid'));
   await waitFor(
     () => expect(new URLSearchParams(mocks.search).get('group')).toBe(md5Fingerprint('Target')),
     { timeout: 2500 },
   );
-  fireEvent.keyDown(window, { key: 'Escape' });
+  await commands.pressPDFSelectionKey('Escape');
+  await dragging;
   await waitFor(() => expect(new URLSearchParams(mocks.search).get('group') ?? '').toBe(''));
   await waitFor(() =>
     expect(useLibraryStore.getState().getSelectedBooks()).toEqual([original.hash]),
@@ -1390,4 +1384,58 @@ it('creates an empty group inline from the All Groups empty state', async () => 
   await screen.findByRole('button', { name: 'Research' });
   expect(useSettingsStore.getState().settings.libraryFolders).toEqual(['Research']);
   expect(screen.queryByRole('button', { name: original.title })).toBeNull();
+});
+
+it.each([
+  'grid',
+  'list',
+] as const)('lifts only the cover during a real %s drag and retains the emptied source group', async (view) => {
+  await page.viewport(1100, 780);
+  mocks.search = `groupBy=group&group=${md5Fingerprint('Source')}`;
+  useSettingsStore.getState().setSettings({
+    ...useSettingsStore.getState().settings,
+    libraryViewMode: view,
+    libraryFolders: ['Source', 'Empty'],
+  });
+  useLibraryStore
+    .getState()
+    .setLibrary([{ ...original, groupName: 'Source', groupId: md5Fingerprint('Source') }]);
+  render(<DirectShelf />);
+  const card = await screen.findByRole('button', { name: original.title });
+  const target = within(screen.getByRole('navigation')).getByRole('button', {
+    name: /^Empty$/,
+  });
+  const trusted: boolean[] = [];
+  card.addEventListener('pointerdown', (event) => trusted.push(event.isTrusted), { once: true });
+  const from = card.querySelector('.bookitem-main')!.getBoundingClientRect();
+  const to = target.getBoundingClientRect();
+  const dragging = commands.dragPDFText(
+    { x: from.left + from.width / 2, y: from.top + from.height / 2 },
+    { x: to.left + to.width / 2, y: to.top + to.height / 2 },
+    450,
+  );
+  await waitFor(() => expect(document.querySelector('.glossa-library-drag-preview')).toBeTruthy());
+  const preview = document.querySelector<HTMLElement>('.glossa-library-drag-preview')!;
+  expect(preview.querySelector('.bookitem-main')).toBeTruthy();
+  expect(
+    preview.querySelector('.glossa-book-metadata, button, .glossa-book-selection-overlay'),
+  ).toBeNull();
+  expect(getComputedStyle(preview).pointerEvents).toBe('none');
+  expect(preview.getBoundingClientRect().width).toBeGreaterThan(20);
+  expect(preview.getBoundingClientRect().height).toBeGreaterThan(20);
+  await page.screenshot({
+    path: `../../../../../../.glossa-dev/qa/library-pointer-cover-${view}.png`,
+  });
+  await dragging;
+  await waitFor(() => expect(useLibraryStore.getState().library[0]?.groupName).toBe('Empty'));
+  await waitFor(() => expect(document.querySelector('.glossa-library-drag-preview')).toBeNull());
+  expect(useSettingsStore.getState().settings.libraryFolders).toEqual(['Source', 'Empty']);
+  expect(
+    within(screen.getByRole('navigation')).getByRole('button', { name: /^Source$/ }),
+  ).toBeVisible();
+  expect(trusted).toEqual([true]);
+  expect(mocks.openBook).not.toHaveBeenCalled();
+  expect(mocks.saveSettings).toHaveBeenCalledWith(
+    expect.objectContaining({ libraryFolders: ['Source', 'Empty'] }),
+  );
 });

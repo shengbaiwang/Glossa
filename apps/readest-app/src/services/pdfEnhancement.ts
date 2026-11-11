@@ -174,7 +174,7 @@ export const isPDFSizeAtLeast = (size: number, minimum: number) =>
   size + Math.max(0.000001, Math.abs(minimum) * 0.02) >= minimum;
 
 /** Reconstruct horizontal TOC rows without changing the persisted reading/CFI order. */
-export function OCRContentsLines(page: OCRPage, allRows: boolean | 'unfiltered' = false): string[] {
+export function OCRContentsLayout(page: OCRPage) {
   type Fragment = {
     text: string;
     x: number;
@@ -258,8 +258,23 @@ export function OCRContentsLines(page: OCRPage, allRows: boolean | 'unfiltered' 
                 .replace(/^[.·…_。•⋯∙●‧﹒:：\s]+/, ''),
             )
           : text;
-      return { text: cleaned, contents: !!(gap || leader), height: anchor.height };
+      return {
+        text: cleaned,
+        contents: !!(gap || leader),
+        height: anchor.height,
+        x: Math.min(...parts.map((part) => part.x)),
+        y: Math.min(...parts.map((part) => part.y)),
+        width:
+          Math.max(...parts.map((part) => part.x + part.width)) -
+          Math.min(...parts.map((part) => part.x)),
+        words: parts.flatMap((part) => part.words),
+      };
     });
+  return prepared;
+}
+
+export function OCRContentsLines(page: OCRPage, allRows: boolean | 'unfiltered' = false): string[] {
+  const prepared = OCRContentsLayout(page);
   const sizes = prepared
     .filter((row) => row.contents)
     .map((row) => row.height)

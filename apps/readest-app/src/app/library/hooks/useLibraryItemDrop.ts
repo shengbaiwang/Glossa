@@ -3,6 +3,7 @@ import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { collectFolderPaths, moveToFolder } from '../utils/libraryFolders';
 import { LIBRARY_ITEMS_MIME, readLibraryItems } from '../utils/libraryDragDrop';
+import { LIBRARY_POINTER_DRAG, type LibraryPointerDrag } from '../utils/libraryPointerDrag';
 import {
   captureCurrentLibraryTransfer,
   finishLibraryDrag,
@@ -66,11 +67,8 @@ export function useLibraryItemDrop({
       }
       frame = requestAnimationFrame(scroll);
     };
-    const over = (event: DragEvent) => {
-      if (!event.dataTransfer?.types.includes(LIBRARY_ITEMS_MIME)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const node = targetAt(event.target);
+    const update = (target: EventTarget | null, clientY: number) => {
+      const node = targetAt(target);
       const path = node?.dataset['libraryFolderPath'];
       const snapshot = useLibraryTransfer.getState().drag;
       let valid = !latest.current.disabled && path !== undefined && !!snapshot;
@@ -87,11 +85,10 @@ export function useLibraryItemDrop({
           valid = false;
         }
       }
-      event.dataTransfer.dropEffect = valid ? 'move' : 'none';
       if (highlighted !== node) clear();
       highlighted = node;
       node?.setAttribute('data-library-item-drop', valid ? 'valid' : 'invalid');
-      y = event.clientY;
+      y = clientY;
       if (!frame) frame = requestAnimationFrame(scroll);
       if (!valid) {
         clearTimeout(timer);
@@ -109,6 +106,13 @@ export function useLibraryItemDrop({
           }
         }, 650);
       }
+      return valid;
+    };
+    const over = (event: DragEvent) => {
+      if (!event.dataTransfer?.types.includes(LIBRARY_ITEMS_MIME)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = update(event.target, event.clientY) ? 'move' : 'none';
     };
     const drop = (event: DragEvent) => {
       if (!event.dataTransfer?.types.includes(LIBRARY_ITEMS_MIME)) return;
@@ -135,6 +139,31 @@ export function useLibraryItemDrop({
         if (useLibraryTransfer.getState().drag === snapshot) finishLibraryDrag(saved);
       });
     };
+    const pointer = (event: Event) => {
+      const detail = (event as CustomEvent<LibraryPointerDrag>).detail;
+      if (detail.phase === 'cancel') {
+        clear();
+        return;
+      }
+      const hit = document.elementFromPoint(detail.x, detail.y);
+      const node = targetAt(hit);
+      if (!node) {
+        clear();
+        return;
+      }
+      const valid = update(hit, detail.y);
+      detail.valid = valid;
+      if (detail.phase !== 'drop') return;
+      const snapshot = useLibraryTransfer.getState().drag;
+      const path = node.dataset['libraryFolderPath'];
+      clear();
+      if (!valid || !snapshot || path === undefined) return;
+      useLibraryTransfer.setState({ dragAccepted: true });
+      detail.result = latest.current.move(snapshot, path).then((saved) => {
+        if (useLibraryTransfer.getState().drag === snapshot) finishLibraryDrag(saved);
+        return saved;
+      });
+    };
     const leave = (event: DragEvent) => {
       if (!(event.relatedTarget instanceof Node) || !element.contains(event.relatedTarget)) clear();
     };
@@ -146,6 +175,7 @@ export function useLibraryItemDrop({
     const key = (event: KeyboardEvent) => {
       if (event.key === 'Escape') end();
     };
+    document.addEventListener(LIBRARY_POINTER_DRAG, pointer);
     element.addEventListener('dragover', over);
     element.addEventListener('dragleave', leave);
     element.addEventListener('drop', drop);
@@ -154,6 +184,7 @@ export function useLibraryItemDrop({
     window.addEventListener('blur', end);
     return () => {
       clear();
+      document.removeEventListener(LIBRARY_POINTER_DRAG, pointer);
       element.removeEventListener('dragover', over);
       element.removeEventListener('dragleave', leave);
       element.removeEventListener('drop', drop);

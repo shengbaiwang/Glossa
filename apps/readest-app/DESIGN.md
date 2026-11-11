@@ -72,8 +72,14 @@ crisp position cue without animation. Preserve selection, note links and history
 ### PDF reading controls — 2026-10-18
 
 Keep one file-page entry in the existing footer; show differing printed labels
-separately. Add quiet Fit Page / Fit Width actions and the actual rendered scale,
-with presets in the percentage menu. Fitting clears extra magnification. Keep
+separately. PDF fitting has two actions: Fit Page (整页显示, using the Expand
+glyph) and Fit Width (铺满宽度). Fit Page shows the intact paper page inside
+the readable window, reserving stable header/footer clearance. Remove the separate
+content-fit action; no image analysis or white-margin crop is involved.
+Show actual rendered scale from 5–500%, with integer input and a 1% slider,
+without presets. Keep the percentage and its suffix in one compact field beside
+a thin slider, with aligned centers and consistent icon spacing. Keep zoom in
+the reading footer rather than duplicating it in reading settings. Keep
 controls inside narrow reading panes, using 44px touch targets and e-ink borders.
 
 Pages uses a virtual thumbnail grid with an ink page-number chip for the current
@@ -86,7 +92,7 @@ leave other pages usable and offer an inline retry. Arrow keys and Home/End move
 focus through virtual pages; Enter navigates, and closing overview restores focus.
 
 Reserve 48px for two-line PDF position controls inside the existing 52px footer.
-In narrow panes, keep scale presets and fitting in the percentage menu. File-page
+In narrow panes, keep percentage input, slider and fitting in the percentage menu. File-page
 fractions retain LTR order in RTL chrome; the printed label joins the same tappable
 page-entry label. Check actual painted contrast after e-ink transitions.
 

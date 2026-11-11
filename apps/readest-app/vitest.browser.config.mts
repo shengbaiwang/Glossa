@@ -110,6 +110,19 @@ export default defineConfig({
           const scale = bounds.width / width;
           await page.mouse.dblclick(bounds.x + point.x * scale, bounds.y + point.y * scale);
         },
+        async panPDFText({ page, frame }, from: { x: number; y: number }, to: { x: number; y: number }) {
+          const testFrame = await frame();
+          const bounds = await testFrame.frameElement().then(el => el.boundingBox());
+          if (!bounds) throw new Error('Missing test frame');
+          const scale = bounds.width / await testFrame.evaluate(() => window.innerWidth);
+          const p = (point: { x: number; y: number }) => ({ x: bounds.x + point.x * scale, y: bounds.y + point.y * scale });
+          const start = p(from), end = p(to);
+          await page.mouse.click(start.x, start.y);
+          await page.keyboard.down('Space');
+          await page.mouse.down();
+          try { await page.mouse.move(end.x, end.y, { steps: 12 }); }
+          finally { await page.mouse.up(); await page.keyboard.up('Space'); }
+        },
         async dragPDFText({ page, frame }, from: { x: number; y: number }, to: { x: number; y: number }, pauseAtEndMs = 0, via?: { x: number; y: number }) {
           const testFrame = await frame();
           const bounds = await testFrame.frameElement().then((element) => element.boundingBox());

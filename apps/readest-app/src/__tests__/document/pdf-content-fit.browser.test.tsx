@@ -161,19 +161,18 @@ function originalPDF() {
   return new TextEncoder().encode(pdf);
 }
 
-async function fitContent() {
-  await page.getByRole('button', { name: /^Zoom [\d.]+%$/ }).click();
-  await userEvent.click(screen.getByRole('menuitem', { name: 'Fit Content' }));
+async function fitPage() {
+  await userEvent.click(screen.getByRole('button', { name: 'Fit Page' }));
 }
 
-it('opens the zoom menu with Space without turning the PDF page', async () => {
+it('opens the two-action zoom menu with Space without turning the PDF page', async () => {
   await open();
   const next = vi.spyOn(view, 'next');
   screen.getByRole('button', { name: /^Zoom [\d.]+%$/ }).focus();
   await userEvent.keyboard(' ');
-  expect(screen.getByRole('menuitem', { name: 'Fit Content' })).toBeTruthy();
+  expect(screen.getAllByRole('menuitem')).toHaveLength(2);
+  expect(screen.queryByRole('menuitem', { name: 'Fit Content' })).toBeNull();
   expect(next).not.toHaveBeenCalled();
-  expect(view.renderer.index).toBe(0);
   await expect
     .poll(() => document.activeElement)
     .toBe(screen.getByRole('menuitem', { name: 'Fit Page' }));
@@ -181,94 +180,37 @@ it('opens the zoom menu with Space without turning the PDF page', async () => {
   await expect
     .poll(() => document.activeElement)
     .toBe(screen.getByRole('menuitem', { name: 'Fit Width' }));
-  await userEvent.keyboard('{ArrowDown}');
-  await expect
-    .poll(() => document.activeElement)
-    .toBe(screen.getByRole('menuitem', { name: 'Fit Content' }));
-  await userEvent.keyboard('{Enter}');
+  await userEvent.keyboard('{ArrowUp}{Enter}');
   await expect.poll(() => save.mock.calls.length).toBe(2);
   expect(view.renderer.index).toBe(0);
-  expect(screen.queryByRole('menuitem', { name: 'Fit Content' })).toBeNull();
 });
 
 for (const hidden of [false, true]) {
   for (const scrolled of [false, true]) {
-    it(`fits every content line between the reader bars without changing when they hide (${hidden}/${scrolled})`, async () => {
+    it(`fits the entire page between stable reader bars (${hidden}/${scrolled})`, async () => {
       await open(false, scrolled, { hidden });
       const doc = view.renderer.getContents().find((c) => c.index === 0)!.doc;
-      // Open through the actual keyboard so an auto-hidden bar needs no synthetic click.
       screen.getByRole('button', { name: /^Zoom [\d.]+%$/ }).focus();
       await userEvent.keyboard(' ');
-      await userEvent.click(screen.getByRole('menuitem', { name: 'Fit Content' }));
-      await expect.poll(() => save.mock.calls.length).toBe(2);
-      await expect
-        .poll(() => getComputedStyle(doc.defaultView!.frameElement!).pointerEvents)
-        .toBe('auto');
-      // Settings persistence can finish before the async PDF layout. The old
-      // frame is already interactive, so wait for the actual reading geometry.
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Fit Page' }));
       await expect
         .poll(() => {
           const frame = doc.defaultView!.frameElement!.getBoundingClientRect();
           const root = readerRoot!.getBoundingClientRect();
-          const lines = [...doc.querySelectorAll<HTMLElement>('.textLayer span')].filter((span) =>
-            span.textContent?.trim(),
-          );
-          return (
-            lines.length >= 3 &&
-            lines.every((line) => {
-              const box = line.getBoundingClientRect();
-              return (
-                frame.top + box.top >= root.top + 180 + 16 &&
-                frame.top + box.bottom <= root.bottom - 12 - 240 - 16
-              );
-            })
-          );
+          return frame.top >= root.top + 180 + 15 && frame.bottom <= root.bottom - 12 - 240 - 15;
         })
         .toBe(true);
-      const frame = doc.defaultView!.frameElement!.getBoundingClientRect();
-      const root = readerRoot!.getBoundingClientRect();
-      const lines = [...doc.querySelectorAll<HTMLElement>('.textLayer span')].filter((span) =>
-        span.textContent?.trim(),
-      );
-      expect(lines.length).toBeGreaterThanOrEqual(3);
-      for (const line of lines) {
-        const box = line.getBoundingClientRect();
-        expect(frame.top + box.top).toBeGreaterThanOrEqual(root.top + 180 + 16);
-        expect(frame.top + box.bottom).toBeLessThanOrEqual(root.bottom - 12 - 240 - 16);
-      }
       expect(view.renderer.index).toBe(0);
     });
   }
 }
 
-it('discards pending analysis when a reader bar changes the available area', async () => {
-  await open(false, true, { hidden: false });
-  const image = await book.getPDFImage!(0, 300);
-  let finish!: (blob: Blob) => void;
-  vi.spyOn(book, 'getPDFImage').mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        finish = resolve;
-      }),
-  );
-  await fitContent();
-  readerRoot!.querySelector<HTMLElement>('.glossa-reader-header')!.style.height = '200px';
-  finish(image);
-  await expect
-    .poll(() => screen.getByRole('group', { name: 'Zoom' }).getAttribute('aria-busy'))
-    .toBe('false');
-  expect(save).not.toHaveBeenCalled();
-  expect(view.renderer.getAttribute('zoom')).toBe('fit-page');
-});
-
 for (const ocr of [false, true]) {
   for (const scrolled of [false, true]) {
-    it(`enlarges the current content without changing its CFI or mouse selection (${ocr}/${scrolled})`, async () => {
+    it(`fits the whole page without image analysis or changing CFI and selection (${ocr}/${scrolled})`, async () => {
       await open(ocr, scrolled);
       const doc = view.renderer.getContents().find((c) => c.index === 0)!.doc;
-      const root = doc.querySelector('[data-pdf-ocr-text]') ?? doc.querySelector('.textLayer')!;
-      const spans = [...root.querySelectorAll<HTMLElement>('span')];
-      const word = spans.find(
+      const word = [...doc.querySelectorAll<HTMLElement>('.textLayer span')].find(
         (span) => span.firstChild?.nodeType === 3 && span.textContent!.trim().length > 5,
       )!;
       const range = doc.createRange();
@@ -276,107 +218,28 @@ for (const ocr of [false, true]) {
       range.setEnd(word.firstChild!, word.textContent!.length);
       const cfi = view.getCFI(0, range),
         text = range.toString();
-      const initialScale = view.renderer.scale!;
-      const initialFrame = doc.defaultView!.frameElement!.getBoundingClientRect();
-      await fitContent();
-      await expect.poll(() => view.renderer.scale!).toBeGreaterThan(initialScale * 1.02);
+      const image = vi.spyOn(book, 'getPDFImage');
+      view.renderer.setZoom?.('original-size', 137);
+      await fitPage();
       await expect.poll(() => save.mock.calls.length).toBe(2);
-      expect(view.renderer.index).toBe(0);
-      await expect
-        .poll(() => doc.querySelector('#canvas canvas')?.getBoundingClientRect().width)
-        .toBeCloseTo(doc.defaultView!.frameElement!.getBoundingClientRect().width, 1);
-      await expect
-        .poll(() => getComputedStyle(doc.defaultView!.frameElement!).pointerEvents)
-        .toBe('auto');
+      const frameElement = doc.defaultView!.frameElement!;
+      await expect.poll(() => frameElement.getBoundingClientRect().height).toBeLessThanOrEqual(700);
+      const frame = frameElement.getBoundingClientRect(),
+        host = view.renderer.getBoundingClientRect();
+      expect(frame.left).toBeGreaterThanOrEqual(host.left - 1);
+      expect(frame.right).toBeLessThanOrEqual(host.right + 1);
+      expect(frame.top).toBeGreaterThanOrEqual(host.top - 1);
+      expect(frame.bottom).toBeLessThanOrEqual(host.bottom + 1);
+      expect(image).not.toHaveBeenCalled();
       await expect.poll(() => view.resolveCFI(cfi).anchor(doc).toString()).toBe(text);
-      const restored = view.resolveCFI(cfi).anchor(doc);
-      expect(restored.toString()).toBe(text);
-      const box = restored.getBoundingClientRect();
-      const frame = doc.defaultView!.frameElement!.getBoundingClientRect();
-      const host = view.renderer.getBoundingClientRect();
-      expect(frame.left + box.left).toBeGreaterThanOrEqual(host.left);
-      expect(frame.width).toBeCloseTo(
-        (initialFrame.width / initialScale) * view.renderer.scale!,
-        1,
-      );
-      expect(frame.top + box.top).toBeGreaterThanOrEqual(host.top);
-      expect(frame.top + box.bottom).toBeLessThanOrEqual(host.bottom);
-      if (ocr && scrolled)
-        await page.screenshot({
-          path: '/Users/nidao./Documents/ChatGPT/Glossa/.glossa-dev/qa/pdf-fit-content-scan.png',
-        });
+      await expect.poll(() => getComputedStyle(frameElement).pointerEvents).toBe('auto');
+      const box = view.resolveCFI(cfi).anchor(doc).getBoundingClientRect();
       await commands.dragPDFText(
         { x: frame.left + box.left + 1, y: frame.top + box.top + box.height / 2 },
         { x: frame.left + box.right - 1, y: frame.top + box.top + box.height / 2 },
       );
       await expect.poll(() => doc.getSelection()?.toString().trim()).toBe(text.trim());
-      await userEvent.click(screen.getByRole('button', { name: 'Fit Page' }));
-      await expect.poll(() => view.renderer.scale).toBeCloseTo(initialScale, 2);
-      await expect.poll(() => view.resolveCFI(cfi).anchor(doc).toString()).toBe(text);
+      expect(view.renderer.index).toBe(0);
     });
   }
 }
-
-it('does not apply a late analysis after the reader navigates elsewhere', async () => {
-  await open();
-  const image = await book.getPDFImage!(0, 300);
-  let finish!: (blob: Blob) => void;
-  vi.spyOn(book, 'getPDFImage').mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        finish = resolve;
-      }),
-  );
-  await fitContent();
-  await view.goTo(2);
-  finish(image);
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  expect(view.renderer.index).toBe(2);
-  expect(view.renderer.getAttribute('zoom')).toBe('fit-page');
-  expect(save).not.toHaveBeenCalled();
-});
-
-for (const action of ['zoom', 'scroll', 'resize', 'unmount']) {
-  it(`discards analysis when ${action} supersedes the request`, async () => {
-    await open();
-    const image = await book.getPDFImage!(0, 300);
-    let finish!: (blob: Blob) => void;
-    vi.spyOn(book, 'getPDFImage').mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-    );
-    await fitContent();
-    if (action === 'zoom') await userEvent.click(screen.getByRole('button', { name: 'Fit Width' }));
-    if (action === 'scroll') view.renderer.scrollTop += 50;
-    if (action === 'resize') view.style.width = '500px';
-    if (action === 'unmount') cleanup();
-    const before = save.mock.calls.length;
-    finish(image);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(save.mock.calls.length).toBe(before);
-    expect(view.renderer.getAttribute('zoom')).toBe(action === 'zoom' ? 'fit-width' : 'fit-page');
-  });
-}
-
-it('keeps the current view on a blank page and on analysis failure, with retry in the existing control', async () => {
-  await open();
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 100;
-  canvas.getContext('2d')!.fillStyle = 'white';
-  canvas.getContext('2d')!.fillRect(0, 0, 100, 100);
-  const blank = await new Promise<Blob>((resolve) => canvas.toBlob((blob) => resolve(blob!)));
-  const image = vi.spyOn(book, 'getPDFImage').mockResolvedValueOnce(blank);
-  await fitContent();
-  await expect.poll(() => screen.getByRole('status').textContent).toContain('No content to fit.');
-  expect(save).not.toHaveBeenCalled();
-  image.mockRejectedValueOnce(new Error('render_failed'));
-  await fitContent();
-  await expect
-    .poll(() => screen.getByRole('alert').textContent)
-    .toContain('Could not fit page content.');
-  await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
-  await expect.poll(() => save.mock.calls.length).toBe(2);
-  expect(screen.queryByRole('alert')).toBeNull();
-});

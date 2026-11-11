@@ -1,6 +1,6 @@
 # Glossa 插件开发草案（API 1）
 
-设置中的一级「插件」菜单统一管理内置插件。当前仅加载随应用审核、构建的对话、导图、PDF 自动目录、书籍元数据识别与网页导入；第三方区域预留在同一页，尚未开放安装。下面是供后续开发讨论和源码贡献使用的元数据契约，不是可安装包格式，也不承诺兼容 Obsidian API。
+设置中的一级「插件」菜单统一管理内置插件。当前仅加载随应用审核、构建的对话、导图、PDF 自动目录、书籍元数据识别、网页导入与阅读时长；第三方区域预留在同一页，尚未开放安装。下面是供后续开发讨论和源码贡献使用的元数据契约，不是可安装包格式，也不承诺兼容 Obsidian API。
 
 ## 清单
 
@@ -13,9 +13,9 @@
 | `author` | 非空作者名称，最多 120 字符 |
 | `version` | 语义版本，如 `0.1.0`，允许预发布及构建元数据；不接受 `v1.0.0`、`1` 或首尾空白 |
 | `apiVersion` | 必须为 `1`；与应用版本分开演进，不接受未知版本 |
-| `activation` | `reader-panel`（用户打开面板）、`persistent-import`（持久导入／主动重导入）、`book-metadata`（书籍信息中的主动识别）或 `library-import`（主动网页导入／系统分享），同时支持上述值的非空数组；保留旧单值兼容 |
+| `activation` | `reader-panel`（用户打开面板）、`persistent-import`（持久导入／主动重导入）、`book-metadata`（书籍信息中的主动识别）、`library-import`（主动网页导入／系统分享）或 `reader-activity`（可信阅读操作），同时支持上述值的非空数组；保留旧单值兼容 |
 | `format` | `EPUB`、`PDF`、`WEB`、`MD`、`MOBI`、`AZW`、`AZW3`、`CBZ`、`FB2`、`FBZ`、`TXT`，或这些值的非空数组；兼容旧单值清单，仅描述实际支持的格式。对话支持 EPUB／MD，导图仍仅 EPUB；元数据插件为现有本机书籍格式读取基础元数据，版权页文字与本机 OCR 识别以 EPUB／PDF 为首版范围 |
-| `capabilities` | 最多四项：`reading-harness`、`model-provider`、`verified-sources`、`local-pdf-contents`、`local-book-metadata`、`web-page-capture` |
+| `capabilities` | 最多四项：`reading-harness`、`model-provider`、`verified-sources`、`local-pdf-contents`、`local-book-metadata`、`web-page-capture`、`local-reading-time` |
 
 未知字段会被拒绝；没有 `main`、远程 URL 或可执行路径字段。能力列表描述可信源码的依赖，不是向外部代码发放的权限，也不构成安全沙箱。开关仍只接受内置已知 ID；外部清单不能通过设置字段加入加载表。草案改变时须同步示例、内置清单及契约测试，破坏兼容性的变更提升 API 版本。
 
@@ -40,6 +40,12 @@
 ## 网页导入
 
 `webImport` 声明 `library-import`／`WEB`，不进入阅读器右侧标签。仅主动网页导入和系统分享／深链接触发 `importWebPage`，抓取与转换按需加载；保存复用核心导入服务。菜单、分享入口及活动任务统一接受 `officialModules.webImport` 的显式布尔补丁。停用取消等待和图片下载，现有原生捕获在其有界操作返回后检查取消，不启动后续转换或保存；已开始的必要保存可以完成。重新启用不复用旧 signal，不消费停用时尚未接收的 iOS 分享队列。已有书籍不依赖插件，第三方清单也不能因此获得网页或文件权限。
+
+## 有效阅读时长
+
+`readingTime` 声明 `reader-activity`／`local-reading-time`，仅 Mac 提供入口。当前格式为 PDF 和 EPUB，导入网页使用相同 EPUB 阅读路径。设置页内的详情读取统计，只有加载完成的读者正文和笔记入口发出可信活动后，才在原生端建立计时归属。正文需要可信输入和实际位置／选区变化，来源与笔记正文均不进入统计。Mac 宿主处理跨窗口互斥、窗口可见性及系统休眠，重新启用等待新的活动。
+
+区间写入现有统计数据库的 `glossa_reading_intervals`，规则版本独立于清单 API。保存成功后再确认区间 ID。按本机日界聚合，独立于旧阅读统计、KOReader 和云同步。第三方清单声明这两项元数据不会获得原生计时 IPC、统计库访问或事件订阅权限。
 
 ## 后续第三方执行环境
 

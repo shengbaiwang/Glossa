@@ -9,6 +9,7 @@ import { eventDispatcher } from '@/utils/event';
 import { ReadingSpeech, type SpeechState } from '@/services/tts/ReadingSpeech';
 import { createReadingSpeechClient } from '@/services/tts/createReadingSpeech';
 import { cancelWordPronounce } from '@/services/tts/wordPronouncer';
+import { pauseReadingActivity } from '@/glossa/plugins/readingActivity';
 import type { TTSVoice } from '@/services/tts/types';
 
 type SpeechRequest = { bookKey: string; text?: string };
@@ -26,6 +27,7 @@ export default function ReadingSpeechPlayer() {
   useEffect(() => {
     const start = (event: CustomEvent<SpeechRequest>) => {
       if (!event.detail?.bookKey) return;
+      pauseReadingActivity();
       const settings = useReaderStore.getState().getViewSettings(event.detail.bookKey);
       setRate(settings?.ttsRate || 1);
       setVoice(settings?.ttsVoice || '');
@@ -94,8 +96,12 @@ export default function ReadingSpeechPlayer() {
         aria-label={state === 'playing' ? _('Pause') : _('Play')}
         disabled={state === 'loading'}
         onClick={() => {
-          if (state === 'playing') void session.current?.pause();
-          else if (state === 'paused') void session.current?.resume();
+          if (state === 'playing') {
+            void session.current?.pause();
+            return;
+          }
+          pauseReadingActivity();
+          if (state === 'paused') void session.current?.resume();
           else setRequest({ ...request });
         }}
       >

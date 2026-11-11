@@ -66,6 +66,43 @@ const makeStore = () =>
   createAppLocalStore({ appService, settings: {} as SystemSettings, envConfig });
 
 describe('createAppLocalStore — library hydration (data-loss guard)', () => {
+  test('a cloud removal receipt keeps artwork on every surviving book', async () => {
+    const removed = makeBook('removed', {
+      deletedAt: 10,
+      removal: {
+        version: 1,
+        id: 'removal-receipt',
+        revision: 10,
+        requestedAt: 10,
+        mode: 'trash',
+        local: 'complete',
+        cloud: 'pending',
+        cloudTargets: { icloud: 'pending' },
+      },
+    });
+    savedLibrary = [...onDisk, removed];
+    useLibraryStore.getState().setLibrary(
+      [
+        ...onDisk.map((book) => ({
+          ...book,
+          coverImageUrl: `asset://localhost/${book.hash}/cover.png`,
+        })),
+        removed,
+      ],
+      true,
+    );
+    await makeStore().acknowledgeRemoval!(removed, 'icloud', 'complete');
+    // Persistence deliberately omits these WebView-local URLs. Publishing a
+    // receipt must not interpret that omission as deleting every cover.
+    expect(savedLibrary!.find((book) => book.hash === 'a')?.coverImageUrl).toBeUndefined();
+    for (const book of onDisk) {
+      expect(useLibraryStore.getState().getBookByHash(book.hash)?.coverImageUrl).toBe(
+        `asset://localhost/${book.hash}/cover.png`,
+      );
+    }
+    expect(useLibraryStore.getState().getBookByHash('removed')?.removal?.cloud).toBe('complete');
+  });
+
   test('verifies concurrent downloads once and retains a legacy duplicate for review', async () => {
     const file = new File(['same bytes'], 'same.epub');
     const contentFingerprint = await fingerprintFile(file);

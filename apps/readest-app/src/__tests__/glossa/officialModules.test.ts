@@ -12,6 +12,7 @@ describe('bundled official modules', () => {
       'mindmap',
       'pdfAutoContents',
       'metadataRecognition',
+      'readingTime',
       'webImport',
     ]);
     for (const module of OFFICIAL_MODULES)

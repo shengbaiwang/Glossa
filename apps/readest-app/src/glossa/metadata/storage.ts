@@ -3,7 +3,7 @@ import type { EnvConfigType } from '@/services/environment';
 import { withBookDataWrite } from '@/services/bookDataLifecycle';
 import { metadataRecognitionSchema, type MetadataRecognition } from './types';
 
-export const METADATA_ALGORITHM = 'local-metadata-1';
+export const METADATA_ALGORITHM = 'local-metadata-2';
 const cachePath = (book: Book) => {
   if (!/^[a-zA-Z0-9_-]{1,128}$/.test(book.hash)) throw new Error('metadata_invalid_book');
   return `${book.hash}/metadata-recognition.json`;

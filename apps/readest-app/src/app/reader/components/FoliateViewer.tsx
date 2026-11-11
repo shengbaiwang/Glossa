@@ -91,6 +91,10 @@ import Spinner from '@/components/Spinner';
 import ImageViewer from './ImageViewer';
 import TableViewer from './TableViewer';
 
+import { observeReadingSurface, supportsReadingTime } from '@/glossa/plugins/readingActivity';
+import { isPluginEnabled } from '@/glossa/plugins/registry';
+import { useSidebarStore } from '@/store/sidebarStore';
+
 declare global {
   interface Window {
     eval(script: string): void;
@@ -143,6 +147,21 @@ const FoliateViewer: React.FC<{
   const librarySearchHighlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [scrollMargins, setScrollMargins] = useState({ top: 0, bottom: 0 });
   const docLoaded = useRef(false);
+  const initialized = viewState?.inited;
+  const tracksTime =
+    !!bookData?.book &&
+    supportsReadingTime(appService, bookData.book.format) &&
+    isPluginEnabled(settings, 'readingTime');
+
+  useEffect(() => {
+    if (!tracksTime || !initialized || !viewRef.current) return;
+    return observeReadingSurface(
+      viewRef.current,
+      bookKey,
+      () => useSidebarStore.getState().sideBarBookKey === bookKey,
+      containerRef.current?.closest('[data-view-transition-root]') ?? null,
+    );
+  }, [tracksTime, initialized, bookKey]);
 
   const autoScroll = useAutoScroll(bookKey, viewRef);
   const { registerSpeedListeners, overlayVisible: speedOverlayVisible } =

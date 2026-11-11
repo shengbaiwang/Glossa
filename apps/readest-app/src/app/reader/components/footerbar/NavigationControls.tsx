@@ -20,7 +20,12 @@ export const PageNavigation: React.FC<
 > = ({ bookKey, progressValid, rtl, handlers, showButtons = true }) => {
   const _ = useTranslation();
   return (
-    <div className='glossa-page-navigation' role='group' aria-label={_('Go to Page')}>
+    <div
+      className='glossa-page-navigation'
+      data-reading-turn=''
+      role='group'
+      aria-label={_('Go to Page')}
+    >
       {showButtons && (
         <Button
           icon={getNavigationIcon(rtl, <ChevronLeft size={18} />, <ChevronRight size={18} />)}

@@ -1245,3 +1245,44 @@ html[data-page='library'] .glossa-folder-name-editor input:focus-visible {
   background: var(--glossa-surface);
   outline: 2px solid var(--glossa-ink);
 }
+
+/* Follow the pointer without layout or React updates; only the artwork is lifted. */
+.glossa-library-drag-preview {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+  will-change: transform;
+  filter: drop-shadow(0 8px 12px rgb(0 0 0 / 18%));
+}
+.glossa-library-drag-preview .bookitem-main,
+.glossa-library-drag-preview .groupitem-main {
+  border-radius: 3px;
+}
+[data-library-dragging] .glossa-book-cover-stage {
+  opacity: 0.5;
+  transition: opacity 120ms ease-out;
+}
+[data-library-folder-path] {
+  transition:
+    background-color 140ms ease-out,
+    outline-color 140ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-library-folder-path],
+  [data-library-dragging] .glossa-book-cover-stage {
+    transition: none;
+  }
+}
+[data-eink='true'] .glossa-library-drag-preview {
+  filter: none;
+}
+[data-eink='true'] [data-library-dragging] .glossa-book-cover-stage {
+  opacity: 1;
+  outline: 1px dashed var(--glossa-ink);
+  transition: none;
+}
+[data-eink='true'] [data-library-folder-path] {
+  transition: none;
+}

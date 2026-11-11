@@ -22,13 +22,13 @@ import {
 } from '@/app/library/utils/libraryUtils';
 import { md5Fingerprint } from '@/utils/md5';
 import { useLibraryStore } from '@/store/libraryStore';
-import { LIBRARY_ITEMS_MIME } from '../utils/libraryDragDrop';
+import { startLibraryPointerDrag } from '../utils/libraryPointerDrag';
 import BookItem from './BookItem';
 import GroupItem from './GroupItem';
 import BookContextMenuPopup, { type BookContextMenuItem } from './BookContextMenuPopup';
 import { useOpenBook } from '../hooks/useOpenBook';
 import { resolveFolderPath } from '../hooks/useLibraryFolders';
-import { cutLibraryItems, startLibraryDrag, useLibraryTransfer } from '../utils/libraryTransfer';
+import { cutLibraryItems, useLibraryTransfer } from '../utils/libraryTransfer';
 
 export const generateBookshelfItems = (
   books: Book[],
@@ -486,6 +486,23 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
             pointerType.current !== 'mouse'
           )
             handlers.onPointerDown(event);
+          if (
+            !renaming &&
+            ('format' in item || !!handleRenameFolder) &&
+            !(event.target as HTMLElement).closest(
+              'button, input, select, textarea, form, [data-inline-edit]',
+            )
+          ) {
+            startLibraryPointerDrag(
+              event.nativeEvent,
+              event.currentTarget,
+              () => {
+                selectItem(itemId, { preserve: true });
+                return useLibraryStore.getState().getSelectedBooks();
+              },
+              () => handlers.onPointerCancel(event),
+            );
+          }
         }}
         onPointerUpCapture={(event) => {
           if (
@@ -525,22 +542,11 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
           selectItem(itemId, { preserve: true });
           handleContextMenu({ x: event.clientX, y: event.clientY });
         }}
-        draggable={!renaming && !appService?.isMobile && ('format' in item || !!handleRenameFolder)}
+        draggable={false}
         data-library-folder-path={'books' in item && handleRenameFolder ? item.name : undefined}
         data-library-drop-open={'books' in item && handleRenameFolder ? '' : undefined}
         data-library-cut={clipboard?.selection.includes(itemId) ? '' : undefined}
-        onDragStart={(event) => {
-          if ((event.target as HTMLElement).closest('input, button, form')) {
-            event.preventDefault();
-            return;
-          }
-          const id = 'format' in item ? item.hash : item.id;
-          selectItem(id, { preserve: true });
-          const ids = useLibraryStore.getState().getSelectedBooks();
-          startLibraryDrag(ids);
-          event.dataTransfer.setData(LIBRARY_ITEMS_MIME, JSON.stringify(ids));
-          event.dataTransfer.effectAllowed = 'move';
-        }}
+        onDragStart={(event) => event.preventDefault()}
       >
         <div className='flex h-full flex-col justify-start'>
           {'format' in item ? (

@@ -1,5 +1,4 @@
 import clsx from 'clsx';
-import Image from 'next/image';
 import { CSSProperties, memo, useEffect, useRef, useState } from 'react';
 import { Book } from '@/types/book';
 import { LibraryCoverFitType, LibraryViewModeType } from '@/types/settings';
@@ -44,6 +43,8 @@ function CoverRequest({
   const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
   const currentAttempt = useRef(attempt);
   currentAttempt.current = attempt;
+  const loadedAttempt = useRef(-1);
+  const failedAttempt = useRef(-1);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -68,39 +69,53 @@ function CoverRequest({
     };
   }, [status, attempt]);
   const src = imageSource(url, version, attempt);
+  const imageLoaded = (image: HTMLImageElement) => {
+    if (!alive.current || currentAttempt.current !== attempt || loadedAttempt.current === attempt)
+      return;
+    const { naturalWidth, naturalHeight } = image;
+    if (!naturalWidth || !naturalHeight) return;
+    loadedAttempt.current = attempt;
+    setStatus('loaded');
+    onLoad({ identity, url, version, ratio: naturalWidth / naturalHeight });
+    recordLibraryDiagnostic('cover-loaded', {
+      attempt,
+      width: naturalWidth,
+      height: naturalHeight,
+    });
+  };
+  const imageFailed = () => {
+    if (!alive.current || currentAttempt.current !== attempt || failedAttempt.current === attempt)
+      return;
+    failedAttempt.current = attempt;
+    setStatus('error');
+    onError();
+    recordLibraryDiagnostic('cover-error', {
+      attempt,
+      protocol: url.split(':')[0] ?? 'relative',
+    });
+  };
   if (status === 'error') return null;
   return (
-    <Image
+    <img
       key={src + attempt}
+      ref={(image) => {
+        // Cached images can finish before hydration attaches the load listener.
+        if (image?.complete) {
+          if (image.naturalWidth && image.naturalHeight) imageLoaded(image);
+          else imageFailed();
+        }
+      }}
       src={src}
       alt={title}
-      fill
-      sizes='(max-width: 640px) 50vw, 240px'
-      loading='lazy'
+      // The shelf already virtualizes mounted covers. Do not defer their loading
+      // or visibility to WebKit's idle/lazy scheduling or an extra decode Promise.
+      loading='eager'
+      decoding='sync'
       draggable={false}
       aria-hidden={status !== 'loaded'}
-      className={clsx(className, status !== 'loaded' && 'invisible')}
-      onLoad={(event) => {
-        if (!alive.current || currentAttempt.current !== attempt) return;
-        const { naturalWidth, naturalHeight } = event.currentTarget;
-        if (!naturalWidth || !naturalHeight) return;
-        setStatus('loaded');
-        onLoad({ identity, url, version, ratio: naturalWidth / naturalHeight });
-        recordLibraryDiagnostic('cover-loaded', {
-          attempt,
-          width: naturalWidth,
-          height: naturalHeight,
-        });
-      }}
-      onError={() => {
-        if (!alive.current || currentAttempt.current !== attempt) return;
-        setStatus('error');
-        onError();
-        recordLibraryDiagnostic('cover-error', {
-          attempt,
-          protocol: url.split(':')[0] ?? 'relative',
-        });
-      }}
+      className={className}
+      onLoad={(event) => imageLoaded(event.currentTarget)}
+      onError={imageFailed}
     />
   );
 }
@@ -151,11 +166,11 @@ function BookCoverContent({
     coverFit === 'crop' ? 'crop-cover-img object-cover' : 'fit-cover-img object-contain',
     imageClassName,
   );
-  // Keep the successful request mounted until its replacement has decoded.
+  // Keep the successful request mounted until its replacement has loaded.
   const requests: CoverSource[] = coverUrl
     ? [
-        ...(loaded && loaded.identity !== identity ? [loaded] : []),
         { identity, url: coverUrl, version },
+        ...(loaded && loaded.identity !== identity ? [loaded] : []),
       ]
     : [];
 
@@ -169,6 +184,17 @@ function BookCoverContent({
     >
       <div className='book-cover-surface'>
         <div className='book-cover-face'>
+          <div
+            className={clsx('fallback-cover', imageLoaded && 'invisible')}
+            role='img'
+            aria-label={[formatTitle(book.title), author].filter(Boolean).join(' — ')}
+            aria-hidden={imageLoaded}
+          >
+            <span className={clsx('book-cover-title', isPreview ? 'line-clamp-2' : 'line-clamp-3')}>
+              {formatTitle(book.title)}
+            </span>
+            <span className='book-cover-author line-clamp-2'>{author}</span>
+          </div>
           {requests.map((request) => (
             <CoverRequest
               key={request.identity}
@@ -184,17 +210,6 @@ function BookCoverContent({
               }}
             />
           ))}
-          <div
-            className={clsx('fallback-cover', imageLoaded && 'invisible')}
-            role='img'
-            aria-label={[formatTitle(book.title), author].filter(Boolean).join(' — ')}
-            aria-hidden={imageLoaded}
-          >
-            <span className={clsx('book-cover-title', isPreview ? 'line-clamp-2' : 'line-clamp-3')}>
-              {formatTitle(book.title)}
-            </span>
-            <span className='book-cover-author line-clamp-2'>{author}</span>
-          </div>
         </div>
       </div>
     </div>

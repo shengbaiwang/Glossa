@@ -1,0 +1,1 @@
+import './BookCoverLoading.browser.test';

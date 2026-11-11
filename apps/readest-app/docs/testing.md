@@ -86,6 +86,39 @@ Vitest connects directly to the embedded WebDriver server (port 4445) in the run
 - **Browser provider:** `@vitest/browser-webdriverio` (connects to port 4445)
 - **Use for:** Tauri plugin commands (turso, native-tts, etc.), native filesystem, Tauri IPC.
 
+### macOS reading time acceptance
+
+Run from `apps/readest-app` in a logged-in Mac desktop session. The WebDriver
+runner verifies the isolated debug executable before the separate AppKit
+fixture can cover it. The split-reader test uses native mouse events on
+actual EPUB and PDF surfaces.
+
+```bash
+qa_dir=$(mktemp -d)
+export GLOSSA_READING_TIME_QA_HELPER="$qa_dir/reading-time-qa"
+xcrun swiftc ../../scripts/native/glossa-reading-time-qa.swift -o "$GLOSSA_READING_TIME_QA_HELPER"
+bash scripts/test-tauri.sh src/__tests__/glossa/readingTimeWindow.tauri.test.ts
+```
+
+For the manual lock and sleep test, start the same helper in observer mode
+and keep it running until the test ends. The small test window stays above
+ordinary windows and is visible across workspaces during these two checks
+so switching apps does not cut the interval short before the system action.
+When the runner prints
+`"readingTimeReady":"locked"`, use Control–Command–Q and unlock after about
+10 seconds. At `"readingTimeReady":"sleeping"`, choose Sleep from the Apple
+menu and wake the Mac after about 15 seconds. The test compares the
+observer's timestamps with the reader's last interval and checks that a new
+reading action is required after returning.
+
+```bash
+export GLOSSA_READING_TIME_SYSTEM_LOG="$qa_dir/system-events.log"
+"$GLOSSA_READING_TIME_QA_HELPER" observe > "$GLOSSA_READING_TIME_SYSTEM_LOG" &
+observer_pid=$!
+bash scripts/test-tauri.sh src/__tests__/glossa/readingTimeSystem.tauri.test.ts
+kill "$observer_pid"
+```
+
 ### Writing Tauri Tests
 
 Tests access Tauri IPC via a shared helper:

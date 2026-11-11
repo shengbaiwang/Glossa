@@ -220,7 +220,15 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
     const view = getView(sideBarBookKey);
     const bookData = getBookData(sideBarBookKey);
     const viewSettings = getViewSettings(sideBarBookKey)!;
-    if (bookData?.isFixedLayout) {
+    if (bookData?.book?.format === 'PDF' && view) {
+      view.renderer.dispatchEvent(
+        new CustomEvent('pdf-zoom-commit', {
+          detail: {
+            level: Math.round(Math.max(MIN_ZOOM_LEVEL, Math.min(MAX_ZOOM_LEVEL, zoomLevel))),
+          },
+        }),
+      );
+    } else if (bookData?.isFixedLayout) {
       view?.renderer.setAttribute('scale-factor', zoomLevel);
       viewSettings!.zoomLevel = zoomLevel;
       setViewSettings(sideBarBookKey, viewSettings!);
@@ -230,14 +238,22 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
   const zoomInFactor = (factor = 1.0) => {
     if (!sideBarBookKey) return;
     const viewSettings = getViewSettings(sideBarBookKey)!;
-    const zoomLevel = viewSettings!.zoomLevel + ZOOM_STEP * factor;
+    const current =
+      getBookData(sideBarBookKey)?.book?.format === 'PDF'
+        ? (getView(sideBarBookKey)?.renderer.scale ?? 1) * 100
+        : viewSettings!.zoomLevel;
+    const zoomLevel = current + ZOOM_STEP * factor;
     applyZoomLevel(Math.min(zoomLevel, MAX_ZOOM_LEVEL));
   };
 
   const zoomOutFactor = (factor = 1.0) => {
     if (!sideBarBookKey) return;
     const viewSettings = getViewSettings(sideBarBookKey)!;
-    const zoomLevel = viewSettings!.zoomLevel - ZOOM_STEP * factor;
+    const current =
+      getBookData(sideBarBookKey)?.book?.format === 'PDF'
+        ? (getView(sideBarBookKey)?.renderer.scale ?? 1) * 100
+        : viewSettings!.zoomLevel;
+    const zoomLevel = current - ZOOM_STEP * factor;
     applyZoomLevel(Math.max(zoomLevel, MIN_ZOOM_LEVEL));
   };
 

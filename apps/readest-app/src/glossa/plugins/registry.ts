@@ -45,6 +45,16 @@ export const PLUGINS = [
     capabilities: ['local-book-metadata'],
   }),
   defineBundledPlugin({
+    id: 'readingTime',
+    author: 'Glossa',
+    name: 'Reading time',
+    version: '1.0.0',
+    apiVersion: 1,
+    activation: 'reader-activity',
+    format: ['EPUB', 'PDF'],
+    capabilities: ['local-reading-time'],
+  }),
+  defineBundledPlugin({
     id: 'webImport',
     author: 'Glossa',
     name: 'Import webpage',

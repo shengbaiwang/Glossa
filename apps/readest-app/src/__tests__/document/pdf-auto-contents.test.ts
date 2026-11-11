@@ -130,7 +130,9 @@ beforeEach(() => {
   native.checkpoints.clear();
   native.cache = { id: 'a'.repeat(32), pages: [], outline: null, revision: 0 };
   native.open.mockImplementation(async () => ({ ...native.cache }));
-  native.read.mockResolvedValue(null);
+  native.read.mockImplementation(async (_id, index, _detect, contents) =>
+    contents ? { index, native: true, lines: [] } : null,
+  );
   native.cancel.mockResolvedValue(undefined);
   native.start.mockResolvedValue({ cacheId: native.cache.id, state: 'running' });
   native.wait.mockResolvedValue({ state: 'completed' });
@@ -139,6 +141,197 @@ beforeEach(() => {
     outline,
     revision: 1,
   }));
+});
+
+it('recovers a damaged embedded OCR table and target using independent visual evidence', async () => {
+  const scans = new Map<number, OCRPage>([
+    [
+      1,
+      {
+        index: 1,
+        native: false,
+        lines: [
+          { text: 'Contents', x: 0.2, y: 0.15, width: 0.4, height: 0.03, endLine: true },
+          {
+            text: 'Chapter 1 Copper .... 5',
+            x: 0.2,
+            y: 0.3,
+            width: 0.6,
+            height: 0.03,
+            endLine: true,
+          },
+          {
+            text: 'Chapter 2 Amber .... 9',
+            x: 0.2,
+            y: 0.4,
+            width: 0.6,
+            height: 0.03,
+            endLine: true,
+          },
+        ],
+      },
+    ],
+    [
+      4,
+      {
+        index: 4,
+        native: false,
+        lines: [
+          { text: 'Chapter 1 Copper', x: 0.2, y: 0.25, width: 0.6, height: 0.03, endLine: true },
+        ],
+      },
+    ],
+  ]);
+  native.read.mockImplementation(async (_id, index, _detect, contents) =>
+    contents ? (scans.get(index) ?? null) : null,
+  );
+  const result = await preparePDFContents(
+    '/original.pdf',
+    document({
+      1: 'Contents\nChapter 1 C0pper .... 9999\nChapter 2 Amber .... 9',
+      4: 'Chapter 1 C0pper',
+      8: 'Chapter 2 Amber',
+    }),
+  );
+  expect(result).toBe('generated');
+  expect(native.save.mock.calls.at(-1)![2]).toEqual([
+    { title: 'Chapter 1 Copper', pageIndex: 4, level: 0 },
+    { title: 'Chapter 2 Amber', pageIndex: 8, level: 0 },
+  ]);
+  expect(native.start.mock.calls.every((call) => call[4] === false && call[5] === true)).toBe(true);
+});
+
+it('retains a calibrated offset when a chapter and its first section share a printed page', async () => {
+  const page: OCRPage = {
+    index: 30,
+    native: false,
+    lines: [
+      {
+        text: 'Chapter 1 Local administration',
+        x: 0.2,
+        y: 0.2,
+        width: 0.6,
+        height: 0.03,
+        endLine: true,
+      },
+      { text: 'Copper officials', x: 0.2, y: 0.3, width: 0.6, height: 0.03, endLine: true },
+    ],
+  };
+  native.read.mockImplementation(async (_id, index, _detect, contents) =>
+    contents ? (index === 30 ? page : { index, native: true, lines: [] }) : null,
+  );
+  expect(
+    await preparePDFContents(
+      '/original.pdf',
+      document(
+        {
+          0: 'Contents\nChapter 1 Local administration .... 20\nCopper officials .... 20',
+          30: 'Chapter 1 Local administration\nC0pper officials',
+        },
+        40,
+      ),
+    ),
+  ).toBe('generated');
+  expect(
+    native.save.mock.calls.at(-1)![2].map((entry: { pageIndex: number }) => entry.pageIndex),
+  ).toEqual([30, 30]);
+});
+
+it.each([
+  5, 6,
+])('accepts an independent source reading only at the same printed row and folio (%i)', async (folio) => {
+  const line = (text: string, y: number) => ({
+    text,
+    x: 0.2,
+    y,
+    width: 0.6,
+    height: 0.03,
+    endLine: true,
+  });
+  const source: OCRPage = {
+    index: 0,
+    native: false,
+    lines: [
+      line('Contents', 0.15),
+      line('Chapter 1 C0pper .... 5', 0.3),
+      line('Chapter 2 Amber .... 9', 0.4),
+    ],
+    alternatives: [
+      [
+        line('Contents', 0.15),
+        line(`Chapter 1 Copper .... ${folio}`, 0.3),
+        line('Chapter 2 Amber .... 9', 0.4),
+      ],
+    ],
+  };
+  native.cache.pages = [0];
+  native.read.mockImplementation(async (_id, index, _detect, contents, heading) =>
+    index === 0
+      ? source
+      : contents && index === 4
+        ? { index, native: false, lines: [line('Chapter 1 Copper', 0.25)] }
+        : contents || heading
+          ? { index, native: true, lines: [] }
+          : null,
+  );
+  expect(
+    await preparePDFContents(
+      '/original.pdf',
+      document({ 4: folio === 5 ? 'Chapter 1 C0pper' : 'Chapter 1 Copper', 8: 'Chapter 2 Amber' }),
+    ),
+  ).toBe(folio === 5 ? 'generated' : 'unavailable');
+  if (folio === 5) expect(native.save.mock.calls.at(-1)![2][0].title).toBe('Chapter 1 Copper');
+  else expect(native.save).not.toHaveBeenCalled();
+});
+
+it('keeps Chinese chapter ownership across wrapped rows and stops at a combined figure/table index', async () => {
+  const scan = (index: number, rows: [string, number, number][]): OCRPage => ({
+    index,
+    native: false,
+    lines: rows.map(([text, x, y]) => ({
+      text,
+      x,
+      y,
+      width: 0.65,
+      height: text.startsWith('一、地方') ? 0.028 : 0.02,
+      endLine: true,
+    })),
+  });
+  const scans = new Map([
+    [
+      0,
+      scan(0, [
+        ['目录', 0.3, 0.17],
+        ['第一章 古代地方行政', 0.1, 0.2],
+        ['5', 0.8, 0.228],
+        ['一、地方官员 .... 5', 0.16, 0.26],
+        ['二、需要跨行排列的完整', 0.2, 0.32],
+        ['小节标题 .... 6', 0.24, 0.35],
+        ['第二章 近代地方行政 .... 9', 0.1, 0.4],
+        ['一、新式机构 .... 9', 0.16, 0.44],
+      ]),
+    ],
+  ]);
+  native.cache.pages = [0];
+  native.read.mockImplementation(async (_id, index) => scans.get(index) ?? null);
+  expect(
+    await preparePDFContents(
+      '/original.pdf',
+      document({
+        1: '•\n图表目录\n图1 .... 7\n表1 .... 8',
+        4: '第一章 古代地方行政\n一、地方官员',
+        5: '二、需要跨行排列的完整小节标题',
+        8: '第二章 近代地方行政\n一、新式机构',
+      }),
+    ),
+  ).toBe('generated');
+  expect(native.save.mock.calls.at(-1)![2]).toEqual([
+    { title: '第一章 古代地方行政', pageIndex: 4, level: 0 },
+    { title: '一、地方官员', pageIndex: 4, level: 1 },
+    { title: '二、需要跨行排列的完整 小节标题', pageIndex: 5, level: 1 },
+    { title: '第二章 近代地方行政', pageIndex: 8, level: 0 },
+    { title: '一、新式机构', pageIndex: 8, level: 1 },
+  ]);
 });
 
 it.each([

@@ -1106,7 +1106,8 @@ mod tests {
         };
         assert!(contents().success());
         let evidence = read_page_version(&dir, 1, CONTENTS_VERSION).unwrap();
-        assert_eq!(evidence["recognizer"], "vision-contents-1");
+        assert_eq!(evidence["recognizer"], "vision-contents-2");
+        assert_eq!(evidence["alternatives"].as_array().unwrap().len(), 2);
         let evidence_words = evidence["lines"].as_array().unwrap();
         assert!(evidence_words.len() > 2);
         assert!(evidence_words.iter().any(|word| word["text"] == "本"));

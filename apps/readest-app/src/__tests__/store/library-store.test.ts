@@ -47,6 +47,48 @@ describe('libraryStore', () => {
   });
 
   describe('setLibrary', () => {
+    test('preserves runtime artwork only for the same surviving cover version', () => {
+      const store = useLibraryStore.getState();
+      const original = makeBook({
+        coverImageUrl: 'blob:loaded-cover',
+        coverHash: 'v1',
+        coverUpdatedAt: 3,
+      });
+      store.setLibrary([original], true);
+      const { coverImageUrl: _url, ...row } = original;
+      store.setLibrary([{ ...row, progress: [3, 10] }]);
+      expect(useLibraryStore.getState().getBookByHash(row.hash)?.coverImageUrl).toBe(
+        'blob:loaded-cover',
+      );
+      expect(useLibraryStore.getState().getBookByHash(row.hash)?.progress).toEqual([3, 10]);
+      store.setLibrary([{ ...row, coverImageUrl: null }]);
+      expect(useLibraryStore.getState().getBookByHash(row.hash)?.coverImageUrl).toBeNull();
+      store.setLibrary([original]);
+      store.setLibrary([{ ...row, coverHash: 'v2', coverUpdatedAt: 4 }]);
+      expect(useLibraryStore.getState().getBookByHash(row.hash)?.coverImageUrl).toBeUndefined();
+      store.setLibrary([original]);
+      store.setLibrary([{ ...row, hash: 'different-book' }]);
+      expect(
+        useLibraryStore.getState().getBookByHash('different-book')?.coverImageUrl,
+      ).toBeUndefined();
+      store.setLibrary([original]);
+      store.setLibrary([
+        {
+          ...row,
+          localRemoval: {
+            version: 1,
+            id: 'removed-local',
+            revision: 5,
+            requestedAt: 5,
+            mode: 'local',
+            local: 'complete',
+            cloud: 'none',
+          },
+        },
+      ]);
+      expect(useLibraryStore.getState().getBookByHash(row.hash)?.coverImageUrl).toBeUndefined();
+    });
+
     test('marks an explicitly complete library as loaded', () => {
       const books = [makeBook({ hash: 'a' }), makeBook({ hash: 'b' })];
       useLibraryStore.getState().setLibrary(books, true);

@@ -1,3 +1,11 @@
+export interface ReadingInterval {
+  id: string;
+  sessionId: string;
+  bookHash: string;
+  startMs: number;
+  durationMs: number;
+}
+
 // KOReader-compatible reading-statistics types.
 //
 // The canonical unit is the per-page read event (KOReader's page_stat_data

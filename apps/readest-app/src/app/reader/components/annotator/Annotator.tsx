@@ -102,6 +102,8 @@ import {
   parseAnnotationExport,
 } from '@/services/annotation/providers/readest';
 
+import { reportReadingActivity } from '@/glossa/plugins/readingActivity';
+
 const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   bookKey,
   contentInsets,
@@ -1694,28 +1696,52 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     !!selection?.text &&
     selection.text.trim().length > 0;
   const globalToggleActive = !!currentAnnotation?.global;
-  const buildToolButton = (type: AnnotationToolType) => {
+  const buildToolButton = (
+    type: AnnotationToolType,
+  ): {
+    tooltipText: string;
+    Icon: React.ElementType;
+    onClick: React.MouseEventHandler<HTMLButtonElement>;
+  } | null => {
     const def = annotationToolButtons.find((button) => button.type === type);
     if (!def) return null;
     const { label, Icon } = def;
     switch (type) {
       case 'copy':
-        return { tooltipText: _(label), Icon, onClick: handleCopy };
+        return { tooltipText: _(label), Icon, onClick: () => handleCopy() };
       case 'copylink':
         return { tooltipText: _(label), Icon, onClick: handleCopyLink };
       case 'highlight':
         return {
           tooltipText: selectionAnnotated ? _('Delete Highlight') : _(label),
           Icon: selectionAnnotated ? RiDeleteBinLine : Icon,
-          onClick: handleHighlight,
+          onClick: (event) => {
+            if (event.nativeEvent.isTrusted) reportReadingActivity(bookKey, 'highlight');
+            handleHighlight();
+          },
         };
       case 'annotate':
-        return { tooltipText: _(label), Icon, onClick: handleAnnotate };
+        return {
+          tooltipText: _(label),
+          Icon,
+          onClick: (event) => {
+            if (event.nativeEvent.isTrusted) reportReadingActivity(bookKey, 'highlight');
+            handleAnnotate();
+          },
+        };
       case 'search':
         return { tooltipText: _(label), Icon, onClick: handleSearch };
       case 'dictionary':
       case 'translate':
-        return { tooltipText: _(label), Icon, onClick: () => handleLookup(type) };
+        return {
+          tooltipText: _(label),
+          Icon,
+          onClick: (event) => {
+            if (type === 'dictionary' && selection?.text && event.nativeEvent.isTrusted)
+              reportReadingActivity(bookKey, 'lookup');
+            void handleLookup(type);
+          },
+        };
       case 'tts':
         return { tooltipText: _(label), Icon, onClick: handleReadAloud };
 

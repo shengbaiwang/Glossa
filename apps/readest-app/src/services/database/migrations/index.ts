@@ -143,6 +143,26 @@ const migrations: Record<SchemaType, MigrationEntry[]> = {
         );
       `,
     },
+    {
+      name: '2026110901_effective_reading_time',
+      sql: `
+        CREATE TABLE IF NOT EXISTS glossa_reading_intervals (
+          id TEXT PRIMARY KEY NOT NULL,
+          session_id TEXT NOT NULL,
+          book_hash TEXT NOT NULL,
+          start_ms INTEGER NOT NULL,
+          end_ms INTEGER NOT NULL,
+          duration_ms INTEGER NOT NULL,
+          rule_version INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS glossa_reading_by_book
+          ON glossa_reading_intervals(book_hash);
+        CREATE INDEX IF NOT EXISTS glossa_reading_by_session
+          ON glossa_reading_intervals(session_id);
+        CREATE INDEX IF NOT EXISTS glossa_reading_by_date
+          ON glossa_reading_intervals(start_ms, end_ms);
+      `,
+    },
   ],
   // Per-book search index/cache: one search.db in each book's directory
   // (beside cover.png), holding extracted section text so library full-text

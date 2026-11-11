@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { CloudUpload, CloudDownload, Headphones, Info } from '@/components/GlossaIcons';
 
 import InlineTextEditor from '@/components/InlineTextEditor';
@@ -58,10 +58,22 @@ const BookItem: React.FC<BookItemProps> = ({
   const iconSize15 = useResponsiveSize(15);
 
   const [statusPosition, setStatusPosition] = useState<{ x: number; y: number } | null>(null);
-  const [coverAspect, setCoverAspect] = useState<number | null>(null);
-  useEffect(() => {
-    setCoverAspect(null);
-  }, [book.hash, book.metadata?.coverImageUrl, book.coverImageUrl]);
+  const coverVersion =
+    book.coverHash || book.coverUpdatedAt
+      ? `${book.coverHash ?? ''}:${book.coverUpdatedAt ?? ''}`
+      : '';
+  const coverIdentity = JSON.stringify([
+    book.hash,
+    book.metadata?.coverImageUrl || book.coverImageUrl,
+    coverVersion,
+  ]);
+  const [loadedCover, setLoadedCover] = useState<{ identity: string; ratio: number } | null>(null);
+  const coverAspect = loadedCover?.identity === coverIdentity ? loadedCover.ratio : null;
+  const handleCoverAspect = useCallback(
+    (ratio: number) => setLoadedCover({ identity: coverIdentity, ratio }),
+    [coverIdentity],
+  );
+  const handleCoverError = useCallback(() => setLoadedCover(null), []);
 
   const CELL_ASPECT_RATIO = 28 / 41;
   const fitCoverInGrid = mode === 'grid' && coverFit === 'fit' && coverAspect !== null;
@@ -106,8 +118,8 @@ const BookItem: React.FC<BookItemProps> = ({
             mode={mode}
             book={book}
             coverFit={coverFit}
-            onImageError={() => setCoverAspect(null)}
-            onAspectRatioChange={setCoverAspect}
+            onImageError={handleCoverError}
+            onAspectRatioChange={handleCoverAspect}
           />
           {bookSelected && <div className='glossa-book-selection-overlay absolute inset-0'></div>}
         </div>

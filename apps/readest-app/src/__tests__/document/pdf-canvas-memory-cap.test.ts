@@ -43,6 +43,7 @@ const IPHONE_UA =
 // iPadOS reports a desktop ("Macintosh") user agent, so only the touch points
 // give it away.
 const IPAD_UA = DESKTOP_UA;
+const pending = vi.hoisted(() => ({ annotations: null as Promise<unknown[]> | null }));
 
 const stubPlatform = (userAgent: string, maxTouchPoints: number) => {
   for (const [key, value] of Object.entries({ userAgent, maxTouchPoints })) {
@@ -68,7 +69,7 @@ vi.mock('@pdfjs/pdf.min.mjs', () => {
     render: () => ({ promise: Promise.resolve(), cancel: () => {} }),
     streamTextContent: () => ({}),
     getTextContent: async () => ({ items: [] }),
-    getAnnotations: async () => [],
+    getAnnotations: () => pending.annotations ?? Promise.resolve([]),
     cleanup: () => {},
   });
   const fakePdf = {
@@ -133,14 +134,39 @@ const renderPageCanvas = async (
   // over-sampled. renderDpr = bitmap width / CSS (display) width.
   const displayW = parseFloat(canvas.style.width);
   const renderDpr = canvas.width / displayW;
-  return { canvas, renderDpr, displayW };
+  return { canvas, renderDpr, displayW, onZoom, doc };
 };
 
 afterEach(() => {
+  pending.annotations = null;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   Reflect.deleteProperty(navigator, 'userAgent');
   Reflect.deleteProperty(navigator, 'maxTouchPoints');
+});
+
+it('publishes the raster scale before waiting for slow annotations', async () => {
+  const { onZoom, doc } = await renderPageCanvas(1, 1);
+  let finish!: (value: unknown[]) => void;
+  pending.annotations = new Promise((resolve) => {
+    finish = resolve;
+  });
+  let completed = false;
+  const committed = vi.fn(() => {
+    expect(parseFloat(doc.querySelector<HTMLCanvasElement>('canvas')!.style.width)).toBe(
+      PAGE_W * 2,
+    );
+  });
+  const drawing = onZoom({ doc, scale: 2, onCommit: committed }).then(() => {
+    completed = true;
+  });
+  try {
+    await vi.waitFor(() => expect(committed).toHaveBeenCalledOnce());
+    expect(completed).toBe(false);
+  } finally {
+    finish([]);
+    await drawing;
+  }
 });
 
 describe('PDF canvas memory cap (#5118)', () => {

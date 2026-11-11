@@ -52,6 +52,7 @@ import SearchBar from './SearchBar';
 
 import EmptyState from '../EmptyState';
 import BooknoteView from '../sidebar/BooknoteView';
+import { pauseReadingActivity } from '@/glossa/plugins/readingActivity';
 
 const MIN_NOTEBOOK_WIDTH = 0.15;
 const MAX_NOTEBOOK_WIDTH = 0.45;
@@ -351,6 +352,10 @@ const Notebook: React.FC = ({}) => {
     [excerptNotes, searchResults, isSearchBarVisible],
   );
 
+  useEffect(() => {
+    if (isNotebookVisible && availableTab !== 'notes') pauseReadingActivity();
+  }, [availableTab, isNotebookVisible]);
+
   if (!sideBarBookKey) return null;
 
   const bookData = getBookData(sideBarBookKey);
@@ -409,6 +414,12 @@ const Notebook: React.FC = ({}) => {
         )}
         role='group'
         aria-label={_('Notebook')}
+        onPointerDownCapture={(event) => {
+          if (event.nativeEvent.isTrusted && activeTab !== 'notes') pauseReadingActivity();
+        }}
+        onFocusCapture={() => {
+          if (activeTab !== 'notes') pauseReadingActivity();
+        }}
         onKeyDown={(event) => {
           if (event.key === 'Escape' && !event.defaultPrevented) {
             event.stopPropagation();

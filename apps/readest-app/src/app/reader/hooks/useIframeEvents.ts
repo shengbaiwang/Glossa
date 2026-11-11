@@ -415,10 +415,10 @@ export const useTouchEvent = (bookKey: string) => {
       // stayed pending (jitter) or resolved to a scroll leaves zoom untouched.
       const renderer = getView(bookKey)?.renderer;
       if (wasPinching && renderer && initialPinchDistRef.current > 0) {
-        renderer.pinchEnd?.();
+        const committed = renderer.pinchEnd?.();
         const newZoom = Math.round(initialZoomRef.current * lastPinchRatioRef.current);
         const clampedZoom = Math.max(MIN_ZOOM_LEVEL, Math.min(MAX_ZOOM_LEVEL, newZoom));
-        eventDispatcher.dispatch('pinch-zoom', { zoomLevel: clampedZoom });
+        if (committed == null) eventDispatcher.dispatch('pinch-zoom', { zoomLevel: clampedZoom });
       }
       touchStartRef.current = null;
       touchEndRef.current = null;
@@ -546,7 +546,7 @@ export const useTouchEvent = (bookKey: string) => {
       return;
     }
     if (isPinchingRef.current || pinchPendingRef.current) {
-      getView(bookKey)?.renderer.pinchEnd?.();
+      getView(bookKey)?.renderer.pinchEnd?.(true);
       isPinchingRef.current = false;
       pinchPendingRef.current = false;
       initialTouch0Ref.current = null;

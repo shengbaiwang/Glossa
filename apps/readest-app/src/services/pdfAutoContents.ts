@@ -3,6 +3,7 @@ import type { BookDoc, TOCItem, PDFContentsLine } from '@/libs/document';
 import { createDerivedStore, hashData } from '@/glossa/harness/derivedStore';
 import {
   OCRContentsLines,
+  OCRContentsLayout,
   isPDFSizeAtLeast,
   OCRPageText,
   openPDFCache,
@@ -21,9 +22,10 @@ import { initSimpleCC, runSimpleCC } from '@/utils/simplecc';
 const MAX_OCR_PAGES = 96;
 const MAX_ENTRIES = 128;
 const GENERATOR = 'glossa-contents-3';
-const EXTRACTOR = 'pdf-contents-12';
+const EXTRACTOR = 'pdf-contents-13';
 const rowSchema = z.object({
   title: z.string().min(1).max(500),
+  alternatives: z.array(z.string().min(1).max(500)).max(2).optional(),
   base: z.number().int().min(0).max(999).nullable(),
   level: z.number().int().min(0).max(5),
   system: z.enum(['roman', 'arabic']).optional(),
@@ -39,6 +41,7 @@ const planSchema = z.object({
     'pdf-contents-10',
     'pdf-contents-11',
     'pdf-contents-12',
+    'pdf-contents-13',
   ]),
   revision: z.number().int().nonnegative(),
   regenerate: z.boolean(),
@@ -60,6 +63,7 @@ const planSchema = z.object({
     .array(
       z.object({
         title: z.string().min(1).max(500),
+        alternatives: z.array(z.string().min(1).max(500)).max(2).optional(),
         level: z.number().int().min(0).max(5),
         parent: z.number().int().min(0).max(MAX_ENTRIES).nullable(),
       }),
@@ -90,6 +94,7 @@ const reportSchema = z.object({
     'pdf-contents-10',
     'pdf-contents-11',
     'pdf-contents-12',
+    'pdf-contents-13',
   ]),
   stage: z.enum(['open', 'embedded', 'discovery', 'extraction', 'ocr', 'verification', 'save']),
   state: z.enum(['running', 'completed', 'unavailable', 'failed', 'cancelled']),
@@ -157,10 +162,10 @@ const isChapterIndex = (lines: string[]) =>
     }),
   ).size >= 3;
 const isOtherIndex = (text: string) =>
-  /^(?:(?:\d+|[ivxlcdm]+)\s+)?(?:插[图圖]目[录錄]|[图圖表]目[录錄]|(?:list\s+of\s+)?(?:illustrations|figures|tables|maps|plates))(?:\s+(?:\d+|[ivxlcdm]+))?$/i.test(
+  /^(?:(?:\d+|[ivxlcdm]+)\s+)?(?:插[图圖]目[录錄]|[图圖]表目[录錄]|[图圖表]目[录錄]|(?:list\s+of\s+)?(?:illustrations|figures|tables|maps|plates))(?:\s+(?:\d+|[ivxlcdm]+))?$/i.test(
     text
       .split('\n')
-      .find((line) => line.trim())
+      .find((line) => normalize(line))
       ?.trim() ?? '',
   );
 // Group headings remain destinations even when the printed table omits a folio.
@@ -174,7 +179,7 @@ const partRank = (text: string): number | undefined => {
   return undefined;
 };
 const standaloneMatter = (text: string) =>
-  /^(?:序(?:言|章)?|前言|引言|绪论|后记|後記|跋|附[录錄]\s*[\d一二三四五六七八九十]*|参考文献|參考文獻|致谢|致謝|索引|preface|foreword|introduction|afterword|epilogue|appendix|references|acknowledgements?)(?:$|[\s:：·・、—-])/i.test(
+  /^(?:序(?:言|章)?|前言|引言|绪论|后记|後記|跋|附[录錄]\s*[\d一二三四五六七八九十]*|征引文献|参考文献|參考文獻|致谢|致謝|索引|preface|foreword|introduction|afterword|epilogue|appendix|references|acknowledgements?)(?:$|[《\s:：·・、—-])/i.test(
     text.trim(),
   );
 const validTitle = (text: string) => text.length >= 2 || /^\p{Script=Han}$/u.test(text);
@@ -274,7 +279,9 @@ function rowLayout(
   const key = normalize(title);
   if (!key) return undefined;
   const index = lines.findIndex((line) => {
-    if (!normalize(line.text).startsWith(key)) return false;
+    const lineKey = normalize(line.text.replace(/\s+(?:\d{1,4}|[ivxlcdm]+)$/i, ''));
+    if (!normalize(line.text).startsWith(key) && !(lineKey.length >= 4 && key.startsWith(lineKey)))
+      return false;
     if (!printed) return true;
     const folio = line.text.trim().match(/(\d{1,4}|[ivxlcdm]+)$/i)?.[1];
     // OCR may keep the number in its own fragment at the same baseline.
@@ -305,13 +312,25 @@ function groupLayout(layout?: RowLayout, next?: RowLayout) {
 // Link-derived levels already carry independent structure.
 function restoreHierarchy(rows: Row[], layouts: Map<Row, RowLayout>) {
   const parents: { rank: number; level: number; layout?: RowLayout }[] = [];
+  const hasChapters = rows.some((row) => /^第[\d一二三四五六七八九十百零〇]+章/.test(row.title));
   rows.forEach((row, index) => {
     if (row.direct) return;
     const layout = layouts.get(row);
     const next = layouts.get(rows[index + 1]!);
     const matter = standaloneMatter(row.title);
+    const chapter = hasChapters && /^第[\d一二三四五六七八九十百零〇]+章/.test(row.title);
+    const section = hasChapters && /^[一二三四五六七八九十百]+[、,\s]/.test(row.title);
     let rank = partRank(row.title);
-    if (rank === undefined && !matter && layout && groupLayout(layout, next)) {
+    if (chapter || (hasChapters && /^(?:绪论|序论|引言)$/.test(row.title))) rank = 3;
+    if (hasChapters && /^第[\d一二三四五六七八九十百零〇]+节/.test(row.title)) rank = 4;
+    if (
+      rank === undefined &&
+      !matter &&
+      !section &&
+      !hasChapters &&
+      layout &&
+      groupLayout(layout, next)
+    ) {
       const owner = parents.at(-1);
       const sibling =
         owner?.layout &&
@@ -331,18 +350,25 @@ function restoreHierarchy(rows: Row[], layouts: Map<Row, RowLayout>) {
       owner?.layout &&
       (isPDFSizeAtLeast(layout.x - owner.layout.x, layout.height * 0.8) ||
         !isPDFSizeAtLeast(layout.height, owner.layout.height * 0.9));
-    if (matter && !visiblyInside) parents.length = 0;
+    const indented =
+      layout && owner?.layout && isPDFSizeAtLeast(layout.x - owner.layout.x, layout.height * 0.8);
+    if (matter && (!visiblyInside || (hasChapters && !indented))) parents.length = 0;
     row.level += parents.length ? parents.at(-1)!.level + 1 : 0;
   });
 }
 
-function structureInventory(rows: { title: string; level: number }[]) {
+function structureInventory(rows: { title: string; alternatives?: string[]; level: number }[]) {
   const ancestors: number[] = [];
   return rows.map((row, index) => {
     while (ancestors.length && rows[ancestors.at(-1)!]!.level >= row.level) ancestors.pop();
     const parent = ancestors.at(-1) ?? null;
     ancestors.push(index);
-    return { title: row.title, level: row.level, parent };
+    return {
+      title: row.title,
+      ...(row.alternatives?.length ? { alternatives: row.alternatives } : {}),
+      level: row.level,
+      parent,
+    };
   });
 }
 
@@ -425,7 +451,9 @@ function completeStructure(
   return actual.every((row, index) => {
     const source = expected[index]!;
     if (
-      normalize(row.title) !== normalize(source.title) ||
+      ![source.title, ...(source.alternatives ?? [])].some(
+        (title) => normalize(row.title) === normalize(title),
+      ) ||
       row.level !== source.level ||
       row.parent !== source.parent ||
       row.level !== (row.parent === null ? 0 : actual[row.parent]!.level + 1)
@@ -451,24 +479,7 @@ type PrintedLine = {
   words: OCRPage['lines'];
 };
 function printedLines(page: OCRPage | null): PrintedLine[] {
-  const rows: PrintedLine[] = [];
-  let words: NonNullable<typeof page>['lines'] = [];
-  for (const word of page?.lines ?? []) {
-    words.push(word);
-    if (!word.endLine) continue;
-    const x = Math.min(...words.map((w) => w.x));
-    const y = Math.min(...words.map((w) => w.y));
-    rows.push({
-      text: words.map((w) => w.text).join(''),
-      x,
-      y,
-      width: Math.max(...words.map((w) => w.x + w.width)) - x,
-      height: Math.max(...words.map((w) => w.y + w.height)) - y,
-      words,
-    });
-    words = [];
-  }
-  return rows;
+  return page ? OCRContentsLayout(page) : [];
 }
 
 // Re-read the same printed fragments at another precise raster size. Uncovered
@@ -476,6 +487,7 @@ function printedLines(page: OCRPage | null): PrintedLine[] {
 function contentsEvidence(primary: OCRPage, alternate: OCRPage): OCRPage {
   const replacement = printedLines(alternate);
   const retained = printedLines(primary).filter((row) => {
+    if (!normalize(row.text)) return false;
     const aligned = replacement.filter((other) => {
       const vertical =
         Math.min(row.y + row.height, other.y + other.height) - Math.max(row.y, other.y);
@@ -488,6 +500,13 @@ function contentsEvidence(primary: OCRPage, alternate: OCRPage): OCRPage {
       );
     });
     if (!aligned.length) return true;
+    if (aligned.some((other) => normalize(other.text) === normalize(row.text))) return false;
+    if (
+      row.x > 0.7 &&
+      /^\d{1,4}$/.test(row.text.trim()) &&
+      aligned.some((other) => other.text.trim().endsWith(row.text.trim()))
+    )
+      return false;
     // Compare the complete alternate row's envelope, including the number
     // column. Fragment-to-fragment width ratios retain overlapping readings
     // when one pass splits a title and folio differently, creating fake text.
@@ -496,7 +515,13 @@ function contentsEvidence(primary: OCRPage, alternate: OCRPage): OCRPage {
     const covered = Math.min(row.x + row.width, right) - Math.max(row.x, left);
     return covered < row.width * 0.8;
   });
-  return { ...alternate, lines: [...replacement, ...retained].flatMap((row) => row.words) };
+  return {
+    ...alternate,
+    alternatives: undefined,
+    lines: [...replacement, ...retained]
+      .sort((a, b) => a.y - b.y || a.x - b.x)
+      .flatMap((row) => row.words),
+  };
 }
 
 // A header template is established above an explicit Contents label. Only
@@ -517,8 +542,8 @@ function isRunningHeader(line: PrintedLine, header: PrintedLine) {
   );
 }
 function sameFolioHeader(a: PrintedLine, b: PrintedLine) {
-  const title = (line: PrintedLine) => line.text.replace(/^\d{1,4}\s+|\s+\d{1,4}$/g, '');
-  const folio = (line: PrintedLine) => line.text.match(/^\d{1,4}(?=\s)|\d{1,4}$/)?.[0];
+  const title = (line: PrintedLine) => line.text.replace(/^\d{1,4}[\s/]+|[\s/]+\d{1,4}$/g, '');
+  const folio = (line: PrintedLine) => line.text.match(/^\d{1,4}(?=[\s/])|\d{1,4}$/)?.[0];
   const text = normalize(title(a));
   return (
     a.y < 0.1 &&
@@ -831,7 +856,7 @@ async function prepareContents(
       let page = await perform('cache_read', index, () =>
         readOCRPage(cache.id, index, false, true),
       );
-      if (!page) {
+      if (!page || page.native || (page.recognizer && page.recognizer !== 'vision-contents-2')) {
         if (++ocrCount > MAX_OCR_PAGES) throw new Error('pdf_contents_ocr_limit');
         const previousStage = stage;
         await phase('ocr');
@@ -844,7 +869,9 @@ async function prepareContents(
         page = await perform('cache_read', index, () => readOCRPage(cache.id, index, false, true));
         if (!page) throw new Error('pdf_recognition_failed');
       }
-      characters += OCRPageText(page).length;
+      characters += [page.lines, ...(page.alternatives ?? [])]
+        .flat()
+        .reduce((n, line) => n + line.text.length, 0);
       if (characters > 2_000_000) throw new Error('pdf_contents_text_limit');
       evidencePages.set(index, page);
       return page;
@@ -865,7 +892,7 @@ async function prepareContents(
       let page = await perform('cache_read', index, () =>
         readOCRPage(cache.id, index, false, false, true),
       );
-      if (!page) {
+      if (!page || page.native) {
         if (++ocrCount > MAX_OCR_PAGES) throw new Error('pdf_contents_ocr_limit');
         const previousStage = stage;
         await phase('ocr');
@@ -917,9 +944,24 @@ async function prepareContents(
             ? await perform('native_layout', index, () => book.getPDFContentsLines!(index))
             : contentsLines(text);
       check();
+      const nativeLayout =
+        !ocr && book.getPDFContentsLayout
+          ? await perform('native_layout', index, () => book.getPDFContentsLayout!(index))
+          : [];
+      const layout =
+        ocr ??
+        (nativeLayout.length
+          ? {
+              index,
+              native: true,
+              lines: nativeLayout.map((line) => ({ ...line, endLine: true })),
+            }
+          : null);
       const page = {
-        text,
-        layout: ocr,
+        text: layout?.native
+          ? `${layout.lines.map((line) => line.text).join('\n')}\n${text}`
+          : text,
+        layout,
         ocr: !!ocr && !ocr.native,
         lines,
         allLines:
@@ -928,7 +970,7 @@ async function prepareContents(
             : book.getPDFContentsLines
               ? await perform('native_layout', index, () => book.getPDFContentsLines!(index, true))
               : contentsLines(text),
-        prominent: prominentTitles(ocr),
+        prominent: prominentTitles(layout),
       };
       pages.set(index, page);
       return page;
@@ -1012,11 +1054,17 @@ async function prepareContents(
       // A chapter list is text evidence for the table, never for its target.
       // Some digital PDFs have a linked index with no "Contents" heading.
       if (isChapterIndex(page.allLines)) return false;
-      if (!matchesHeading(page.text, title, page.ocr) && page.ocr && page.text.trim()) {
+      if (!matchesHeading(page.text, title, page.ocr) && page.text.trim()) {
         const alternate = await accurateEvidence(index);
-        if (alternate && matchesHeading(OCRPageText(alternate), title, true)) {
-          page = fromOCR(alternate);
-          pages.set(index, page);
+        if (alternate && !alternate.native) {
+          for (const lines of [alternate.lines, ...(alternate.alternatives ?? [])]) {
+            const candidate = fromOCR({ ...alternate, lines, alternatives: undefined });
+            if (matchesHeading(candidate.text, title, true)) {
+              page = candidate;
+              pages.set(index, page);
+              break;
+            }
+          }
         }
         if (!matchesHeading(page.text, title, page.ocr) && nearHeading(page.text, title)) {
           const cropped = await croppedEvidence(index);
@@ -1148,6 +1196,9 @@ async function prepareContents(
         alternate: await perform('cache_read', index, () =>
           readOCRPage(cache.id, index, false, true),
         ),
+        crop: await perform('cache_read', index, () =>
+          readOCRPage(cache.id, index, false, false, true),
+        ),
         layout: await contentsLayout(index),
       });
     // Candidates are reusable only for the same PDF, revision, routing and page
@@ -1250,6 +1301,7 @@ async function prepareContents(
       const margins: { index: number; line: PrintedLine }[] = [];
       const marginalRows = new Map<Row, { index: number; line: PrintedLine }>();
       let linkedTable = false;
+      let visualTable = false;
       for (let index = discovered ?? count; index < count; index++) {
         await read(index);
         await recognize([index]);
@@ -1289,6 +1341,30 @@ async function prepareContents(
         }
         // Independent evidence is for contents extraction only. The durable
         // reading layer, selection offsets and annotations are never replaced.
+        if (!isContents(page.text) && isOtherIndex(page.text) && rows.length) break;
+        const nativeRows = contentsRows(page.lines, labels, count, true);
+        const unparsedNativeRow = page.allLines.some(
+          (line) =>
+            normalize(line) &&
+            !isContentsLine(line) &&
+            !/^[\d\sivxlcdm.·…_。•⋯∙●‧﹒:：-]+$/i.test(line.trim()) &&
+            !contentsRows([line], labels, count, true).rows.length,
+        );
+        if (
+          !page.ocr &&
+          (isContents(page.text) ||
+            (contentsPages.has(index - 1) && nativeRows.rows.length >= 2)) &&
+          (visualTable || nativeRows.rejected > 0 || unparsedNativeRow)
+        ) {
+          const alternate = await accurateEvidence(index);
+          if (alternate && !alternate.native) {
+            let table: OCRPage = { ...alternate, alternatives: undefined };
+            for (const lines of alternate.alternatives ?? [])
+              table = contentsEvidence({ ...alternate, lines, alternatives: undefined }, table);
+            page = fromOCR(table);
+            visualTable = true;
+          }
+        }
         if (
           page.ocr &&
           page.layout &&
@@ -1302,7 +1378,8 @@ async function prepareContents(
         const namedContents = isContents(page.text);
         const continuation = contentsPages.has(index - 1);
         const geometricRows = printedLines(page.layout);
-        const structureLines = page.ocr ? geometricRows : await contentsLayout(index);
+        const structureLines =
+          page.ocr && page.layout ? OCRContentsLayout(page.layout) : await contentsLayout(index);
         const label = geometricRows.find((row) => isContentsLine(row.text));
         if (label) {
           for (const row of geometricRows) {
@@ -1375,55 +1452,136 @@ async function prepareContents(
           // A named contents page may contain a title whose short page number
           // OCR missed. Keep that title and require an independent destination;
           // silently dropping it would falsely publish a complete chapter list.
-          const candidates =
-            namedContents || continuation
-              ? tableLines.flatMap((line) => {
-                  const title = normalize(line);
-                  if (
-                    !title ||
-                    isContentsLine(line) ||
-                    /^[\d ivxlcdm.·…_。•⋯∙●‧﹒:：]+$/i.test(line.trim())
-                  )
-                    return [];
-                  const known = contentsRows([line], labels, count, true).rows[0];
-                  return [known ?? { title: line.trim(), base: null, level: 0 }];
-                })
-              : found;
-          const joined: Row[] = [];
-          for (const row of candidates) {
-            const previous = joined.at(-1);
-            const previousLayout =
-              previous && rowLayout(previous.title, structureLines, index, previous.printed);
-            const currentLayout = rowLayout(row.title, structureLines, index, row.printed);
-            const wrapped =
-              previousLayout &&
-              currentLayout &&
-              currentLayout.y - previousLayout.y - previousLayout.height <=
-                previousLayout.height * 0.8;
-            const group = previous && partRank(previous.title) !== undefined;
-            const ordinalOnly =
-              previous &&
-              /^(?:part\s+[ivxlcdm\d]+|第[\d一二三四五六七八九十百零〇]+(?:部分|[部卷辑篇])|[部卷辑篇][\d一二三四五六七八九十百零〇]+)$/i.test(
-                previous.title.trim(),
-              );
+          const candidateRows = (input: string[], structureLines: PDFContentsLine[]) => {
+            // Some wrapped entries put only their folio on the second baseline.
+            // Join it only with geometric evidence in the separate number column.
+            const inputLines: string[] = [];
+            for (const line of input) {
+              const last = inputLines.at(-1);
+              const above = last && rowLayout(last, structureLines, index);
+              const folio = /^\d{1,4}$/.test(line.trim()) && rowLayout(line, structureLines, index);
+              if (
+                last &&
+                above &&
+                folio &&
+                !contentsRows([last], labels, count, true).rows.length &&
+                folio.x > above.x + above.width * 0.7 &&
+                folio.y >= above.y &&
+                folio.y - above.y - above.height <= above.height * 1.5
+              ) {
+                inputLines[inputLines.length - 1] = `${last} .... ${line.trim()}`;
+              } else inputLines.push(line);
+            }
+            const candidates =
+              namedContents || continuation
+                ? inputLines.flatMap((line) => {
+                    const title = normalize(line);
+                    if (
+                      !title ||
+                      isContentsLine(line) ||
+                      /^[\d ivxlcdm.·…_。•⋯∙●‧﹒:：]+$/i.test(line.trim())
+                    )
+                      return [];
+                    const known = contentsRows([line], labels, count, true).rows[0];
+                    return [known ?? { title: line.trim(), base: null, level: 0 }];
+                  })
+                : contentsRows(inputLines, labels, count, true).rows;
+            const joined: Row[] = [];
+            for (const row of candidates) {
+              const previous = joined.at(-1);
+              const previousLayout =
+                previous && rowLayout(previous.title, structureLines, index, previous.printed);
+              const currentLayout = rowLayout(row.title, structureLines, index, row.printed);
+              const wrapped =
+                previousLayout &&
+                currentLayout &&
+                currentLayout.y - previousLayout.y - previousLayout.height <=
+                  previousLayout.height * 0.8;
+              const group = previous && partRank(previous.title) !== undefined;
+              const ordinalOnly =
+                previous &&
+                /^(?:part\s+[ivxlcdm\d]+|第[\d一二三四五六七八九十百零〇]+(?:部分|[部卷辑篇])|[部卷辑篇][\d一二三四五六七八九十百零〇]+)$/i.test(
+                  previous.title.trim(),
+                );
+              const wrappedTitle =
+                wrapped &&
+                previous &&
+                !standaloneMatter(previous.title) &&
+                !/^(?:第[\d一二三四五六七八九十百零〇]+[章节部篇]|[一二三四五六七八九十百]+[、,\s]|\d+[.、\s])/.test(
+                  row.title,
+                ) &&
+                partRank(row.title) === undefined &&
+                !standaloneMatter(row.title);
+              if (
+                previous?.base === null &&
+                (!group ||
+                  (ordinalOnly &&
+                    wrapped &&
+                    partRank(row.title) === undefined &&
+                    !/^(?:第.+[章节]|chapter\s)/i.test(row.title))) &&
+                (/^(?:part|chapter)\s+[ivxlcdm\d]+$/i.test(previous.title) ||
+                  (/^第[\d一二三四五六七八九十百零〇]+[章节部篇]/.test(previous.title) &&
+                    !/^(?:第[\d一二三四五六七八九十百零〇]+[章节部篇]|[一二三四五六七八九十百]+[、\s]|\d+[.、\s])/.test(
+                      row.title,
+                    )) ||
+                  /^\p{Ll}/u.test(row.title) ||
+                  wrappedTitle)
+              ) {
+                joined.pop();
+                joined.push({ ...row, title: `${previous.title} ${row.title}` });
+              } else joined.push(row);
+            }
+            return joined;
+          };
+          const joined = candidateRows(tableLines, structureLines);
+          const alternate = evidencePages.get(index);
+          if (alternate && !alternate.native) {
+            const passes = [alternate.lines, ...(alternate.alternatives ?? [])].map((lines) => ({
+              ...alternate,
+              lines,
+              alternatives: undefined,
+            }));
+            // A separate crop supplies independent readings of long wrapped
+            // titles; its boxes still map to the same source row and folio.
             if (
-              previous?.base === null &&
-              (!group ||
-                (ordinalOnly &&
-                  wrapped &&
-                  partRank(row.title) === undefined &&
-                  !/^(?:第.+[章节]|chapter\s)/i.test(row.title))) &&
-              (/^(?:part|chapter)\s+[ivxlcdm\d]+$/i.test(previous.title) ||
-                (/^第[\d一二三四五六七八九十百零〇]+[章节部篇]/.test(previous.title) &&
-                  !/^(?:第[\d一二三四五六七八九十百零〇]+[章节部篇]|[一二三四五六七八九十百]+[、\s]|\d+[.、\s])/.test(
-                    row.title,
-                  )) ||
-                /^\p{Ll}/u.test(row.title))
+              joined.some((row) => {
+                const box = rowLayout(row.title, structureLines, index, row.printed);
+                return (
+                  box &&
+                  normalize(row.title).length >= 24 &&
+                  !normalize(box.text).startsWith(normalize(row.title))
+                );
+              })
             ) {
-              joined.pop();
-              joined.push({ ...row, title: `${previous.title} ${row.title}` });
-            } else joined.push(row);
+              const crop = await croppedEvidence(index);
+              if (!crop.native)
+                for (const lines of [crop.lines, ...(crop.alternatives ?? [])])
+                  passes.push({ ...crop, lines, alternatives: undefined });
+            }
+            for (const scan of passes) {
+              const layout = OCRContentsLayout(scan);
+              const alternatives = candidateRows(OCRContentsLines(scan, true), layout);
+              for (const row of joined) {
+                const primary = rowLayout(row.title, structureLines, index, row.printed);
+                if (!primary) continue;
+                for (const other of alternatives) {
+                  if (other.base !== row.base || normalize(other.title) === normalize(row.title))
+                    continue;
+                  const box = rowLayout(other.title, layout, index, other.printed);
+                  if (
+                    !box ||
+                    Math.abs(primary.y - box.y) > Math.max(primary.height, box.height) * 0.5
+                  )
+                    continue;
+                  row.alternatives = [...new Set([...(row.alternatives ?? []), other.title])].slice(
+                    0,
+                    2,
+                  );
+                }
+              }
+            }
           }
+          sources.set(index, await sourceEvidence(index));
           for (const row of joined) {
             const structure = rowLayout(row.title, structureLines, index, row.printed);
             if (structure) layouts.set(row, structure);
@@ -1450,12 +1608,22 @@ async function prepareContents(
       // Continuation pages can have no Contents label. Repeated marginal titles
       // with changing folios provide independent header evidence; interior titles
       // and unmatched marginal rows remain subject to destination verification.
+      for (const [index, page] of pages) {
+        if (!contentsPages.has(index))
+          for (const line of printedLines(page.layout).filter((row) => row.y < 0.1))
+            margins.push({ index, line });
+      }
       for (let i = rows.length - 1; i >= 0; i--) {
-        const origin = marginalRows.get(rows[i]!);
+        const row = rows[i]!;
+        const origin = marginalRows.get(row);
         if (
           origin &&
           margins.some(
-            (other) => other.index !== origin.index && sameFolioHeader(origin.line, other.line),
+            (other) =>
+              other.index !== origin.index &&
+              [row.title, ...(row.alternatives ?? [])].some((text) =>
+                sameFolioHeader({ ...origin.line, text }, other.line),
+              ),
           )
         )
           rows.splice(i, 1);
@@ -1497,18 +1665,44 @@ async function prepareContents(
           previous &&
           row.base !== null &&
           previous.base !== null &&
-          (row.system !== previous.system || row.printed! <= previous.printed!)
+          (row.system !== previous.system || row.printed! < previous.printed!)
         )
           group++;
         return group;
       });
       const offsets = new Map<number, number>(plan?.offsets ?? []);
+      const titles = (row: Row) => [row.title, ...(row.alternatives ?? [])];
+      const verifyRow = async (index: number, row: Row) => {
+        if (index < 0 || index >= count) return undefined;
+        if (row.alternatives?.length) {
+          // Prefer a complete single-pass source reading to a composite row.
+          // A disagreement must use independent target pixels: the embedded
+          // OCR can repeat exactly the same error as the printed table.
+          const target = await accurateEvidence(index);
+          if (!target || target.native) return undefined;
+          for (const title of [...row.alternatives, row.title]) {
+            for (const lines of [target.lines, ...(target.alternatives ?? [])]) {
+              const page = fromOCR({ ...target, lines, alternatives: undefined });
+              if (!isChapterIndex(page.allLines) && matchesHeading(page.text, title, true)) {
+                pages.set(index, page);
+                if (await verify(index, title)) return title;
+              }
+            }
+          }
+          return undefined;
+        }
+        for (const title of titles(row)) if (await verify(index, title)) return title;
+        return undefined;
+      };
       for (const g of new Set(groups)) {
         const votes = new Map<number, Set<number>>();
         rows.forEach((row, r) => {
           if (groups[r] !== g || row.base === null) return;
           for (const [index, page] of pages) {
-            if (!contentsPages.has(index) && matchesHeading(page.text, row.title, page.ocr)) {
+            if (
+              !contentsPages.has(index) &&
+              titles(row).some((title) => matchesHeading(page.text, title, page.ocr))
+            ) {
               const offset = index - row.base;
               if (!votes.has(offset)) votes.set(offset, new Set());
               votes.get(offset)!.add(r);
@@ -1563,20 +1757,25 @@ async function prepareContents(
           for (let i = Math.max(0, nominated - 8); i <= Math.min(count - 1, nominated + 2); i++)
             nearby.add(i);
         }
-        const confirmed: { index: number; mapping?: [number, number] }[] = [];
+        const confirmed: { index: number; title: string; mapping?: [number, number] }[] = [];
         for (const i of [...nearby].sort((a, b) => a - b)) {
           if (contentsPages.has(i)) continue;
           const preview = await detect(i);
-          if (!matchesHeading(preview, row.title, true) && !nearHeading(preview, row.title))
+          if (
+            !titles(row).some(
+              (title) => matchesHeading(preview, title, true) || nearHeading(preview, title),
+            )
+          )
             continue;
-          if (!(await verify(i, row.title))) continue;
+          const title = await verifyRow(i, row);
+          if (!title) continue;
           const page = await read(i);
-          if (!page.ocr || !page.prominent.some((title) => matchesHeading(title, row.title)))
-            continue;
+          if (!page.prominent.some((heading) => matchesHeading(heading, title))) continue;
           // Two nearby precise marginal folios establish an independent physical
           // mapping even when a title page omits its own printed number. Coarse
           // text only nominates these pages; it never supplies final evidence.
-          if (row.printed && (await proveFolios(i, row.printed))) confirmed.push({ index: i });
+          if (row.printed && (await proveFolios(i, row.printed)))
+            confirmed.push({ index: i, title });
           else if (!row.printed) {
             // An unnumbered part page can borrow mapping evidence from the next
             // printed entry, provided its own title is independently verified.
@@ -1586,15 +1785,24 @@ async function prepareContents(
             for (let j = i + 1; j <= Math.min(count - 1, i + 8); j++) {
               if (contentsPages.has(j)) continue;
               const preview = await detect(j);
-              if (!matchesHeading(preview, next.title, true) && !nearHeading(preview, next.title))
+              if (
+                !titles(next).some(
+                  (title) => matchesHeading(preview, title, true) || nearHeading(preview, title),
+                )
+              )
                 continue;
-              if (!(await verify(j, next.title))) continue;
-              if (!(await read(j)).prominent.some((title) => matchesHeading(title, next.title)))
+              const nextTitle = await verifyRow(j, next);
+              if (!nextTitle) continue;
+              if (!(await read(j)).prominent.some((title) => matchesHeading(title, nextTitle)))
                 continue;
               if (await proveFolios(j, next.printed)) following.push(j);
             }
             if (following.length === 1)
-              confirmed.push({ index: i, mapping: [groups[r + 1]!, following[0]! - next.base] });
+              confirmed.push({
+                index: i,
+                title,
+                mapping: [groups[r + 1]!, following[0]! - next.base],
+              });
           }
         }
         return confirmed.length === 1 ? confirmed[0] : undefined;
@@ -1622,18 +1830,20 @@ async function prepareContents(
         }
         const previous = previousCompleted[r];
         let target =
-          previous?.title === row.title
+          previous && titles(row).includes(previous.title)
             ? previous.pageIndex
             : row.base === null
               ? -1
               : row.base + (row.direct ? 0 : (offsets.get(g) ?? 0));
-        let valid = !contentsPages.has(target) && (await verify(target, row.title));
+        let title = !contentsPages.has(target) ? await verifyRow(target, row) : undefined;
+        let valid = !!title;
         if (!valid && (!offsets.has(g) || row.base === null)) {
           const local = await localTarget(row, r);
           if (local !== undefined) {
             target = local.index;
             if (local.mapping) offsets.set(...local.mapping);
             valid = true;
+            title = local.title;
           }
         }
         if (!valid) {
@@ -1642,14 +1852,19 @@ async function prepareContents(
           const hits: number[] = [];
           for (let i = 0; i < count; i++) {
             if (contentsPages.has(i)) continue;
-            if (matchesHeading(await detect(i), row.title, true)) hits.push(i);
+            const preview = await detect(i);
+            if (titles(row).some((title) => matchesHeading(preview, title, true))) hits.push(i);
           }
-          const confirmed: number[] = [];
+          const confirmed: { index: number; title: string }[] = [];
           for (const index of hits) {
-            if (!(await verify(index, row.title))) continue;
+            const found = await verifyRow(index, row);
+            if (!found) continue;
             const page = await read(index);
-            if (!page.ocr || page.prominent.some((title) => matchesHeading(title, row.title)))
-              confirmed.push(index);
+            if (
+              (!page.ocr && !page.layout) ||
+              page.prominent.some((title) => matchesHeading(title, found))
+            )
+              confirmed.push({ index, title: found });
           }
           if (confirmed.length !== 1)
             return unavailable(
@@ -1657,10 +1872,11 @@ async function prepareContents(
                 ? 'pdf_contents_heading_ambiguous'
                 : 'pdf_contents_heading_unverified',
             );
-          target = confirmed[0]!;
+          target = confirmed[0]!.index;
+          title = confirmed[0]!.title;
         }
         if (r && target < entries[r - 1]!.pageIndex) return unavailable('pdf_contents_order');
-        entries.push({ title: row.title, pageIndex: target, level: row.level });
+        entries.push({ title: title!, pageIndex: target, level: row.level });
         if (row.base !== null && !row.direct) offsets.set(g, target - row.base);
         progress.verifiedCount = entries.length;
         if (plan) {

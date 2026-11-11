@@ -325,17 +325,23 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 28px;
+  min-width: 32px;
   height: 32px;
   border-radius: 7px;
   color: var(--glossa-muted);
 }
 .glossa-pdf-scale > .glossa-pdf-scale-value {
-  min-width: 64px;
-  gap: 4px;
+  min-width: 72px;
+  gap: 5px;
   color: var(--glossa-ink);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+.glossa-pdf-scale > .glossa-pdf-scale-out {
+  margin-inline-start: 6px;
+}
+.glossa-pdf-scale-value > svg {
+  color: var(--glossa-muted);
 }
 .glossa-pdf-scale > button:hover,
 .glossa-pdf-scale > button[aria-pressed='true'] {
@@ -349,48 +355,122 @@
 .glossa-pdf-scale button:disabled {
   opacity: 0.45;
 }
-/* Keep exact zoom entry and continuous adjustment in the existing scale menu. */
+/* Two fit actions, then one aligned numeric/slider row. */
+.glossa-pdf-scale-menu.glossa-menu-surface {
+  width: 236px;
+  max-width: calc(100vw - 16px);
+  padding: 5px;
+}
+.glossa-pdf-scale-menu .glossa-choice-row {
+  min-height: 34px;
+  gap: 10px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.glossa-pdf-scale-menu .glossa-choice-row > svg {
+  width: 16px;
+  height: 16px;
+}
 .glossa-pdf-scale-entry {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
+  gap: 12px;
+  padding: 6px 9px 5px;
   color: var(--glossa-ink);
   direction: ltr;
 }
+.glossa-pdf-scale-number {
+  display: flex;
+  align-items: center;
+  flex: 0 0 64px;
+  height: 30px;
+  padding-inline-end: 7px;
+  border: 1px solid var(--glossa-border);
+  border-radius: 6px;
+  background: var(--glossa-surface);
+}
+.glossa-pdf-scale-number > span {
+  color: var(--glossa-muted);
+  font-size: 12px;
+}
 .glossa-pdf-scale-entry .glossa-pdf-scale-input {
+  display: block;
   user-select: text;
   cursor: text;
   width: 100%;
   min-width: 0;
-  height: 32px;
-  border: 1px solid var(--glossa-border);
+  min-height: 0;
+  height: 28px;
+  padding: 0 4px 0 5px;
+  border: 0;
   border-radius: 5px;
-  background: var(--glossa-surface);
+  background: transparent;
   color: var(--glossa-ink);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   text-align: end;
+  outline: none;
+}
+.glossa-pdf-scale-number:focus-within {
+  outline: 2px solid var(--glossa-ink);
+  outline-offset: 1px;
 }
 .glossa-pdf-scale-slider {
+  appearance: none;
   display: block;
-  width: calc(100% - 16px);
-  min-width: 150px;
+  flex: 1;
+  width: 0;
+  min-width: 0;
   height: 32px;
-  margin: 0 8px;
+  margin: 0;
   padding: 0;
-  accent-color: var(--glossa-ink);
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
   direction: ltr;
 }
-.glossa-pdf-scale-input:focus-visible,
+.glossa-pdf-scale-slider::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--glossa-border);
+}
+.glossa-pdf-scale-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -6px;
+  border: 1.5px solid var(--glossa-ink);
+  border-radius: 50%;
+  background: var(--glossa-surface);
+}
+.glossa-pdf-scale-slider::-moz-range-track {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--glossa-border);
+}
+.glossa-pdf-scale-slider::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--glossa-ink);
+  border-radius: 50%;
+  background: var(--glossa-surface);
+}
 .glossa-pdf-scale-slider:focus-visible {
   outline: 2px solid var(--glossa-ink);
   outline-offset: 1px;
 }
 @media (pointer: coarse) {
+  .glossa-pdf-scale > button,
+  .glossa-pdf-scale-menu .glossa-choice-row,
+  .glossa-pdf-scale-number,
   .glossa-pdf-scale-entry .glossa-pdf-scale-input,
   .glossa-pdf-scale-slider {
     min-height: 44px;
+  }
+  .glossa-pdf-scale > button {
+    min-width: 44px;
   }
 }
 .glossa-pdf-save-error {
@@ -420,7 +500,7 @@
   }
 }
 @container glossa-navigation (max-width: 520px) {
-  .glossa-pdf-scale > button[aria-pressed] {
+  .glossa-pdf-scale > .glossa-pdf-scale-fit {
     display: none;
   }
 }

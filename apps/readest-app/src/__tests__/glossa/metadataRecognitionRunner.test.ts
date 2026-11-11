@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Book } from '@/types/book';
 import type { AppService } from '@/types/system';
 import type { EnvConfigType } from '@/services/environment';
-import { recognizeBookMetadata } from '@/glossa/metadata/recognize';
+import { metadataTextNeedsOCR, recognizeBookMetadata } from '@/glossa/metadata/recognize';
 import {
   METADATA_ALGORITHM,
   loadMetadataRecognition,
@@ -18,6 +18,10 @@ const mocks = vi.hoisted(() => ({
   write: vi.fn(),
   read: vi.fn(),
   close: vi.fn(),
+  native: vi.fn(),
+  readOCR: vi.fn(),
+  release: vi.fn(),
+  ocr: vi.fn(),
 }));
 vi.mock('@/libs/document', () => ({
   DocumentLoader: class {
@@ -29,7 +33,15 @@ vi.mock('@/services/bookIdentity', () => ({
   fingerprintPath: mocks.fingerprint,
   libraryIdentityIO: (app: unknown) => app,
 }));
-vi.mock('@/services/pdfEnhancement', () => ({ supportsLocalPDF: () => false }));
+vi.mock('@/services/pdfEnhancement', () => ({
+  supportsLocalPDF: mocks.native,
+  openPDFCache: async () => ({ id: 'metadata-test', session: 'metadata-session' }),
+  readOCRPage: mocks.readOCR,
+  needsOCRRecovery: () => false,
+  OCRPageText: (page: { text: string }) => page.text,
+  releasePDFSourceSession: mocks.release,
+}));
+vi.mock('@/services/pdfOCR', () => ({ recognizePDFPages: mocks.ocr }));
 const fingerprint = `sha256:${'a'.repeat(64)}`;
 const book = {
   hash: 'test-book',
@@ -49,6 +61,9 @@ const env: EnvConfigType = { getAppService: async () => service };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.native.mockReturnValue(false);
+  mocks.readOCR.mockResolvedValue(null);
+  mocks.release.mockResolvedValue(undefined);
   mocks.source.mockResolvedValue({ kind: 'managed', path: 'test-book/test.pdf', base: 'Books' });
   mocks.fingerprint.mockResolvedValue(fingerprint);
   mocks.open.mockResolvedValue({
@@ -65,6 +80,25 @@ beforeEach(() => {
 });
 
 describe('local metadata recognition lifecycle', () => {
+  it('requests OCR for damaged nonempty text rather than trusting its length', () => {
+    expect(
+      metadataTextNeedsOCR('C o p y r i g h t 2020\nA L I C E W R I T E R\nISBN 9780306406157'),
+    ).toBe(true);
+    expect(
+      metadataTextNeedsOCR(
+        '图书在版编目(CIP)数据\n山川/张三著;李四译\nISBN 1 978 7 50, 80 39 88 6',
+      ),
+    ).toBe(true);
+    expect(
+      metadataTextNeedsOCR('图书在版编目(CIP)数据\n山川/张三著;李四译\nISBN 9780306406157'),
+    ).toBe(false);
+    expect(
+      metadataTextNeedsOCR(
+        'This is a readable original paragraph about evidence, with no bibliographic markers.',
+      ),
+    ).toBe(false);
+  });
+
   it('bounds page discovery, records evidence and preserves personal fields', async () => {
     mocks.text.mockImplementation(async (index: number) =>
       index === 3
@@ -91,6 +125,88 @@ describe('local metadata recognition lifecycle', () => {
     expect(mocks.destroy).toHaveBeenCalledOnce();
     expect(mocks.close).toHaveBeenCalledOnce();
   });
+  it('uses local OCR on a damaged nonempty copyright layer and releases the native session', async () => {
+    mocks.native.mockReturnValue(true);
+    vi.mocked(service.resolveNativeBookFilePath).mockResolvedValueOnce('/fixture.pdf');
+    mocks.open.mockResolvedValueOnce({
+      book: { metadata: {}, sections: [{}], getPDFText: mocks.text, destroy: mocks.destroy },
+    });
+    mocks.text.mockResolvedValue(
+      '图书在版编目(CIP)数据\n山川/张三著;李四译\nISBN 1 978 7 50, 80 39 88 6',
+    );
+    mocks.readOCR.mockResolvedValueOnce(null).mockResolvedValue({
+      text: '图书在版编目(CIP)数据\n山川/张三著;李四译\nISBN 9780306406157',
+    });
+    const result = await recognizeBookMetadata(book, env, new AbortController().signal);
+    expect(result.candidates).toContainEqual(
+      expect.objectContaining({
+        field: 'author',
+        value: '张三',
+        source: expect.objectContaining({ kind: 'ocr', pageIndex: 0 }),
+      }),
+    );
+    expect(mocks.release).toHaveBeenCalledOnce();
+    expect(mocks.readOCR).toHaveBeenCalledWith('metadata-test', 0, false, true);
+    expect(mocks.ocr).toHaveBeenCalledWith(
+      '/fixture.pdf',
+      'metadata-test',
+      [0],
+      expect.any(AbortSignal),
+      undefined,
+      false,
+      true,
+      false,
+      'metadata-session',
+    );
+  });
+
+  it('keeps competing native and OCR author spellings under review rather than trusting cleaner OCR', async () => {
+    mocks.native.mockReturnValue(true);
+    vi.mocked(service.resolveNativeBookFilePath).mockResolvedValueOnce('/fixture.pdf');
+    mocks.open.mockResolvedValueOnce({
+      book: { metadata: {}, sections: [{}], getPDFText: mocks.text, destroy: mocks.destroy },
+    });
+    mocks.text.mockResolvedValue(
+      'C o p y r i g h t 2020\nLibrary of Congress Cataloging-in-Publication Data\nResearch / A l i c e   W r i t e r,\nISBN 9780306406157',
+    );
+    mocks.readOCR.mockResolvedValue({
+      text: 'Library of Congress Cataloging-in-Publication Data\nResearch / Alice Wrifer.\nISBN 9780306406157',
+    });
+    const result = await recognizeBookMetadata(book, env, new AbortController().signal);
+    expect(result.candidates.filter((item) => item.field === 'author')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          value: 'Alice Writer',
+          confidence: 'review',
+          source: expect.objectContaining({ kind: 'text', pageIndex: 0 }),
+        }),
+        expect.objectContaining({
+          value: 'Alice Wrifer',
+          confidence: 'review',
+          source: expect.objectContaining({ kind: 'ocr', pageIndex: 0 }),
+        }),
+      ]),
+    );
+  });
+
+  it('keeps damaged text under review when local OCR is unavailable', async () => {
+    mocks.open.mockResolvedValueOnce({
+      book: { metadata: {}, sections: [{}], getPDFText: mocks.text, destroy: mocks.destroy },
+    });
+    mocks.text.mockResolvedValue(
+      '图书在版编目(CIP)数据\n山川/张三著;李四译\nISBN 1 978 7 50, 80 39 88 6',
+    );
+    const result = await recognizeBookMetadata(book, env, new AbortController().signal);
+    expect(
+      result.candidates
+        .filter((item) => item.source.kind !== 'file')
+        .every((item) => item.confidence === 'review'),
+    ).toBe(true);
+    expect(result.candidates).toContainEqual(
+      expect.objectContaining({ field: 'author', value: '张三' }),
+    );
+  });
+
   it('rejects a replaced source before opening the parser or saving candidates', async () => {
     mocks.fingerprint.mockResolvedValue(`sha256:${'b'.repeat(64)}`);
     await expect(recognizeBookMetadata(book, env, new AbortController().signal)).rejects.toThrow(
@@ -162,6 +278,10 @@ describe('candidate sidecar cache', () => {
   });
   it('rejects a cache from a different full fingerprint', async () => {
     mocks.read.mockResolvedValue(envelope({ ...result, fingerprint: `sha256:${'b'.repeat(64)}` }));
+    expect(await loadMetadataRecognition(book, env)).toBeNull();
+  });
+  it('does not reuse candidates from the prior extraction algorithm', async () => {
+    mocks.read.mockResolvedValue(JSON.stringify({ algorithm: 'local-metadata-1', result }));
     expect(await loadMetadataRecognition(book, env)).toBeNull();
   });
   it('rejects corrupt or incompatible cache without modifying the book', async () => {

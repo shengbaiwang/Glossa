@@ -509,3 +509,17 @@ it('refuses undo after another book joins a renamed branch', async () => {
   });
   expect(useLibraryStore.getState().library.every((b) => b.groupName === 'B')).toBe(true);
 });
+
+it('persists an implicit source folder after its last book moves into an empty folder', async () => {
+  useSettingsStore.getState().setSettings({ libraryFolders: ['Empty'] } as SystemSettings);
+  useLibraryStore.getState().setLibrary([{ ...book, groupName: 'Source' }]);
+  const { result, unmount } = renderHook(() => useLibraryFolders());
+  await act(async () => expect(await result.current.move([book.hash], 'Empty')).toBe(true));
+  expect(mocks.saveSettings).toHaveBeenCalledWith(
+    expect.objectContaining({ libraryFolders: ['Empty', 'Source'] }),
+  );
+  expect(useLibraryStore.getState().library[0]?.groupName).toBe('Empty');
+  unmount();
+  const reopened = renderHook(() => useLibraryFolders());
+  expect(reopened.result.current.paths).toEqual(['Empty', 'Source']);
+});

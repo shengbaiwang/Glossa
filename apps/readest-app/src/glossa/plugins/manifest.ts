@@ -21,6 +21,7 @@ const activationSchema = z.enum([
   'persistent-import',
   'library-import',
   'book-metadata',
+  'reader-activity',
 ]);
 export const pluginManifestSchema = z
   .object({
@@ -49,6 +50,7 @@ export const pluginManifestSchema = z
           'local-pdf-contents',
           'web-page-capture',
           'local-book-metadata',
+          'local-reading-time',
         ]),
       )
       .max(4),

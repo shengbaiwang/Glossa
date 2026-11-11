@@ -1,3 +1,6 @@
+import { spawn, type ChildProcess } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+import { once } from 'node:events';
 import { resolve } from 'node:path';
 import tsconfigPaths from 'vite-tsconfig-paths';
 import react from '@vitejs/plugin-react';
@@ -14,7 +17,13 @@ const env = {
   // receive their value only from NEXT_PUBLIC_GLOSSA_ENABLED.
   NEXT_PUBLIC_GLOSSA_ENABLED: 'true',
   CWD: process.cwd(),
+  GLOSSA_READING_TIME_SYSTEM_TEST:
+    process.env.GLOSSA_MACOS_INPUT_PID && process.env.GLOSSA_READING_TIME_SYSTEM_LOG ? '1' : '',
+  GLOSSA_READING_TIME_WINDOW_TEST:
+    process.env.GLOSSA_MACOS_INPUT_PID && process.env.GLOSSA_READING_TIME_QA_HELPER ? '1' : '',
 };
+
+let coverProcess: ChildProcess | undefined;
 
 export default defineConfig({
   plugins: [tsconfigPaths(), react()],
@@ -56,8 +65,64 @@ export default defineConfig({
     testTimeout: 30000,
     browser: {
       commands: {
+        async readingTimeCover(_context, mode: 'partial' | 'full' | 'close') {
+          if (mode === 'close') {
+            const child = coverProcess;
+            coverProcess = undefined;
+            if (child?.exitCode === null && child.signalCode === null) {
+              const closed = once(child, 'close');
+              child.kill();
+              await closed;
+            }
+            return Date.now();
+          }
+          const helper = process.env.GLOSSA_READING_TIME_QA_HELPER;
+          if (!helper || !process.env.GLOSSA_MACOS_INPUT_PID || coverProcess) {
+            throw new Error('Expected the isolated macOS reading time window fixture');
+          }
+          const child = spawn(helper, [mode], { stdio: ['ignore', 'pipe', 'inherit'] });
+          coverProcess = child;
+          return new Promise<number>((resolve, reject) => {
+            child.once('error', reject);
+            child.once('close', () => reject(new Error('Window fixture exited before covering the reader')));
+            child.stdout.once('data', (line: Buffer) => {
+              console.info('Native reading time window evidence', mode, line.toString().trim());
+              resolve(Number(line.toString().split(' ')[0]));
+            });
+          });
+        },
+        async readingTimeSystemEvents() {
+          const log = process.env.GLOSSA_READING_TIME_SYSTEM_LOG;
+          return log ? await readFile(log, 'utf8') : '';
+        },
         async recordNativePDFEvidence(_context, evidence: Record<string, unknown>) {
           console.info('Native PDF interaction evidence', JSON.stringify(evidence));
+        },
+        async nativePanPDFText(
+          { browser }, from: { x: number; y: number }, to: { x: number; y: number },
+        ) {
+          const pointer = (actions: object[]) => browser.performActions([{
+            type: 'pointer', id: 'native-pdf-pan', parameters: { pointerType: 'mouse' }, actions,
+          }]);
+          await pointer([
+            { type: 'pointerMove', origin: 'viewport', x: from.x, y: from.y },
+            { type: 'pointerDown', button: 0 }, { type: 'pointerUp', button: 0 },
+          ]);
+          await browser.performActions([{ type: 'key', id: 'pan-space', actions: [{ type: 'keyDown', value: ' ' }] }]);
+          try {
+            await pointer([
+              { type: 'pointerDown', button: 0 },
+              ...Array.from({ length: 12 }, (_, i) => ({
+                type: 'pointerMove', origin: 'viewport', duration: 16,
+                x: from.x + (to.x - from.x) * (i + 1) / 12,
+                y: from.y + (to.y - from.y) * (i + 1) / 12,
+              })),
+              { type: 'pointerUp', button: 0 },
+            ]);
+          } finally {
+            await browser.performActions([{ type: 'key', id: 'pan-space', actions: [{ type: 'keyUp', value: ' ' }] }]);
+            await browser.releaseActions();
+          }
         },
         async nativeDragPDFText(
           { browser },

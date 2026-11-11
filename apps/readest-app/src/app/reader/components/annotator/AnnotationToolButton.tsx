@@ -6,7 +6,7 @@ interface AnnotationToolButtonProps {
   tooltipText: string;
   disabled?: boolean;
   Icon: React.ElementType;
-  onClick: () => void;
+  onClick: React.MouseEventHandler<HTMLButtonElement>;
 }
 
 const AnnotationToolButton: React.FC<AnnotationToolButtonProps> = ({
@@ -17,9 +17,9 @@ const AnnotationToolButton: React.FC<AnnotationToolButtonProps> = ({
   onClick,
 }) => {
   const [buttonClicked, setButtonClicked] = useState(false);
-  const handleClick = () => {
+  const handleClick: React.MouseEventHandler<HTMLButtonElement> = (event) => {
     setButtonClicked(true);
-    onClick();
+    onClick(event);
   };
   return (
     <div

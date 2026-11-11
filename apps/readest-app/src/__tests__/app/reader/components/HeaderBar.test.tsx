@@ -5,6 +5,8 @@ import HeaderBar from '@/app/reader/components/HeaderBar';
 const mocks = vi.hoisted(() => ({
   isSideBarVisible: false,
   isNotebookVisible: false,
+  isMacOSApp: false,
+  readingTime: undefined as boolean | undefined,
   toggleSideBar: vi.fn(),
   toggleNotebook: vi.fn(),
   setSideBarBookKey: vi.fn(),
@@ -14,7 +16,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (key: string) => key }));
 vi.mock('@/hooks/useResponsiveSize', () => ({ useResponsiveSize: (size: number) => size }));
 vi.mock('@/context/EnvContext', () => ({
-  useEnv: () => ({ envConfig: {}, appService: { isMobile: false } }),
+  useEnv: () => ({ envConfig: {}, appService: { isMobile: false, isMacOSApp: mocks.isMacOSApp } }),
 }));
 vi.mock('@/store/themeStore', () => ({
   useThemeStore: () => ({ systemUIVisible: true, statusBarHeight: 0 }),
@@ -62,7 +64,7 @@ vi.mock('@/store/notebookStore', () => ({
 }));
 vi.mock('@/store/settingsStore', () => ({
   useSettingsStore: () => ({
-    settings: {},
+    settings: { officialModules: { readingTime: mocks.readingTime } },
     isSettingsDialogOpen: false,
     openSettingsDialog: vi.fn(),
     setSettingsDialogOpen: vi.fn(),
@@ -122,6 +124,8 @@ afterEach(() => {
   vi.clearAllMocks();
   mocks.isSideBarVisible = false;
   mocks.isNotebookVisible = false;
+  mocks.isMacOSApp = false;
+  mocks.readingTime = undefined;
 });
 
 describe('reader top bar hierarchy', () => {
@@ -168,4 +172,14 @@ describe('reader top bar hierarchy', () => {
     expect(screen.queryByRole('button', { name: 'Conversation' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Notebook' })).toBeNull();
   });
+});
+
+it('shows the clock on Mac for an enabled reader and hides it when disabled', () => {
+  mocks.isMacOSApp = true;
+  const view = renderBar();
+  expect(screen.getByRole('button', { name: 'Reading time' })).toBeTruthy();
+  view.unmount();
+  mocks.readingTime = false;
+  renderBar();
+  expect(screen.queryByRole('button', { name: 'Reading time' })).toBeNull();
 });

@@ -14,6 +14,7 @@ import { tauriSetWindowTitle } from '@/utils/window';
 import { useContentInsets } from '../hooks/useContentInsets';
 import SearchResultsNav from './sidebar/SearchResultsNav';
 import BooknotesNav from './sidebar/BooknotesNav';
+import { beginReadingSession, supportsReadingTime } from '@/glossa/plugins/readingActivity';
 import FoliateViewer from './FoliateViewer';
 import SectionInfo from './SectionInfo';
 import HeaderBar from './HeaderBar';
@@ -117,6 +118,12 @@ const BookCellInner: React.FC<BookCellProps> = ({
   const bookData = getBookData(bookKey);
   const config = getConfig(bookKey);
   const { book, bookDoc } = bookData || {};
+  const { appService } = useEnv();
+  const bookHash = book?.hash;
+  const tracksTime = book && supportsReadingTime(appService, book.format);
+  useEffect(() => {
+    return tracksTime && bookHash ? beginReadingSession(bookKey, bookHash) : undefined;
+  }, [bookKey, bookHash, tracksTime]);
 
   // viewInsets/contentInsets stay stable while the user is just turning pages
   // (margins are unchanged) but update when a margin setting changes — even

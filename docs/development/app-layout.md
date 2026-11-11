@@ -24,6 +24,12 @@
 
 用户进一步明确要求「编译不要清理，以方便我下次开发」。后续安装只轮换旧安装包、旧版本压缩包和临时替换副本，保留根目录 `target/`、`.glossa-build/target/`、`.glossa-dev/target/`、Next `.next/`、前端导出及开发构建产物。最新正式构建中的 `Glossa.app` 与日常安装版属于同一版本，可以保留；不再随安装清空编译缓存。个人数据与源码备份继续保留。
 
+2026-11-06 PDF 自动目录修复版已更新日常安装；最新压缩恢复点为 `.glossa-build/archives/20261106-pdf-contents/latest-Glossa.zip`，经过实际解压、逐项属性及严格签名核验。本次旧包也有已核验的压缩恢复点，替换临时 `.app` 已移除；各编译缓存保留。下列 11 月 5 日位置为历史交付记录。
+
+2026-11-06 后续按用户要求重新构建并替换当前源码（含整数缩放、锚点／平移与进度滑杆修复），最新压缩恢复点更新为 `.glossa-build/archives/20261106-current/latest-Glossa.zip`；旧版恢复点为同目录 `previous-Glossa.zip`。两者均经过实际解压、逐项属性及严格签名核验。日常版已实际启动，书库仍显示 50 本书；临时旧应用已移除，编译缓存继续保留。交付证据见 `.glossa-dev/qa/install-current-20261106/`。
+
+2026-11-06 PDF 缩放闪跳与菜单精简修复已安装，最新恢复点为 `.glossa-build/archives/20261106-pdf-zoom/latest-Glossa.zip`，旧版回退点为同目录 `previous-Glossa.zip`；均实际解压核验文件、属性与严格签名。日常版启动后原书恢复第 306 页、189%，临时旧应用已移除，各编译缓存保留。交付证据见 `.glossa-dev/qa/pdf-zoom-refinement-20261106/`；完整窗口主动缩放与实体触控板验收边界见 `PROGRESS.md`。
+
 ## 2026-11-05 较早批次的版本留存
 
 按用户本次明确要求，旧应用版本与重复构建已经清理，只保留 `/Applications/Glossa.app` 和 `.glossa-build/archives/20261105-release/latest-Glossa.zip`。压缩包已实际解压，逐项内容、权限、符号链接、扩展属性及代码签名核验通过；同目录 `manifest.json` 记录校验和与代码提交。独立 Dev 保留入口、源码与隔离数据，编译缓存按需重建。个人数据备份不属于旧安装包，保持原状。
@@ -47,3 +53,7 @@ macOS 解压命令：
 ```
 
 要回退日常安装版时，先关闭日常应用，再只替换 `/Applications/Glossa.app`，校验代码签名后登记该路径。恢复应用包不改动书库和配置，也不需要退出独立开发环境。此次整理保留原日常安装版本；近期 Dev 改进的正式交付另按项目验收流程进行。
+
+## 2026-11-06 PDF 整页显示与 5% 下限更新
+
+日常路径 `/Applications/Glossa.app` 已更新至本轮已验证源码；构建前后 2,626 个源码文件指纹一致，固定身份签名及安装内容核对通过。旧版／最新版恢复包为 `.glossa-build/archives/20261106-pdf-scale-polish/previous-Glossa.zip` 与同目录 `latest-Glossa.zip`，均实际解压逐项核验。临时旧应用副本已在恢复点核验后移除，开发环境、个人数据与编译缓存保留。构建／安装／恢复清单位于 `.glossa-dev/qa/pdf-scale-polish-20261106/`。

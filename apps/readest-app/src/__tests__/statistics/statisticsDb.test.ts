@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NodeDatabaseService } from '@/services/database/nodeDatabaseService';
 import { migrate } from '@/services/database/migrate';
@@ -212,4 +215,76 @@ describe('StatisticsDb.open', () => {
     expect(openDatabase).toHaveBeenCalledTimes(2);
     await stats.close();
   });
+});
+
+it('counts local reading intervals once and splits today at local midnight', async () => {
+  const stats = StatisticsDb.from(await freshStatsDb());
+  const midnight = new Date(2026, 10, 9).getTime();
+  const interval = {
+    id: 'first',
+    bookHash: 'book',
+    sessionId: 'session',
+    startMs: midnight - 5000,
+    durationMs: 15000,
+  };
+  await stats.appendReadingIntervals([interval]);
+  await stats.appendReadingIntervals([
+    interval,
+    {
+      ...interval,
+      id: 'second',
+      sessionId: 'earlier',
+      startMs: midnight + 20000,
+      durationMs: 3000,
+    },
+  ]);
+  expect(await stats.getBookReadingTime('book', 'session')).toEqual({
+    bookMs: 18000,
+    sessionMs: 15000,
+  });
+  expect(await stats.getReadingTimeSummary(new Date(midnight + 60000))).toEqual({
+    todayMs: 13000,
+    totalMs: 18000,
+    books: [{ bookHash: 'book', durationMs: 18000 }],
+  });
+  expect(await stats.getEventsForPush(0)).toEqual({ events: [], books: [] });
+});
+
+it('reopens committed reading intervals alongside an existing KOReader database', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'glossa-reading-time-'));
+  const file = join(dir, 'statistics.db');
+  const oldDb = await NodeDatabaseService.open(file);
+  let reopened: DatabaseService | undefined;
+  try {
+    const migrations = getMigrations('statistics');
+    await migrate(oldDb, migrations.slice(0, -1));
+    const legacy = StatisticsDb.from(oldDb);
+    const bookId = await legacy.upsertBook({ bookMd5: 'shared', title: 'Old book', authors: 'A' });
+    await legacy.insertPageEvent(bookId, { page: 1, startTime: 1000, duration: 20, totalPages: 2 });
+    await migrate(oldDb, migrations);
+    const interval = {
+      id: 'read-1',
+      bookHash: 'shared',
+      sessionId: 'original-session',
+      startMs: 10_000,
+      durationMs: 4000,
+    };
+    await legacy.appendReadingIntervals([interval]);
+    await legacy.close();
+
+    reopened = await NodeDatabaseService.open(file);
+    const stats = StatisticsDb.from(reopened);
+    await stats.appendReadingIntervals([interval]);
+    expect(await stats.getBookReadingTime('shared', 'new-session')).toEqual({
+      bookMs: 4000,
+      sessionMs: 0,
+    });
+    const sync = await stats.getEventsForPush(0);
+    expect(sync.events).toHaveLength(1);
+    expect(sync.books).toHaveLength(1);
+  } finally {
+    await oldDb.close().catch(() => {});
+    await reopened?.close();
+    await rm(dir, { recursive: true, force: true });
+  }
 });

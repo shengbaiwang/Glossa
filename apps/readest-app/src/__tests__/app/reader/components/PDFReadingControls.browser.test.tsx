@@ -15,10 +15,18 @@ import '@/styles/glossa-reader-navigation.css';
 let view: FoliateView;
 let book: BookDoc;
 let settings = { zoomMode: 'fit-width', zoomLevel: 150 } as ViewSettings;
-vi.mock('@/hooks/useTranslation', () => ({
-  useTranslation: () => (key: string, values?: Record<string, unknown>) =>
-    key.replace(/{{(\w+)}}/g, (_, name: string) => String(values?.[name] ?? '')),
-}));
+vi.mock('@/hooks/useTranslation', async () => {
+  const zh: Record<string, string> = await fetch('/locales/zh-CN/translation.json').then(
+    (response) => response.json(),
+  );
+  return {
+    useTranslation: () => (key: string, values?: Record<string, unknown>) => {
+      const label =
+        key === 'Fit Page' || key === 'Fit Width' || key === 'Fit Content' ? (zh[key] ?? key) : key;
+      return label.replace(/{{(\w+)}}/g, (_, name: string) => String(values?.[name] ?? ''));
+    },
+  };
+});
 vi.mock('@/context/EnvContext', () => ({ useEnv: () => ({ envConfig: {} }) }));
 vi.mock('@/helpers/settings', () => ({ saveViewSettings: vi.fn(async () => {}) }));
 vi.mock('@/store/bookDataStore', () => ({
@@ -122,13 +130,12 @@ it('uses the visible PDF size for fit controls and percentages without overflowi
   const currentFrame = () =>
     view.renderer.getContents().find((c) => c.index === view.renderer.index)!.doc.defaultView!
       .frameElement!;
-  await userEvent.click(screen.getByRole('button', { name: 'Fit Page' }));
+  expect(screen.queryByRole('button', { name: '去白边放大' })).toBeNull();
+  const image = vi.spyOn(book, 'getPDFImage');
+  await userEvent.click(screen.getByRole('button', { name: '整页显示' }));
   await expect.poll(() => currentFrame().getBoundingClientRect().height).toBeLessThanOrEqual(621);
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'Fit Page' }).getAttribute('aria-pressed')).toBe(
-      'true',
-    ),
-  );
+  expect(settings.zoomMode).toBe('fit-page');
+  expect(image).not.toHaveBeenCalled();
   expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Go to Page' }).value).toMatch(
     /\/ 4$/,
   );
@@ -136,18 +143,36 @@ it('uses the visible PDF size for fit controls and percentages without overflowi
   expect(container.textContent).toContain('Printed page ii');
   for (const theme of ['default', 'default-dark']) {
     document.documentElement.setAttribute('data-theme', theme);
+    await new Promise((resolve) => setTimeout(resolve, 250));
     await page.screenshot({
       element: container,
       path: `/Users/nidao./Documents/ChatGPT/Glossa/.glossa-dev/qa/pdf-reading-controls-${theme}.png`,
     });
   }
-  await userEvent.click(screen.getByRole('button', { name: 'Fit Width' }));
+  await userEvent.click(screen.getByRole('button', { name: '铺满宽度' }));
   await expect
     .poll(() => currentFrame().getBoundingClientRect().width)
     .toBeCloseTo(view.renderer.getBoundingClientRect().width, 0);
   expect(currentFrame().getBoundingClientRect().height).toBeGreaterThan(620);
   await page.getByRole('button', { name: /^Zoom [\d.]+%$/ }).click();
-  await userEvent.click(screen.getByRole('menuitem', { name: '100%' }));
+  expect(screen.queryByRole('menuitem', { name: '100%' })).toBeNull();
+  expect(screen.getByRole('menuitem', { name: '整页显示' })).toBeTruthy();
+  expect(screen.queryByRole('menuitem', { name: '去白边放大' })).toBeNull();
+  const menu = screen.getByRole('menu').getBoundingClientRect();
+  expect(menu.width).toBeLessThanOrEqual(240);
+  expect(menu.height).toBeLessThanOrEqual(matchMedia('(pointer: coarse)').matches ? 218 : 170);
+  const inputBox = screen.getByRole('textbox', { name: 'Zoom' }).getBoundingClientRect();
+  const rangeBox = screen.getByRole('slider', { name: 'Zoom' }).getBoundingClientRect();
+  expect(
+    Math.abs(inputBox.top + inputBox.height / 2 - rangeBox.top - rangeBox.height / 2),
+  ).toBeLessThan(1);
+  expect(screen.getAllByRole('menuitem')).toHaveLength(2);
+  expect(screen.getByRole<HTMLInputElement>('slider', { name: 'Zoom' }).min).toBe('5');
+  await page.getByRole('textbox', { name: 'Zoom' }).fill('5');
+  await userEvent.keyboard('{Enter}');
+  await expect.poll(() => view.renderer.scale).toBe(0.05);
+  await page.getByRole('textbox', { name: 'Zoom' }).fill('100');
+  await userEvent.keyboard('{Enter}{Escape}');
   await expect.poll(() => view.renderer.scale).toBe(1);
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'Zoom 100%' }).textContent).toContain('100%'),
@@ -155,12 +180,15 @@ it('uses the visible PDF size for fit controls and percentages without overflowi
   await page.getByRole('button', { name: /^Zoom [\d.]+%$/ }).click();
   await page.getByRole('textbox', { name: 'Zoom' }).fill('137.25');
   await userEvent.keyboard('{Enter}');
-  await expect.poll(() => view.renderer.scale).toBe(1.3725);
-  expect(settings.zoomLevel).toBe(137.25);
-  await page.screenshot({
-    element: screen.getByRole('menu'),
-    path: '/Users/nidao./Documents/ChatGPT/Glossa/.glossa-dev/qa/pdf-zoom-menu.png',
-  });
+  await expect.poll(() => view.renderer.scale).toBe(1.37);
+  expect(settings.zoomLevel).toBe(137);
+  for (const theme of ['default', 'default-dark']) {
+    document.documentElement.setAttribute('data-theme', theme);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await page.screenshot({
+      path: `/Users/nidao./Documents/ChatGPT/Glossa/.glossa-dev/qa/pdf-scale-polish-menu-${theme}.png`,
+    });
+  }
   await userEvent.keyboard('{Tab}');
   const slider = screen.getByRole<HTMLInputElement>('slider', { name: 'Zoom' });
   expect(document.activeElement).toBe(slider);

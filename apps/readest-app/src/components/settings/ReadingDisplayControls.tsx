@@ -46,6 +46,7 @@ const ReadingDisplayControls: React.FC<{
   const { getView, getViewSettings, setViewSettings } = useReaderStore();
   const bookData = getBookData(bookKey)!;
   const viewSettings = getViewSettings(bookKey)!;
+  const isPDF = bookData.book?.format === 'PDF';
   const [isScrolledMode, setScrolledMode] = useState(viewSettings!.scrolled);
   const [scrolledDirection, setScrolledDirection] = useState(
     viewSettings!.scrolledDirection ?? 'vertical',
@@ -191,48 +192,50 @@ const ReadingDisplayControls: React.FC<{
     <div className='glossa-reading-display-controls my-4'>
       {bookData.bookDoc?.rendition?.layout === 'pre-paginated' && (
         <>
-          <div
-            title={_('Zoom Level')}
-            className={clsx('flex items-center justify-between rounded-md')}
-          >
-            <button
-              type='button'
-              aria-label={_('Zoom Out')}
-              title={_('Zoom Out')}
-              disabled={zoomLevel <= MIN_ZOOM_LEVEL}
-              onClick={zoomOut}
-              className={clsx(
-                'touch-target glossa-icon-button',
-                zoomLevel <= MIN_ZOOM_LEVEL && 'btn-disabled text-gray-400',
-              )}
+          {!isPDF && (
+            <div
+              title={_('Zoom Level')}
+              className={clsx('flex items-center justify-between rounded-md')}
             >
-              <ZoomOut />
-            </button>
-            <button
-              type='button'
-              aria-label={_('Reset Zoom')}
-              title={_('Reset Zoom')}
-              className={clsx(
-                'touch-target hover:bg-base-300 text-base-content h-8 min-h-8 w-[50%] rounded-md p-1 text-center',
-              )}
-              onClick={resetZoom}
-            >
-              {Math.round(zoomLevel)}%
-            </button>
-            <button
-              type='button'
-              aria-label={_('Zoom In')}
-              title={_('Zoom In')}
-              disabled={zoomLevel >= MAX_ZOOM_LEVEL}
-              onClick={zoomIn}
-              className={clsx(
-                'touch-target glossa-icon-button',
-                zoomLevel >= MAX_ZOOM_LEVEL && 'btn-disabled text-gray-400',
-              )}
-            >
-              <ZoomIn />
-            </button>
-          </div>
+              <button
+                type='button'
+                aria-label={_('Zoom Out')}
+                title={_('Zoom Out')}
+                disabled={zoomLevel <= MIN_ZOOM_LEVEL}
+                onClick={zoomOut}
+                className={clsx(
+                  'touch-target glossa-icon-button',
+                  zoomLevel <= MIN_ZOOM_LEVEL && 'btn-disabled text-gray-400',
+                )}
+              >
+                <ZoomOut />
+              </button>
+              <button
+                type='button'
+                aria-label={_('Reset Zoom')}
+                title={_('Reset Zoom')}
+                className={clsx(
+                  'touch-target hover:bg-base-300 text-base-content h-8 min-h-8 w-[50%] rounded-md p-1 text-center',
+                )}
+                onClick={resetZoom}
+              >
+                {Math.round(zoomLevel)}%
+              </button>
+              <button
+                type='button'
+                aria-label={_('Zoom In')}
+                title={_('Zoom In')}
+                disabled={zoomLevel >= MAX_ZOOM_LEVEL}
+                onClick={zoomIn}
+                className={clsx(
+                  'touch-target glossa-icon-button',
+                  zoomLevel >= MAX_ZOOM_LEVEL && 'btn-disabled text-gray-400',
+                )}
+              >
+                <ZoomIn />
+              </button>
+            </div>
+          )}
 
           <div
             title={_('Contrast')}
@@ -348,33 +351,37 @@ const ReadingDisplayControls: React.FC<{
               >
                 <GalleryHorizontal />
               </button>
-              <div className='bg-base-300 mx-2 h-6 w-[1px]' />
-              <button
-                type='button'
-                aria-pressed={zoomMode === 'fit-page'}
-                aria-label={_('Fit Page')}
-                title={_('Fit Page')}
-                onClick={setZoomMode.bind(null, 'fit-page')}
-                className={clsx(
-                  'touch-target glossa-icon-button',
-                  zoomMode === 'fit-page' && 'bg-base-300/75',
-                )}
-              >
-                <Expand />
-              </button>
-              <button
-                type='button'
-                aria-pressed={zoomMode === 'fit-width'}
-                aria-label={_('Fit Width')}
-                title={_('Fit Width')}
-                onClick={setZoomMode.bind(null, 'fit-width')}
-                className={clsx(
-                  'touch-target glossa-icon-button',
-                  zoomMode === 'fit-width' && 'bg-base-300/75',
-                )}
-              >
-                <MoveHorizontal />
-              </button>
+              {!isPDF && (
+                <>
+                  <div className='bg-base-300 mx-2 h-6 w-[1px]' />
+                  <button
+                    type='button'
+                    aria-pressed={zoomMode === 'fit-page'}
+                    aria-label={_('Fit Page')}
+                    title={_('Fit Page')}
+                    onClick={setZoomMode.bind(null, 'fit-page')}
+                    className={clsx(
+                      'touch-target glossa-icon-button',
+                      zoomMode === 'fit-page' && 'bg-base-300/75',
+                    )}
+                  >
+                    <Expand />
+                  </button>
+                  <button
+                    type='button'
+                    aria-pressed={zoomMode === 'fit-width'}
+                    aria-label={_('Fit Width')}
+                    title={_('Fit Width')}
+                    onClick={setZoomMode.bind(null, 'fit-width')}
+                    className={clsx(
+                      'touch-target glossa-icon-button',
+                      zoomMode === 'fit-width' && 'bg-base-300/75',
+                    )}
+                  >
+                    <MoveHorizontal />
+                  </button>
+                </>
+              )}
             </div>
 
             <MenuItem

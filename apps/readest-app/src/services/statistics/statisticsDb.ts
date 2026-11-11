@@ -1,6 +1,6 @@
 import type { AppService } from '@/types/system';
 import type { DatabaseService, DatabaseRow } from '@/types/database';
-import type { PageStatEvent, StatBook } from '@/types/statistics';
+import type { PageStatEvent, ReadingInterval, StatBook } from '@/types/statistics';
 
 interface BookRow extends DatabaseRow {
   id: number;
@@ -88,6 +88,53 @@ export class StatisticsDb {
     }
     await this.db.close();
     sharedDb = null;
+  }
+
+  async appendReadingIntervals(intervals: readonly ReadingInterval[]): Promise<void> {
+    if (!intervals.length) return;
+    await this.db.execute(
+      `INSERT INTO glossa_reading_intervals
+        (id, session_id, book_hash, start_ms, end_ms, duration_ms, rule_version)
+        VALUES ${intervals.map(() => '(?, ?, ?, ?, ?, ?, 1)').join(', ')}
+        ON CONFLICT(id) DO NOTHING`,
+      intervals.flatMap((row) => [
+        row.id,
+        row.sessionId,
+        row.bookHash,
+        row.startMs,
+        row.startMs + row.durationMs,
+        row.durationMs,
+      ]),
+    );
+  }
+
+  async getBookReadingTime(bookHash: string, sessionId: string) {
+    const [row] = await this.db.select<{ bookMs: number; sessionMs: number }>(
+      `SELECT COALESCE(SUM(duration_ms), 0) AS bookMs,
+        COALESCE(SUM(CASE WHEN session_id = ? THEN duration_ms ELSE 0 END), 0) AS sessionMs
+        FROM glossa_reading_intervals WHERE book_hash = ?`,
+      [sessionId, bookHash],
+    );
+    return row!;
+  }
+
+  async getReadingTimeSummary(now = new Date()) {
+    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
+    const [today] = await this.db.select<{ durationMs: number }>(
+      `SELECT COALESCE(SUM(min(end_ms, ?) - max(start_ms, ?)), 0) AS durationMs
+        FROM glossa_reading_intervals WHERE start_ms < ? AND end_ms > ?`,
+      [nextDay, dayStart, nextDay, dayStart],
+    );
+    const books = await this.db.select<{ bookHash: string; durationMs: number }>(
+      `SELECT book_hash AS bookHash, SUM(duration_ms) AS durationMs FROM glossa_reading_intervals
+        GROUP BY book_hash ORDER BY durationMs DESC, bookHash`,
+    );
+    return {
+      todayMs: today!.durationMs,
+      totalMs: books.reduce((sum, book) => sum + book.durationMs, 0),
+      books,
+    };
   }
 
   async upsertBook(book: StatBook): Promise<number> {

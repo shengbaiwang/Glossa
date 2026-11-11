@@ -4,6 +4,7 @@ import useBookShortcuts from '@/app/reader/hooks/useBookShortcuts';
 import { eventDispatcher } from '@/utils/event';
 
 const shortcutState = {
+  pdf: false,
   actions: null as Record<
     string,
     ((event?: KeyboardEvent | MessageEvent) => void) | undefined
@@ -17,6 +18,8 @@ const mockView = {
   pan: vi.fn(),
   renderer: {
     scrolled: false,
+    scale: 0.06,
+    dispatchEvent: vi.fn(),
     setAttribute: vi.fn(),
   },
   history: {
@@ -26,6 +29,8 @@ const mockView = {
 };
 
 const currentViewSettings = {
+  zoomLevel: 100,
+  zoomMode: 'fit-width',
   defaultFontSize: 16,
   lineHeight: 1.5,
   readingRulerEnabled: true,
@@ -60,7 +65,8 @@ vi.mock('@/store/settingsStore', () => ({
 
 vi.mock('@/store/bookDataStore', () => ({
   useBookDataStore: () => ({
-    getBookData: vi.fn(),
+    getBookData: () =>
+      shortcutState.pdf ? { isFixedLayout: true, book: { format: 'PDF' } } : undefined,
   }),
 }));
 
@@ -104,7 +110,7 @@ vi.mock('@/utils/style', () => ({
 
 vi.mock('@/services/constants', () => ({
   MAX_ZOOM_LEVEL: 200,
-  MIN_ZOOM_LEVEL: 50,
+  MIN_ZOOM_LEVEL: 5,
   ZOOM_STEP: 10,
 }));
 
@@ -123,6 +129,9 @@ describe('useBookShortcuts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     shortcutState.actions = null;
+    shortcutState.pdf = false;
+    currentViewSettings.zoomLevel = 100;
+    currentViewSettings.zoomMode = 'fit-width';
     currentViewSettings.readingRulerEnabled = true;
     currentViewSettings.writingMode = 'horizontal-tb';
     currentViewSettings.vertical = false;
@@ -187,4 +196,16 @@ describe('useBookShortcuts', () => {
 
     expect(dispatchSpy).not.toHaveBeenCalledWith('rsvp-start', { bookKey: 'book-1' });
   });
+});
+
+it('uses the visible PDF scale for keyboard zoom and stops at 5%', () => {
+  shortcutState.pdf = true;
+  render(<Harness />);
+  shortcutState.actions?.['onZoomOut']?.();
+  const event = mockView.renderer.dispatchEvent.mock.calls[0]?.[0] as
+    | CustomEvent<{ level: number }>
+    | undefined;
+  expect(event?.type).toBe('pdf-zoom-commit');
+  expect(event?.detail.level).toBe(5);
+  expect(mockView.renderer.setAttribute).not.toHaveBeenCalled();
 });

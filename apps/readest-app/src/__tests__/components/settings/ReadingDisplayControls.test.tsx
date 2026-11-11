@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { cleanup, render, waitFor, screen } from '@testing-library/react';
 import ReadingDisplayControls from '@/components/settings/ReadingDisplayControls';
 import { saveViewSettings } from '@/helpers/settings';
 
@@ -20,7 +20,10 @@ vi.mock('@/store/readerStore', () => ({
 }));
 vi.mock('@/store/bookDataStore', () => ({
   useBookDataStore: () => ({
-    getBookData: () => ({ bookDoc: { rendition: { layout: 'pre-paginated' } } }),
+    getBookData: () => ({
+      book: { format: 'PDF' },
+      bookDoc: { rendition: { layout: 'pre-paginated' } },
+    }),
   }),
 }));
 afterEach(() => {
@@ -34,4 +37,11 @@ it('opening PDF display controls does not persist optional defaults or touch the
   );
   expect(saveViewSettings).not.toHaveBeenCalled();
   expect(fixture.renderer.setAttribute).not.toHaveBeenCalled();
+});
+
+it('keeps PDF zoom in the reading footer without duplicate whole-page or reset controls', () => {
+  render(<ReadingDisplayControls bookKey='pdf' onRegisterReset={vi.fn()} />);
+  expect(screen.queryByRole('button', { name: 'Zoom Out' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Fit Page' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Reset Zoom' })).toBeNull();
 });

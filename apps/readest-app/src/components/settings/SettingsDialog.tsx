@@ -347,11 +347,13 @@ const SettingsDialog: React.FC<{
             : settingId === 'settings.plugins.metadataRecognitionOnImport' ||
                 settingId === 'settings.plugins.metadataRecognition'
               ? 'metadataRecognition'
-              : panelKey === 'models' || settingId === 'settings.plugins.models'
-                ? 'models'
-                : panelKey === 'conversation' || settingId === 'settings.plugins.prompts'
-                  ? 'conversation'
-                  : null,
+              : settingId === 'settings.plugins.readingTime' && appService?.isMacOSApp
+                ? 'readingTime'
+                : panelKey === 'models' || settingId === 'settings.plugins.models'
+                  ? 'models'
+                  : panelKey === 'conversation' || settingId === 'settings.plugins.prompts'
+                    ? 'conversation'
+                    : null,
         );
       }
       const targetPanel = [

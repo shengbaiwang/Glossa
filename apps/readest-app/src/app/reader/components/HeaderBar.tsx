@@ -1,7 +1,7 @@
 import { getReadingQuickAction } from '@/utils/annotationToolbar';
 import clsx from 'clsx';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { LibraryBig, Ellipsis } from '@/components/GlossaIcons';
+import { LibraryBig, Ellipsis, Clock } from '@/components/GlossaIcons';
 
 import { Insets } from '@/types/misc';
 import { useEnv } from '@/context/EnvContext';
@@ -27,6 +27,12 @@ import NotebookToggler from './NotebookToggler';
 import SettingsToggler from './SettingsToggler';
 
 import ViewMenu from './ViewMenu';
+import { useBookDataStore } from '@/store/bookDataStore';
+import { useSettingsStore } from '@/store/settingsStore';
+import { isPluginEnabled } from '@/glossa/plugins/registry';
+import { supportsReadingTime } from '@/glossa/plugins/readingActivity';
+
+const ReadingTimePanel = React.lazy(() => import('@/glossa/plugins/ReadingTimePanel'));
 
 interface HeaderBarProps {
   bookKey: string;
@@ -66,6 +72,11 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
   const view = getView(bookKey);
   const viewSettings = getViewSettings(bookKey)!;
   const iconSize18 = useResponsiveSize(18);
+  const { getBookData } = useBookDataStore();
+  const { settings } = useSettingsStore();
+  const format = getBookData(bookKey)?.book?.format;
+  const showReadingTime =
+    !!format && supportsReadingTime(appService, format) && isPluginEnabled(settings, 'readingTime');
 
   const docs = view?.renderer.getContents() ?? [];
   const pointerInDoc = docs.some(({ doc }) => doc?.body?.style.cursor === 'pointer');
@@ -276,6 +287,26 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
                 selectedAction={viewSettings.annotationQuickAction}
                 onActionSelect={handleAnnotationQuickActionSelect}
               />
+            </Dropdown>
+          )}
+          {showReadingTime && (
+            <Dropdown
+              label={_('Reading time')}
+              containerClassName='h-8'
+              className='exclude-title-bar-mousedown dropdown-bottom dropdown-end'
+              buttonClassName='glossa-icon-button btn btn-ghost h-8 min-h-8 w-8 p-0'
+              toggleButton={<Clock size={iconSize18} aria-hidden='true' />}
+              onToggle={handleToggleDropdown}
+            >
+              <div
+                aria-label={_('Reading time')}
+                className='glossa-group-card dropdown-content no-triangle z-20 mt-2 shadow-2xl'
+                role='region'
+              >
+                <React.Suspense fallback={<p role='status'>{_('Loading...')}</p>}>
+                  <ReadingTimePanel bookKey={bookKey} />
+                </React.Suspense>
+              </div>
             </Dropdown>
           )}
           <BookmarkToggler bookKey={bookKey} />

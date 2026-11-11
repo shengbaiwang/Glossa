@@ -14,7 +14,7 @@ interface AnnotationPopupProps {
   buttons: Array<{
     tooltipText: string;
     Icon: React.ElementType;
-    onClick: () => void;
+    onClick: React.MouseEventHandler<HTMLButtonElement>;
     disabled?: boolean;
     visible?: boolean;
   }>;

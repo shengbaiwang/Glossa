@@ -10,6 +10,7 @@ import {
   deduplicateCandidates,
   extractCopyrightMetadata,
   extractFileMetadata,
+  extractFrontMatterAuthors,
   scoreCopyrightPage,
 } from './extract';
 import type { MetadataCandidate, MetadataRecognition } from './types';
@@ -18,6 +19,21 @@ const MAX_PAGE_TEXT = 24000;
 const textUsable = (text: string) =>
   text.replace(/[\s\uFFFD]/g, '').length >= 20 &&
   (text.match(/\uFFFD/g)?.length ?? 0) < text.length / 20;
+/** Old PDF layers can be nonempty yet too damaged for bibliographic extraction. */
+export function metadataTextNeedsOCR(text: string): boolean {
+  if (!textUsable(text)) return true;
+  const sample = text.slice(0, MAX_PAGE_TEXT);
+  const fragmented = sample.match(/(?:[a-zA-Z][ \t]){3,}[a-zA-Z]/g) ?? [];
+  if (fragmented.join('').length > sample.length / 5) return true;
+  if ((sample.match(/[\uE000-\uF8FF]/g)?.length ?? 0) > sample.length / 50) return true;
+  return (
+    /\bCIP\b/i.test(sample) &&
+    /\bISBN\b/i.test(sample) &&
+    !extractCopyrightMetadata(sample, { kind: 'text', label: 'Copyright page', excerpt: '' }).some(
+      (item) => item.field === 'isbn',
+    )
+  );
+}
 export function metadataScanIndices(total: number, expanded = false): number[] {
   const first = expanded ? 40 : 16;
   const last = expanded ? 16 : 8;
@@ -75,6 +91,7 @@ export async function recognizeBookMetadata(
     doc = opened.book;
     activeSignal.throwIfAborted();
     const candidates = extractFileMetadata(doc.metadata);
+    const frontMatter: Parameters<typeof extractFrontMatterAuthors>[0] = [];
     let indices = metadataScanIndices(doc.sections.length, options.expanded);
     const eligibleForOCR = new Set([
       ...Array.from(
@@ -145,16 +162,19 @@ export async function recognizeBookMetadata(
         );
       } else break;
       activeSignal.throwIfAborted();
+      const originalText = text;
       if (
-        !textUsable(text) &&
+        metadataTextNeedsOCR(text) &&
         (semantic || eligibleForOCR.has(index)) &&
         ocrCount < (options.expanded ? 24 : 12)
       ) {
         if (book.format === 'PDF' && cache && nativePath) {
           options.onStage?.('Recognizing copyright page text');
-          let page = await pdf.readOCRPage(cache.id, index);
+          // Discovery OCR has its own versioned sidecar. Reading OCR deliberately
+          // preserves native text and CFI offsets, including damaged old layers.
+          let page = await pdf.readOCRPage(cache.id, index, false, true);
           activeSignal.throwIfAborted();
-          if (!page || pdf.needsOCRRecovery(page)) {
+          if (!page || pdf.needsOCRRecovery(page) || metadataTextNeedsOCR(pdf.OCRPageText(page))) {
             ocrCount++;
             const { recognizePDFPages } = await import('@/services/pdfOCR');
             await recognizePDFPages(
@@ -164,16 +184,24 @@ export async function recognizeBookMetadata(
               activeSignal,
               undefined,
               false,
-              false,
+              true,
               false,
               cache.session ?? undefined,
             );
             activeSignal.throwIfAborted();
-            page = await pdf.readOCRPage(cache.id, index);
+            page = await pdf.readOCRPage(cache.id, index, false, true);
           }
           if (page) {
-            text = pdf.OCRPageText(page).slice(0, MAX_PAGE_TEXT);
-            kind = 'ocr';
+            const recognized = pdf.OCRPageText(page).slice(0, MAX_PAGE_TEXT);
+            if (
+              textUsable(recognized) &&
+              (!textUsable(text) ||
+                !metadataTextNeedsOCR(recognized) ||
+                scoreCopyrightPage(recognized) >= scoreCopyrightPage(text))
+            ) {
+              text = recognized;
+              kind = 'ocr';
+            }
           }
         } else if (book.format === 'EPUB' && pdf.supportsLocalPDF() && dom && doc.loadBlob) {
           const image = dom.querySelector('img[src], image');
@@ -191,13 +219,74 @@ export async function recognizeBookMetadata(
               ocrCount++;
               options.onStage?.('Recognizing copyright page text');
               const { recognizeMetadataImage } = await import('./imageOCR');
-              text = (await recognizeMetadataImage(blob, activeSignal)).slice(0, MAX_PAGE_TEXT);
-              kind = 'ocr';
+              const recognized = (await recognizeMetadataImage(blob, activeSignal)).slice(
+                0,
+                MAX_PAGE_TEXT,
+              );
+              if (
+                textUsable(recognized) &&
+                (!textUsable(text) ||
+                  !metadataTextNeedsOCR(recognized) ||
+                  scoreCopyrightPage(recognized) >= scoreCopyrightPage(text))
+              ) {
+                text = recognized;
+                kind = 'ocr';
+              }
             }
           }
-        } else if (!textUsable(text)) unavailableOCR = true;
-      } else if (!textUsable(text)) limited = true;
+        } else unavailableOCR = true;
+      } else if (metadataTextNeedsOCR(text)) limited = true;
       activeSignal.throwIfAborted();
+      const uncertain = metadataTextNeedsOCR(text);
+      if (
+        kind === 'ocr' &&
+        originalText !== text &&
+        textUsable(originalText) &&
+        scoreCopyrightPage(originalText, semantic) >= 5
+      ) {
+        const recognizedNames = extractCopyrightMetadata(text, {
+          kind,
+          label: 'Copyright page',
+          excerpt: '',
+        });
+        // A cleaner-looking OCR page can still misspell a person's name. Keep
+        // the independent native spelling as evidence so a conflict needs review.
+        candidates.push(
+          ...extractCopyrightMetadata(originalText, {
+            kind: 'text',
+            label: 'Copyright page',
+            excerpt: '',
+            ...(book.format === 'PDF' ? { pageIndex: index } : { href: sectionPath }),
+          })
+            .filter(
+              (item) =>
+                (item.field === 'author' || item.field === 'translator') &&
+                !recognizedNames.some(
+                  (recognized) =>
+                    recognized.field === item.field && recognized.value === item.value,
+                ),
+            )
+            .map(
+              (item): MetadataCandidate => ({
+                ...item,
+                confidence: 'review',
+                reason: 'Uncertain text recognition',
+              }),
+            ),
+        );
+      }
+      if (index < 8 || scoreCopyrightPage(text, semantic) >= 5)
+        frontMatter.push({
+          index,
+          text,
+          uncertain,
+          source: {
+            kind,
+            label: 'Copyright page',
+            excerpt: '',
+            ...(book.format === 'PDF' ? { pageIndex: index } : { href: sectionPath }),
+          },
+        });
       if (scoreCopyrightPage(text, semantic) >= 5) {
         found ||= scoreCopyrightPage(text, semantic) >= 5;
         candidates.push(
@@ -206,12 +295,18 @@ export async function recognizeBookMetadata(
             label: 'Copyright page',
             excerpt: '',
             ...(book.format === 'PDF' ? { pageIndex: index } : { href: sectionPath }),
-          }),
+          }).map(
+            (item): MetadataCandidate =>
+              uncertain
+                ? { ...item, confidence: 'review', reason: 'Uncertain text recognition' }
+                : item,
+          ),
         );
       }
       // Yield between pages so reading and cancellation remain responsive.
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
+    candidates.push(...extractFrontMatterAuthors(frontMatter));
     activeSignal.throwIfAborted();
     options.onStage?.('Verifying local file');
     if ((await fingerprintPath(io, source.path, source.base, activeSignal)) !== fingerprint)

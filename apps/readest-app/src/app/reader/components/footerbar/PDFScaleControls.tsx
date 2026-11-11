@@ -1,12 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  Expand,
-  Margins,
-  MoveHorizontal,
-  Minus,
-  Plus,
-  ChevronDown,
-} from '@/components/GlossaIcons';
+import { Expand, MoveHorizontal, Minus, Plus, ChevronDown } from '@/components/GlossaIcons';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -21,7 +14,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { saveViewSettings } from '@/helpers/settings';
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL, ZOOM_STEP } from '@/services/constants';
 import type { ViewSettings } from '@/types/book';
-import { preparePDFContentFit } from '@/services/pdfWorkspace';
+import { PDFReadingViewport } from '@/services/pdfWorkspace';
 
 type ZoomChange = { bookKey: string; mode: ViewSettings['zoomMode']; level: number };
 
@@ -33,7 +26,6 @@ export default function PDFScaleControls({ bookKey }: { bookKey: string }) {
   const view = getView(bookKey);
   const settings = getViewSettings(bookKey);
   const bookData = getBookData(bookKey);
-  const bookDoc = bookData?.bookDoc;
   const isPDF = bookData?.book?.format === 'PDF';
   const [scale, setScale] = useState(100);
   const [draft, setDraft] = useState('100');
@@ -46,11 +38,17 @@ export default function PDFScaleControls({ bookKey }: { bookKey: string }) {
   const previewFrame = useRef(0);
   const persisting = useRef(false);
   const [failed, setFailed] = useState(false);
-  const [fitting, setFitting] = useState(false);
-  const [fitMessage, setFitMessage] = useState<'empty' | 'failed' | null>(null);
-  const fitRequest = useRef<AbortController | null>(null);
   const pending = useRef<ZoomChange | null>(null);
   const alive = useRef(true);
+  const applyRef = useRef<((level: number) => void) | null>(null);
+  useEffect(() => {
+    const commit = (event: Event) => {
+      const level = (event as CustomEvent<{ level: number }>).detail.level;
+      if (Number.isFinite(level)) applyRef.current?.(level);
+    };
+    view?.renderer?.addEventListener('pdf-zoom-commit', commit);
+    return () => view?.renderer?.removeEventListener('pdf-zoom-commit', commit);
+  }, [view]);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -59,12 +57,7 @@ export default function PDFScaleControls({ bookKey }: { bookKey: string }) {
     };
   }, []);
   useEffect(() => {
-    fitRequest.current?.abort();
-    fitRequest.current = null;
-    setFitting(false);
-    setFitMessage(null);
     return () => {
-      fitRequest.current?.abort();
       cancelAnimationFrame(previewFrame.current);
       previewFrame.current = 0;
       sliding.current = false;
@@ -76,12 +69,27 @@ export default function PDFScaleControls({ bookKey }: { bookKey: string }) {
   useEffect(() => {
     if (!isPDF || !view?.renderer) return;
     let frame = 0;
+    const root = document.getElementById(`gridcell-${bookKey}`);
     const update = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
+        const host = view.renderer.getBoundingClientRect();
+        if (host.width > 32 && host.height > 32) {
+          const area = PDFReadingViewport(view.renderer, root);
+          const inset = [
+            16 / host.width,
+            area.y + 16 / host.height,
+            1 - 32 / host.width,
+            Math.max(0, area.height - 32 / host.height),
+          ]
+            .map((value) => value.toFixed(6))
+            .join(' ');
+          if (view.renderer.getAttribute('fit-viewport') !== inset)
+            view.renderer.setAttribute('fit-viewport', inset);
+        }
         const value = view.renderer.scale;
         if (!value || !Number.isFinite(value) || sliding.current) return;
-        const percent = Math.round(value * 10000) / 100;
+        const percent = Math.round(value * 100);
         scaleRef.current = percent;
         setScale(percent);
         if (!editing.current) setDraft(String(percent));
@@ -90,6 +98,8 @@ export default function PDFScaleControls({ bookKey }: { bookKey: string }) {
     const resize = new ResizeObserver(update);
     const attrs = new MutationObserver(update);
     resize.observe(view.renderer);
+    for (const bar of root?.querySelectorAll('.glossa-reader-header, .glossa-reader-footer') ?? [])
+      resize.observe(bar);
     attrs.observe(view.renderer, {
       attributes: true,
       attributeFilter: ['zoom', 'scale-factor', 'flow', 'scroll-direction'],
@@ -104,7 +114,7 @@ export default function PDFScaleControls({ bookKey }: { bookKey: string }) {
       view.removeEventListener('relocate', update);
       view.removeEventListener('load', update);
     };
-  }, [isPDF, view]);
+  }, [isPDF, view, bookKey]);
   if (!isPDF || !settings || !view) return null;
   const persist = async () => {
     // Saving never blocks another zoom gesture. Keep one writer and collapse
@@ -148,23 +158,19 @@ export default function PDFScaleControls({ bookKey }: { bookKey: string }) {
       if (alive.current) setSaving(false);
     }
   };
-  const stopFit = () => {
-    fitRequest.current?.abort();
-    fitRequest.current = null;
-    setFitting(false);
-    setFitMessage(null);
-  };
   const apply = (mode: ViewSettings['zoomMode'], level: number) => {
-    stopFit();
     cancelAnimationFrame(previewFrame.current);
     previewFrame.current = 0;
     sliding.current = false;
     // Mode and percentage describe one zoom. Suppress the intermediate drawing
     // so entering a percentage or choosing a fit option commits only once.
-    view.renderer.setAttribute('zoom-preview', '');
-    view.renderer.setAttribute('zoom', mode);
-    view.renderer.setAttribute('scale-factor', level);
-    view.renderer.removeAttribute('zoom-preview');
+    if (view.renderer.setZoom) view.renderer.setZoom(mode, level);
+    else {
+      view.renderer.setAttribute('zoom-preview', '');
+      view.renderer.setAttribute('zoom', mode);
+      view.renderer.setAttribute('scale-factor', level);
+      view.renderer.removeAttribute('zoom-preview');
+    }
     if (mode === 'original-size') {
       scaleRef.current = level;
       setScale(level);
@@ -179,7 +185,7 @@ export default function PDFScaleControls({ bookKey }: { bookKey: string }) {
     void persist();
   };
   const clamp = (value: number) =>
-    Math.round(Math.min(MAX_ZOOM_LEVEL, Math.max(MIN_ZOOM_LEVEL, value)) * 100) / 100;
+    Math.round(Math.min(MAX_ZOOM_LEVEL, Math.max(MIN_ZOOM_LEVEL, value)));
   const commitDraft = () => {
     if (!draftChanged.current) return;
     draftChanged.current = false;
@@ -196,7 +202,6 @@ export default function PDFScaleControls({ bookKey }: { bookKey: string }) {
     apply('original-size', clamp(level));
   };
   const preview = (value: number) => {
-    stopFit();
     const level = clamp(value);
     sliding.current = true;
     scaleRef.current = level;
@@ -207,67 +212,25 @@ export default function PDFScaleControls({ bookKey }: { bookKey: string }) {
     if (!previewFrame.current) {
       previewFrame.current = requestAnimationFrame(() => {
         previewFrame.current = 0;
-        view.renderer.setAttribute('zoom-preview', '');
-        view.renderer.setAttribute('zoom', 'original-size');
-        view.renderer.setAttribute('scale-factor', scaleRef.current);
+        if (view.renderer.setZoom) view.renderer.setZoom('original-size', scaleRef.current, true);
+        else {
+          view.renderer.setAttribute('zoom-preview', '');
+          view.renderer.setAttribute('zoom', 'original-size');
+          view.renderer.setAttribute('scale-factor', scaleRef.current);
+        }
       });
     }
   };
   const commitSlide = () => {
     if (sliding.current) apply('original-size', scaleRef.current);
   };
-  const fitContent = async () => {
-    if (!bookDoc || !view.renderer.scrollToPageRect) return;
-    fitRequest.current?.abort();
-    const controller = new AbortController();
-    fitRequest.current = controller;
-    setFitting(true);
-    setFitMessage(null);
-    const index = view.renderer.index;
-    const top = view.renderer.scrollTop,
-      left = view.renderer.scrollLeft;
-    const cancel = () => {
-      if (
-        view.renderer.index !== index ||
-        view.renderer.scrollTop !== top ||
-        view.renderer.scrollLeft !== left
-      )
-        controller.abort();
-    };
-    view.addEventListener('relocate', cancel);
-    view.renderer.addEventListener('scroll', cancel);
-    try {
-      const result = await preparePDFContentFit(
-        bookDoc,
-        view.renderer,
-        controller.signal,
-        document.getElementById(`gridcell-${bookKey}`),
-      );
-      if (controller.signal.aborted || !alive.current) return;
-      // Detach before our own zoom/scroll; those are the accepted result.
-      view.removeEventListener('relocate', cancel);
-      view.renderer.removeEventListener('scroll', cancel);
-      if (result) {
-        apply('original-size', result.level);
-        view.renderer.scrollToPageRect(result.index, result.region, result.viewport);
-      } else setFitMessage('empty');
-    } catch {
-      if (!controller.signal.aborted && alive.current) setFitMessage('failed');
-    } finally {
-      view.removeEventListener('relocate', cancel);
-      view.renderer.removeEventListener('scroll', cancel);
-      if (fitRequest.current === controller) {
-        fitRequest.current = null;
-        if (alive.current) setFitting(false);
-      }
-    }
-  };
-  const adjust = (delta: number) =>
-    apply('original-size', Math.min(MAX_ZOOM_LEVEL, Math.max(MIN_ZOOM_LEVEL, scale + delta)));
+  applyRef.current = (level) => apply('original-size', clamp(level));
+  const adjust = (delta: number) => apply('original-size', clamp(scale + delta));
   return (
-    <div className='glossa-pdf-scale' role='group' aria-label={_('Zoom')} aria-busy={fitting}>
+    <div className='glossa-pdf-scale' role='group' aria-label={_('Zoom')}>
       <button
         type='button'
+        className='glossa-pdf-scale-fit'
         aria-label={_('Fit Page')}
         title={_('Fit Page')}
         aria-pressed={settings.zoomMode === 'fit-page' && settings.zoomLevel === 100}
@@ -277,6 +240,7 @@ export default function PDFScaleControls({ bookKey }: { bookKey: string }) {
       </button>
       <button
         type='button'
+        className='glossa-pdf-scale-fit'
         aria-label={_('Fit Width')}
         title={_('Fit Width')}
         aria-pressed={settings.zoomMode === 'fit-width' && settings.zoomLevel === 100}
@@ -286,7 +250,7 @@ export default function PDFScaleControls({ bookKey }: { bookKey: string }) {
       </button>
       <button
         type='button'
-        className='glossa-pdf-scale-step'
+        className='glossa-pdf-scale-step glossa-pdf-scale-out'
         aria-label={_('Zoom Out')}
         title={_('Zoom Out')}
         disabled={scale <= MIN_ZOOM_LEVEL}
@@ -315,7 +279,7 @@ export default function PDFScaleControls({ bookKey }: { bookKey: string }) {
             {scale}%<ChevronDown size={12} />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align='end' side='top'>
+        <DropdownMenuContent className='glossa-pdf-scale-menu' align='end' side='top'>
           <DropdownMenuItem onSelect={() => apply('fit-page', 100)}>
             <Expand />
             {_('Fit Page')}
@@ -324,85 +288,75 @@ export default function PDFScaleControls({ bookKey }: { bookKey: string }) {
             <MoveHorizontal />
             {_('Fit Width')}
           </DropdownMenuItem>
-          {bookDoc?.getPDFImage && view.renderer.scrollToPageRect && (
-            <DropdownMenuItem disabled={fitting} onSelect={() => void fitContent()}>
-              <Margins />
-              {_('Fit Content')}
-            </DropdownMenuItem>
-          )}
           <DropdownMenuSeparator />
           <div className='glossa-pdf-scale-entry'>
-            <DropdownMenuItem asChild role='textbox' onSelect={(event) => event.preventDefault()}>
+            <div className='glossa-pdf-scale-number eink-bordered'>
+              <DropdownMenuItem asChild role='textbox' onSelect={(event) => event.preventDefault()}>
+                <input
+                  type='text'
+                  inputMode='numeric'
+                  tabIndex={0}
+                  aria-label={_('Zoom')}
+                  className='glossa-pdf-scale-input'
+                  value={draft}
+                  onFocus={(event) => {
+                    editing.current = true;
+                    cancelDraft.current = false;
+                    event.currentTarget.select();
+                  }}
+                  onChange={(event) => {
+                    draftChanged.current = true;
+                    setDraft(event.target.value);
+                  }}
+                  onBlur={() => {
+                    editing.current = false;
+                    commitDraft();
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                      cancelDraft.current = true;
+                      setDraft(String(scaleRef.current));
+                      return;
+                    }
+                    event.stopPropagation();
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      commitDraft();
+                    }
+                  }}
+                />
+              </DropdownMenuItem>
+              <span aria-hidden='true'>%</span>
+            </div>
+            <DropdownMenuItem
+              asChild
+              role='slider'
+              aria-valuenow={clamp(scale)}
+              aria-valuemin={MIN_ZOOM_LEVEL}
+              aria-valuemax={MAX_ZOOM_LEVEL}
+              onSelect={(event) => event.preventDefault()}
+            >
               <input
-                type='text'
-                inputMode='decimal'
+                type='range'
                 tabIndex={0}
                 aria-label={_('Zoom')}
-                className='glossa-pdf-scale-input eink-bordered'
-                value={draft}
-                onFocus={(event) => {
-                  editing.current = true;
-                  cancelDraft.current = false;
-                  event.currentTarget.select();
-                }}
-                onChange={(event) => {
-                  draftChanged.current = true;
-                  setDraft(event.target.value);
-                }}
-                onBlur={() => {
-                  editing.current = false;
-                  commitDraft();
-                }}
+                aria-valuetext={`${scale}%`}
+                min={MIN_ZOOM_LEVEL}
+                max={MAX_ZOOM_LEVEL}
+                step={1}
+                value={clamp(scale)}
+                className='glossa-pdf-scale-slider'
+                onChange={(event) => preview(Number(event.target.value))}
+                onPointerUp={commitSlide}
+                onPointerCancel={commitSlide}
+                onBlur={commitSlide}
                 onKeyDown={(event) => {
-                  if (event.key === 'Escape') {
-                    cancelDraft.current = true;
-                    setDraft(String(scaleRef.current));
-                    return;
-                  }
-                  event.stopPropagation();
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    commitDraft();
-                  }
+                  if (event.key !== 'Escape') event.stopPropagation();
                 }}
+                onKeyUp={commitSlide}
               />
             </DropdownMenuItem>
-            <span aria-hidden='true'>%</span>
           </div>
-          <DropdownMenuItem
-            asChild
-            role='slider'
-            aria-valuenow={clamp(scale)}
-            aria-valuemin={MIN_ZOOM_LEVEL}
-            aria-valuemax={MAX_ZOOM_LEVEL}
-            onSelect={(event) => event.preventDefault()}
-          >
-            <input
-              type='range'
-              tabIndex={0}
-              aria-label={_('Zoom')}
-              aria-valuetext={`${scale}%`}
-              min={MIN_ZOOM_LEVEL}
-              max={MAX_ZOOM_LEVEL}
-              step='any'
-              value={clamp(scale)}
-              className='glossa-pdf-scale-slider'
-              onChange={(event) => preview(Number(event.target.value))}
-              onPointerUp={commitSlide}
-              onPointerCancel={commitSlide}
-              onBlur={commitSlide}
-              onKeyDown={(event) => {
-                if (event.key !== 'Escape') event.stopPropagation();
-              }}
-              onKeyUp={commitSlide}
-            />
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          {[50, 75, 100, 125, 150, 200, 300].map((level) => (
-            <DropdownMenuItem key={level} onSelect={() => apply('original-size', level)}>
-              {level}%
-            </DropdownMenuItem>
-          ))}
         </DropdownMenuContent>
       </DropdownMenu>
       <button
@@ -421,18 +375,6 @@ export default function PDFScaleControls({ bookKey }: { bookKey: string }) {
           <button type='button' disabled={saving} onClick={() => void persist()}>
             {_('Retry')}
           </button>
-        </div>
-      )}
-      {fitMessage && (
-        <div className='glossa-pdf-save-error' role={fitMessage === 'failed' ? 'alert' : 'status'}>
-          <span>
-            {_(fitMessage === 'empty' ? 'No content to fit.' : 'Could not fit page content.')}
-          </span>
-          {fitMessage === 'failed' && (
-            <button type='button' onClick={() => void fitContent()}>
-              {_('Retry')}
-            </button>
-          )}
         </div>
       )}
     </div>
