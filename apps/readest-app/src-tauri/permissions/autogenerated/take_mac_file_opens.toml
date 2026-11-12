@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-take-mac-file-opens"
+description = "Enables the take_mac_file_opens command without any pre-configured scope."
+commands.allow = ["take_mac_file_opens"]
+
+[[permission]]
+identifier = "deny-take-mac-file-opens"
+description = "Denies the take_mac_file_opens command without any pre-configured scope."
+commands.deny = ["take_mac_file_opens"]

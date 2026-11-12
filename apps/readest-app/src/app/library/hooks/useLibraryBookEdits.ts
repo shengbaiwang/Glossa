@@ -1,3 +1,4 @@
+import { READING_SPACES } from '@/utils/readingSpaces';
 import { useCallback, useRef } from 'react';
 import type { Book, ReadingStatus } from '@/types/book';
 import { useEnv } from '@/context/EnvContext';
@@ -7,16 +8,27 @@ import { eventDispatcher } from '@/utils/event';
 import { getPrimaryLanguage } from '@/utils/book';
 import { metadataPatchSchema, type MetadataPatch } from '@/glossa/metadata/confirm';
 
-type Field = 'title' | 'author' | 'tags' | 'readingStatus' | 'metadata';
+type Field = 'title' | 'author' | 'tags' | 'readingStatus' | 'metadata' | 'readingSpaces';
 type Change = { before: Book; after: Book; field: Field };
+const clock = (field: Field) =>
+  field === 'readingSpaces'
+    ? 'readingSpacesUpdatedAt'
+    : field === 'readingStatus'
+      ? 'readingStatusUpdatedAt'
+      : 'metadataUpdatedAt';
 const same = (a: Book, b: Book, field: Field) =>
   JSON.stringify(a[field]) === JSON.stringify(b[field]) &&
   (field !== 'metadata' ||
     (a.title === b.title && a.author === b.author && a.primaryLanguage === b.primaryLanguage)) &&
-  (field === 'readingStatus'
-    ? a.readingStatusUpdatedAt === b.readingStatusUpdatedAt
-    : a.metadataUpdatedAt === b.metadataUpdatedAt);
+  a[clock(field)] === b[clock(field)];
 const restore = (current: Book, saved: Book, field: Field, stamp: number): Book => {
+  if (field === 'readingSpaces')
+    return {
+      ...current,
+      readingSpaces: saved.readingSpaces,
+      readingSpacesUpdatedAt: stamp,
+      updatedAt: stamp,
+    };
   if (field === 'readingStatus')
     return {
       ...current,
@@ -63,9 +75,7 @@ export function useLibraryBookEdits() {
                     current.updatedAt === c.after.updatedAt
                       ? c.before.updatedAt
                       : current.updatedAt,
-                  ...(c.field === 'readingStatus'
-                    ? { readingStatusUpdatedAt: c.before.readingStatusUpdatedAt }
-                    : { metadataUpdatedAt: c.before.metadataUpdatedAt }),
+                  [clock(c.field)]: c.before[clock(c.field)],
                 },
               ]
             : [];
@@ -110,12 +120,7 @@ export function useLibraryBookEdits() {
             current[i]!,
             c.before,
             c.field,
-            Math.max(
-              Date.now(),
-              (c.field === 'readingStatus'
-                ? current[i]!.readingStatusUpdatedAt
-                : current[i]!.metadataUpdatedAt) ?? 0,
-            ) + 1,
+            Math.max(Date.now(), current[i]![clock(c.field)] ?? 0) + 1,
           ),
           field: c.field,
         })),
@@ -138,44 +143,52 @@ export function useLibraryBookEdits() {
     ) => {
       if (busy.current) return false;
       if (field === 'title' && (typeof value !== 'string' || !value.trim())) return false;
+      if (
+        field === 'readingSpaces' &&
+        (!Array.isArray(value) ||
+          !value.length ||
+          value.some((v) => !READING_SPACES.includes(v as 'leisure' | 'academic')))
+      )
+        return false;
       busy.current = true;
       try {
         const now = Date.now();
         const changes: Change[] = books.flatMap((book) => {
           const before = useLibraryStore.getState().library.find((b) => b.hash === book.hash);
           if (!before || before.deletedAt) return [];
-          const stamp =
-            Math.max(
-              now,
-              (field === 'readingStatus'
-                ? before.readingStatusUpdatedAt
-                : before.metadataUpdatedAt) ?? 0,
-            ) + 1;
+          const stamp = Math.max(now, before[clock(field)] ?? 0) + 1;
           const normalized = Array.isArray(value)
             ? [...new Set(value.map((t) => t.trim()).filter(Boolean))]
             : value?.trim();
           if (JSON.stringify(before[field]) === JSON.stringify(normalized)) return [];
           const after: Book =
-            field === 'readingStatus'
+            field === 'readingSpaces'
               ? {
                   ...before,
-                  readingStatus: normalized as ReadingStatus | undefined,
-                  readingStatusUpdatedAt: stamp,
+                  readingSpaces: normalized as Book['readingSpaces'],
+                  readingSpacesUpdatedAt: stamp,
                   updatedAt: stamp,
                 }
-              : {
-                  ...before,
-                  [field]: normalized,
-                  metadata: {
-                    title: before.title,
-                    author: before.author,
-                    language: before.primaryLanguage ?? '',
-                    ...(before.metadata ?? book.metadata),
-                    ...(field !== 'tags' ? { [field]: normalized } : {}),
-                  },
-                  metadataUpdatedAt: stamp,
-                  updatedAt: stamp,
-                };
+              : field === 'readingStatus'
+                ? {
+                    ...before,
+                    readingStatus: normalized as ReadingStatus | undefined,
+                    readingStatusUpdatedAt: stamp,
+                    updatedAt: stamp,
+                  }
+                : {
+                    ...before,
+                    [field]: normalized,
+                    metadata: {
+                      title: before.title,
+                      author: before.author,
+                      language: before.primaryLanguage ?? '',
+                      ...(before.metadata ?? book.metadata),
+                      ...(field !== 'tags' ? { [field]: normalized } : {}),
+                    },
+                    metadataUpdatedAt: stamp,
+                    updatedAt: stamp,
+                  };
           return [{ before, after, field }];
         });
         if (!changes.length) return true;

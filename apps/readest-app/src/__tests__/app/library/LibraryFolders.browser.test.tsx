@@ -1,3 +1,4 @@
+import { useReadingSpaceStore } from '@/store/readingSpaceStore';
 import { useReducer } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -176,6 +177,9 @@ function DirectShelf() {
 }
 
 beforeEach(() => {
+  useReadingSpaceStore.getState().setSpace('leisure');
+  for (const space of ['leisure', 'academic', 'all'])
+    localStorage.removeItem(`glossa:space-view:${space}`);
   useLibraryTransfer.setState({
     clipboard: undefined,
     pendingDeleteIds: undefined,
@@ -1438,4 +1442,64 @@ it.each([
   expect(mocks.saveSettings).toHaveBeenCalledWith(
     expect.objectContaining({ libraryFolders: ['Source', 'Empty'] }),
   );
+});
+
+it('switches spaces without duplicating books and restores each navigation view', async () => {
+  await page.viewport(1100, 780);
+  localStorage.setItem('glossa:space-view:academic', 'sort=title');
+  useLibraryStore.getState().setLibrary([
+    { ...original, title: 'Leisure book' },
+    { ...original, hash: 'b'.repeat(32), title: 'Academic paper', readingSpaces: ['academic'] },
+    {
+      ...original,
+      hash: 'c'.repeat(32),
+      title: 'Shared book',
+      readingSpaces: ['leisure', 'academic'],
+    },
+  ]);
+  render(<DirectShelf />);
+  await expect.element(page.getByText('Leisure book', { exact: true })).toBeVisible();
+  expect(screen.queryByText('Academic paper')).toBeNull();
+  useLibraryStore.getState().setSelectedBooks([original.hash]);
+  await userEvent.selectOptions(
+    screen.getByRole('combobox', { name: 'Reading space' }),
+    'academic',
+  );
+  await expect.element(page.getByText('Academic paper', { exact: true })).toBeVisible();
+  expect(mocks.search).toBe('sort=title');
+  expect(screen.queryByText('Leisure book')).toBeNull();
+  expect(useLibraryStore.getState().getSelectedBooks()).toEqual([]);
+  await expect.element(page.getByText('Shared book', { exact: true })).toBeVisible();
+  expect(useLibraryStore.getState().library).toHaveLength(3);
+  await page.screenshot({ path: '../../../../../../.glossa-dev/qa/reading-space-academic.png' });
+  await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Reading space' }), 'leisure');
+  expect(mocks.search).toBe('groupBy=group');
+  await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Reading space' }), 'all');
+  await expect.element(page.getByText('Leisure book', { exact: true })).toBeVisible();
+  await expect.element(page.getByText('Academic paper', { exact: true })).toBeVisible();
+});
+
+it('assigns selected books through the existing move picker without changing identity or progress', async () => {
+  const books: Book[] = [{ ...original, progress: [7, 10] }];
+  useLibraryStore.getState().setLibrary(books);
+  const done = vi.fn();
+  render(
+    <GroupingModal
+      libraryBooks={books}
+      selectedBooks={[original.hash]}
+      parentGroupName=''
+      onCancel={noop}
+      onConfirm={done}
+    />,
+  );
+  await userEvent.selectOptions(
+    screen.getByRole('combobox', { name: 'Assign reading space' }),
+    'academic',
+  );
+  await waitFor(() => expect(done).toHaveBeenCalledOnce());
+  expect(useLibraryStore.getState().library[0]).toMatchObject({
+    hash: original.hash,
+    readingSpaces: ['academic'],
+    progress: [7, 10],
+  });
 });

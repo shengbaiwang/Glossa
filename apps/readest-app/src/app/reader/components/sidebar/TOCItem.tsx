@@ -13,6 +13,7 @@ const createExpanderIcon = (isExpanded: boolean) => (
 );
 
 export interface FlatTOCItem {
+  id?: string;
   item: TOCItem;
   depth: number;
   index: number;
@@ -118,6 +119,7 @@ interface ListRowProps {
   flatItem: FlatTOCItem;
   itemSize?: number;
   activeHref: string | null;
+  active?: boolean;
   onToggleExpand: (item: TOCItem) => void;
   onItemClick: (item: TOCItem) => void;
 }
@@ -127,10 +129,11 @@ export const StaticListRow: React.FC<ListRowProps> = ({
   flatItem,
   itemSize,
   activeHref,
+  active,
   onToggleExpand,
   onItemClick,
 }) => {
-  const isActive = activeHref === flatItem.item.href;
+  const isActive = active ?? activeHref === flatItem.item.href;
 
   return (
     <div

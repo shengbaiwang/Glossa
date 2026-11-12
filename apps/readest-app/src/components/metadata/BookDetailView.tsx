@@ -1,3 +1,5 @@
+import ZoteroSourceInfo from './ZoteroSourceInfo';
+import BookReadingSpaces from './BookReadingSpaces';
 import clsx from 'clsx';
 import React from 'react';
 import {
@@ -225,6 +227,8 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
         </div>
       </div>
 
+      {onInlineEdit && <BookReadingSpaces book={book} />}
+      {book.zoteroSource && <ZoteroSourceInfo source={book.zoteroSource} />}
       {onMetadataApply && <MetadataRecognition book={book} onApply={onMetadataApply} />}
       <div className='text-base-content my-4'>
         <div className='metadata-others'>

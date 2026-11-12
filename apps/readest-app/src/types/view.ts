@@ -1,6 +1,8 @@
 import { BookDoc, TOCItem } from '@/libs/document';
 import { BookNote, BookSearchConfig, BookSearchResult } from '@/types/book';
 import { TTSGranularity } from '@/services/tts/types';
+import type { NavigationStatus } from 'foliate-js/navigation-controller.js';
+import type { ReaderLocator } from 'foliate-js/chapter-index.js';
 import { TTS } from 'foliate-js/tts.js';
 
 import { LocaleWithTextInfo } from './misc';
@@ -13,6 +15,8 @@ export type ViewTTS = TTS;
 export const NOTE_PREFIX = 'foliate-note:';
 
 type RangeAnchor = (doc: Document) => Range;
+type ResolvedNavigation = { index: number; anchor?: RangeAnchor };
+type NavigationTarget = string | number | { fraction: number } | ReaderLocator;
 
 export interface PDFSelectionFragment {
   index: number;
@@ -92,6 +96,16 @@ export interface FoliateView extends HTMLElement {
   close: () => void;
   init: (options: { lastLocation: string }) => void;
   goTo: (target: string | number) => void;
+  navigate?: (
+    target: NavigationTarget,
+    options?: {
+      signal?: AbortSignal;
+      nodeId?: string;
+      history?: boolean;
+    },
+  ) => Promise<{ status: NavigationStatus; resolved?: ResolvedNavigation }>;
+  cancelNavigation?: () => void;
+  stepResource?: (direction: -1 | 1) => Promise<void>;
   goToFraction: (fraction: number) => void;
   getSectionFractions: () => number[];
   prev: (distance?: number) => void;
@@ -116,7 +130,9 @@ export interface FoliateView extends HTMLElement {
     time: { section: number; total: number };
   } | null>;
   resolveCFI: (cfi: string) => { index: number; anchor: RangeAnchor };
-  resolveNavigation: (cfiOrHrefOrIndex: string | number) => { index: number; anchor?: RangeAnchor };
+  resolveNavigation: (
+    target: NavigationTarget,
+  ) => ResolvedNavigation | undefined | Promise<ResolvedNavigation | undefined>;
   addAnnotation: (
     note: BookNote & { value?: string },
     remove?: boolean,
@@ -136,7 +152,14 @@ export interface FoliateView extends HTMLElement {
   tts: ViewTTS | null;
   // The most recent relocate location, set synchronously by foliate on every
   // relocate — fresher than the rAF-debounced readerStore progress.
-  lastLocation?: { cfi?: string; range?: Range | null; tocItem?: TOCItem | null };
+  lastLocation?: {
+    cfi?: string;
+    range?: Range | null;
+    locator?: ReaderLocator;
+    tocItem?: TOCItem | null;
+    chapterId?: string;
+    chapterQuality?: 'exact' | 'resource' | 'unknown';
+  };
   isFixedLayout: boolean;
   language: {
     locale?: LocaleWithTextInfo;
@@ -164,6 +187,8 @@ export const wrappedFoliateView = (originalView: FoliateView): FoliateView => {
     };
     return originalAddAnnotation(annotation, remove);
   };
+
+  if (originalView.navigate) return originalView;
 
   const originalGoTo = originalView.goTo.bind(originalView);
   // The FoliateView interface declares goTo as (href: string) => void, but

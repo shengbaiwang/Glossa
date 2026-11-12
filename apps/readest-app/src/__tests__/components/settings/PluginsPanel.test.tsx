@@ -56,8 +56,9 @@ afterEach(cleanup);
 
 it('shows one settings entry in every grid card and defers internal settings until opened', () => {
   const view = render(<PluginsPanel />);
-  expect(view.container.querySelectorAll('.glossa-plugin-grid > article')).toHaveLength(5);
+  expect(view.container.querySelectorAll('.glossa-plugin-grid > article')).toHaveLength(6);
   for (const name of [
+    'Zotero',
     'Conversation',
     'Mind map',
     'PDF automatic contents',
@@ -173,7 +174,8 @@ it('opens and returns from the Mac reading time summary even when the plugin is 
   await waitFor(() => expect(f.setTimeEnabled).toHaveBeenCalledWith(false));
 
   fireEvent.click(screen.getByRole('button', { name: 'Reading time - Settings' }));
-  await screen.findByText('Field notes');
+  // Allow the real lazy module to load on a cold, busy test worker.
+  await screen.findByText('Field notes', {}, { timeout: 10000 });
   expect(screen.getByText('Today')).toBeTruthy();
   expect(screen.getByText('All time')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Back to plugins' }));
@@ -183,4 +185,4 @@ it('opens and returns from the Mac reading time summary even when the plugin is 
   expect((screen.getByRole('checkbox', { name: 'Reading time' }) as HTMLInputElement).checked).toBe(
     false,
   );
-});
+}, 15000);

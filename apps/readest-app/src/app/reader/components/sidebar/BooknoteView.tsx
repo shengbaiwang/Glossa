@@ -41,6 +41,7 @@ const BooknoteView: React.FC<{
   useNotebookEditor?: boolean;
 }> = ({ bookKey, toc, notebookSearch, noteEditor, useNotebookEditor }) => {
   const _ = useTranslation();
+  const bookDoc = useBookDataStore((s) => s.booksData?.[bookKey.split('-')[0]!]?.bookDoc);
   const { getConfig } = useBookDataStore();
   const { getProgress } = useReaderStore();
   const { setActiveBooknoteType, setBooknoteResults, isSearchBarVisible, setSearchBarVisible } =
@@ -139,7 +140,7 @@ const BooknoteView: React.FC<{
   const sortedGroups = useMemo<BooknoteGroup[]>(() => {
     const groups: { [href: string]: BooknoteGroup } = {};
     for (const booknote of filteredNotes) {
-      const tocItem = findTocItemBS(toc ?? [], booknote.cfi);
+      const tocItem = findTocItemBS(toc ?? [], booknote.cfi, bookDoc);
       const href = tocItem?.href || '';
       const label = tocItem?.label || '';
       const id = tocItem?.id || 0;
@@ -152,7 +153,7 @@ const BooknoteView: React.FC<{
       g.booknotes.sort((a, b) => CFI.compare(a.cfi, b.cfi));
     });
     return Object.values(groups).sort((a, b) => a.id - b.id);
-  }, [filteredNotes, toc]);
+  }, [filteredNotes, toc, bookDoc]);
 
   // Flatten group/item tree into a single virtualizable list.
   const flatItems = useMemo<FlatBooknoteRow[]>(() => {

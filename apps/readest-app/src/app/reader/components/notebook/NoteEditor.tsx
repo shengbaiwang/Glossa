@@ -11,8 +11,8 @@ import TextEditor, { TextEditorRef } from '@/components/TextEditor';
 interface NoteEditorProps {
   bookKey: string;
   active: boolean;
-  onSave: (selection: TextSelection, note: string) => boolean;
-  onEdit: (annotation: BookNote) => boolean;
+  onSave: (selection: TextSelection, note: string) => boolean | Promise<boolean>;
+  onEdit: (annotation: BookNote) => boolean | Promise<boolean>;
 }
 
 const NoteEditor: React.FC<NoteEditorProps> = ({ bookKey, active, onSave, onEdit }) => {
@@ -28,6 +28,8 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ bookKey, active, onSave, onEdit
   } = useNotebookStore();
 
   const editorRef = useRef<TextEditorRef>(null);
+  const saving = useRef(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [note, setNote] = useState('');
   const draftKey = notebookEditAnnotation
     ? `${bookKey}:note:${notebookEditAnnotation.id}`
@@ -54,21 +56,31 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ bookKey, active, onSave, onEdit
     saveNotebookAnnotationDraft(draftKey, value);
   };
 
-  const handleSaveNote = () => {
+  const handleSaveNote = async () => {
     const currentValue = editorRef.current?.getValue();
-    if (active && currentValue !== undefined && (currentValue.trim() || notebookEditAnnotation)) {
-      let saved = false;
-      if (notebookNewAnnotation) {
-        saved = onSave(notebookNewAnnotation, currentValue);
-      } else if (notebookEditAnnotation) {
-        saved = onEdit({ ...notebookEditAnnotation, note: currentValue });
-      }
+    if (
+      !active ||
+      saving.current ||
+      currentValue === undefined ||
+      (!currentValue.trim() && !notebookEditAnnotation)
+    )
+      return;
+    saving.current = true;
+    setIsSaving(true);
+    try {
+      const saved = notebookNewAnnotation
+        ? await onSave(notebookNewAnnotation, currentValue)
+        : notebookEditAnnotation &&
+          (await onEdit({ ...notebookEditAnnotation, note: currentValue }));
       if (saved) clearNotebookAnnotationDraft(draftKey);
+    } finally {
+      saving.current = false;
+      setIsSaving(false);
     }
   };
 
   const handleEscape = () => {
-    if (!active) return;
+    if (!active || saving.current) return;
     if (notebookNewAnnotation) {
       // Clearing the selection ends the creation flow; Notebook reacts to that
       // and tears down the empty placeholder highlight it created (#4791).
@@ -109,6 +121,7 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ bookKey, active, onSave, onEdit
           onSave={handleSaveNote}
           onEscape={handleEscape}
           placeholder={_('Add your notes here...')}
+          disabled={isSaving}
           spellCheck={false}
         />
       </div>
@@ -121,14 +134,14 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ bookKey, active, onSave, onEdit
       </blockquote>
 
       <div className='flex justify-end gap-2 pt-2'>
-        <button type='button' className='glossa-button' onClick={handleEscape}>
+        <button type='button' className='glossa-button' onClick={handleEscape} disabled={isSaving}>
           {_('Cancel')}
         </button>
         <button
           type='button'
           className='glossa-button glossa-button-primary'
           onClick={handleSaveNote}
-          disabled={!canSave}
+          disabled={!canSave || isSaving}
         >
           {_('Save')}
         </button>

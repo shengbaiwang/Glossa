@@ -10,7 +10,7 @@ const createReaderWindow = (appService: AppService, url: string) => {
   const currentWindow = getCurrentWindow();
   const label = currentWindow.label;
   const newLabelPrefix = label === 'main' ? 'reader' : label;
-  const win = new WebviewWindow(`${newLabelPrefix}-${readerWindowsCount}`, {
+  const win = new WebviewWindow(`${newLabelPrefix}-${readerWindowsCount++}`, {
     url,
     width: 800,
     height: 600,
@@ -30,13 +30,9 @@ const createReaderWindow = (appService: AppService, url: string) => {
   });
   win.once('tauri://created', () => {
     console.log('new window created');
-    readerWindowsCount += 1;
   });
   win.once('tauri://error', (e) => {
     console.error('error creating window', e);
-  });
-  win.once('tauri://destroyed', () => {
-    readerWindowsCount -= 1;
   });
 };
 
@@ -52,9 +48,14 @@ export const showReaderWindow = (
   createReaderWindow(appService, url);
 };
 
-export const showLibraryWindow = (appService: AppService, filenames: string[]) => {
+export const showLibraryWindow = (
+  appService: AppService,
+  filenames: string[],
+  temporary = false,
+) => {
   const params = new URLSearchParams();
   filenames.forEach((filename) => params.append('file', filename));
+  if (temporary) params.set('temporary', '1');
   const url = `/library?${params.toString()}`;
   createReaderWindow(appService, url);
 };

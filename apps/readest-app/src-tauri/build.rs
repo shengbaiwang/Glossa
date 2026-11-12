@@ -30,6 +30,7 @@ fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "reading_time",
+            "take_mac_file_opens",
             "start_server",
             "download_file",
             "upload_file",

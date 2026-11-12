@@ -1,3 +1,6 @@
+import { useReadingSpaceStore } from '@/store/readingSpaceStore';
+import { readingSpaceFolders } from '@/utils/readingSpaces';
+import ReadingSpaceSwitcher from './ReadingSpaceSwitcher';
 import { useEffect, useRef, useState } from 'react';
 import {
   BookSeries,
@@ -41,7 +44,13 @@ import FolderNameEditor from './FolderNameEditor';
 import { useLibrarySidebarResize } from '../hooks/useLibrarySidebarResize';
 import BookContextMenuPopup, { type BookContextMenuItem } from './BookContextMenuPopup';
 
-export default function LibraryNavigation({ onNavigate }: { onNavigate: () => void }) {
+export default function LibraryNavigation({
+  onNavigate,
+  onZotero,
+}: {
+  onNavigate: () => void;
+  onZotero?: () => void;
+}) {
   const _ = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -65,7 +74,8 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
   const groupBy = ensureLibraryGroupByType(searchParams?.get('groupBy'), settings.libraryGroupBy);
   const groupId = groupBy === LibraryGroupByType.Group ? searchParams?.get('group') : '';
   const current = folders.paths.find((path) => md5Fingerprint(path) === groupId) ?? '';
-  const paths = orderedFolderPaths(folders.paths);
+  const space = useReadingSpaceStore((state) => state.space);
+  const paths = orderedFolderPaths(readingSpaceFolders(library, folders.paths, space));
   const visible = paths.filter(
     (p) => !paths.some((a) => collapsed.has(a) && p.startsWith(a + '/')),
   );
@@ -360,7 +370,9 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
       aria-label={_('Library')}
       onKeyDown={(event) => {
         if (
-          (event.target as HTMLElement).closest('form, input, textarea, [contenteditable="true"]')
+          (event.target as HTMLElement).closest(
+            'form, input, select, textarea, [contenteditable="true"]',
+          )
         )
           return;
         const command = event.metaKey || event.ctrlKey;
@@ -435,6 +447,7 @@ export default function LibraryNavigation({ onNavigate }: { onNavigate: () => vo
         event.preventDefault();
       }}
     >
+      <ReadingSpaceSwitcher onZotero={onZotero} />
       <div className='glossa-library-navigation-categories'>
         <section className='glossa-library-navigation-section' aria-label={_('Library')}>
           <h2>{_('Library')}</h2>

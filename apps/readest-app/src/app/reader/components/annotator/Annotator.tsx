@@ -24,7 +24,7 @@ import { NativeTouchEventType } from '@/types/system';
 import { getLocale, getOSPlatform, makeSafeFilename, uniqueId } from '@/utils/misc';
 import { useThemeStore } from '@/store/themeStore';
 import { useBookDataStore } from '@/store/bookDataStore';
-import { newBookDataEdit } from '@/services/bookDataConflicts';
+import { bookNoteEdits, newBookDataEdit } from '@/services/bookDataConflicts';
 import { getBookProgress, useBookProgress } from '@/store/readerProgressStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useReaderStore } from '@/store/readerStore';
@@ -206,12 +206,10 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
   // since they show the wider highlight options / notes instead of the buttons.
   const annotPopupMaxWidth = Math.min(useResponsiveSize(300), maxWidth);
   const annotPopupToolSize = useResponsiveSize(44);
-  const visibleToolCount =
-    getToolbarToolTypes(viewSettings.annotationToolbarItems).length +
-    (bookData.book?.format === 'EPUB' ? 1 : 0);
+  const visibleToolCount = getToolbarToolTypes(viewSettings.annotationToolbarItems).length;
   const annotPopupWidth = selection?.annotated
     ? annotPopupMaxWidth
-    : Math.min(Math.max(visibleToolCount, 1) * annotPopupToolSize, annotPopupMaxWidth);
+    : Math.min(Math.max(Math.min(visibleToolCount, 5), 1) * annotPopupToolSize, annotPopupMaxWidth);
   const annotPopupHeight = useResponsiveSize(44);
   const androidSelectionHandlerHeight = 0;
 
@@ -234,12 +232,15 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
       annotPopupPos.point.y += androidSelectionHandlerHeight;
     }
 
-    if (triangPos.point.x == 0 || triangPos.point.y == 0) return;
+    if (triangPos.point.x === 0 || triangPos.point.y === 0) {
+      setAnnotPopupPosition(undefined);
+      return;
+    }
     setAnnotPopupPosition(annotPopupPos);
 
     setTrianglePosition(triangPos);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selection, bookKey, viewSettings.vertical]);
+  }, [selection, bookKey, viewSettings.vertical, annotPopupWidth, annotPopupHeight]);
 
   useEffect(() => {
     const highlightStyle = settings.globalReadSettings.highlightStyle;
@@ -370,7 +371,15 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
       );
     }
     detail.doc?.addEventListener('mousedown', handleMouseDown, opts);
-    detail.doc?.addEventListener('pointerdown', handlePointerDown.bind(null, doc, index), opts);
+    detail.doc?.addEventListener(
+      'pointerdown',
+      (event: PointerEvent) => {
+        if (event.isPrimary && event.button === 0 && event.pointerType === 'mouse')
+          setShowAnnotPopup(false);
+        handlePointerDown(doc, index, event);
+      },
+      opts,
+    );
     detail.doc?.addEventListener('pointermove', handlePointerMove.bind(null, doc, index), opts);
     detail.doc?.addEventListener('pointercancel', handlePointerCancel.bind(null, doc, index), opts);
     detail.doc?.addEventListener('pointerup', handlePointerUp.bind(null, doc, index), opts);
@@ -992,7 +1001,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
 
   const handleShowAnnotPopup = () => {
     if (!appService?.isMobile) {
-      containerRef.current?.focus();
+      containerRef.current?.focus({ preventScroll: true });
     }
     setShowAnnotPopup(true);
   };
@@ -1146,7 +1155,57 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
 
     const updatedConfig = updateBooknotes(bookKey, annotations);
     if (updatedConfig) {
-      saveConfig(envConfig, bookKey, updatedConfig, settings);
+      const added = created && !update ? created : null;
+      const isCurrent = () =>
+        added && getConfig(bookKey)?.booknotes?.find((note) => note.id === added.id) === added;
+      const reportSaveError = () =>
+        eventDispatcher.dispatch('toast', {
+          type: 'error',
+          message: _('Failed to save annotation'),
+        });
+      void saveConfig(envConfig, bookKey, updatedConfig, settings)
+        .then(() => {
+          if (!added || !isCurrent()) return;
+          eventDispatcher.dispatch('toast', {
+            type: 'success',
+            message: _('Highlight saved'),
+            timeout: 4000,
+            action: {
+              label: _('Undo'),
+              onClick: async () => {
+                const latest = getConfig(bookKey);
+                if (!latest || !isCurrent()) {
+                  eventDispatcher.dispatch('toast', {
+                    type: 'info',
+                    message: _('Unable to undo after newer changes'),
+                  });
+                  return;
+                }
+                const deletedAt = Date.now();
+                const booknotes = latest.booknotes!.map((note) =>
+                  note.id === added.id ? { ...note, deletedAt, updatedAt: deletedAt } : note,
+                );
+                bookNoteEdits.set(booknotes, newBookDataEdit());
+                try {
+                  await saveConfig(envConfig, bookKey, { ...latest, booknotes }, settings);
+                  if (!isCurrent()) return;
+                  const current = getConfig(bookKey)?.booknotes ?? [];
+                  const removed = booknotes.find((note) => note.id === added.id)!;
+                  updateBooknotes(
+                    bookKey,
+                    current.map((note) => (note.id === added.id ? removed : note)),
+                    false,
+                  );
+                  views.forEach((view) => view?.addAnnotation(added, true));
+                  if (latestSelection.current?.cfi === added.cfi) handleDismissPopupAndSelection();
+                } catch {
+                  void reportSaveError();
+                }
+              },
+            },
+          });
+        })
+        .catch(reportSaveError);
     }
     return created;
   };
@@ -1536,7 +1595,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     // Organize booknotes into groups by chapter
     const booknoteGroups: { [href: string]: BooknoteGroup } = {};
     for (const booknote of booknotes) {
-      const tocItem = findTocItemBS(bookDoc.toc ?? [], booknote.cfi);
+      const tocItem = findTocItemBS(bookDoc.toc ?? [], booknote.cfi, bookDoc);
       const href = tocItem?.href || '';
       const label = tocItem?.label || '';
       const id = tocItem?.id || 0;
@@ -1830,7 +1889,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
             globalToggleActive={globalToggleActive}
             onToggleGlobal={handleToggleGlobal}
             onHighlight={handleHighlight}
-            onDismiss={handleDismissPopupAndSelection}
+            onDismiss={() => setShowAnnotPopup(false)}
           />
         )}
 

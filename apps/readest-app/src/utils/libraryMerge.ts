@@ -44,5 +44,12 @@ export function mergeLibraryBook(current: Book, incoming: Book): Book {
     result.coverHash = current.coverHash;
     result.coverUpdatedAt = current.coverUpdatedAt;
   }
+  const spaces =
+    (current.readingSpacesUpdatedAt ?? 0) >= (incoming.readingSpacesUpdatedAt ?? 0)
+      ? current
+      : incoming;
+  result.readingSpaces = spaces.readingSpaces;
+  result.readingSpacesUpdatedAt = spaces.readingSpacesUpdatedAt;
+  result.zoteroSource = current.zoteroSource ?? incoming.zoteroSource;
   return protectBookRemoval(result, current);
 }

@@ -15,13 +15,13 @@ describe('annotationToolbar helpers', () => {
     expect(ALL_ANNOTATION_TOOL_TYPES).toEqual(annotationToolButtons.map((b) => b.type));
   });
 
-  test('default toolbar is the basic reading tools in canonical order', () => {
+  test('default toolbar keeps translation with the primary actions', () => {
     expect(DEFAULT_ANNOTATION_TOOLBAR_ITEMS).toEqual([
       'copy',
       'highlight',
       'annotate',
-      'dictionary',
       'translate',
+      'dictionary',
       'tts',
       'search',
     ]);

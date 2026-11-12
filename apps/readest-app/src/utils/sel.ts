@@ -330,7 +330,7 @@ export const getPosition = (
   }
   if (!startInView) return end;
   if (!endInView) return start;
-  return start.point.y > window.innerHeight - end.point.y ? start : end;
+  return start.point.y > rect.bottom - rect.top - end.point.y ? start : end;
 };
 
 // The popup will be positioned based on the triangle position and the direction

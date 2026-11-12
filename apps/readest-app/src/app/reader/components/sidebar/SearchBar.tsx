@@ -15,6 +15,7 @@ import {
   type SearchSectionRange,
 } from '@/services/librarySearchService';
 import type { BookSearchConfig, BookSearchMatch, BookSearchResult } from '@/types/book';
+import { getChapterIndex, locatorForCFI } from 'foliate-js/chapter-index.js';
 import {
   getChapterSearchRange,
   isMatchInChapter,
@@ -138,7 +139,11 @@ export default function SearchBar({ isVisible, bookKey, onHideSearchBar }: Searc
       if (searchConfig.scope === 'section') {
         const progress = getProgress(bookKey);
         const location = view.lastLocation?.cfi ?? progress?.location;
-        const range = getChapterSearchRange(view.book?.toc ?? [], location ?? '');
+        const range = getChapterSearchRange(
+          view.book ?? [],
+          location,
+          view.lastLocation?.chapterId,
+        );
         chapter = range;
         if (range) {
           label = range.label;
@@ -185,12 +190,25 @@ export default function SearchBar({ isVisible, bookKey, onHideSearchBar }: Searc
           if (subitems.length) {
             const previous = results.at(-1);
             if (label && previous) previous.subitems.push(...subitems);
-            else
-              results.push({
-                index: event.result.index,
-                label: label || event.result.label,
-                subitems,
-              });
+            else {
+              const index = view.book && getChapterIndex(view.book);
+              let lastId: string | undefined;
+              let group: BookSearchResult | undefined;
+              for (const match of subitems) {
+                const node = index && index.locate(locatorForCFI(view.book, match.cfi)).node;
+                const id = node?.id;
+                if (!group || lastId !== id) {
+                  lastId = id;
+                  group = {
+                    index: event.result.index,
+                    label: label || node?.item.label || event.result.label,
+                    subitems: [],
+                  };
+                  results.push(group);
+                }
+                group.subitems.push(match);
+              }
+            }
             setSearchResults(bookKey, [...results]);
           }
         } else if (event.type === 'book-error' || event.type === 'book-skipped') {

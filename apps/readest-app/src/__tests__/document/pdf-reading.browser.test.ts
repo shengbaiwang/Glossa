@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as CFI from 'foliate-js/epubcfi.js';
 import 'foliate-js/view.js';
 import type { FoliateView } from '@/types/view';
-import type { BookDoc } from '@/libs/document';
+import { DocumentLoader, type BookDoc } from '@/libs/document';
 
 const html = `<!doctype html><html><head>
 <meta name="viewport" content="width=600,height=1400">
@@ -58,6 +58,57 @@ afterEach(() => {
   view?.close();
   view?.remove();
   view = null;
+});
+
+it('resolves named destinations on a cropped, rotated PDF without inventing text anchors', async () => {
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R /Outlines 4 0 R /Names << /Dests << /Names [(One) [3 0 R /XYZ 100 200 null] (Two) [3 0 R /XYZ 350 600 null]] >> >> >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 1400] /CropBox [20 40 580 1380] /Rotate 90 /Contents 7 0 R >>',
+    '<< /Type /Outlines /First 5 0 R /Last 6 0 R /Count 2 >>',
+    '<< /Title (First point) /Parent 4 0 R /Dest (One) /Next 6 0 R >>',
+    '<< /Title (Second point) /Parent 4 0 R /Dest (Two) /Prev 5 0 R >>',
+    '<< /Length 0 >>\nstream\nendstream',
+  ];
+  let pdf = '%PDF-1.7\n';
+  const offsets = objects.map((object, i) => {
+    const offset = pdf.length;
+    pdf += `${i + 1} 0 obj\n${object}\nendobj\n`;
+    return offset;
+  });
+  const xref = pdf.length;
+  pdf += `xref\n0 8\n0000000000 65535 f \n${offsets
+    .map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`)
+    .join('')}trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  const file = new File([pdf], 'original-rotated-outline.pdf', { type: 'application/pdf' });
+  const { book } = await new DocumentLoader(file).open();
+  try {
+    view = document.createElement('foliate-view') as FoliateView;
+    view.style.cssText = 'display:block;width:600px;height:400px';
+    document.body.append(view);
+    await view.open(book);
+    view.renderer.setAttribute('zoom', 'fit-page');
+    const ids = [];
+    for (const [position, item] of book.toc!.entries()) {
+      const result = await view.navigate!(item.href);
+      expect(result.status).toBe('arrived');
+      expect(result.resolved?.index).toBe(0);
+      const { doc } = view.renderer.getContents()[0]!;
+      const rect = result.resolved!.anchor!(doc).getBoundingClientRect();
+      // Rotation maps PDF x to viewport y; both coordinates are relative to the crop box.
+      expect(rect.y / rect.x).toBeCloseTo(position === 0 ? 80 / 160 : 330 / 560);
+      expect(view.lastLocation?.tocItem?.label).toBe(item.label);
+      expect(view.lastLocation?.chapterQuality).toBe('resource');
+      ids.push(view.lastLocation?.chapterId);
+    }
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
+  } finally {
+    view?.close();
+    view?.remove();
+    view = null;
+    await book.destroy?.();
+  }
 });
 
 describe('fixed-layout reading positions', () => {

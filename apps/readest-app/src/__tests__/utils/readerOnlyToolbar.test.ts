@@ -11,8 +11,8 @@ describe('reading selection toolbar', () => {
       'copy',
       'highlight',
       'annotate',
-      'dictionary',
       'translate',
+      'dictionary',
       'tts',
       'search',
     ]);

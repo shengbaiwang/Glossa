@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { render, cleanup } from '@testing-library/react';
+import { render, cleanup, fireEvent, screen } from '@testing-library/react';
 import { page } from 'vitest/browser';
 import type { UserHighlightColor } from '@/types/book';
 
@@ -131,7 +131,7 @@ const Wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </div>
 );
 
-const renderPopup = (userColors: UserHighlightColor[] = []) => {
+const renderPopup = (userColors: UserHighlightColor[] = [], highlightOptionsVisible = true) => {
   mockUserColors = userColors;
   return render(
     <Wrapper>
@@ -143,7 +143,7 @@ const renderPopup = (userColors: UserHighlightColor[] = []) => {
         notes={[]}
         position={{ dir: 'up', point: { x: POPUP_X, y: POPUP_Y } }}
         trianglePosition={{ dir: 'up', point: { x: POPUP_X + POPUP_W / 2, y: POPUP_Y + POPUP_H } }}
-        highlightOptionsVisible
+        highlightOptionsVisible={highlightOptionsVisible}
         selectedStyle='highlight'
         selectedColor='yellow'
         popupWidth={POPUP_W}
@@ -172,6 +172,16 @@ afterEach(() => {
 // ── Tests ───────────────────────────────────────────────────────────────
 
 describe('AnnotationPopup layout screenshot', () => {
+  it('puts secondary actions behind More while retaining their click handlers', () => {
+    renderPopup([], false);
+    expect(screen.queryByRole('button', { name: 'Read Aloud' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Read Aloud' }));
+    expect(
+      toolButtons.find((button) => button.tooltipText === 'Read Aloud')?.onClick,
+    ).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('button', { name: 'Read Aloud' })).toBeNull();
+  });
   it('default 5 colors — compact color strip, large gap', async () => {
     const { container } = renderPopup();
     const wrapper = container.firstElementChild as HTMLElement;

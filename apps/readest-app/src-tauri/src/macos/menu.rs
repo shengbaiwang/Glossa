@@ -1,16 +1,8 @@
-use crate::allow_file_in_scopes;
-use std::path::PathBuf;
+use crate::queue_mac_file_open;
 use tauri::menu::MenuEvent;
 use tauri::menu::{MenuItemBuilder, SubmenuBuilder, HELP_SUBMENU_ID};
 use tauri::AppHandle;
-use tauri::Emitter;
 use tauri_plugin_opener::OpenerExt;
-
-#[derive(Clone, serde::Serialize)]
-#[allow(dead_code)]
-struct OpenFilesPayload {
-    files: Vec<String>,
-}
 
 pub fn setup_macos_menu(app: &AppHandle) -> tauri::Result<()> {
     let global_menu = app.menu().unwrap();
@@ -23,6 +15,9 @@ pub fn setup_macos_menu(app: &AppHandle) -> tauri::Result<()> {
         .id("open_file")
         .accelerator("Cmd+O")
         .build(app)?;
+    let temporary_open_item = MenuItemBuilder::new("Open Temporarily…")
+        .id("open_file_temporarily")
+        .build(app)?;
 
     if let Some(file_menu) = global_menu.items()?.iter().find(|item| {
         if let Some(submenu) = item.as_submenu() {
@@ -33,6 +28,7 @@ pub fn setup_macos_menu(app: &AppHandle) -> tauri::Result<()> {
     }) {
         if let Some(file_submenu) = file_menu.as_submenu() {
             file_submenu.insert(&open_item, 0)?;
+            file_submenu.insert(&temporary_open_item, 1)?;
         }
     }
 
@@ -56,7 +52,9 @@ pub fn setup_macos_menu(app: &AppHandle) -> tauri::Result<()> {
 pub fn handle_menu_event(app: &AppHandle, event: &MenuEvent) {
     let opener = app.opener();
     if event.id() == "open_file" {
-        handle_open_file(app);
+        handle_open_file(app, false);
+    } else if event.id() == "open_file_temporarily" {
+        handle_open_file(app, true);
     } else if event.id() == "privacy_policy" {
         let _ = opener.open_url("https://readest.com/privacy-policy", None::<&str>);
     } else if event.id() == "report_issue" {
@@ -74,7 +72,7 @@ pub fn handle_menu_event(app: &AppHandle, event: &MenuEvent) {
     }
 }
 
-fn handle_open_file(app: &AppHandle) {
+fn handle_open_file(app: &AppHandle, temporary: bool) {
     use tauri_plugin_dialog::DialogExt;
 
     let app_handle = app.clone();
@@ -83,15 +81,13 @@ fn handle_open_file(app: &AppHandle) {
         .file()
         .add_filter(
             "Files",
-            &["epub", "pdf", "mobi", "azw", "azw3", "fb2", "cbz", "txt"],
+            &[
+                "epub", "pdf", "mobi", "azw", "azw3", "fb2", "cbz", "txt", "md",
+            ],
         )
         .pick_file(move |file_path| {
-            if let Some(path) = file_path {
-                let payload = OpenFilesPayload {
-                    files: vec![path.to_string()],
-                };
-                allow_file_in_scopes(&app_handle, vec![PathBuf::from(path.to_string())]);
-                let _ = app_handle.emit("open-files", payload);
+            if let Some(path) = file_path.and_then(|path| path.into_path().ok()) {
+                queue_mac_file_open(&app_handle, vec![path], temporary);
             }
         });
 }

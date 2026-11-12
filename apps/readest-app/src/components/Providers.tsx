@@ -28,6 +28,8 @@ import { CommandPaletteProvider, CommandPalette } from '@/components/command-pal
 
 import AppLockScreen from '@/components/AppLockScreen';
 import NativeAuthCallback from '@/components/NativeAuthCallback';
+import MacFileOpen from '@/components/MacFileOpen';
+import { Toast } from '@/components/Toast';
 import AppLockDialog from '@/components/settings/AppLockDialog';
 import PassphrasePrompt from '@/components/PassphrasePrompt';
 
@@ -169,6 +171,12 @@ const Providers = ({ children }: { children: React.ReactNode }) => {
                 style={appShellHidden ? { display: 'none' } : undefined}
               >
                 {children}
+                {appService.isMacOSApp && (
+                  <>
+                    <MacFileOpen enabled={!appShellHidden} />
+                    <Toast eventName='mac-file-open-toast' />
+                  </>
+                )}
                 <CommandPalette />
 
                 <PassphrasePrompt />

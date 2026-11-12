@@ -1,3 +1,6 @@
+import { useLibraryBookEdits } from '../hooks/useLibraryBookEdits';
+import { SPACE_LABELS } from '@/utils/readingSpaces';
+import { md5Fingerprint } from '@/utils/md5';
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronRight, BookCollection, X } from '@/components/GlossaIcons';
 import { Book } from '@/types/book';
@@ -24,6 +27,7 @@ interface GroupingModalProps {
 }
 
 export default function GroupingModal({
+  libraryBooks,
   selectedBooks,
   parentGroupName,
   onCancel,
@@ -31,6 +35,15 @@ export default function GroupingModal({
 }: GroupingModalProps) {
   const _ = useTranslation();
   const folders = useLibraryFolders();
+  const edits = useLibraryBookEdits();
+  const [spaceBusy, setSpaceBusy] = useState(false);
+  const selectedPaths = folders.paths.filter((p) => selectedBooks.includes(md5Fingerprint(p)));
+  const spaceBooks = libraryBooks.filter(
+    (b) =>
+      !b.deletedAt &&
+      (selectedBooks.includes(b.hash) ||
+        selectedPaths.some((p) => b.groupName === p || b.groupName?.startsWith(p + '/'))),
+  );
   const [target, setTarget] = useState(parentGroupName);
   const chosenTarget = useRef(parentGroupName);
   const [creating, setCreating] = useState(false);
@@ -47,7 +60,7 @@ export default function GroupingModal({
     (path) => !paths.some((parent) => path.startsWith(`${parent}/`) && collapsed.has(parent)),
   );
   const cancel = () => {
-    if (!folders.busy) onCancel();
+    if (!folders.busy && !spaceBusy) onCancel();
   };
   const choose = (path: string) => {
     chosenTarget.current = path;
@@ -70,7 +83,7 @@ export default function GroupingModal({
         if (event.key === 'Tab') {
           const controls = [
             ...(dialog.current?.querySelectorAll<HTMLElement>(
-              'button:not(:disabled), input:not(:disabled)',
+              'button:not(:disabled), input:not(:disabled), select:not(:disabled)',
             ) ?? []),
           ];
           const first = controls[0],
@@ -106,11 +119,44 @@ export default function GroupingModal({
             className='glossa-icon-button'
             aria-label={_('Close')}
             onClick={cancel}
-            disabled={folders.busy}
+            disabled={folders.busy || spaceBusy}
           >
             <X size={18} />
           </button>
         </header>
+        {spaceBooks.length > 0 && (
+          <label className='flex items-center gap-3 px-2 py-2'>
+            <span>{_('Reading space')}</span>
+            <select
+              className='select select-sm eink-bordered'
+              aria-label={_('Assign reading space')}
+              value=''
+              disabled={spaceBusy || folders.busy}
+              onChange={async (event) => {
+                const value = event.target.value;
+                if (!value) return;
+                setSpaceBusy(true);
+                try {
+                  if (
+                    await edits.apply(
+                      spaceBooks,
+                      'readingSpaces',
+                      value === 'both' ? ['leisure', 'academic'] : [value],
+                    )
+                  )
+                    onConfirm();
+                } finally {
+                  setSpaceBusy(false);
+                }
+              }}
+            >
+              <option value=''>{_('Choose space…')}</option>
+              <option value='leisure'>{_(SPACE_LABELS.leisure)}</option>
+              <option value='academic'>{_(SPACE_LABELS.academic)}</option>
+              <option value='both'>{_('Both spaces')}</option>
+            </select>
+          </label>
+        )}
         <div className='glossa-folder-tree' aria-label={_('Groups')}>
           {['', ...visiblePaths].map((path) => {
             const children = paths.some((p) => folderParent(p) === path);
@@ -204,7 +250,7 @@ export default function GroupingModal({
             <button
               type='button'
               className='btn btn-ghost'
-              disabled={folders.busy}
+              disabled={folders.busy || spaceBusy}
               onClick={cancel}
             >
               {_('Cancel')}
@@ -212,7 +258,7 @@ export default function GroupingModal({
             <button
               type='button'
               className='btn btn-primary'
-              disabled={folders.busy || creating}
+              disabled={folders.busy || spaceBusy || creating}
               onClick={async () => {
                 if (await folders.move(selectedBooks, target)) onConfirm();
               }}

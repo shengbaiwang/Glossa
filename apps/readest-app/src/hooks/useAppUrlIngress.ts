@@ -95,7 +95,12 @@ export function useAppUrlIngress() {
       'single-instance',
       ({ payload }) => {
         const url = payload.args?.[1];
-        if (url) dispatch([url]);
+        if (
+          url &&
+          (!appService.isMacOSApp ||
+            (/^[a-z][a-z\d+.-]*:\/\//i.test(url) && !url.startsWith('file:')))
+        )
+          dispatch([url]);
       },
     );
 
@@ -121,7 +126,8 @@ export function useAppUrlIngress() {
     }
 
     const unlistenOpenUrl = onOpenUrl((urls) => {
-      if (urls?.length) dispatch(urls);
+      if (urls?.length)
+        dispatch(appService.isMacOSApp ? urls.filter((url) => !url.startsWith('file:')) : urls);
     });
 
     return () => {

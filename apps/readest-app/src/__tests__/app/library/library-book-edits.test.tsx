@@ -254,3 +254,54 @@ it('keeps the managed file path when adopting a title on a legacy record', async
   expect(current().title).toBe('Original');
   expect(getLocalBookFilename(current())).toBe(path);
 });
+
+it('space assignment and undo preserve identity, metadata and later reading progress', async () => {
+  const { result } = renderHook(useLibraryBookEdits);
+  await act(async () => {
+    expect(await result.current.apply([original], 'readingSpaces', ['academic'])).toBe(true);
+  });
+  expect(current().readingSpaces).toEqual(['academic']);
+  expect(current().metadataUpdatedAt).toBeUndefined();
+  useLibraryStore.getState().setLibrary([
+    {
+      ...current(),
+      progress: [90, 100],
+      title: 'Later personal title',
+      metadataUpdatedAt: Date.now() + 200,
+      updatedAt: Date.now() + 200,
+    },
+  ]);
+  await act(async () => {
+    await result.current.undo();
+  });
+  expect(current().readingSpaces).toBeUndefined();
+  expect(current().title).toBe('Later personal title');
+  expect(current().progress).toEqual([90, 100]);
+  expect(current().hash).toBe(original.hash);
+});
+it('failed space save restores only membership, allows retry, and refuses stale undo', async () => {
+  const { result } = renderHook(useLibraryBookEdits);
+  mocks.save.mockImplementationOnce(async () => {
+    useLibraryStore.getState().setLibrary([{ ...current(), progress: [80, 100] }]);
+    throw new Error('disk');
+  });
+  await act(async () => {
+    expect(await result.current.apply([original], 'readingSpaces', ['academic'])).toBe(false);
+  });
+  expect(current().readingSpaces).toBeUndefined();
+  expect(current().progress).toEqual([80, 100]);
+  await act(async () => {
+    expect(await result.current.apply([original], 'readingSpaces', ['academic'])).toBe(true);
+  });
+  useLibraryStore.getState().setLibrary([
+    {
+      ...current(),
+      readingSpaces: ['leisure', 'academic'],
+      readingSpacesUpdatedAt: current().readingSpacesUpdatedAt! + 1,
+    },
+  ]);
+  await act(async () => {
+    await result.current.undo();
+  });
+  expect(current().readingSpaces).toEqual(['leisure', 'academic']);
+});

@@ -53,12 +53,15 @@ it('distinguishes a nested entry from its parent sharing the same heading', asyn
   expect(goTo).toHaveBeenCalledWith(toc[1]!.href);
 });
 
-it('retains CFI navigation and the spine fallback without a usable TOC', async () => {
+it('stops at a reliable TOC boundary and falls back only without a chapter', async () => {
   const goTo = vi.fn();
   const nextSection = vi.fn();
   const view = { book: { toc }, goTo, renderer: { nextSection } } as unknown as FoliateView;
   await goToAdjacentSection(view, toc[0]!.cfi, 1);
   expect(goTo).toHaveBeenCalledWith(toc[1]!.href);
+  await goToAdjacentSection(view, toc[3]!.cfi, 1);
+  expect(nextSection).not.toHaveBeenCalled();
+  (view.book as { toc: TOCItem[] }).toc = [];
   await goToAdjacentSection(view, toc[3]!.cfi, 1);
   expect(nextSection).toHaveBeenCalledOnce();
   await goToAdjacentSection(null, undefined, 1);

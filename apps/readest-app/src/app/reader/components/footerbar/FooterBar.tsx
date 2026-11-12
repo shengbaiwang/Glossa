@@ -68,11 +68,11 @@ const FooterBar: React.FC<FooterBarProps> = ({
   );
 
   const handleGoPrevPage = useCallback(() => {
-    view?.renderer.prev();
+    void view?.prev();
   }, [view]);
 
   const handleGoNextPage = useCallback(() => {
-    view?.renderer.next();
+    void view?.next();
   }, [view]);
 
   const handleGoPrevSection = useCallback(() => {

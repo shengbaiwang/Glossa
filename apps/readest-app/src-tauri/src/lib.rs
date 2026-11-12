@@ -20,8 +20,10 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_fs::FsExt;
 
+#[cfg(all(desktop, not(target_os = "macos")))]
+use tauri::Listener;
 #[cfg(desktop)]
-use tauri::{Listener, Url};
+use tauri::Url;
 mod clip_url;
 mod dir_scanner;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
@@ -208,7 +210,7 @@ fn get_files_from_argv(argv: Vec<String>) -> Vec<PathBuf> {
     files
 }
 
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_os = "macos")))]
 fn set_window_open_with_files(app: &AppHandle, files: Vec<PathBuf>) {
     let files = files
         .into_iter()
@@ -226,6 +228,46 @@ fn set_window_open_with_files(app: &AppHandle, files: Vec<PathBuf>) {
     if let Err(e) = window.eval(&script) {
         eprintln!("Failed to set open files variable: {e}");
     }
+}
+
+#[cfg(target_os = "macos")]
+#[derive(serde::Serialize)]
+struct MacFileOpen {
+    files: Vec<PathBuf>,
+    temporary: bool,
+}
+
+#[cfg(target_os = "macos")]
+static MAC_FILE_OPENS: std::sync::Mutex<Vec<MacFileOpen>> = std::sync::Mutex::new(Vec::new());
+
+#[cfg(target_os = "macos")]
+fn queue_mac_file_open(app: &AppHandle, files: Vec<PathBuf>, temporary: bool) {
+    if files.is_empty() {
+        return;
+    }
+    let file_count = files.len();
+    allow_file_in_scopes(app, files.clone());
+    MAC_FILE_OPENS
+        .lock()
+        .unwrap()
+        .push(MacFileOpen { files, temporary });
+    log::info!("Queued {file_count} macOS document open(s), temporary={temporary}");
+    if let Err(error) = app.emit("mac-file-open", ()) {
+        log::warn!("Could not notify the macOS document consumer: {error}");
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[command]
+fn take_mac_file_opens(window: tauri::WebviewWindow) -> Vec<MacFileOpen> {
+    if window.label() != "main" {
+        return Vec::new();
+    }
+    let requests = std::mem::take(&mut *MAC_FILE_OPENS.lock().unwrap());
+    if !requests.is_empty() {
+        log::info!("Delivered {} macOS document request(s)", requests.len());
+    }
+    requests
 }
 
 #[command]
@@ -425,6 +467,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             #[cfg(target_os = "macos")]
             macos::reading_time::reading_time,
+            #[cfg(target_os = "macos")]
+            take_mac_file_opens,
             start_server,
             download_file,
             upload_file,
@@ -506,6 +550,13 @@ pub fn run() {
                     let _ = window.set_focus();
                 }
                 let files = get_files_from_argv(argv.clone());
+                #[cfg(target_os = "macos")]
+                queue_mac_file_open(
+                    app,
+                    files.into_iter().filter(|file| file.is_file()).collect(),
+                    false,
+                );
+                #[cfg(not(target_os = "macos"))]
                 if !files.is_empty() {
                     allow_file_in_scopes(app, files.clone());
                 }
@@ -573,7 +624,17 @@ pub fn run() {
                 app.manage(discord_client);
             }
 
-            #[cfg(desktop)]
+            #[cfg(target_os = "macos")]
+            queue_mac_file_open(
+                app.handle(),
+                get_files_from_argv(std::env::args().collect())
+                    .into_iter()
+                    .filter(|file| file.is_file())
+                    .collect(),
+                false,
+            );
+
+            #[cfg(all(desktop, not(target_os = "macos")))]
             {
                 let files = get_files_from_argv(std::env::args().collect());
                 if !files.is_empty() {
@@ -805,12 +866,7 @@ pub fn run() {
                             .filter_map(|url| url.to_file_path().ok())
                             .collect::<Vec<_>>();
 
-                        let app_handler_clone = app_handle.clone();
-                        allow_file_in_scopes(app_handle, files.clone());
-                        app_handle.listen("window-ready", move |_| {
-                            println!("Window is ready, proceeding to handle files.");
-                            set_window_open_with_files(&app_handler_clone, files.clone());
-                        });
+                        queue_mac_file_open(app_handle, files, false);
                     }
                     // When the user reopens the app from the dock after closing all
                     // windows, re-show the main window instead of leaving the dock

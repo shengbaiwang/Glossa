@@ -41,7 +41,9 @@ const getTextPosition = (root: Element, offset: number) => {
 
 const getSentenceHighlight = async (view: SearchHighlightView, cfi: string) => {
   try {
-    const { index, anchor } = await view.resolveNavigation(cfi);
+    const resolved = await view.resolveNavigation(cfi);
+    if (!resolved) return null;
+    const { index, anchor } = resolved;
     const content = await getRenderedContent(view, index);
     const doc = content?.doc;
     const overlayer = content?.overlayer as SearchHighlightOverlayer | undefined;

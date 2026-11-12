@@ -978,8 +978,8 @@ export const resolveSearchChapterRange = async (
   await loadTextWalker();
   const indexOf = (cfi: string) => CFI.fake.toIndex(CFI.parse(CFI.collapse(cfi))[0]);
   // CFI.parse returns an array of indirections for point CFIs.
-  const startIndex = indexOf(range.start);
-  const endIndex = range.end ? indexOf(range.end) : bookDoc.sections.length - 1;
+  const startIndex = range.startIndex ?? indexOf(range.start);
+  const endIndex = range.end ? (range.endIndex ?? indexOf(range.end)) : bookDoc.sections.length - 1;
   if (
     !Number.isInteger(startIndex) ||
     !Number.isInteger(endIndex) ||

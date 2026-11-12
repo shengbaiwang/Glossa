@@ -83,7 +83,7 @@ export default function OfficialModuleSettings({
                 ? MessageSquare
                 : module.id === 'mindmap'
                   ? Share2
-                  : module.id === 'webImport'
+                  : module.id === 'webImport' || module.id === 'zotero'
                     ? Link
                     : module.id === 'metadataRecognition'
                       ? Search

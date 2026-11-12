@@ -8,6 +8,7 @@ import {
 describe('bundled official modules', () => {
   it('preserves the default experience for settings without module preferences', () => {
     expect(OFFICIAL_MODULES.map((module) => module.id)).toEqual([
+      'zotero',
       'conversation',
       'mindmap',
       'pdfAutoContents',

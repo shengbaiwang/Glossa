@@ -5,6 +5,16 @@ import { defineBundledPlugin } from './manifest';
 /** Bundled, trusted plugins. Metadata never imports feature code or user data. */
 export const PLUGINS = [
   defineBundledPlugin({
+    id: 'zotero',
+    author: 'Glossa',
+    name: 'Zotero',
+    version: '1.0.0',
+    apiVersion: 1,
+    activation: 'library-import',
+    format: ['PDF', 'EPUB'],
+    capabilities: ['local-zotero-read'],
+  }),
+  defineBundledPlugin({
     id: 'conversation',
     author: 'Glossa',
     name: 'Conversation',

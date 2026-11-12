@@ -51,6 +51,7 @@ export const pluginManifestSchema = z
           'web-page-capture',
           'local-book-metadata',
           'local-reading-time',
+          'local-zotero-read',
         ]),
       )
       .max(4),

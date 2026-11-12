@@ -89,6 +89,7 @@ export const parseOpenWithFiles = async (appService: AppService | null) => {
   if (isWebAppPlatform()) return [];
 
   let files = parseWindowOpenWithFiles();
+  if (appService?.isMacOSApp) return files;
   if ((!files || files.length === 0) && hasCli()) {
     files = await parseCLIOpenWithFiles();
   }

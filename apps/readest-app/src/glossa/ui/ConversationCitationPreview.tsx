@@ -5,7 +5,6 @@ import type { ChapterSource } from '@/glossa/context/types';
 import { resolveSource } from '@/glossa/citations/sources';
 import { useTranslation } from '@/hooks/useTranslation';
 import { findTocItemBS } from '@/services/nav/lookup';
-import { collectAllTocItems } from '@/services/nav/grouping';
 
 /** Read only the cited local anchor. Previewing never changes the reader location. */
 export default function ConversationCitationPreview({
@@ -43,22 +42,7 @@ export default function ConversationCitationPreview({
         let title = '';
         if (resolved) {
           try {
-            const toc = bookDoc.toc ?? [];
-            const items = collectAllTocItems(toc);
-            if (items.length && items.every((item) => item.cfi)) {
-              title = findTocItemBS(toc, resolved.cfi)?.label.trim() ?? '';
-            } else {
-              // An unprepared outline cannot locate fragments. Use only a direct
-              // section label, without reading other sections to build navigation.
-              const section = bookDoc.sections?.[source.anchor.sectionIndex];
-              title =
-                items
-                  .find((item) => {
-                    const [path, fragment] = bookDoc.splitTOCHref(item.href);
-                    return section && !fragment && (path === section.id || path === section.href);
-                  })
-                  ?.label.trim() ?? '';
-            }
+            title = findTocItemBS(bookDoc.toc ?? [], resolved.cfi, bookDoc)?.label.trim() ?? '';
           } catch {
             // Older outlines may lack usable CFIs; keep the saved scope label.
           }

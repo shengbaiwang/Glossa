@@ -1,40 +1,43 @@
 import * as CFI from 'foliate-js/epubcfi.js';
-import type { TOCItem } from '@/libs/document';
+import type { BookDoc, TOCItem } from '@/libs/document';
+import {
+  getChapterIndex,
+  getStandaloneChapterIndex,
+  locatorForCFI,
+} from 'foliate-js/chapter-index.js';
 
 export interface ChapterSearchRange {
   start: string;
   end?: string;
+  startIndex?: number;
+  endIndex?: number;
   label: string;
 }
 
 // Follow the deepest directory entry at the reading position. Its range includes
 // descendants and ends at the next peer/ancestor, even across spine files.
 export function getChapterSearchRange(
-  toc: TOCItem[],
+  source: BookDoc | TOCItem[],
   location: string | undefined,
+  chapterId?: string,
 ): ChapterSearchRange | null {
   if (!location?.startsWith('epubcfi(')) return null;
-  const entries: { item: TOCItem; depth: number }[] = [];
-  const walk = (items: TOCItem[], depth: number) => {
-    for (const item of items) {
-      if (item.cfi?.startsWith('epubcfi(')) entries.push({ item, depth });
-      if (item.subitems) walk(item.subitems, depth + 1);
-    }
-  };
-  walk(toc, 0);
-  try {
-    let current = -1;
-    const point = CFI.collapse(location);
-    for (let i = 0; i < entries.length; i++) {
-      if (CFI.compare(entries[i]!.item.cfi!, point) <= 0) current = i;
-    }
-    const entry = entries[current];
-    if (!entry) return null;
-    const next = entries.slice(current + 1).find((candidate) => candidate.depth <= entry.depth);
-    return { start: entry.item.cfi!, end: next?.item.cfi, label: entry.item.label };
-  } catch {
+  const book = Array.isArray(source) ? undefined : source;
+  const index = Array.isArray(source) ? getStandaloneChapterIndex(source) : getChapterIndex(source);
+  const node =
+    (chapterId && index.node(chapterId)) || index.locate(locatorForCFI(book, location)).node;
+  if (!node) return null;
+  const bounds = index.range(node.id);
+  if (!bounds || bounds.quality !== 'exact' || !bounds.start.cfi || (bounds.end && !bounds.end.cfi))
     return null;
-  }
+  return {
+    start: bounds.start.cfi,
+    end: bounds.end?.cfi,
+    label: node.item.label,
+    ...(book
+      ? { startIndex: bounds.start.resourceIndex, endIndex: bounds.end?.resourceIndex }
+      : {}),
+  };
 }
 
 // Binary search in the same text walker used by matching and CFI recovery.

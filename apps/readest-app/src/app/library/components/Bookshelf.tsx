@@ -1,3 +1,5 @@
+import { useReadingSpaceStore } from '@/store/readingSpaceStore';
+import { bookInReadingSpace, readingSpaceFolders } from '@/utils/readingSpaces';
 import { getLibraryCoverWidth } from '@/utils/libraryDisplaySettings';
 import { resolveLibraryDisplay } from '../utils/libraryUtils';
 import clsx from 'clsx';
@@ -220,7 +222,7 @@ const LIST_VIRTUOSO_COMPONENTS: Components<unknown, BookshelfListContext> = {
 };
 
 const Bookshelf: React.FC<BookshelfProps> = ({
-  libraryBooks,
+  libraryBooks: allLibraryBooks,
   onScrollerRef,
   handleImportBooks,
   renderGroupNavigation,
@@ -236,6 +238,11 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   onSearchContents,
   onSearchProgress,
 }) => {
+  const space = useReadingSpaceStore((state) => state.space);
+  const libraryBooks = useMemo(
+    () => allLibraryBooks.filter((book) => bookInReadingSpace(book, space)),
+    [allLibraryBooks, space],
+  );
   const _ = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -276,6 +283,10 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const { selectedBooks: selectedBookSet } = useLibraryStore();
   const { getGroupName } = useLibraryStore();
   const folders = useLibraryFolders();
+  const spaceFolders = useMemo(
+    () => readingSpaceFolders(allLibraryBooks, folders.paths, space),
+    [allLibraryBooks, folders.paths, space],
+  );
   const clipboard = useLibraryClipboard(folders);
   const bookEdits = useLibraryBookEdits();
   useEffect(() => {
@@ -367,14 +378,14 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       const items = generateBookshelfItems(
         filteredShelfBooks,
         groupName,
-        queryTerm ? [] : folders.paths,
+        queryTerm ? [] : spaceFolders,
       );
       return allGroups && !groupId ? items.filter((item) => 'books' in item) : items;
     } else {
       if (groupId) return filteredShelfBooks;
       return createBookGroups(filteredShelfBooks, groupBy);
     }
-  }, [filteredShelfBooks, groupBy, groupId, manualGroupName, queryTerm, folders.paths, allGroups]);
+  }, [filteredShelfBooks, groupBy, groupId, manualGroupName, queryTerm, spaceFolders, allGroups]);
 
   useEffect(() => {
     if (remappedGroup !== undefined) {
@@ -502,10 +513,10 @@ const Bookshelf: React.FC<BookshelfProps> = ({
     if (importBookUrl && appService) {
       const importBook = async () => {
         console.log('Importing book from URL:', importBookUrl);
-        const book = await appService.importBook(importBookUrl, libraryBooks);
+        const book = await appService.importBook(importBookUrl, allLibraryBooks);
         if (book) {
-          setLibrary(libraryBooks);
-          appService.saveLibraryBooks(libraryBooks);
+          setLibrary(allLibraryBooks);
+          appService.saveLibraryBooks(allLibraryBooks);
           navigateToReader(router, [book.hash]);
         }
       };

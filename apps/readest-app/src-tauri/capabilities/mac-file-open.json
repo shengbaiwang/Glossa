@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "mac-file-open",
+  "description": "Delivers macOS document opens to the main local window",
+  "platforms": ["macOS"],
+  "windows": ["main"],
+  "permissions": ["allow-take-mac-file-opens"]
+}

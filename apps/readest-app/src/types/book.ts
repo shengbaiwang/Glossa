@@ -1,3 +1,4 @@
+import type { ReadingSpace } from '@/utils/readingSpaces';
 import type { BookRemoval } from '@/services/bookRemovalState';
 import { BookMetadata } from '@/libs/document';
 import { TTSHighlightOptions } from '@/services/tts/types';
@@ -93,6 +94,8 @@ export interface ImportBookOptions {
   initialTags?: string[];
   /** Source evidence applied only when creating a new record. */
   initialWebSource?: BookWebSource;
+  initialReadingSpace?: ReadingSpace;
+  initialZoteroSource?: ZoteroSource;
   /** Whether to copy the file into the Books directory. Defaults to true. */
   saveBook?: boolean;
   /** Whether to extract and save a cover image. Defaults to true. */
@@ -124,7 +127,21 @@ export interface BookImportResult {
   error?: Error;
 }
 
+/** Read-only source snapshot, separate from personal title and bibliographic edits. */
+export interface ZoteroSource {
+  itemKey: string;
+  attachmentKey: string;
+  title: string;
+  creators?: string;
+  date?: string;
+  publicationTitle?: string;
+  DOI?: string;
+}
+
 export interface Book {
+  readingSpaces?: ReadingSpace[];
+  readingSpacesUpdatedAt?: number;
+  zoteroSource?: ZoteroSource;
   // if Book is a remote book we just lazy load the book content via url
   url?: string;
   // if Book is a transient local book we can load the book content via filePath
@@ -525,6 +542,7 @@ export interface ViewSettings
 export interface BookProgress {
   location: string;
   sectionHref: string;
+  chapterId?: string;
   sectionLabel: string;
   section: PageInfo;
   pageinfo: PageInfo;

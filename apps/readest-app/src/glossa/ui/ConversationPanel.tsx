@@ -115,9 +115,9 @@ function ConversationBook({ book, bookDoc, bookKey, ideaDraft, onIdeaDraftConsum
   const sectionPath = useMemo(
     () =>
       book.format === 'EPUB' || book.format === 'MD'
-        ? chapterPathForHref(bookDoc, progress?.sectionHref)
+        ? chapterPathForHref(bookDoc, progress?.sectionHref, progress?.chapterId)
         : '',
-    [book.format, bookDoc, progress?.sectionHref],
+    [book.format, bookDoc, progress?.sectionHref, progress?.chapterId],
   );
   const metadata: ChatIdentity = {
     bookTitle: (book.title ?? '').slice(0, 500),

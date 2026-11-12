@@ -332,7 +332,7 @@ it.each([
   render(wrapper());
   await screen.findByRole('switch', { name: 'Citations', checked: true });
   expect((await loadConversations(book.hash))!.sessions[0]!.readingScope).toBeUndefined();
-  const navigation = vi.spyOn(view!, 'goTo');
+  const navigation = vi.spyOn(view!, 'navigate');
   const citation = await screen.findByRole('link', { name: /^Open source passage/ });
   expect(citation.textContent).toBe('1');
   await page.getByRole('link', { name: /^Open source passage/ }).hover();

@@ -177,6 +177,9 @@ const getEinkSelectionStyles = () => {
   `;
 };
 
+const getReadingSelectionColor = (isDark: boolean) =>
+  isDark ? 'rgba(144, 177, 222, 0.32)' : 'rgba(64, 111, 168, 0.23)';
+
 const getColorStyles = (
   overrideColor: boolean,
   invertImgColorInDark: boolean,
@@ -198,7 +201,7 @@ const getColorStyles = (
     html, body {
       color: ${fg};
     }
-    ${isEink ? getEinkSelectionStyles() : ''}
+    ${isEink ? getEinkSelectionStyles() : `::selection { background: ${getReadingSelectionColor(isDarkMode)}; }`}
     html[has-background], body[has-background] {
       --background-set: var(--theme-bg-color);
     }
@@ -1368,13 +1371,20 @@ export const applyFixedlayoutStyles = (
       --theme-bg-color: ${bg};
       --theme-fg-color: ${fg};
       --theme-primary-color: ${primary};
+      --pdf-selection-color: ${isEink ? 'rgba(128, 128, 128, 0.4)' : getReadingSelectionColor(isDarkMode)};
       color-scheme: ${isDarkMode ? 'dark' : 'light'};
     }
     body {
       position: relative;
       background-color: var(--theme-bg-color);
     }
-    ${isEink ? getEinkSelectionStyles() : ''}
+    .textLayer ::selection {
+      background: var(--pdf-selection-color);
+    }
+    html[data-pdf-coordinated-selection] .textLayer ::selection,
+    .textLayer br::selection {
+      background: transparent;
+    }
     #canvas {
       display: inline-block;
       width: fit-content;

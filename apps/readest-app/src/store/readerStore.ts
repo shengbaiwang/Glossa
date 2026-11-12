@@ -22,6 +22,7 @@ import type { FileSystem } from '@/types/system';
 import { isFeedBookUrl, parseFeedBookUrl } from '@/services/rss/feedBookUrl';
 import { openFeedBookDoc } from '@/services/rss/feedReader';
 import { computeBookNav, hydrateBookNav, isBookNavCacheCurrent, updateToc } from '@/services/nav';
+import { publishChapterIndex } from 'foliate-js/chapter-index.js';
 import { formatTitle, getMetadataHash, getPrimaryLanguage } from '@/utils/book';
 import { getBaseFilename } from '@/utils/path';
 import { SUPPORTED_LANGNAMES } from '@/services/constants';
@@ -93,7 +94,7 @@ const navigationCopy = (bookDoc: BookDoc): BookDoc => ({
 });
 
 const publishNavigation = (bookDoc: BookDoc, staged: BookDoc) => {
-  bookDoc.toc = staged.toc;
+  publishChapterIndex(bookDoc, staged.toc ?? []);
   bookDoc.sections.forEach((section, index) => {
     section.fragments = staged.sections[index]?.fragments;
     section.location = staged.sections[index]?.location;
@@ -158,6 +159,7 @@ interface ReaderStore {
     timeinfo: TimeInfo,
     range: Range,
     fraction: number,
+    chapterId?: string,
   ) => void;
   getProgress: (key: string) => BookProgress | null;
   setView: (key: string, view: FoliateView) => void;
@@ -642,6 +644,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
     timeinfo: TimeInfo,
     range: Range,
     fraction: number,
+    chapterId?: string,
   ) => {
     const id = key.split('-')[0]!;
     const bookData = useBookDataStore.getState().booksData[id];
@@ -698,6 +701,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
     setBookProgress(key, {
       location,
       sectionHref: tocItem?.href,
+      chapterId,
       sectionLabel: tocItem?.label,
       pageItem,
       section,

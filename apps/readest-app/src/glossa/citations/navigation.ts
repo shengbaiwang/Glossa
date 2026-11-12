@@ -2,7 +2,7 @@ import * as CFI from 'foliate-js/epubcfi.js';
 import type { FoliateView } from '@/types/view';
 import { checkAborted } from '../context/text';
 
-type NavigationView = Pick<FoliateView, 'goTo' | 'lastLocation'>;
+type NavigationView = Pick<FoliateView, 'goTo' | 'lastLocation' | 'navigate'>;
 
 const navigationQueues = new WeakMap<NavigationView, Promise<void>>();
 
@@ -26,6 +26,12 @@ export const navigateSource = (
   location: string,
   signal: AbortSignal,
 ): Promise<void> => {
+  if (view.navigate) {
+    return view.navigate(location, { signal }).then(({ status }) => {
+      checkAborted(signal);
+      if (status !== 'arrived') throw new Error('The reading position was not reached.');
+    });
+  }
   const navigation = (navigationQueues.get(view) ?? Promise.resolve()).then(async () => {
     checkAborted(signal);
     // Foliate's public type says void, but its implementation returns a promise.

@@ -6,7 +6,7 @@ import { eventDispatcher } from '@/utils/event';
 
 export type ToastType = 'info' | 'success' | 'warning' | 'error';
 
-export const Toast = () => {
+export const Toast = ({ eventName = 'toast' }: { eventName?: string } = {}) => {
   const { safeAreaInsets } = useThemeStore();
   const [action, setAction] = useState<{ label: string; onClick: () => void } | null>(null);
   const [toastMessage, setToastMessage] = useState('');
@@ -75,11 +75,11 @@ export const Toast = () => {
   };
 
   useEffect(() => {
-    eventDispatcher.on('toast', handleShowToast);
+    eventDispatcher.on(eventName, handleShowToast);
     return () => {
-      eventDispatcher.off('toast', handleShowToast);
+      eventDispatcher.off(eventName, handleShowToast);
     };
-  }, []);
+  }, [eventName]);
 
   const handleDismiss = () => {
     setIsVisible(false);

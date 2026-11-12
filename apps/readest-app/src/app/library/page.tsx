@@ -1,4 +1,6 @@
 'use client';
+import ReadingSpaceSwitcher from './components/ReadingSpaceSwitcher';
+import Dialog from '@/components/Dialog';
 import { mergeLibraryDisplay } from '@/utils/libraryDisplaySettings';
 import { useLibraryRefresh } from '@/hooks/useLibraryRefresh';
 
@@ -28,6 +30,7 @@ import type { LibrarySearchTarget } from '@/types/book';
 import { navigateToLibrary, navigateToLogin, navigateToReader } from '@/utils/nav';
 import { getBookWithUpdatedMetadata, listFormater } from '@/utils/book';
 import { getImportErrorMessage } from '@/services/errors';
+import { fingerprintPath, libraryIdentityIO } from '@/services/bookIdentity';
 import {
   ingestFile,
   ingestFiles,
@@ -120,6 +123,7 @@ import FileImportDialog, { type FileImportState } from './components/FileImportD
 import { pluginLoaders } from '@/glossa/plugins/loaders';
 import { isPluginEnabled } from '@/glossa/plugins/registry';
 
+const ZoteroPanel = React.lazy(pluginLoaders.zotero);
 const ImportFromUrlDialog = React.lazy(() => import('./components/ImportFromUrlDialog'));
 import ClipSignInAlert from '@/components/ClipSignInAlert';
 import useShortcuts from '@/hooks/useShortcuts';
@@ -220,6 +224,15 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   // FoliateViewer hydration never runs without a book open.
   useCustomFonts();
 
+  const [showZotero, setShowZotero] = useState(false);
+  const zoteroEnabled = isPluginEnabled(settings, 'zotero');
+  const openZotero =
+    zoteroEnabled && isTauriAppPlatform() && appService && !appService.isMobileApp
+      ? () => setShowZotero(true)
+      : undefined;
+  useEffect(() => {
+    if (!zoteroEnabled) setShowZotero(false);
+  }, [zoteroEnabled]);
   const [showImportFromUrl, setShowImportFromUrl] = useState(false);
   const webImportEnabled = isPluginEnabled(settings, 'webImport');
   const [fileImportState, setFileImportState] = useState<FileImportState | null>(null);
@@ -565,13 +578,30 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   }, [libraryBooks]);
 
   const processOpenWithFiles = useCallback(
-    async (appService: AppService, openWithFiles: string[], libraryBooks: Book[]) => {
+    async (
+      appService: AppService,
+      openWithFiles: string[],
+      libraryBooks: Book[],
+      temporary: boolean,
+    ) => {
       const settings = await appService.loadSettings();
       const bookIds: string[] = [];
+      const temp = appService.isMacOSApp
+        ? temporary
+        : !appService.isMobile && !settings.autoImportBooksOnOpen;
       for (const file of openWithFiles) {
         console.log('Open with book:', file);
         try {
-          const temp = appService.isMobile ? false : !settings.autoImportBooksOnOpen;
+          if (appService.isMacOSApp && temp) {
+            const fingerprint = await fingerprintPath(libraryIdentityIO(appService), file, 'None');
+            const existing = libraryBooks.find(
+              (book) => !book.deletedAt && book.contentFingerprint === fingerprint,
+            );
+            if (existing && (await appService.isBookAvailable(existing))) {
+              bookIds.push(existing.hash);
+              break;
+            }
+          }
           // A file shared into Readest on mobile (the OS share-sheet) is a
           // "Send to Glossa" capture — force it to the cloud so it syncs to
           // every device. Desktop "open with" honors the book sync toggle.
@@ -586,13 +616,21 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           );
           if (book) {
             bookIds.push(book.hash);
+            if (appService.isMacOSApp) break;
           }
         } catch (error) {
-          console.log('Failed to import book:', file, error);
+          if (appService.isMacOSApp) {
+            eventDispatcher.dispatch('toast', {
+              type: 'error',
+              message:
+                _('Failed to open {{filename}}', { filename: getFilename(file) }) +
+                (error instanceof Error ? `\n${_(getImportErrorMessage(error.message))}` : ''),
+            });
+          }
         }
       }
       setLibrary(libraryBooks);
-      appService.saveLibraryBooks(libraryBooks);
+      if (!temp && !appService.isMacOSApp) appService.saveLibraryBooks(libraryBooks);
 
       console.log('Opening books:', bookIds);
       if (bookIds.length > 0) {
@@ -687,7 +725,9 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       }
 
       // Reuse the library from the store when we return from the reader
-      const library = hasCachedLibrary ? libraryBooks : await appService.loadLibraryBooks();
+      const loaded = hasCachedLibrary ? libraryBooks : await appService.loadLibraryBooks();
+      const current = useLibraryStore.getState();
+      const library = current.libraryLoaded ? current.library : loaded;
       let opened = false;
       if (checkOpenWithBooks) {
         opened = await handleOpenWithBooks(appService, library);
@@ -716,7 +756,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       const openWithFiles = (await parseOpenWithFiles(appService)) || [];
 
       if (openWithFiles.length > 0) {
-        return await processOpenWithFiles(appService, openWithFiles, library);
+        const temporary = new URLSearchParams(window.location.search).get('temporary') === '1';
+        return await processOpenWithFiles(appService, openWithFiles, library, temporary);
       }
       return false;
     };
@@ -1765,8 +1806,11 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         </div>
       )}
       <div className='glossa-library-workspace'>
-        {isLibrarySidebarVisible && <LibraryNavigation onNavigate={() => setSelectedBooks([])} />}
+        {isLibrarySidebarVisible && (
+          <LibraryNavigation onNavigate={() => setSelectedBooks([])} onZotero={openZotero} />
+        )}
         <div className='glossa-library-content'>
+          {!isLibrarySidebarVisible && <ReadingSpaceSwitcher onZotero={openZotero} />}
           {librarySearchTarget === 'text' &&
             !librarySearchQuery.trim() &&
             librarySearchHistory.length > 0 && (
@@ -1982,6 +2026,13 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
             } else setFileImportState(null);
           }}
         />
+      )}
+      {showZotero && zoteroEnabled && (
+        <Dialog isOpen title='Zotero' onClose={() => setShowZotero(false)}>
+          <Suspense fallback={<p role='status'>{_('Loading...')}</p>}>
+            <ZoteroPanel onOpened={() => setShowZotero(false)} />
+          </Suspense>
+        </Dialog>
       )}
       {showImportFromUrl && webImportEnabled && (
         <Suspense fallback={null}>

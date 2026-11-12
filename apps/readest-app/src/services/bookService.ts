@@ -1,3 +1,4 @@
+import { readReadingSpace } from '@/utils/readingSpaces';
 import { SystemSettings } from '@/types/settings';
 import { archiveRemoval } from './bookRemovalState';
 import { activateBookData, withBookDataWrite } from './bookDataLifecycle';
@@ -923,6 +924,9 @@ async function prepareBookImport(
         groupUpdatedAt: options.initialGroup ? Date.now() : undefined,
         tags: options.initialTags,
         webSource: options.initialWebSource,
+        readingSpaces: options.initialReadingSpace ? [options.initialReadingSpace] : undefined,
+        readingSpacesUpdatedAt: options.initialReadingSpace ? Date.now() : undefined,
+        zoteroSource: options.initialZoteroSource,
         createdAt: existingBook ? existingBook.createdAt : Date.now(),
         uploadedAt: existingBook ? existingBook.uploadedAt : null,
         deletedAt: transient ? Date.now() : null,
@@ -1158,7 +1162,12 @@ export async function importBooks(
   const results: BookImportResult[] = inputs.map(() => ({ book: null }));
   const prepared: Array<PreparedBookImport | undefined> = inputs.map(() => undefined);
   const started = inputs.map(() => performance.now());
-  const effective = inputs.map((input) => ({ ...options, ...input.options }));
+  const activeSpace = readReadingSpace();
+  const effective = inputs.map((input) => ({
+    initialReadingSpace: activeSpace === 'all' ? ('leisure' as const) : activeSpace,
+    ...options,
+    ...input.options,
+  }));
   const asError = (error: unknown) => (error instanceof Error ? error : new Error(String(error)));
   const report = (index: number, stage: BookImportProgress['stage']) => {
     try {

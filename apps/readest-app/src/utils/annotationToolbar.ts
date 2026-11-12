@@ -17,8 +17,8 @@ export const DEFAULT_ANNOTATION_TOOLBAR_ITEMS: AnnotationToolType[] = [
   'copy',
   'highlight',
   'annotate',
-  'dictionary',
   'translate',
+  'dictionary',
   'tts',
   'search',
 ];
@@ -30,7 +30,19 @@ const sanitize = (items: AnnotationToolType[] | undefined): AnnotationToolType[]
   const isLegacyDefault =
     items?.length === legacyDefault.length &&
     items.every((type, index) => type === legacyDefault[index]);
-  const source = !items || isLegacyDefault ? DEFAULT_ANNOTATION_TOOLBAR_ITEMS : items;
+  const priorDefault = [
+    'copy',
+    'highlight',
+    'annotate',
+    'dictionary',
+    'translate',
+    'tts',
+    'search',
+  ];
+  const isPriorDefault =
+    items?.length === priorDefault.length && items.every((type, i) => type === priorDefault[i]);
+  const source =
+    !items || isLegacyDefault || isPriorDefault ? DEFAULT_ANNOTATION_TOOLBAR_ITEMS : items;
   const seen = new Set<AnnotationToolType>();
   const out: AnnotationToolType[] = [];
   for (const type of source) {

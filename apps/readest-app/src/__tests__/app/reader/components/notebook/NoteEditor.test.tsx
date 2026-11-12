@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import NoteEditor from '@/app/reader/components/notebook/NoteEditor';
 import { useNotebookStore } from '@/store/notebookStore';
@@ -55,7 +55,7 @@ describe('Notebook annotation drafts', () => {
     expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('');
   });
 
-  it('clears the transient draft only after a successful save', () => {
+  it('clears the transient draft only after a successful save', async () => {
     const onEdit = vi.fn(() => false);
     mountEditor('first-0', onEdit);
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'New thought' } });
@@ -64,8 +64,13 @@ describe('Notebook annotation drafts', () => {
       'New thought',
     ]);
     expect(useNotebookStore.getState().notebookEditAnnotation?.note).toBe('Saved note');
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    );
     onEdit.mockReturnValue(true);
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(useNotebookStore.getState().notebookAnnotationDrafts).toEqual({});
+    await waitFor(() => expect(useNotebookStore.getState().notebookAnnotationDrafts).toEqual({}));
   });
 });

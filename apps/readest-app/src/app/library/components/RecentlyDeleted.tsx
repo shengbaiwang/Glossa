@@ -1,3 +1,5 @@
+import { useReadingSpaceStore } from '@/store/readingSpaceStore';
+import { bookInReadingSpace } from '@/utils/readingSpaces';
 import { useEffect, useRef, useState } from 'react';
 import { isRecoverableRemoval } from '@/services/bookRemovalState';
 import type { Book } from '@/types/book';
@@ -23,7 +25,13 @@ import { Trash2, Undo2 } from '@/components/GlossaIcons';
 export default function RecentlyDeleted() {
   const _ = useTranslation(),
     { appService, envConfig } = useEnv();
-  const library = useLibraryStore((s) => s.library);
+  const allBooks = useLibraryStore((s) => s.library);
+  const space = useReadingSpaceStore((s) => s.space);
+  const library = allBooks.filter((book) => bookInReadingSpace(book, space));
+  useEffect(() => {
+    setSelection([]);
+    setConfirm(null);
+  }, [space]);
   const [selection, setSelection] = useState<string[]>([]);
   const [confirm, setConfirm] = useState<{
     books: Book[];

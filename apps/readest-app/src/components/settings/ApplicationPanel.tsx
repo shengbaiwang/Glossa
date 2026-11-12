@@ -123,19 +123,21 @@ const ApplicationPanel: React.FC<{ section: 'General' | 'Data' | 'About' | 'Acco
       <div className='my-4 space-y-6'>
         {isTauriAppPlatform() && (
           <>
-            <BoxedList title={_('Import')}>
-              <SettingsSwitchRow
-                label={_('Auto Import on File Open')}
-                checked={!!settings.autoImportBooksOnOpen}
-                onChange={() =>
-                  void saveSysSettings(
-                    envConfig,
-                    'autoImportBooksOnOpen',
-                    !settings.autoImportBooksOnOpen,
-                  )
-                }
-              />
-            </BoxedList>
+            {!appService?.isMacOSApp && (
+              <BoxedList title={_('Import')}>
+                <SettingsSwitchRow
+                  label={_('Auto Import on File Open')}
+                  checked={!!settings.autoImportBooksOnOpen}
+                  onChange={() =>
+                    void saveSysSettings(
+                      envConfig,
+                      'autoImportBooksOnOpen',
+                      !settings.autoImportBooksOnOpen,
+                    )
+                  }
+                />
+              </BoxedList>
+            )}
             <FolderImportSettings />
           </>
         )}

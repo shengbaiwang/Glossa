@@ -78,7 +78,7 @@ const SidebarContent: React.FC<{
                 <PDFPages key={sideBarBookKey} bookKey={sideBarBookKey} bookDoc={bookDoc} />
               )}
               {activeTab === 'toc' && bookDoc.toc && (
-                <TOCView toc={bookDoc.toc} bookKey={sideBarBookKey} />
+                <TOCView toc={bookDoc.toc} bookKey={sideBarBookKey} book={bookDoc} />
               )}
               {activeTab === 'bookmarks' && (
                 <BookmarkView bookKey={sideBarBookKey} toc={bookDoc.toc ?? []} />

@@ -1,3 +1,5 @@
+import type { ReadingSpace } from '@/utils/readingSpaces';
+import type { ZoteroSource } from '@/types/book';
 import type { Book, BookImportProgress, BookLookupIndex, BookWebSource } from '@/types/book';
 import type { AppService, OsPlatform } from '@/types/system';
 import type { SystemSettings } from '@/types/settings';
@@ -26,6 +28,8 @@ export interface IngestFileOptions {
   file: File | string;
   markdownResourceRoot?: string;
   webSource?: BookWebSource;
+  readingSpace?: ReadingSpace;
+  zoteroSource?: ZoteroSource;
   /** Current library, used by importBook for dedup. */
   books: Book[];
   /** Pre-built lookup index for O(1) dedup during batch imports. */
@@ -184,6 +188,8 @@ export async function ingestFile(
       opts.groupId !== undefined ? { id: opts.groupId, name: opts.groupName } : undefined,
     initialTags: opts.subjectTag?.trim() ? [opts.subjectTag.trim()] : undefined,
     initialWebSource: opts.webSource,
+    ...(opts.readingSpace ? { initialReadingSpace: opts.readingSpace } : {}),
+    initialZoteroSource: opts.zoteroSource,
     onResult: (result) => {
       outcome.status = result;
     },
@@ -318,6 +324,8 @@ export async function ingestFiles(
         opts.groupId !== undefined ? { id: opts.groupId, name: opts.groupName } : undefined,
       initialTags: opts.subjectTag?.trim() ? [opts.subjectTag.trim()] : undefined,
       initialWebSource: opts.webSource,
+      ...(opts.readingSpace ? { initialReadingSpace: opts.readingSpace } : {}),
+      initialZoteroSource: opts.zoteroSource,
       onResult: (result: 'added' | 'existing') => {
         outcomes[index]!.status = result;
         opts.onResult?.(result);

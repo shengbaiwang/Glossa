@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Notebook from '@/app/reader/components/notebook/Notebook';
 import { useNotebookStore } from '@/store/notebookStore';
@@ -16,7 +16,10 @@ const mocks = vi.hoisted(() => ({
   mindmapUnmount: vi.fn(),
   conversationUnmount: vi.fn(),
   saveConfig: vi.fn(),
-  updateBooknotes: vi.fn((_: string, notes: BookNote[]) => ({ booknotes: notes })),
+  updateBooknotes: vi.fn((_: string, notes: BookNote[]) => {
+    mocks.notes = notes;
+    return { booknotes: notes };
+  }),
   bubbleTransition: vi.fn(),
   notes: [] as BookNote[],
 }));
@@ -354,9 +357,24 @@ it('keeps annotations visible while editing and preserves the original page when
   expect(mocks.notes[0]).toMatchObject({ page: 42, note: '', style: 'highlight' });
   expect(mocks.updateBooknotes).toHaveBeenCalled();
   expect(mocks.saveConfig).toHaveBeenCalled();
-  expect(mocks.bubbleTransition).toHaveBeenCalled();
+  await waitFor(() => expect(mocks.bubbleTransition).toHaveBeenCalled());
   expect(useNotebookStore.getState().notebookEditAnnotation).toBeNull();
   expect(screen.getByText('Annotations for first-0')).toBeTruthy();
+});
+
+it('keeps the note draft open when saving fails and lets the user retry', async () => {
+  mocks.notes = [{ ...editNote, style: 'highlight' }];
+  mocks.saveConfig.mockRejectedValueOnce(new Error('Unable to write'));
+  await openNotebook();
+  act(() => useNotebookStore.getState().setNotebookEditAnnotation({ ...mocks.notes[0]! }));
+  const editor = screen.getByRole('textbox') as HTMLTextAreaElement;
+  fireEvent.change(editor, { target: { value: 'Keep this draft' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(mocks.notes[0]?.note).toBe(editNote.note));
+  expect(editor.value).toBe('Keep this draft');
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(useNotebookStore.getState().notebookEditAnnotation).toBeNull());
+  expect(mocks.notes[0]?.note).toBe('Keep this draft');
 });
 
 it('saves one cross-page note with the first anchor and both fragments, even after its frames leave', async () => {
@@ -377,14 +395,16 @@ it('saves one cross-page note with the first anchor and both fragments, even aft
   );
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Both pages matter' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-  expect(mocks.updateBooknotes).toHaveBeenCalledWith('first-0', [
-    expect.objectContaining({
-      cfi: first,
-      pdfRanges: [first, second],
-      text: 'Alpha\nBeta',
-      note: 'Both pages matter',
-    }),
-  ]);
+  await waitFor(() =>
+    expect(mocks.updateBooknotes).toHaveBeenCalledWith('first-0', [
+      expect.objectContaining({
+        cfi: first,
+        pdfRanges: [first, second],
+        text: 'Alpha\nBeta',
+        note: 'Both pages matter',
+      }),
+    ]),
+  );
 });
 
 describe('official reading modules', () => {

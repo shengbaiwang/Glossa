@@ -7,6 +7,7 @@ import PDFContentsSettings from './PDFContentsSettings';
 import MetadataRecognitionSettings from './MetadataRecognitionSettings';
 import { BoxedList, SettingsRow } from './primitives';
 
+const ZoteroPanel = lazy(() => import('@/glossa/plugins/zotero/ZoteroPanel'));
 const ReadingTimePanel = lazy(() => import('@/glossa/plugins/ReadingTimePanel'));
 const ModelSettingsPanel = lazy(() => import('@/glossa/ui/ModelSettingsPanel'));
 const PromptSettingsPanel = lazy(() => import('@/glossa/ui/PromptSettingsPanel'));
@@ -76,7 +77,9 @@ export default function PluginsPanel({
             </div>
           )}
           <Suspense fallback={<p role='status'>{_('Loading...')}</p>}>
-            {selected === 'readingTime' ? (
+            {selected === 'zotero' ? (
+              <ZoteroPanel />
+            ) : selected === 'readingTime' ? (
               <ReadingTimePanel />
             ) : selected === 'webImport' ? (
               <BoxedList>

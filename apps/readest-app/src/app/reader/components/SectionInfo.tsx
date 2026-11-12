@@ -51,7 +51,12 @@ const SectionInfo: React.FC<SectionInfoProps> = ({
   const handleNotchClick = () => {
     if (eventDispatcher.dispatchSync('iframe-single-click')) return;
     if (isScrolled) {
-      getView(bookKey)?.renderer.scrollToAnchor?.(0, 'anchor', true);
+      const view = getView(bookKey);
+      const resourceIndex =
+        view?.lastLocation?.locator?.resourceIndex ?? view?.renderer.primaryIndex;
+      if (resourceIndex != null && resourceIndex >= 0) {
+        void view?.navigate?.(resourceIndex, { history: false });
+      }
     }
   };
 

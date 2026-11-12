@@ -15,7 +15,7 @@
 | `apiVersion` | 必须为 `1`；与应用版本分开演进，不接受未知版本 |
 | `activation` | `reader-panel`（用户打开面板）、`persistent-import`（持久导入／主动重导入）、`book-metadata`（书籍信息中的主动识别）、`library-import`（主动网页导入／系统分享）或 `reader-activity`（可信阅读操作），同时支持上述值的非空数组；保留旧单值兼容 |
 | `format` | `EPUB`、`PDF`、`WEB`、`MD`、`MOBI`、`AZW`、`AZW3`、`CBZ`、`FB2`、`FBZ`、`TXT`，或这些值的非空数组；兼容旧单值清单，仅描述实际支持的格式。对话支持 EPUB／MD，导图仍仅 EPUB；元数据插件为现有本机书籍格式读取基础元数据，版权页文字与本机 OCR 识别以 EPUB／PDF 为首版范围 |
-| `capabilities` | 最多四项：`reading-harness`、`model-provider`、`verified-sources`、`local-pdf-contents`、`local-book-metadata`、`web-page-capture`、`local-reading-time` |
+| `capabilities` | 最多四项：`reading-harness`、`model-provider`、`verified-sources`、`local-pdf-contents`、`local-book-metadata`、`web-page-capture`、`local-reading-time`、`local-zotero-read` |
 
 未知字段会被拒绝；没有 `main`、远程 URL 或可执行路径字段。能力列表描述可信源码的依赖，不是向外部代码发放的权限，也不构成安全沙箱。开关仍只接受内置已知 ID；外部清单不能通过设置字段加入加载表。草案改变时须同步示例、内置清单及契约测试，破坏兼容性的变更提升 API 版本。
 
@@ -50,3 +50,7 @@
 ## 后续第三方执行环境
 
 独立菜单和统一清单为未来第三方插件提供接入位置。开放安装前仍需明确包验证、宿主能力接口、隔离执行、逐能力授权、故障卸载、版本升级与插件数据归属；第三方安装后的默认状态和授权流程届时另行设计，不能沿用内置插件的缺省启用规则。未来允许安装也不意味着自动读取原书、获得密钥或恢复历史任务。本轮没有实现这些执行能力。
+
+## Zotero 只读接入
+
+`zotero` 声明 `library-import`／`local-zotero-read`，支持 PDF／EPUB，不进入阅读器右侧标签。面板按需加载，主动连接才读取固定本机 API；没有写入请求、云授权或后台轮询。附件通过核心完整身份导入服务保存阅读副本，个人字段与 Zotero 来源快照分开。停用／关闭取消活动任务，已存阅读资料保留。详见 `docs/design/reading-spaces-zotero.md`。

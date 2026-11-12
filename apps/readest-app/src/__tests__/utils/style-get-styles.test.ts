@@ -580,7 +580,8 @@ describe('getColorStyles branches (via getStyles)', () => {
     const vs = makeViewSettings({ isEink: false });
     const theme = makeThemeCode();
     const css = getStyles(vs, theme);
-    expect(css).not.toContain('::selection');
+    expect(css).toContain('::selection { background: rgba(');
+    expect(css).not.toContain('background: var(--theme-fg-color)');
     expect(css).not.toContain('::-moz-selection');
   });
 

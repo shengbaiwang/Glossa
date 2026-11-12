@@ -3,21 +3,33 @@ import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { useOverlayScrollbars } from 'overlayscrollbars-react';
 import 'overlayscrollbars/overlayscrollbars.css';
 
-import { TOCItem } from '@/libs/document';
+import type { BookDoc, TOCItem } from '@/libs/document';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
+import { useReaderProgressStore } from '@/store/readerProgressStore';
+import {
+  getChapterIndex,
+  getStandaloneChapterIndex,
+  type ChapterIndex,
+} from 'foliate-js/chapter-index.js';
 import { eventDispatcher } from '@/utils/event';
 
 import { FlatTOCItem, StaticListRow } from './TOCItem';
 import { computeExpandedSet, getItemIdentifier } from './tocTree';
 
-const flattenTOC = (items: TOCItem[], expandedItems: Set<string>, depth = 0): FlatTOCItem[] => {
+const flattenTOC = (
+  items: TOCItem[],
+  expandedItems: Set<string>,
+  keyOf: (item: TOCItem) => string,
+  depth = 0,
+): FlatTOCItem[] => {
   const result: FlatTOCItem[] = [];
   items.forEach((item, index) => {
-    const isExpanded = expandedItems.has(getItemIdentifier(item));
-    result.push({ item, depth, index, isExpanded });
+    const id = keyOf(item);
+    const isExpanded = expandedItems.has(id);
+    result.push({ item, depth, index, isExpanded, id });
     if (item.subitems && isExpanded) {
-      result.push(...flattenTOC(item.subitems, expandedItems, depth + 1));
+      result.push(...flattenTOC(item.subitems, expandedItems, keyOf, depth + 1));
     }
   });
   return result;
@@ -32,31 +44,54 @@ const setsHaveSameContents = (a: Set<string>, b: Set<string>): boolean => {
 const getInitialScrollTarget = (
   toc: TOCItem[],
   href: string | undefined,
+  keyOf: (item: TOCItem) => string,
+  index: ChapterIndex<TOCItem>,
+  chapterId?: string,
 ): { index: number; expanded: Set<string> } => {
-  const expanded = computeExpandedSet(toc, href);
+  const expanded = computeExpandedSet(toc, href, chapterId, keyOf, index);
   if (!href) return { index: 0, expanded };
-  const flat = flattenTOC(toc, expanded);
-  const idx = flat.findIndex((f) => f.item.href === href);
+  const flat = flattenTOC(toc, expanded, keyOf);
+  const target = chapterId ? index.node(chapterId)?.item : null;
+  const idx = flat.findIndex((f) => (target ? f.item === target : f.item.href === href));
   return { index: idx > 0 ? idx : 0, expanded };
 };
 
 const TOCView: React.FC<{
   bookKey: string;
   toc: TOCItem[];
-}> = ({ bookKey, toc }) => {
-  const { getView, getViewSettings, getProgress } = useReaderStore();
+  book?: BookDoc;
+}> = ({ bookKey, toc, book }) => {
+  const getView = useReaderStore((state) => state.getView);
+  const getProgress = useReaderStore((state) => state.getProgress);
+  const isEink = useReaderStore((state) => !!state.getViewSettings(bookKey)?.isEink);
   const { sideBarBookKey, isSideBarVisible } = useSidebarStore();
-  const progress = getProgress(bookKey);
-  const isEink = !!getViewSettings(bookKey)?.isEink;
-
-  const [initialScrollTarget] = useState(() => getInitialScrollTarget(toc, progress?.sectionHref));
+  const activeHref = useReaderProgressStore(
+    (s) => (s.progresses[bookKey] ?? getProgress(bookKey))?.sectionHref ?? null,
+  );
+  const chapterId = useReaderProgressStore(
+    (s) => (s.progresses[bookKey] ?? getProgress(bookKey))?.chapterId,
+  );
+  const chapterIndex = useMemo(
+    () => (book ? getChapterIndex(book, toc) : getStandaloneChapterIndex(toc)),
+    [book, toc],
+  );
+  const keyOf = useCallback(
+    (item: TOCItem) => chapterIndex.byItem(item)?.id ?? getItemIdentifier(item),
+    [chapterIndex],
+  );
+  const activeItem =
+    (chapterId ? chapterIndex.node(chapterId) : null)?.item ??
+    chapterIndex.byHref(activeHref ?? '')?.item;
+  const [initialScrollTarget] = useState(() =>
+    getInitialScrollTarget(toc, activeHref ?? undefined, keyOf, chapterIndex, chapterId),
+  );
   const [expandedItems, setExpandedItems] = useState<Set<string>>(initialScrollTarget.expanded);
   const [containerHeight, setContainerHeight] = useState(400);
+  const [followEpoch, setFollowEpoch] = useState(0);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
   const userScrolledRef = useRef(false);
-  const scrollCooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingScrollRef = useRef(false);
   const visibleCenterRef = useRef(0);
   const initialScrollHandledRef = useRef(initialScrollTarget.index > 0);
@@ -69,7 +104,7 @@ const TOCView: React.FC<{
   // Mirror the latest active item + flat list so the OverlayScrollbars
   // `initialized` callback (created at mount but fired after a deferred,
   // timing-dependent delay) can re-center on the *current* reading position.
-  const activeHrefRef = useRef<string | null>(null);
+  const activeItemRef = useRef<TOCItem | undefined>(undefined);
   const flatItemsRef = useRef<FlatTOCItem[]>([]);
   // True once the reader has genuinely driven the list (wheel/touch/pointer/
   // key). Auto-expanding the current volume on open grows the list and fires a
@@ -95,12 +130,13 @@ const TOCView: React.FC<{
         // when progress was usually not yet available (index 0). Without this
         // the TOC rewinds to the very top on ~1 in 10 refreshes, depending on
         // whether this deferred init lands before or after the auto-scroll.
-        const activeIdx = activeHrefRef.current
-          ? flatItemsRef.current.findIndex((f) => f.item.href === activeHrefRef.current)
+        const activeIdx = activeItemRef.current
+          ? flatItemsRef.current.findIndex((f) => f.item === activeItemRef.current)
           : -1;
         const target = activeIdx > 0 ? activeIdx : initialScrollTarget.index;
-        if (target > 0) {
+        if (target > 0 && !userScrolledRef.current) {
           requestAnimationFrame(() => {
+            if (userScrolledRef.current) return;
             virtuosoRef.current?.scrollToIndex({
               index: target,
               align: 'center',
@@ -173,48 +209,61 @@ const TOCView: React.FC<{
     };
   }, []);
 
-  const activeHref = progress?.sectionHref ?? null;
-  const flatItems = useMemo(() => flattenTOC(toc, expandedItems), [toc, expandedItems]);
+  const flatItems = useMemo(
+    () => flattenTOC(toc, expandedItems, keyOf),
+    [toc, expandedItems, keyOf],
+  );
   // Keep the refs read by the OverlayScrollbars `initialized` callback current.
-  activeHrefRef.current = activeHref;
+  activeItemRef.current = activeItem;
   flatItemsRef.current = flatItems;
 
-  const handleToggleExpand = useCallback((item: TOCItem) => {
-    const itemId = getItemIdentifier(item);
-    setExpandedItems((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(itemId)) {
-        newSet.delete(itemId);
-      } else {
-        newSet.add(itemId);
-      }
-      return newSet;
-    });
-  }, []);
+  const handleToggleExpand = useCallback(
+    (item: TOCItem) => {
+      userScrolledRef.current = true;
+      pendingScrollRef.current = false;
+      const itemId = keyOf(item);
+      setExpandedItems((prev) => {
+        const newSet = new Set(prev);
+        if (newSet.has(itemId)) {
+          newSet.delete(itemId);
+        } else {
+          newSet.add(itemId);
+        }
+        return newSet;
+      });
+    },
+    [keyOf],
+  );
 
   const handleItemClick = useCallback(
     (item: TOCItem) => {
+      if (!item.href) return;
       eventDispatcher.dispatch('navigate', { bookKey, href: item.href });
-      if (item.href) {
-        getView(bookKey)?.goTo(item.href);
-      }
+      userScrolledRef.current = false;
+      userInputRef.current = false;
+      setFollowEpoch((epoch) => epoch + 1);
+      const view = getView(bookKey);
+      if (view?.navigate) {
+        void view.navigate(item.href, { nodeId: chapterIndex.byItem(item)?.id });
+      } else view?.goTo(item.href);
     },
-    [bookKey, getView],
+    [bookKey, chapterIndex, getView],
   );
 
   useEffect(() => {
     if (!isSideBarVisible || sideBarBookKey !== bookKey) {
       userScrolledRef.current = false;
+      userInputRef.current = false;
       pendingScrollRef.current = false;
       initialAutoScrollProcessedRef.current = false;
       return;
     }
     if (userScrolledRef.current && initialAutoScrollProcessedRef.current) return;
     setExpandedItems((prev) => {
-      const next = computeExpandedSet(toc, progress?.sectionHref);
+      const next = computeExpandedSet(toc, activeHref ?? undefined, chapterId, keyOf, chapterIndex);
       return setsHaveSameContents(prev, next) ? prev : next;
     });
-    if (progress?.sectionHref) {
+    if (activeItem) {
       if (initialScrollHandledRef.current) {
         initialScrollHandledRef.current = false;
       } else {
@@ -222,11 +271,22 @@ const TOCView: React.FC<{
       }
       initialAutoScrollProcessedRef.current = true;
     }
-  }, [isSideBarVisible, sideBarBookKey, bookKey, toc, progress]);
+  }, [
+    isSideBarVisible,
+    sideBarBookKey,
+    bookKey,
+    toc,
+    activeHref,
+    chapterId,
+    chapterIndex,
+    activeItem,
+    followEpoch,
+    keyOf,
+  ]);
 
   useEffect(() => {
-    if (!pendingScrollRef.current || !activeHref || !isSideBarVisible) return;
-    const idx = flatItems.findIndex((f) => f.item.href === activeHref);
+    if (!pendingScrollRef.current || !activeItem || !isSideBarVisible) return;
+    const idx = flatItems.findIndex((f) => f.item === activeItem);
     if (idx === -1) {
       // The active section's parents were just queued to expand by the
       // post-mount progress effect above — flatItems still reflects the
@@ -248,11 +308,12 @@ const TOCView: React.FC<{
     // they're measured) for the instant-jump case so the chapter ends centered.
     if (behavior === 'auto') {
       requestAnimationFrame(() => {
-        virtuosoRef.current?.scrollToIndex({ index: idx, align: 'center', behavior: 'auto' });
+        if (!userScrolledRef.current && activeItemRef.current === activeItem)
+          virtuosoRef.current?.scrollToIndex({ index: idx, align: 'center', behavior: 'auto' });
       });
     }
     pendingScrollRef.current = false;
-  }, [flatItems, activeHref, isSideBarVisible, isEink]);
+  }, [flatItems, activeItem, isSideBarVisible, isEink, followEpoch]);
 
   return (
     <div ref={containerRef} className='toc-list rounded' role='tree'>
@@ -276,16 +337,13 @@ const TOCView: React.FC<{
             // volume on open grows the list and emits a synthetic scroll with
             // no gesture behind it; ignore that so the initial auto-scroll
             // survives. A real user scroll still cancels it via userInputRef.
-            if (pendingScrollRef.current && !userInputRef.current) return;
+            if (!userInputRef.current) return;
             pendingScrollRef.current = false;
             userScrolledRef.current = true;
-            if (scrollCooldownRef.current) clearTimeout(scrollCooldownRef.current);
-            scrollCooldownRef.current = setTimeout(() => {
-              userScrolledRef.current = false;
-            }, 10000);
           }}
           style={{ height: containerHeight }}
           totalCount={flatItems.length}
+          computeItemKey={(index) => flatItems[index]?.id ?? index}
           itemContent={(index) => {
             const flatItem = flatItems[index]!;
             return (
@@ -293,6 +351,7 @@ const TOCView: React.FC<{
                 bookKey={bookKey}
                 flatItem={flatItem}
                 activeHref={activeHref}
+                active={flatItem.item === activeItem}
                 onToggleExpand={handleToggleExpand}
                 onItemClick={handleItemClick}
               />

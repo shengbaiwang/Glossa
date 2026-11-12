@@ -1,4 +1,5 @@
 import * as CFI from 'foliate-js/epubcfi.js';
+import { getChapterIndex, type ChapterNode } from 'foliate-js/chapter-index.js';
 import { md5 } from 'js-md5';
 import type { BookDoc, TOCItem } from '@/libs/document';
 import { checkAborted, collectTextBlocks } from './text';
@@ -12,24 +13,25 @@ const decode = (value: string): string => {
   }
 };
 
-const boundaryFor = (book: BookDoc, href: string): ChapterBoundary | undefined => {
-  const [path, fragment] = book.splitTOCHref(href);
-  const sectionIndex = book.sections.findIndex((section) =>
-    [section.id, section.href].some(
-      (value) => value != null && decode(value) === decode(String(path)),
-    ),
-  );
-  if (sectionIndex < 0) return undefined;
-  return { sectionIndex, ...(fragment ? { fragment: decode(String(fragment)) } : {}) };
+const boundaryFor = (node?: ChapterNode<TOCItem> | null): ChapterBoundary | undefined => {
+  if (node?.resourceIndex == null) return undefined;
+  return {
+    sectionIndex: node.resourceIndex,
+    ...(node.fragment ? { fragment: decode(node.fragment) } : {}),
+  };
 };
 
 /** TOC order is preserved. A chapter includes its descendants, never its next sibling. */
 export const listChapters = (book: BookDoc): ChapterDescriptor[] => {
   const chapters: ChapterDescriptor[] = [];
+  const index = getChapterIndex(book);
+  const nodes = new Map<string, ChapterNode<TOCItem>>();
   const walk = (items: TOCItem[], depth: number, parentId?: string) => {
     for (const item of items) {
-      const start = boundaryFor(book, item.href);
+      const node = index.byItem(item);
+      const start = boundaryFor(node);
       const id = `chapter-${md5(item.href).slice(0, 12)}-${chapters.length}`;
+      if (start && node) nodes.set(id, node);
       if (start)
         chapters.push({
           id,
@@ -95,15 +97,25 @@ export const listChapters = (book: BookDoc): ChapterDescriptor[] => {
     }
   }
 
-  chapters.forEach((chapter, index) => {
-    const next = chapters.slice(index + 1).find((candidate) => candidate.depth <= chapter.depth);
+  const pending: ChapterDescriptor[] = [];
+  for (let i = chapters.length - 1; i >= 0; i--) {
+    const chapter = chapters[i]!;
+    while (pending.length && pending.at(-1)!.depth > chapter.depth) pending.pop();
+    const next = pending.at(-1);
+    pending.push(chapter);
     if (next) {
+      const node = nodes.get(chapter.id);
+      const indexed = node && index.range(node.id);
+      // The legacy chapter projection also hides whole-book wrappers and
+      // infers levels for flattened outlines. Only use an exact index end
+      // when it names that same boundary. Otherwise both declared fragments
+      // still have to resolve in the source DOM before any text is returned.
       chapter.end =
-        next.sectionIndex < chapter.sectionIndex
-          ? { sectionIndex: chapter.sectionIndex + 1 }
+        indexed?.quality === 'exact' && indexed.endNode === nodes.get(next.id)
+          ? (boundaryFor(indexed.endNode) ?? next.start)
           : next.start;
     }
-  });
+  }
   const roots = chapters.filter((chapter) => chapter.depth === 0);
   if (roots.length === 1 && chapters.length > 1 && roots[0]!.sectionIndex <= firstLinearSection) {
     const root = roots[0]!;
@@ -119,7 +131,13 @@ export const listChapters = (book: BookDoc): ChapterDescriptor[] => {
 };
 
 /** Full outline path for a reading position, e.g. "第一讲 › （二）中央政府的组织". */
-export const chapterPathForHref = (book: BookDoc, href?: string): string => {
+export const chapterPathForHref = (book: BookDoc, href?: string, chapterId?: string): string => {
+  if (chapterId) {
+    return getChapterIndex(book)
+      .path(chapterId)
+      .map(({ item }) => item.label)
+      .join(' › ');
+  }
   if (
     !href ||
     !book?.toc?.length ||
@@ -171,6 +189,8 @@ export const extractChapter = async (
   { signal, includeNonlinear = false }: { signal?: AbortSignal; includeNonlinear?: boolean } = {},
 ): Promise<ChapterContent> => {
   checkAborted(signal);
+  if (chapter.end && chapter.end.sectionIndex < chapter.start.sectionIndex)
+    throw new Error('Chapter location is invalid');
   const sources: ChapterSource[] = [];
   const lastSection = Math.min(
     book.sections.length - 1,

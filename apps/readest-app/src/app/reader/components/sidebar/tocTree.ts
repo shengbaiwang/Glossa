@@ -1,5 +1,5 @@
 import { TOCItem } from '@/libs/document';
-import { findParentPath } from '@/services/nav';
+import { getStandaloneChapterIndex, type ChapterIndex } from 'foliate-js/chapter-index.js';
 
 export const getItemIdentifier = (item: TOCItem) => {
   const href = item.href || '';
@@ -12,11 +12,18 @@ export const getItemIdentifier = (item: TOCItem) => {
 // collapsed and easy to scan (issue #4059). When there's no resolvable reading
 // position yet, keep everything collapsed, except a lone wrapping root
 // container — otherwise the sidebar would show a single uninformative row.
-export const computeExpandedSet = (toc: TOCItem[], href: string | undefined): Set<string> => {
-  const parents = href ? findParentPath(toc, href).map(getItemIdentifier) : [];
+export const computeExpandedSet = (
+  toc: TOCItem[],
+  href: string | undefined,
+  chapterId?: string,
+  keyOf = getItemIdentifier,
+  index: ChapterIndex<TOCItem> = getStandaloneChapterIndex(toc),
+): Set<string> => {
+  const active = (chapterId && index.node(chapterId)) || (href && index.byHref(href));
+  const parents = active ? index.path(active.id).map(({ item }) => keyOf(item)) : [];
   if (parents.length) return new Set(parents);
   if (toc.length === 1 && toc[0]?.subitems?.length) {
-    return new Set([getItemIdentifier(toc[0])]);
+    return new Set([keyOf(toc[0])]);
   }
   return new Set();
 };

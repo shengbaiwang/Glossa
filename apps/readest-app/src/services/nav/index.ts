@@ -71,7 +71,8 @@ export type { SectionFragment };
 //     Bumping forces a one-time recompute that re-derives the decoded TOC.
 // -----------------------------------------------------------------------------
 
-export const BOOK_NAV_VERSION = 4;
+// v5: invalidate old chapter-start fallback CFIs for the shared chapter index.
+export const BOOK_NAV_VERSION = 5;
 
 export interface BookNavSection {
   id: string;

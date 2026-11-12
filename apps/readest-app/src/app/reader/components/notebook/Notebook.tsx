@@ -231,93 +231,108 @@ const Notebook: React.FC = ({}) => {
     setNotebookEditAnnotation(null);
   };
 
-  const handleSaveNote = (selection: TextSelection, note: string) => {
-    if (!sideBarBookKey) return false;
-    const view = getView(sideBarBookKey);
-    const config = getConfig(sideBarBookKey)!;
-
+  const handleSaveNote = async (selection: TextSelection, note: string) => {
+    const bookKey = sideBarBookKey;
+    if (!bookKey) return false;
+    const view = getView(bookKey);
+    const config = getConfig(bookKey);
     const cfi = selection.cfi || view?.getCFI(selection.index, selection.range);
-    if (!cfi) return false;
+    if (!config || !cfi) return false;
 
-    const { booknotes: annotations = [] } = config;
+    const annotations = config.booknotes ?? [];
     const existingIndex = findAnnotationAtCfi(annotations, cfi);
-    if (existingIndex !== -1) {
-      // Attach the note to the existing highlight at this CFI instead of
-      // creating a second record. The highlight overlay (value = cfi) already
-      // exists; add the note bubble overlay (value = NOTE_PREFIX+cfi).
-      const existing = annotations[existingIndex]!;
-      const updated: BookNote = {
-        ...existing,
-        note,
-        text: selection.text || existing.text,
-        updatedAt: Date.now(),
-      };
-      annotations[existingIndex] = updated;
-      view?.addAnnotation({ ...updated, value: `${NOTE_PREFIX}${updated.cfi}` });
-    } else {
-      // No highlight at this CFI yet (e.g. a note added without first
-      // highlighting): create one unified record with the current global style
-      // so the note still shows an underlying highlight, and draw both overlays.
-      const style = settings.globalReadSettings.highlightStyle;
-      const color = settings.globalReadSettings.highlightStyles[style];
-      const annotation: BookNote = {
-        id: uniqueId(),
-        type: 'annotation',
-        cfi,
-        ...(selection.pdfRanges ? { pdfRanges: [...selection.pdfRanges] } : {}),
-        style,
-        color,
-        note,
-        page: selection.page,
-        text: selection.text,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-      view?.addAnnotation(annotation);
-      view?.addAnnotation({ ...annotation, value: `${NOTE_PREFIX}${annotation.cfi}` });
-      annotations.push(annotation);
+    const existing = annotations[existingIndex];
+    const now = Date.now();
+    const style = settings.globalReadSettings.highlightStyle;
+    const updated: BookNote = existing
+      ? { ...existing, note, text: selection.text || existing.text, updatedAt: now }
+      : {
+          id: uniqueId(),
+          type: 'annotation',
+          cfi,
+          ...(selection.pdfRanges ? { pdfRanges: [...selection.pdfRanges] } : {}),
+          style,
+          color: settings.globalReadSettings.highlightStyles[style],
+          note,
+          page: selection.page,
+          text: selection.text,
+          createdAt: now,
+          updatedAt: now,
+        };
+    const booknotes = existing
+      ? annotations.map((item) => (item.id === existing.id ? updated : item))
+      : [...annotations, updated];
+    const pending = updateBooknotes(bookKey, booknotes);
+    if (!pending) return false;
+    try {
+      await saveConfig(envConfig, bookKey, pending, settings);
+    } catch {
+      const current = getConfig(bookKey)?.booknotes ?? [];
+      if (current.find((item) => item.id === updated.id) === updated) {
+        updateBooknotes(
+          bookKey,
+          current.flatMap((item) => (item.id !== updated.id ? [item] : existing ? [existing] : [])),
+          false,
+        );
+      }
+      eventDispatcher.dispatch('toast', { type: 'error', message: _('Failed to save annotation') });
+      return false;
     }
-    const updatedConfig = updateBooknotes(sideBarBookKey, annotations);
-    if (updatedConfig) {
-      saveConfig(envConfig, sideBarBookKey, updatedConfig, settings);
+
+    const current = getConfig(bookKey)?.booknotes ?? [];
+    if (current.find((item) => item.id === updated.id) === updated) {
+      if (!existing) view?.addAnnotation(updated);
+      view?.addAnnotation({ ...updated, value: `${NOTE_PREFIX}${cfi}` });
     }
-    setNotebookNewAnnotation(null);
-    // The placeholder now carries a note (or a fresh unified record was created),
-    // so it's a real annotation — drop the cancel-cleanup handle (#4791).
-    setNotebookNewHighlightId(null);
+    if (useNotebookStore.getState().notebookNewAnnotation === selection) {
+      setNotebookNewHighlightId(null);
+      setNotebookNewAnnotation(null);
+    }
     return true;
   };
 
-  const handleEditNote = (note: BookNote, isDelete: boolean) => {
-    if (!sideBarBookKey) return false;
-    const config = getConfig(sideBarBookKey);
+  const handleEditNote = async (note: BookNote, isDelete: boolean) => {
+    const bookKey = sideBarBookKey;
+    if (!bookKey) return false;
+    const config = getConfig(bookKey);
     if (!config) return false;
     const { booknotes: annotations = [] } = config;
     const existingIndex = annotations.findIndex((item) => item.id === note.id && !item.deletedAt);
     if (existingIndex === -1) return false;
     const previous = annotations[existingIndex]!;
+    const editor = useNotebookStore.getState().notebookEditAnnotation;
     note = { ...previous, note: note.note };
     if (isDelete) {
       note.deletedAt = Date.now();
     } else {
       note.updatedAt = Date.now();
     }
-    annotations[existingIndex] = note;
-    if (isDelete)
-      getViewsById(sideBarBookKey.split('-')[0]!).forEach((view) =>
-        removeBookNoteOverlays(view, note),
-      );
-    else
-      applyNoteBubbleTransition(
-        getViewsById(sideBarBookKey.split('-')[0]!),
-        note,
-        decideNoteBubbleTransition(previous.note, note.note),
-      );
-    const updatedConfig = updateBooknotes(sideBarBookKey, annotations);
-    if (updatedConfig) {
-      saveConfig(envConfig, sideBarBookKey, updatedConfig, settings);
+    const updatedConfig = updateBooknotes(
+      bookKey,
+      annotations.map((item) => (item.id === note.id ? note : item)),
+    );
+    if (!updatedConfig) return false;
+    try {
+      await saveConfig(envConfig, bookKey, updatedConfig, settings);
+    } catch {
+      const current = getConfig(bookKey)?.booknotes ?? [];
+      if (current.find((item) => item.id === note.id) === note) {
+        updateBooknotes(
+          bookKey,
+          current.map((item) => (item.id === note.id ? previous : item)),
+          false,
+        );
+      }
+      eventDispatcher.dispatch('toast', { type: 'error', message: _('Failed to save annotation') });
+      return false;
     }
-    setNotebookEditAnnotation(null);
+    if (getConfig(bookKey)?.booknotes?.find((item) => item.id === note.id) !== note) return true;
+    const views = getViewsById(bookKey.split('-')[0]!);
+    if (isDelete) views.forEach((view) => removeBookNoteOverlays(view, note));
+    else
+      applyNoteBubbleTransition(views, note, decideNoteBubbleTransition(previous.note, note.note));
+    if (useNotebookStore.getState().notebookEditAnnotation === editor)
+      setNotebookEditAnnotation(null);
     return true;
   };
 

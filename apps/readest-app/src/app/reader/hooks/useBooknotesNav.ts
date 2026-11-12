@@ -10,6 +10,7 @@ import { BookNoteType } from '@/types/book';
 import { TOCItem } from '@/libs/document';
 
 export function useBooknotesNav(bookKey: string, toc: TOCItem[]) {
+  const bookDoc = useBookDataStore((s) => s.booksData?.[bookKey.split('-')[0]!]?.bookDoc);
   const getView = useReaderStore((s) => s.getView);
   const getConfig = useBookDataStore((s) => s.getConfig);
   const {
@@ -50,9 +51,9 @@ export function useBooknotesNav(bookKey: string, toc: TOCItem[]) {
     if (!sortedBooknotes.length || booknoteIndex >= sortedBooknotes.length) return '';
     const currentNote = sortedBooknotes[booknoteIndex];
     if (!currentNote) return '';
-    const tocItem = findTocItemBS(toc, currentNote.cfi);
+    const tocItem = findTocItemBS(toc, currentNote.cfi, bookDoc);
     return tocItem?.label || '';
-  }, [sortedBooknotes, booknoteIndex, toc]);
+  }, [sortedBooknotes, booknoteIndex, toc, bookDoc]);
 
   // Find booknotes on the current page.
   // Uses a batched CFI matcher so the location is collapsed only once per

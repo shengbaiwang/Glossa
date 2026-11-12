@@ -1,9 +1,13 @@
 import { localizeNumber } from './number';
-import type { TOCItem } from '@/libs/document';
+import { getChapterIndex } from 'foliate-js/chapter-index.js';
+import type { BookDoc, TOCItem } from '@/libs/document';
 
 interface ChapterTickSource {
   getSectionFractions: () => number[];
-  resolveNavigation: (href: string) => { index?: number } | null | undefined;
+  book?: BookDoc;
+  resolveNavigation: (
+    href: string,
+  ) => { index?: number } | null | undefined | Promise<{ index?: number } | undefined>;
 }
 
 const flattenTOCHrefs = (items: TOCItem[]): string[] =>
@@ -33,7 +37,11 @@ export function getChapterTickFractions(
   const lastIndex = sectionFractions.length - 1;
   const ticks = new Set<number>();
   for (const href of flattenTOCHrefs(toc)) {
-    const index = view.resolveNavigation(href)?.index;
+    const result = view.book
+      ? getChapterIndex(view.book).byHref(href)?.resourceIndex
+      : view.resolveNavigation(href);
+    const index =
+      typeof result === 'number' ? result : result && 'index' in result ? result.index : undefined;
     if (typeof index === 'number' && index >= 1 && index < lastIndex) {
       ticks.add(sectionFractions[index]!);
     }

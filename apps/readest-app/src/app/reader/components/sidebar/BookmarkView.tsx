@@ -34,6 +34,7 @@ const BookmarkView: React.FC<{
   toc: TOCItem[];
 }> = ({ bookKey, toc }) => {
   const _ = useTranslation();
+  const bookDoc = useBookDataStore((s) => s.booksData?.[bookKey.split('-')[0]!]?.bookDoc);
   const config = useBookDataStore((s) => s.booksData[bookKey.split('-')[0]!]?.config);
   const progress = useBookProgress(bookKey);
   const setActiveBooknoteType = useSidebarStore((s) => s.setActiveBooknoteType);
@@ -53,9 +54,9 @@ const BookmarkView: React.FC<{
         .map((item) => ({
           key: `b-${item.id}`,
           item,
-          chapterLabel: findTocItemBS(toc ?? [], item.cfi)?.label || '',
+          chapterLabel: findTocItemBS(toc ?? [], item.cfi, bookDoc)?.label || '',
         })),
-    [bookmarks, toc],
+    [bookmarks, toc, bookDoc],
   );
 
   // Nearest cfi for the "current" highlight; recomputed when bookmarks change
