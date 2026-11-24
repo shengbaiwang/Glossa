@@ -13,6 +13,7 @@ import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { Dialog, DialogContent, DialogTitle } from '@/components/primitives/dialog';
 import { writeTextToClipboard } from '@/utils/clipboard';
+import { createPDFThumbnailQueue } from '@/services/pdfThumbnails';
 import { copyPDFImage, selectPDFRegion, type PDFRegion } from '@/services/pdfWorkspace';
 
 export default function PDFPages({ bookDoc, bookKey }: { bookDoc: BookDoc; bookKey: string }) {
@@ -27,7 +28,7 @@ export default function PDFPages({ bookDoc, bookKey }: { bookDoc: BookDoc; bookK
   const [images, setImages] = useState<Record<number, string>>({});
   const [error, setError] = useState('');
   const [thumbnailError, setThumbnailError] = useState(false);
-  const [thumbnailAttempt, setThumbnailAttempt] = useState(0);
+  const thumbnailQueue = useRef<ReturnType<typeof createPDFThumbnailQueue> | null>(null);
   const pendingFocus = useRef<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -82,7 +83,25 @@ export default function PDFPages({ bookDoc, bookKey }: { bookDoc: BookDoc; bookK
     }
   }, [focused, visible, overview]);
   useEffect(() => {
-    let cancelled = false;
+    const cache = urls.current;
+    const queue = createPDFThumbnailQueue(
+      bookDoc,
+      (index, blob) => {
+        if (cache.has(index)) return;
+        cache.set(index, URL.createObjectURL(blob));
+        setImages(Object.fromEntries(cache));
+      },
+      setThumbnailError,
+    );
+    thumbnailQueue.current = queue;
+    return () => {
+      queue.close();
+      thumbnailQueue.current = null;
+      cache.forEach(URL.revokeObjectURL);
+      cache.clear();
+    };
+  }, [bookDoc]);
+  useEffect(() => {
     const cache = urls.current;
     for (const [index, url] of cache) {
       if (index < visible.startIndex || index > visible.endIndex) {
@@ -91,27 +110,8 @@ export default function PDFPages({ bookDoc, bookKey }: { bookDoc: BookDoc; bookK
       }
     }
     setImages(Object.fromEntries(cache));
-    setThumbnailError(false);
-    void (async () => {
-      let failed = false;
-      for (let i = visible.startIndex; i <= Math.min(visible.endIndex, count - 1); i++) {
-        if (cache.has(i)) continue;
-        try {
-          const blob = await bookDoc.getPDFImage!(i, 180);
-          if (cancelled) return;
-          cache.set(i, URL.createObjectURL(blob));
-          setImages(Object.fromEntries(cache));
-        } catch {
-          if (cancelled) return;
-          failed = true;
-        }
-      }
-      if (!cancelled) setThumbnailError(failed);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [bookDoc, count, visible, thumbnailAttempt]);
+    thumbnailQueue.current?.update(visible.startIndex, visible.endIndex, count);
+  }, [bookDoc, count, visible.startIndex, visible.endIndex]);
   useEffect(() => {
     if (!selecting || !view?.renderer) return;
     return selectPDFRegion(
@@ -150,10 +150,10 @@ export default function PDFPages({ bookDoc, bookKey }: { bookDoc: BookDoc; bookK
     if (!saved) return;
   };
   const pageLabel = (index: number) => bookDoc.pageList?.[index]?.label ?? String(index + 1);
-  const printedLabel = (index: number) =>
-    pageLabel(index) !== String(index + 1)
-      ? _('Printed page {{page}}', { page: pageLabel(index) })
-      : '';
+  const printedLabel = (index: number) => {
+    const label = pageLabel(index).trim();
+    return label && label !== String(index + 1) ? _('Printed page {{page}}', { page: label }) : '';
+  };
   const clearPages = () => {
     setFirst(null);
     setLast(null);
@@ -303,7 +303,7 @@ export default function PDFPages({ bookDoc, bookKey }: { bookDoc: BookDoc; bookK
       {thumbnailError && (
         <div className='glossa-pdf-actions' role='alert'>
           <span>{_('Could not render PDF pages')}</span>
-          <button type='button' onClick={() => setThumbnailAttempt((value) => value + 1)}>
+          <button type='button' onClick={() => thumbnailQueue.current?.retry()}>
             {_('Retry')}
           </button>
         </div>
@@ -324,7 +324,6 @@ export default function PDFPages({ bookDoc, bookKey }: { bookDoc: BookDoc; bookK
       className='glossa-pdf-page-scroller'
       totalCount={count}
       initialTopMostItemIndex={current}
-      overscan={200}
       listClassName='glossa-pdf-page-grid'
       itemClassName='glossa-pdf-page-tile'
       rangeChanged={setVisible}

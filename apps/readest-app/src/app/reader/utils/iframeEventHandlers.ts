@@ -11,9 +11,23 @@ import {
   type TurnGestureIntent,
 } from './turnGestureArena';
 
-let lastClickTime = 0;
-let longHoldTimeout: ReturnType<typeof setTimeout> | null = null;
-let isMouseDown = false;
+interface MouseGesture {
+  down: boolean;
+  pressedAt: number;
+  lastClick: number;
+  press: number;
+}
+const mouseGestures = new WeakMap<Document, MouseGesture>();
+const mouseGesture = (event: MouseEvent) => {
+  const target = event.target as Node | null;
+  const doc = target?.ownerDocument ?? event.view?.document ?? document;
+  let state = mouseGestures.get(doc);
+  if (!state) {
+    state = { down: false, pressedAt: -Infinity, lastClick: -Infinity, press: 0 };
+    mouseGestures.set(doc, state);
+  }
+  return state;
+};
 interface NativeTurnHost extends HTMLElement {
   scrollLocked?: boolean;
 }
@@ -296,10 +310,10 @@ export const handleKeyup = (bookKey: string, event: KeyboardEvent) => {
 };
 
 export const handleMousedown = (bookKey: string, event: MouseEvent) => {
-  isMouseDown = true;
-  longHoldTimeout = setTimeout(() => {
-    longHoldTimeout = null;
-  }, LONG_HOLD_THRESHOLD);
+  const gesture = mouseGesture(event);
+  gesture.down = true;
+  gesture.pressedAt = Date.now();
+  gesture.press++;
 
   if (event.button === 1 && autoscrollArmedBooks.has(bookKey)) {
     event.preventDefault();
@@ -346,7 +360,7 @@ export const handleMousemove = (bookKey: string, event: MouseEvent) => {
 };
 
 export const handleMouseup = (bookKey: string, event: MouseEvent) => {
-  isMouseDown = false;
+  mouseGesture(event).down = false;
   // we will handle mouse back and forward buttons ourselves
   if ([3, 4].includes(event.button)) {
     event.preventDefault();
@@ -415,15 +429,24 @@ export const handleClick = (
   doubleClickDisabled: React.MutableRefObject<boolean>,
   isFixedLayout: boolean,
   event: MouseEvent,
+  selectionGesture = false,
+  sectionIndex?: number,
 ) => {
   const now = Date.now();
+  const gesture = mouseGesture(event);
+  const press = gesture.press;
+  const longHold = now - gesture.pressedAt >= LONG_HOLD_THRESHOLD;
   if (consumeSuppressedDomClick(bookKey, event, now)) return;
 
-  if (!doubleClickDisabled.current && now - lastClickTime < DOUBLE_CLICK_INTERVAL_THRESHOLD_MS) {
-    lastClickTime = now;
+  if (
+    !doubleClickDisabled.current &&
+    now - gesture.lastClick < DOUBLE_CLICK_INTERVAL_THRESHOLD_MS
+  ) {
+    gesture.lastClick = now;
     window.postMessage(
       {
         type: 'iframe-double-click',
+        sectionIndex,
         bookKey,
         screenX: event.screenX,
         screenY: event.screenY,
@@ -438,7 +461,7 @@ export const handleClick = (
     return;
   }
 
-  lastClickTime = now;
+  gesture.lastClick = now;
 
   const postSingleClick = () => {
     // Native captured-turn recognition is delivered through postMessage and
@@ -447,7 +470,7 @@ export const handleClick = (
     const lateLayeredClaim = layeredTurnTouchClaims.get(bookKey);
     if (lateLayeredClaim?.claimed && lateLayeredClaim.ended) {
       clearLayeredTurnTouchClaim(bookKey);
-      if (lastClickTime === now) lastClickTime = 0;
+      if (gesture.lastClick === now) gesture.lastClick = 0;
       return;
     }
     const element = event.target as HTMLElement | null;
@@ -489,12 +512,12 @@ export const handleClick = (
     // if the mouse button is still held, a drag is in progress (e.g. a
     // double-click-and-drag selection); sending a single click here would turn
     // the page mid-selection (#4524).
-    if (isMouseDown) {
+    if (gesture.down || gesture.press !== press || selectionGesture) {
       return;
     }
 
     // if long hold is detected, we don't want to send single click event
-    if (!longHoldTimeout) {
+    if (longHold) {
       return;
     }
 
@@ -534,7 +557,7 @@ export const handleClick = (
   };
   if (!doubleClickDisabled.current) {
     setTimeout(() => {
-      if (Date.now() - lastClickTime >= DOUBLE_CLICK_INTERVAL_THRESHOLD_MS) {
+      if (Date.now() - gesture.lastClick >= DOUBLE_CLICK_INTERVAL_THRESHOLD_MS) {
         postSingleClick();
       }
     }, DOUBLE_CLICK_INTERVAL_THRESHOLD_MS);

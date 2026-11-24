@@ -5,12 +5,10 @@ import { getAppName, isPWA, isTauriAppPlatform, isWebAppPlatform } from '@/servi
 import { BOOK_IDS_SEPARATOR } from '@/services/constants';
 import { AppService } from '@/types/system';
 
-let readerWindowsCount = 0;
-const createReaderWindow = (appService: AppService, url: string) => {
-  const currentWindow = getCurrentWindow();
-  const label = currentWindow.label;
-  const newLabelPrefix = label === 'main' ? 'reader' : label;
-  const win = new WebviewWindow(`${newLabelPrefix}-${readerWindowsCount++}`, {
+const createReaderWindow = (appService: AppService, url: string, onError?: () => void) => {
+  // All secondary reader/library WebViews share the reader-* native capabilities.
+  // A per-WebView counter collides after a reload while its older windows live on.
+  const win = new WebviewWindow(`reader-${crypto.randomUUID()}`, {
     url,
     width: 800,
     height: 600,
@@ -33,6 +31,7 @@ const createReaderWindow = (appService: AppService, url: string) => {
   });
   win.once('tauri://error', (e) => {
     console.error('error creating window', e);
+    onError?.();
   });
 };
 
@@ -60,11 +59,19 @@ export const showLibraryWindow = (
   createReaderWindow(appService, url);
 };
 
-// Bring the main library window back when a reader window asks to "go to library".
+// A deliberate library visit must bypass cold-start file handling and book restoration.
+const browseLibraryURL = '/library?intent=browse';
+export const isLibraryBrowseRequest = (params: URLSearchParams) =>
+  params.get('intent') === 'browse';
+
+export const openLibraryForBrowsing = (appService: AppService, onError: () => void) => {
+  createReaderWindow(appService, browseLibraryURL, onError);
+};
+
+// Restore the main window for OS document handling or empty-reader recovery.
 // If main was hidden (macOS close-to-hide) we re-show it. If it was destroyed
 // (Windows/Linux default close), we recreate a window with the same 'main'
-// label so the existing emitTo('main', 'close-reader-window', ...) wiring
-// continues to work.
+// label so it can resume ownership of OS file-open events.
 export const ensureMainLibraryWindow = async (appService: AppService) => {
   const existing = await WebviewWindow.getByLabel('main');
   if (existing) {

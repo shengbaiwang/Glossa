@@ -19,8 +19,11 @@ it.each([
   }
 });
 
-it('rejects repeated coverage IDs and forged inventory sources without coercing them', () => {
+it('accepts repeated coverage IDs when all sources are present and rejects missing or forged IDs', () => {
   const sources = [{ sourceId: 'm1' }, { sourceId: 'm2' }];
+  expect(
+    readMapInventory(JSON.stringify({ coveredSourceIds: ['m1', 'm1', 'm2'], points: [] }), sources),
+  ).toEqual([]);
   expect(() =>
     readMapInventory(JSON.stringify({ coveredSourceIds: ['m1', 'm1'], points: [] }), sources),
   ).toThrow(expect.objectContaining({ diagnostic: expect.objectContaining({ kind: 'coverage' }) }));

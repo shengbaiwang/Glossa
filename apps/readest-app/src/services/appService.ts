@@ -30,6 +30,7 @@ import { getLibraryFilename, getLibraryBackupFilename } from '@/utils/book';
 
 import { getOSPlatform } from '@/utils/misc';
 import { isStoragePermissionError, requestStoragePermission } from '@/utils/permission';
+import { hasGlossaSyncConfig } from '@/glossa/sync/config';
 import { ProgressHandler } from '@/utils/transfer';
 import { CustomTextureInfo } from '@/styles/textures';
 import { CustomFont, CustomFontInfo } from '@/styles/fonts';
@@ -412,6 +413,8 @@ export abstract class BaseAppService implements AppService {
   }
 
   async deleteBook(book: Book, deleteAction: DeleteAction): Promise<void> {
+    if (book.glossaCloud && deleteAction === 'local')
+      throw new Error('cloud_recovery_check_required');
     return CloudSvc.deleteBook(this.fs, book, deleteAction);
   }
 
@@ -483,6 +486,11 @@ export abstract class BaseAppService implements AppService {
   }
 
   async uploadBook(book: Book, onProgress?: ProgressHandler): Promise<void> {
+    if (hasGlossaSyncConfig() || book.glossaCloud) {
+      const { uploadGlossaBook } = await import('@/glossa/sync/uploadBook');
+      const { withBookInUse } = await import('@/glossa/sync/bookUse');
+      return withBookInUse(book.hash, () => uploadGlossaBook(this, this.fs, book));
+    }
     return CloudSvc.uploadBook(this.fs, this.resolveFilePath.bind(this), book, onProgress);
   }
 
@@ -504,6 +512,12 @@ export abstract class BaseAppService implements AppService {
     redownload = false,
     onProgress?: ProgressHandler,
   ): Promise<void> {
+    if (hasGlossaSyncConfig() || book.glossaCloud) {
+      if (onlyCover) throw new Error('cloud_cover_unavailable');
+      const { downloadGlossaBook } = await import('@/glossa/sync/downloadBook');
+      const { withBookInUse } = await import('@/glossa/sync/bookUse');
+      return withBookInUse(book.hash, () => downloadGlossaBook(this.fs, this.appPlatform, book));
+    }
     return CloudSvc.downloadBook(
       this,
       this.fs,
@@ -538,10 +552,22 @@ export abstract class BaseAppService implements AppService {
   }
 
   async loadBookContent(book: Book): Promise<BookContent> {
-    return BookSvc.loadBookContent(this.fs, book);
+    if (!book.glossaDiscovery) return BookSvc.loadBookContent(this.fs, book);
+    const { requireCloudRowOwner } = await import('@/glossa/sync/shelfScope');
+    await requireCloudRowOwner(book);
+    const content = await BookSvc.loadBookContent(this.fs, book);
+    try {
+      await requireCloudRowOwner(book);
+      return content;
+    } catch (error) {
+      await (content.file as File & { close?: () => Promise<void> }).close?.();
+      throw error;
+    }
   }
 
   async resolveNativeBookFilePath(book: Book): Promise<string | null> {
+    if (book.glossaDiscovery)
+      await (await import('@/glossa/sync/shelfScope')).requireCloudRowOwner(book);
     return BookSvc.resolveNativeBookFilePath(this.fs, this.resolveFilePath.bind(this), book);
   }
 
@@ -577,9 +603,24 @@ export abstract class BaseAppService implements AppService {
     return saveFeedsToDisk(this.fs, feeds);
   }
 
+  async discoverCloudBooks(subject: string) {
+    this.prepareLibraryRepository();
+    const { discoverCloudBooks } = await import('@/glossa/sync/discovery');
+    return discoverCloudBooks(this, this.fs, subject);
+  }
+
   async loadLibraryBooks(hashes?: string[]): Promise<Book[]> {
     this.prepareLibraryRepository();
-    return LibrarySvc.loadLibraryBooks(this.fs, this.generateCoverImageUrl.bind(this), hashes);
+    const rows = await LibrarySvc.loadLibraryBooks(
+      this.fs,
+      this.generateCoverImageUrl.bind(this),
+      hashes,
+    );
+    if (!rows.some((row) => row.glossaDiscovery)) return rows;
+    const { visibleCloudRow } = await import('@/glossa/sync/shelfScope');
+    const { getUserID } = await import('@/utils/access');
+    const subject = await getUserID();
+    return rows.filter((row) => visibleCloudRow(row, subject));
   }
 
   // Prompt for storage permission at most once per session (see saveLibraryBooks).

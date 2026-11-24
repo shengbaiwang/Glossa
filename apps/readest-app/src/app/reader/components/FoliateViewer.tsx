@@ -87,6 +87,7 @@ import AutoscrollIndicator from './AutoscrollIndicator';
 import AutoScrollControl from './AutoScrollControl';
 import AutoScrollSpeedOverlay from './AutoScrollSpeedOverlay';
 import Spinner from '@/components/Spinner';
+import CloudHeadPreview from './CloudHeadPreview';
 
 import ImageViewer from './ImageViewer';
 import TableViewer from './TableViewer';
@@ -439,10 +440,32 @@ const FoliateViewer: React.FC<{
         detail.doc.addEventListener('click', handleClickCapture.bind(null, bookKey), {
           capture: true,
         });
-        detail.doc.addEventListener(
-          'click',
-          handleClick.bind(null, bookKey, doubleClickDisabled, !!bookData?.isFixedLayout),
-        );
+        const doc = detail.doc;
+        const isPDF = !!bookData?.bookDoc?.getPDFAnnotationRects;
+        const hasSelection = () =>
+          !!doc.getSelection()?.toString() || !!viewRef.current?.getPDFSelection?.()?.length;
+        let startedWithSelection = false;
+        if (isPDF) {
+          // Sample before the iframe clears its old range on pointerdown. The click
+          // which dismisses or commits a selection must never become a page turn.
+          doc.defaultView?.addEventListener(
+            'pointerdown',
+            () => {
+              startedWithSelection = hasSelection();
+            },
+            true,
+          );
+        }
+        doc.addEventListener('click', (event: MouseEvent) => {
+          handleClick(
+            bookKey,
+            doubleClickDisabled,
+            !!bookData?.isFixedLayout,
+            event,
+            isPDF && (startedWithSelection || hasSelection()),
+            detail.index,
+          );
+        });
         detail.doc.addEventListener('wheel', handleWheel.bind(null, bookKey));
         detail.doc.addEventListener('touchstart', handleTouchStart.bind(null, bookKey));
         detail.doc.addEventListener('touchmove', handleTouchMove.bind(null, bookKey), {
@@ -1043,7 +1066,9 @@ const FoliateViewer: React.FC<{
 
       {((!docLoaded.current && loading) || navigating || viewState?.loading) && (
         <div className='absolute left-0 top-0 z-10 flex h-full w-full items-center justify-center'>
-          <Spinner loading={true} />
+          <CloudHeadPreview bookKey={bookKey}>
+            <Spinner loading={true} />
+          </CloudHeadPreview>
         </div>
       )}
     </>

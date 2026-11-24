@@ -7,7 +7,6 @@ beforeEach(() => {
     sideBarBookKey: null,
     sideBarWidth: '',
     isSideBarVisible: false,
-    isSideBarPinned: false,
     searchNavStates: {},
     booknotesNavStates: {},
     searchStatuses: {},
@@ -29,19 +28,6 @@ describe('sidebarStore', () => {
     });
   });
 
-  describe('toggleSideBarPin', () => {
-    test('toggles pin from false to true', () => {
-      useSidebarStore.getState().toggleSideBarPin();
-      expect(useSidebarStore.getState().isSideBarPinned).toBe(true);
-    });
-
-    test('toggles pin from true to false', () => {
-      useSidebarStore.getState().setSideBarPin(true);
-      useSidebarStore.getState().toggleSideBarPin();
-      expect(useSidebarStore.getState().isSideBarPinned).toBe(false);
-    });
-  });
-
   describe('setSideBarVisible', () => {
     test('sets visibility to true', () => {
       useSidebarStore.getState().setSideBarVisible(true);
@@ -52,19 +38,6 @@ describe('sidebarStore', () => {
       useSidebarStore.getState().setSideBarVisible(true);
       useSidebarStore.getState().setSideBarVisible(false);
       expect(useSidebarStore.getState().isSideBarVisible).toBe(false);
-    });
-  });
-
-  describe('setSideBarPin', () => {
-    test('sets pinned to true', () => {
-      useSidebarStore.getState().setSideBarPin(true);
-      expect(useSidebarStore.getState().isSideBarPinned).toBe(true);
-    });
-
-    test('sets pinned to false', () => {
-      useSidebarStore.getState().setSideBarPin(true);
-      useSidebarStore.getState().setSideBarPin(false);
-      expect(useSidebarStore.getState().isSideBarPinned).toBe(false);
     });
   });
 

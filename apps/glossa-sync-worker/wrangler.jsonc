@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "glossa-sync-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-07",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "glossa-sync",
+      "database_id": "00000000-0000-4000-8000-000000000001",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "OBJECTS",
+      "bucket_name": "glossa-sync-objects"
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "*/10 * * * *",
+      "3 * * * *",
+      "6 * * * *"
+    ]
+  }
+}

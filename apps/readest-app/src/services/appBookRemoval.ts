@@ -1,4 +1,4 @@
-import type { AppService } from '@/types/system';
+import type { AppService, BaseDir } from '@/types/system';
 import type { Book } from '@/types/book';
 import {
   prepareRemoval,
@@ -46,7 +46,7 @@ export function removalFeedback(
 
 export const bookRemovalIO = (app: AppService) => {
   const io = {
-    getPrefix: () => app.resolveFilePath('', 'Books'),
+    getPrefix: (base: BaseDir) => app.resolveFilePath('', base),
     exists: app.exists?.bind(app),
     readFile: app.readFile.bind(app),
     writeFile: app.writeFile.bind(app),
@@ -54,6 +54,15 @@ export const bookRemovalIO = (app: AppService) => {
   inheritLibraryDatabase(app, io);
   return io;
 };
+export const prepareLocalRelease =
+  (app: AppService) => async (book: Book, signal?: AbortSignal) => {
+    const { prepareCloudRelease } = await import('@/glossa/sync/dehydrateBook');
+    const release = await prepareCloudRelease(app, book, signal);
+    return async (latest: Book) => {
+      const { withBookDataWrite } = await import('./bookDataLifecycle');
+      await withBookDataWrite(latest.hash, latest.removal?.revision ?? 0, () => release(latest));
+    };
+  };
 export const cleanRemovedBook =
   (app: AppService) => async (book: Book, mode: 'purge' | 'local') => {
     if (mode === 'purge') {
@@ -66,6 +75,8 @@ export const cleanRemovedBook =
         }
         await app.deleteBook(book, mode);
       });
+    } else if (book.glossaCloud || book.localRemoval?.cloudScope) {
+      throw new Error('Cloud recovery must be verified before committing local removal.');
     } else {
       const [{ withBookDataWrite }, { clearVerifiedBookDownload }] = await Promise.all([
         import('./bookDataLifecycle'),
@@ -86,6 +97,7 @@ export async function removeAppBooks(
     signal?: AbortSignal;
     onProgress?: (result: RemovalResult) => void;
     allowConflict?: boolean;
+    releaseAfterDays?: number;
   } = {},
 ) {
   const io = bookRemovalIO(app);
@@ -95,10 +107,15 @@ export async function removeAppBooks(
     mode,
     {
       cloud: options.cloud,
+      releaseAfterDays: options.releaseAfterDays,
       cloudTargets: options.cloudTargets,
       allowConflict: options.allowConflict,
       expected: Object.fromEntries(books.map((b) => [b.hash, bookRemovalVersion(b)])),
     },
   );
-  return runRemoval(io, job.id, { ...options, clean: cleanRemovedBook(app) });
+  return runRemoval(io, job.id, {
+    ...options,
+    clean: cleanRemovedBook(app),
+    prepareLocal: prepareLocalRelease(app),
+  });
 }

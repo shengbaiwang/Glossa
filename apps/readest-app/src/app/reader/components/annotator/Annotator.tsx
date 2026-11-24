@@ -287,6 +287,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     handleTouchStart,
     handleTouchMove,
     handleTouchEnd,
+    handleTouchCancel,
     handleMouseDown,
     handlePointerDown,
     handlePointerMove,
@@ -350,6 +351,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
     detail.doc?.addEventListener('touchmove', handleTouchmove, opts);
     // Bound to the section so a selectionchange deferred during the drag can
     // be processed (and the popup shown once) when the gesture ends.
+    detail.doc?.addEventListener('touchcancel', handleTouchCancel, opts);
     detail.doc?.addEventListener('touchend', handleTouchEnd.bind(null, doc, index), opts);
     // Re-arm the instant quick action at the start of each gesture. Android does
     // this via the native-touch touchstart above; iOS/desktop have no such path,
@@ -649,7 +651,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
       if (!data || data.bookKey !== bookKey || data.type !== 'iframe-double-click') return;
       const renderer = view?.renderer;
       const contents = renderer?.getContents?.() ?? [];
-      const content = contents.find((c) => c.index === renderer?.primaryIndex) ?? contents[0];
+      const content = contents.find((c) => c.index === data.sectionIndex);
       const doc = content?.doc;
       const index = content?.index;
       if (!doc || index === undefined) return;
@@ -683,9 +685,10 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
         repositionPopups();
       }
     };
-    view.renderer.addEventListener('scroll', onScroll);
+    const renderer = view.renderer;
+    renderer.addEventListener('scroll', onScroll);
     return () => {
-      view.renderer.removeEventListener('scroll', onScroll);
+      renderer.removeEventListener('scroll', onScroll);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookKey, showingPopup, repositionPopups]);
@@ -746,25 +749,22 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
 
     let cancelled = false;
     let scheduledHandle: ReturnType<typeof setTimeout> | null = null;
-    let pendingStabilizedView: FoliateView | null = null;
+    let pendingStabilizedRenderer: FoliateView['renderer'] | null = null;
     let pendingStabilizedHandler: (() => void) | null = null;
 
     const detachStabilized = () => {
-      if (pendingStabilizedView && pendingStabilizedHandler) {
+      if (pendingStabilizedRenderer && pendingStabilizedHandler) {
         try {
-          pendingStabilizedView.renderer?.removeEventListener(
-            'stabilized',
-            pendingStabilizedHandler,
-          );
+          pendingStabilizedRenderer.removeEventListener('stabilized', pendingStabilizedHandler);
         } catch {
           // ignore — renderer may be torn down already.
         }
       }
-      pendingStabilizedView = null;
+      pendingStabilizedRenderer = null;
       pendingStabilizedHandler = null;
     };
 
-    let touched = false;
+    const pagesByCFI = new Map<string, number>();
     let i = 0;
     const tick = async () => {
       if (cancelled) return;
@@ -780,8 +780,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
         try {
           const progress = await view.getCFIProgress(annotation.cfi);
           if (!cancelled && progress) {
-            annotation.page = progress.location.current + 1;
-            touched = true;
+            pagesByCFI.set(annotation.cfi, progress.location.current + 1);
           }
         } catch (err) {
           console.warn('Failed to back-fill annotation page', err);
@@ -790,8 +789,16 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
       if (cancelled) return;
       if (i < pending.length) {
         scheduledHandle = setTimeout(tick, TICK_GAP_MS);
-      } else if (touched) {
-        const updatedConfig = updateBooknotes(bookKey, allAnnotations, false);
+      } else if (pagesByCFI.size) {
+        // Users may add, edit or delete notes while the backfill is running.
+        const latest = getConfig(bookKey)?.booknotes;
+        if (!latest) return;
+        const notes = latest.map((note) => {
+          const page = pagesByCFI.get(note.cfi);
+          return page && !note.deletedAt && !note.page ? { ...note, page } : note;
+        });
+        if (notes.every((note, index) => note === latest[index])) return;
+        const updatedConfig = updateBooknotes(bookKey, notes, false);
         if (updatedConfig) {
           saveConfig(envConfig, bookKey, updatedConfig, settings);
         }
@@ -815,9 +822,10 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets }> = ({
       const onStabilized = () => {
         if (cancelled) return;
         detachStabilized();
+        if (scheduledHandle !== null) clearTimeout(scheduledHandle);
         startGrace();
       };
-      pendingStabilizedView = view!;
+      pendingStabilizedRenderer = renderer;
       pendingStabilizedHandler = onStabilized;
       renderer.addEventListener('stabilized', onStabilized, {
         once: true,

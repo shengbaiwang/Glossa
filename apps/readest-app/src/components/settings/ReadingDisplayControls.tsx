@@ -1,3 +1,6 @@
+import { formatShortcutBinding } from '@/helpers/shortcuts';
+import { isMacPlatform } from '@/services/environment';
+import { useShortcutConfig } from '@/hooks/useShortcuts';
 import React, { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import {
@@ -40,6 +43,7 @@ const ReadingDisplayControls: React.FC<{
   onRegisterReset: (resetFn: () => void) => void;
 }> = ({ bookKey, onRegisterReset }) => {
   const _ = useTranslation();
+  const shortcuts = useShortcutConfig();
   const iconSize = useResponsiveSize(16);
   const { envConfig, appService } = useEnv();
   const { getBookData } = useBookDataStore();
@@ -405,7 +409,9 @@ const ReadingDisplayControls: React.FC<{
       {!bookData.isFixedLayout && (
         <MenuItem
           label={_('Scrolled Mode')}
-          shortcut='Shift+J'
+          shortcut={formatShortcutBinding('onToggleScrollMode', shortcuts, isMacPlatform()).join(
+            ' / ',
+          )}
           Icon={<MoveVertical size={iconSize} />}
           toggled={isScrolledMode}
           onClick={toggleScrolledMode}

@@ -22,7 +22,21 @@ import type { Book } from '@/types/book';
  * probe gate, can actually be exercised.
  */
 
+const previewIO = vi.hoisted(() => {
+  const headPreview = vi.fn(async () => undefined);
+  const close = vi.fn(async () => {});
+  return {
+    cached: vi.fn(async (): Promise<unknown> => undefined),
+    open: vi.fn(async () => ({ headPreview, close })),
+    headPreview,
+    close,
+  };
+});
+vi.mock('@/glossa/sync/previewCache', () => ({ cachedHeadPreview: previewIO.cached }));
+vi.mock('@/glossa/sync/cloudBook', () => ({ openCloudBook: previewIO.open }));
+
 const appService = vi.hoisted(() => ({
+  discoverCloudBooks: vi.fn(async (_subject: string) => 1),
   saveLibraryBooks: vi.fn(async () => {}),
   generateCoverImageUrl: vi.fn(async () => 'blob:cover'),
   downloadBookCovers: vi.fn(async () => {}),
@@ -41,6 +55,7 @@ const syncState = vi.hoisted(() => ({
 // Per-test-settable routing inputs, read by the mocked cloudSyncProvider
 // functions below instead of being hardcoded to one scenario.
 const routing = vi.hoisted(() => ({
+  glossa: false,
   readestEnabled: true,
   backends: [] as ('webdav' | 'gdrive' | 's3' | 'onedrive')[],
 }));
@@ -79,6 +94,10 @@ vi.mock('@/hooks/useSync', () => ({
   useSync: () => syncState,
 }));
 
+vi.mock('@/glossa/sync/config', () => ({
+  hasGlossaSyncConfig: () => routing.glossa,
+  syncOrigin: () => (routing.glossa ? 'https://sync.example.test' : null),
+}));
 vi.mock('@/services/sync/cloudSyncProvider', () => ({
   isReadestCloudEnabled: () => routing.readestEnabled,
   getActiveFileSyncBackends: () => routing.backends,
@@ -101,6 +120,7 @@ beforeEach(() => {
   syncState.syncedBooks = null;
   syncState.lastSyncedAtBooks = 0;
   routing.readestEnabled = true;
+  routing.glossa = false;
   routing.backends = [];
   useLibraryStore.setState({ library: [], libraryLoaded: true, isSyncing: false });
 });
@@ -115,6 +135,65 @@ afterEach(() => {
 });
 
 describe('useBooksSync pullLibrary routing (issue #5062)', () => {
+  it('prewarms only a sustained single selection and reuses its cached preview', async () => {
+    routing.glossa = true;
+    const row = {
+      hash: 'preview',
+      format: 'PDF',
+      glossaDiscovery: { available: true },
+      glossaCloud: { origin: 'https://test.invalid', subject: 'user-1' },
+    } as Book;
+    useLibraryStore.setState({
+      library: [row],
+      hashIndex: new Map([[row.hash, 0]]),
+      selectedBooks: new Set(),
+    });
+    vi.stubGlobal('caches', {});
+    vi.useFakeTimers();
+    const { unmount } = renderHook(() => useBooksSync());
+    const select = (ids: string[]) => act(() => useLibraryStore.getState().setSelectedBooks(ids));
+    const elapse = (ms: number) =>
+      act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    try {
+      select([row.hash]);
+      await elapse(100);
+      select([row.hash, 'other']);
+      await elapse(500);
+      expect(previewIO.open).not.toHaveBeenCalled();
+      select([row.hash]);
+      await elapse(450);
+      await vi.waitFor(() => expect(previewIO.close).toHaveBeenCalledOnce());
+      expect(previewIO.headPreview).toHaveBeenCalledWith('pdf');
+      select([]);
+      previewIO.cached.mockResolvedValueOnce({ format: 'pdf' });
+      select([row.hash]);
+      await elapse(450);
+      expect(previewIO.cached).toHaveBeenCalledTimes(2);
+      expect(previewIO.open).toHaveBeenCalledOnce();
+    } finally {
+      unmount();
+      useLibraryStore.setState({ selectedBooks: new Set(), hashIndex: new Map() });
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+  it('opens only the Glossa catalog on sign-in, manual refresh and reconnect', async () => {
+    routing.glossa = true;
+    routing.backends = ['s3'];
+    const { result } = renderHook(() => useBooksSync());
+    await waitFor(() => expect(appService.discoverCloudBooks).toHaveBeenCalledWith('user-1'));
+    await act(() => result.current.pullLibrary(true, true));
+    expect(appService.discoverCloudBooks).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+    });
+    expect(appService.discoverCloudBooks).toHaveBeenCalledTimes(3);
+    expect(runFileLibrarySyncPass).not.toHaveBeenCalled();
+    expect(syncState.syncBooks).not.toHaveBeenCalled();
+  });
+
   it('runs both the file pass and the native pull when both providers are enabled', async () => {
     routing.readestEnabled = true;
     routing.backends = ['gdrive'];

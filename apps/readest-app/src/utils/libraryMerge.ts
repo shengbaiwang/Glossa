@@ -4,6 +4,10 @@ import { protectBookRemoval } from '@/services/bookRemovalState';
 /** Preserve independently newer personal edits when a reader saves an old row. */
 export function mergeLibraryBook(current: Book, incoming: Book): Book {
   const result: Book = { ...current, ...incoming };
+  if (current.glossaCloud && !incoming.glossaCloud) {
+    result.glossaCloud = current.glossaCloud;
+    result.uploadedAt = current.uploadedAt;
+  }
   if (current.updatedAt > incoming.updatedAt) {
     result.updatedAt = current.updatedAt;
     result.progress = current.progress;
@@ -51,5 +55,24 @@ export function mergeLibraryBook(current: Book, incoming: Book): Book {
   result.readingSpaces = spaces.readingSpaces;
   result.readingSpacesUpdatedAt = spaces.readingSpacesUpdatedAt;
   result.zoteroSource = current.zoteroSource ?? incoming.zoteroSource;
+  // Ordinary saves can carry an older projection after a pull. Preserve its
+  // newest binding and server defaults, including when the newer row is incoming.
+  const a = current.glossaDiscovery,
+    b = incoming.glossaDiscovery;
+  if (a || b) {
+    const newer = (a?.seq ?? -1) >= (b?.seq ?? -1) ? current : incoming;
+    const older = newer === current ? incoming : current;
+    result.glossaCloud = newer.glossaCloud;
+    result.glossaDiscovery = newer.glossaDiscovery;
+    if (a?.seq !== b?.seq) {
+      for (const field of ['title', 'author'] as const) {
+        if (older[field] === older.glossaDiscovery?.[field]) result[field] = newer[field];
+      }
+      if (older.primaryLanguage === older.glossaDiscovery?.language)
+        result.primaryLanguage = newer.primaryLanguage;
+      if (older.readingStatus === older.glossaDiscovery?.status)
+        result.readingStatus = newer.readingStatus;
+    }
+  }
   return protectBookRemoval(result, current);
 }

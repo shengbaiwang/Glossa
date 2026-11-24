@@ -205,6 +205,18 @@ const migrations: Record<SchemaType, MigrationEntry[]> = {
         );
       `,
     },
+    {
+      name: '2026112401_cloud_search_sections',
+      sql: `
+        CREATE TABLE IF NOT EXISTS cloud_search_sections (
+          scope TEXT NOT NULL, idx INTEGER NOT NULL, label TEXT NOT NULL, text TEXT NOT NULL, folded TEXT,
+          PRIMARY KEY(scope, idx)
+        );
+        CREATE TABLE IF NOT EXISTS cloud_search_meta (
+          scope TEXT PRIMARY KEY, total_sections INTEGER NOT NULL
+        );
+      `,
+    },
   ],
   reedy: [
     {

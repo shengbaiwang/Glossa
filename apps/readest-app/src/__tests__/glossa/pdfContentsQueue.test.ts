@@ -124,3 +124,23 @@ it('releases an unsuccessful document and continues the queue without destroying
   await expect(run('personal')).resolves.toEqual({ result: 'preserved' });
   expect(f.load).toHaveBeenCalledTimes(2);
 });
+
+it('continues a reported limit with a durable advance and stops if advancement stalls', async () => {
+  f.prepare
+    .mockImplementationOnce(async (_path, _document, _signal, report) => {
+      report({ canResume: true, checkpointAdvanced: true });
+      throw new Error('pdf_contents_text_limit');
+    })
+    .mockImplementationOnce(async (_path, _document, _signal, report) => {
+      report({ canResume: true, checkpointAdvanced: false });
+      throw new Error('pdf_contents_text_limit');
+    });
+  await expect(
+    prepareContents(host, book('bounded'), undefined, new AbortController().signal, {
+      ...options,
+      autoContinue: true,
+    }),
+  ).resolves.toMatchObject({ result: 'unavailable', report: { canResume: true } });
+  expect(f.prepare).toHaveBeenCalledTimes(2);
+  expect(f.open).toHaveBeenCalledOnce();
+});

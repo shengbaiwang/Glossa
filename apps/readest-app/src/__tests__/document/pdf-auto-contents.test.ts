@@ -44,6 +44,132 @@ vi.mock('@/services/pdfEnhancement', async (original) => ({
 const contents =
   'Contents\nChapter 1 Copper .... 1\nChapter 2 Amber .... 5\nChapter 3 Silver .... 9';
 
+it('uses target evidence for a known equivalent glyph without replacing unrelated words', async () => {
+  expect(
+    await preparePDFContents(
+      '/original.pdf',
+      document({
+        1: '目录\n第一节 晩间的记忆 / 5\n第二节 白昼的记录 / 9',
+        4: '第一节 晚间的记忆',
+        8: '第二节 白昼的记录',
+      }),
+    ),
+  ).toBe('generated');
+  expect(native.save.mock.calls.at(-1)![2][0].title).toBe('第一节 晚间的记忆');
+});
+
+it('uses the verified destination to restore a broken title quote without changing its words', async () => {
+  const title = '第一节 从“旧史”到“新史：知识与时代';
+  const complete = '第一节 从“旧史”到“新史”：知识与时代';
+  expect(
+    await preparePDFContents(
+      '/original.pdf',
+      document({
+        1: `Contents\n${title} .... 5\n第二节 历史与记忆 .... 9`,
+        4: complete,
+        8: '第二节 历史与记忆',
+      }),
+    ),
+  ).toBe('generated');
+  expect(native.save.mock.calls.at(-1)![2][0].title).toBe(complete);
+});
+
+it.each([
+  ' / ',
+  '/',
+  ' .... ',
+])('separates indented smaller synopses from headings with %s folios', async (separator) => {
+  const lines: OCRPage['lines'] = [
+    { text: 'Contents', x: 0.4, y: 0.1, width: 0.2, height: 0.03, endLine: true },
+  ];
+  for (const [i, title] of ['Copper', 'Amber', 'Silver'].entries()) {
+    const y = 0.23 + i * 0.22;
+    lines.push(
+      {
+        text: `${title}${separator}${5 + i * 4}`,
+        x: 0.1,
+        y,
+        width: 0.65,
+        height: 0.03,
+        endLine: true,
+      },
+      {
+        text: 'An account of everyday life and its changing institutions',
+        x: 0.22,
+        y: y + 0.05,
+        width: 0.65,
+        height: 0.019,
+        endLine: true,
+      },
+      {
+        text: 'including different ways of understanding the surviving evidence.',
+        x: 0.22,
+        y: y + 0.08,
+        width: 0.65,
+        height: 0.019,
+        endLine: true,
+      },
+    );
+    if (i === 1)
+      lines.push({
+        text: '序、地方制度的变化、集体记忆的延续 —— 关于证据的一点说明',
+        x: 0.22,
+        y: y + 0.11,
+        width: 0.46,
+        height: 0.019,
+        endLine: true,
+      });
+  }
+  const page: OCRPage = { index: 1, native: false, lines };
+  native.cache.pages = [1];
+  native.read.mockImplementation(async (_id, index) => (index === 1 ? page : null));
+  expect(
+    await preparePDFContents('/original.pdf', document({ 4: 'Copper', 8: 'Amber', 12: 'Silver' })),
+  ).toBe('generated');
+  expect(native.save.mock.calls.at(-1)![2]).toEqual([
+    { title: 'Copper', pageIndex: 4, level: 0 },
+    { title: 'Amber', pageIndex: 8, level: 0 },
+    { title: 'Silver', pageIndex: 12, level: 0 },
+  ]);
+});
+
+it.each([
+  true,
+  false,
+])('verifies a numbered heading with a terminal reference only when its small footnote exists (%s)', async (footnote) => {
+  const title = '第一节 观察与解释';
+  const lines: OCRPage['lines'] = [
+    { text: `${title}3`, x: 0.2, y: 0.58, width: 0.6, height: 0.035, endLine: true },
+    ...(footnote
+      ? [
+          {
+            text: '3【注】关于这节的原始材料与版本说明。',
+            x: 0.15,
+            y: 0.8,
+            width: 0.7,
+            height: 0.015,
+            endLine: true,
+          },
+        ]
+      : []),
+  ];
+  native.cache.pages = [4];
+  native.read.mockImplementation(async (_id, index) =>
+    index === 4 ? { index: 4, native: false, lines } : null,
+  );
+  expect(
+    await preparePDFContents(
+      '/original.pdf',
+      document({
+        1: `Contents\n${title} .... 5\n第二节 历史与记忆 .... 9`,
+        8: '第二节 历史与记忆',
+      }),
+    ),
+  ).toBe(footnote ? 'generated' : 'unavailable');
+  if (footnote) expect(native.save.mock.calls.at(-1)![2][0].title).toBe(title);
+  else expect(native.save).not.toHaveBeenCalled();
+});
+
 beforeAll(async () => {
   const { readFile } = await import('node:fs/promises');
   const { default: init } = await import('@simplecc/simplecc_wasm');
@@ -476,12 +602,13 @@ it.each([
   '辑二 山乡\n铜与琥珀 .... 6\n辑三 古装\n白银的来历 .... 11',
   '辑一 山乡\n铜与琥珀 .... 6\n辑一 古装\n白银的来历 .... 11',
   'Part I Hills\nCopper .... 6\nPart III Cities\nSilver .... 11',
-])('rejects a gap in sibling part numbers and preserves the previous outline: %s', async (table) => {
+])('keeps printed part numbering, rejecting only duplicated siblings: %s', async (table) => {
   const old = [{ title: 'Previous contents', pageIndex: 3, level: 0 }];
   native.cache.outline = old;
   native.cache.generator = 'glossa-contents-3';
   const titles = table.split('\n').map((line) => line.replace(/ \.\.\.\. \d+$/, ''));
   const reports: import('@/services/pdfAutoContents').PDFContentsReport[] = [];
+  const duplicate = table.includes('辑一 古装');
   expect(
     await preparePDFContents(
       '/original.pdf',
@@ -496,7 +623,20 @@ it.each([
       (r) => reports.push(r),
       { regenerate: true },
     ),
-  ).toBe('unavailable');
+  ).toBe(duplicate ? 'unavailable' : 'generated');
+  if (!duplicate) {
+    expect(
+      native.save.mock.calls
+        .at(-1)![2]
+        .map((entry: { pageIndex: number; level: number }) => [entry.pageIndex, entry.level]),
+    ).toEqual([
+      [4, 0],
+      [5, 1],
+      [9, 0],
+      [10, 1],
+    ]);
+    return;
+  }
   expect(native.save).not.toHaveBeenCalled();
   expect(native.cache.outline).toEqual(old);
   expect(reports.at(-1)).toMatchObject({
@@ -727,7 +867,7 @@ it.each([
   expect(await preparePDFContents('/original.pdf', doc)).toBe('generated');
   expect(
     native.start.mock.calls.some((args) => args[3] && args[2].some((index: number) => index >= 40)),
-  ).toBe(conflict);
+  ).toBe(true); // Complete coarse inventory detects later volume tables.
   expect(native.save.mock.calls.at(-1)![2]).toEqual([
     { title: 'Copper', pageIndex: 4, level: 0 },
     { title: 'Amber', pageIndex: 8, level: 0 },
@@ -760,7 +900,7 @@ it.each([
   expect(await preparePDFContents('/original.pdf', doc)).toBe('generated');
   expect(
     native.start.mock.calls.some((args) => args[3] && args[2].some((index: number) => index >= 40)),
-  ).toBe(false);
+  ).toBe(true); // Coarse scope discovery covers the file; precise OCR stays selective.
   expect(
     native.save.mock.calls.at(-1)![2].map((entry: { pageIndex: number }) => entry.pageIndex),
   ).toEqual([4, 6, 10]);
@@ -819,7 +959,7 @@ it('recalibrates an unnumbered part after front matter with a different physical
   expect(await preparePDFContents('/original.pdf', doc)).toBe('generated');
   expect(
     native.start.mock.calls.some((args) => args[3] && args[2].some((index: number) => index >= 60)),
-  ).toBe(false);
+  ).toBe(true);
   expect(
     native.save.mock.calls.at(-1)![2].map((entry: { pageIndex: number }) => entry.pageIndex),
   ).toEqual([4, 15, 17, 21]);
@@ -1312,9 +1452,11 @@ it('does not silently publish a truncated directory when the entry budget is exc
     {
       0:
         'Contents\n' +
-        Array.from({ length: 129 }, (_, i) => `Chapter ${i + 1} Original .... ${i + 2}`).join('\n'),
+        Array.from({ length: 1001 }, (_, i) => `Chapter ${i + 1} Original .... ${i + 2}`).join(
+          '\n',
+        ),
     },
-    150,
+    1200,
   );
   expect(await preparePDFContents('/original.pdf', doc)).toBe('unavailable');
   expect(native.save).not.toHaveBeenCalled();
@@ -2061,7 +2203,7 @@ it('uses coarse discovery for a late scanned table and accurate OCR only for its
   expect(await preparePDFContents('/original.pdf', doc)).toBe('generated');
   expect([...saved]).toEqual([44, 45, 50, 90]);
   expect(detected.has(44)).toBe(true);
-  expect(detected.size).toBeLessThan(120);
+  expect(detected.size).toBe(120);
   expect(native.save.mock.calls[0]![2].map((row: { pageIndex: number }) => row.pageIndex)).toEqual([
     50, 90,
   ]);
@@ -2394,7 +2536,7 @@ it('confirms a geometric TOC candidate whose coarse label is corrupted before sc
     },
   );
   expect(await preparePDFContents('/original.pdf', doc)).toBe('generated');
-  expect(detected.size).toBeLessThan(32);
+  expect(detected.size).toBe(300);
   expect(native.save.mock.calls.at(-1)![2]).toHaveLength(4);
 });
 
@@ -2421,4 +2563,623 @@ it('relocates a scanned chapter with its number above a separate interior title 
   expect(
     native.save.mock.calls.at(-1)![2].map((entry: { pageIndex: number }) => entry.pageIndex),
   ).toEqual([7, 11]);
+});
+
+it('publishes only after an independently rechecked durable checkpoint resumes', async () => {
+  const controller = new AbortController();
+  const reports: import('@/services/pdfAutoContents').PDFContentsReport[] = [];
+  let saved: unknown;
+  const checkpoint = {
+    read: async () => saved,
+    write: async (value: unknown) => {
+      saved = structuredClone(value);
+    },
+  };
+  const texts = {
+    1: contents,
+    4: 'Chapter 1 Copper',
+    8: 'Chapter 2 Amber',
+    12: 'Chapter 3 Silver',
+  };
+  await expect(
+    preparePDFContents(
+      '/original.pdf',
+      document(texts),
+      controller.signal,
+      (report) => {
+        reports.push(report);
+        if (report.canResume && report.verifiedCount === 2) controller.abort();
+      },
+      { checkpoint },
+    ),
+  ).rejects.toMatchObject({ name: 'AbortError' });
+  expect(reports.at(-1)).toMatchObject({ state: 'cancelled', canResume: true, remainingCount: 1 });
+  expect(native.save).not.toHaveBeenCalled();
+  expect(
+    await preparePDFContents('/original.pdf', document(texts), undefined, (r) => reports.push(r), {
+      checkpoint,
+    }),
+  ).toBe('generated');
+  expect(reports.some((report) => report.resumed)).toBe(true);
+  expect(native.save).toHaveBeenCalledTimes(1);
+});
+
+it('does not label an invalid extraction checkpoint as a filesystem failure', async () => {
+  const reports: import('@/services/pdfAutoContents').PDFContentsReport[] = [];
+  const write = vi.fn();
+  await expect(
+    preparePDFContents(
+      '/original.pdf',
+      document({
+        1: `Contents\n${'A'.repeat(510)}\nCopper .... 5\nAmber .... 9`,
+        4: 'Copper',
+        8: 'Amber',
+      }),
+      undefined,
+      (report) => reports.push(report),
+      {
+        checkpoint: { read: async () => null, write },
+      },
+    ),
+  ).rejects.toThrow('pdf_contents_structure_incomplete');
+  expect(reports.some((report) => report.checkpointSaveFailed)).toBe(false);
+  expect(reports.some((report) => report.checkpointValidationFailed)).toBe(true);
+  expect(native.save).not.toHaveBeenCalled();
+});
+
+it('reports a failed checkpoint write without claiming that verification can continue', async () => {
+  const reports: import('@/services/pdfAutoContents').PDFContentsReport[] = [];
+  await preparePDFContents(
+    '/original.pdf',
+    document({ 1: contents, 4: 'Chapter 1 Copper', 8: 'Chapter 2 Amber', 12: 'Unrelated heading' }),
+    undefined,
+    (report) => reports.push(report),
+    {
+      checkpoint: {
+        read: async () => null,
+        write: async () => {
+          throw new Error('file write failed');
+        },
+      },
+    },
+  );
+  expect(reports.at(-1)).toMatchObject({ checkpointSaveFailed: true, canResume: false });
+  expect(native.save).not.toHaveBeenCalled();
+});
+
+it.each([
+  'discovery',
+  'extraction',
+] as const)('resumes from the last durable %s boundary without publishing partial results', async (phase) => {
+  const first = 'Contents\nChapter 1 Copper .... 41\nChapter 2 Amber .... 45';
+  const texts = {
+    33: first,
+    34: 'Chapter 3 Silver .... 49\nChapter 4 Gold .... 53',
+    40: 'Chapter 1 Copper',
+    44: 'Chapter 2 Amber',
+    48: 'Chapter 3 Silver',
+    52: 'Chapter 4 Gold',
+  };
+  const { doc } = scan(texts, 56);
+  const controller = new AbortController();
+  let saved: unknown;
+  let resumed = false;
+  const checkpoint = {
+    read: async () => saved,
+    write: async (value: unknown) => {
+      saved = structuredClone(value);
+    },
+  };
+  await expect(
+    preparePDFContents(
+      '/original.pdf',
+      doc,
+      controller.signal,
+      (report) => {
+        const scan = (
+          saved as
+            | {
+                checks?: { scan?: { discovery: { next: number }; extraction?: { next: number } } };
+              }
+            | undefined
+        )?.checks?.scan;
+        if (
+          report.state === 'running' &&
+          report.canResume &&
+          (phase === 'discovery' ? scan?.discovery.next === 16 : scan?.extraction?.next === 34)
+        ) {
+          controller.abort();
+        }
+      },
+      { checkpoint },
+    ),
+  ).rejects.toMatchObject({ name: 'AbortError' });
+  expect(native.save).not.toHaveBeenCalled();
+  native.start.mockClear();
+  native.read.mockClear();
+  expect(
+    await preparePDFContents(
+      '/original.pdf',
+      doc,
+      undefined,
+      (r) => {
+        resumed ||= !!r.resumed;
+      },
+      {
+        checkpoint,
+      },
+    ),
+  ).toBe('generated');
+  expect(resumed).toBe(true);
+  if (phase === 'discovery') {
+    expect(native.read.mock.calls.some((call) => call[2] && call[1] < 16)).toBe(false);
+  } else {
+    expect(native.start.mock.calls.some((call) => call[2].includes(33))).toBe(false);
+  }
+  expect(native.save.mock.calls.at(-1)![2]).toEqual([
+    { title: 'Chapter 1 Copper', pageIndex: 40, level: 0 },
+    { title: 'Chapter 2 Amber', pageIndex: 44, level: 0 },
+    { title: 'Chapter 3 Silver', pageIndex: 48, level: 0 },
+    { title: 'Chapter 4 Gold', pageIndex: 52, level: 0 },
+  ]);
+});
+
+it.each([
+  false,
+  true,
+])('independently checks competing insertion offsets before publishing (both paths feasible: %s)', async (ambiguous) => {
+  const headings = ['Chapter 1 Copper', 'Chapter 2 Amber', 'Chapter 3 Silver', 'Chapter 4 Gold'];
+  const texts = {
+    1: 'Contents\n' + headings.map((heading, i) => `${heading} .... ${i * 4 + 1}`).join('\n'),
+    4: headings[0]!,
+    8: headings[1]!,
+    10: headings[1]!,
+    [ambiguous ? 14 : 12]: headings[2]!,
+    18: headings[3]!,
+  };
+  const { doc, saved } = scan(texts, 23);
+  // Only the original offset and one independently observed post-insert
+  // destination are initially known. The duplicate must be nominated anew.
+  [1, 4, 8, ambiguous ? 14 : 12, 18].forEach((index) => saved.add(index));
+  native.cache.pages = [...saved];
+  expect(await preparePDFContents('/original.pdf', doc)).toBe(
+    ambiguous ? 'unavailable' : 'generated',
+  );
+  expect(saved.has(10)).toBe(true);
+  if (ambiguous) expect(native.save).not.toHaveBeenCalled();
+  else {
+    expect(native.save.mock.calls.at(-1)![2]).toEqual(
+      [4, 8, 12, 18].map((pageIndex, i) => ({ pageIndex, title: headings[i], level: 0 })),
+    );
+  }
+});
+
+it('nominates an appendix using the independently verified offset of continuous printed pagination', async () => {
+  const { doc, saved, detected } = scan(
+    {
+      1: 'Contents\nChapter 1 Copper .... 1\nChapter 2 Amber .... 5\nAppendix: Tables .... 56',
+      6: 'Chapter 1 Copper',
+      10: 'Chapter 2 Amber',
+      61: 'Appendix: Tables',
+    },
+    68,
+  );
+  [1, 6, 10].forEach((index) => saved.add(index));
+  native.cache.pages = [...saved];
+  expect(await preparePDFContents('/original.pdf', doc)).toBe('generated');
+  expect(
+    native.save.mock.calls.at(-1)![2].map((entry: { pageIndex: number }) => entry.pageIndex),
+  ).toEqual([6, 10, 61]);
+  expect(saved.has(55)).toBe(false);
+  expect(detected.size).toBe(65); // Every image-only page is inventoried, without fine OCR.
+});
+
+it.each([
+  0, 900, 12000,
+])('maps printed folios independently of file length (shift %i)', async (shift) => {
+  const doc = document({
+    1: `目录\n第五编 山川与制度 / ${shift + 1}\n第六编 城市与知识 / ${shift + 5}`,
+    4: '第五编 山川与制度',
+    8: '第六编 城市与知识',
+  });
+  expect(await preparePDFContents('/volume.pdf', doc)).toBe('generated');
+  expect(native.save.mock.calls.at(-1)![2]).toEqual([
+    { title: '第五编 山川与制度', pageIndex: 4, level: 0 },
+    { title: '第六编 城市与知识', pageIndex: 8, level: 0 },
+  ]);
+});
+
+it('recovers the beginning before a labelled contents continuation', async () => {
+  const doc = document(
+    {
+      1: 'Chapter 5 Copper / 901\nChapter 6 Amber / 905',
+      2: 'Contents 2\nChapter 7 Silver / 909\nChapter 8 Gold / 913',
+      4: 'Chapter 5 Copper',
+      8: 'Chapter 6 Amber',
+      12: 'Chapter 7 Silver',
+      16: 'Chapter 8 Gold',
+    },
+    20,
+  );
+  expect(await preparePDFContents('/volume.pdf', doc)).toBe('generated');
+  expect(
+    native.save.mock.calls.at(-1)![2].map((row: { pageIndex: number }) => row.pageIndex),
+  ).toEqual([4, 8, 12, 16]);
+});
+
+it('does not drop an unresolved local entry as another volume', async () => {
+  const doc = document({
+    1: '目录\n第五编 山川与制度 / 901\n第六编 城市与知识 / 905\n第七编 地方与社会 / 909',
+    4: '第五编 山川与制度',
+    8: '第六编 城市与知识',
+  });
+  expect(await preparePDFContents('/volume.pdf', doc)).toBe('unavailable');
+  expect(native.save).not.toHaveBeenCalled();
+});
+
+it('starts a separately numbered part after a revision notice with the same printed folio', async () => {
+  const doc = document(
+    {
+      1: '目录\n修订说明 / 1\n导论（上） 思想史的写法 / 1\n第一节 铜的历史 / 3\n第二节 银的历史 / 7',
+      4: '修订说明',
+      8: '导论（上） 思想史的写法',
+      10: '第一节 铜的历史',
+      14: '第二节 银的历史',
+    },
+    18,
+  );
+  expect(await preparePDFContents('/original.pdf', doc)).toBe('generated');
+  expect(
+    native.save.mock.calls.at(-1)![2].map((row: { pageIndex: number }) => row.pageIndex),
+  ).toEqual([4, 8, 10, 14]);
+});
+it('excludes an ornament misread as a letter only with independent repeating folio headers', async () => {
+  const texts = {
+    1: '目录\n第一节 铜的历史 / 5\n第二节 银的历史 / 9',
+    2: '10 吟》 文化的历史与写法\n第三节 金的历史 / 13',
+    3: '12 文化的历史与写法\n这里是正文段落。',
+    4: '第一节 铜的历史',
+    8: '第二节 银的历史',
+    12: '第三节 金的历史',
+  };
+  const doc = document(texts);
+  doc.getPDFContentsLayout = async (index) =>
+    [2, 3].includes(index)
+      ? (texts[index as keyof typeof texts] ?? '')
+          .split('\n')
+          .map((text, i) => ({ text, x: 0.05, y: i === 0 ? 0.05 : 0.3, width: 0.45, height: 0.02 }))
+      : [];
+  expect(await preparePDFContents('/original.pdf', doc)).toBe('generated');
+  expect(native.save.mock.calls.at(-1)![2]).toHaveLength(3);
+});
+
+it('keeps final back matter at the root even when its typography is smaller than a section', async () => {
+  const texts = {
+    1: '目录\n第五编 铜的历史 / 701\n第一节 铜的流通 / 705\n尾 声 知识与世界 / 709\n主要人名索引 / 713\n2000 年第二卷《后记》 / 717',
+    4: '第五编 铜的历史',
+    8: '第一节 铜的流通',
+    12: '尾声 知识与世界',
+    16: '主要人名索引',
+    20: '2000 年第二卷《后记》',
+  };
+  const doc = document(texts, 24);
+  doc.getPDFContentsLayout = async (index) =>
+    index === 1
+      ? texts[1].split('\n').map((text, i) => ({
+          text,
+          x: 0.1,
+          y: 0.1 + i * 0.08,
+          width: 0.7,
+          height: i > 2 ? 0.015 : 0.025,
+        }))
+      : [];
+  expect(await preparePDFContents('/volume.pdf', doc)).toBe('generated');
+  expect(native.save.mock.calls.at(-1)![2].map((row: { level: number }) => row.level)).toEqual([
+    0, 1, 0, 0, 0,
+  ]);
+});
+
+it('accepts long files and more than 128 completely verified entries', async () => {
+  const texts: Record<number, string> = { 1: 'Contents' };
+  for (let i = 0; i < 140; i++) {
+    const title = `Chapter ${i + 1} Mineral ${i + 1}`;
+    texts[1] += `\n${title} .... ${1101 + i}`;
+    texts[1100 + i] = title;
+  }
+  expect(await preparePDFContents('/long.pdf', document(texts, 1250))).toBe('generated');
+  expect(native.save.mock.calls.at(-1)![2]).toHaveLength(140);
+}, 15000);
+
+it('uses local detailed contents instead of a separate whole-work synopsis', async () => {
+  const doc = document({
+    0: '总目录\n第一编 外卷 .... 1\n第五编 山川 .... 901\n第六编 城市 .... 905',
+    1: '第二卷目录\n第五编 山川 .... 901\n第六编 城市 .... 905',
+    4: '第五编 山川',
+    8: '第六编 城市',
+  });
+  expect(await preparePDFContents('/volume.pdf', doc)).toBe('generated');
+  expect(native.save.mock.calls.at(-1)![2].map((row: { title: string }) => row.title)).toEqual([
+    '第五编 山川',
+    '第六编 城市',
+  ]);
+});
+
+it('combines separate contents tables in a bound volume without collapsing repeated titles', async () => {
+  const doc = document(
+    {
+      1: '第一卷目录\n第一章 铜与制度 .... 1\n第二章 琥珀与贸易 .... 5',
+      4: '第一章 铜与制度',
+      8: '第二章 琥珀与贸易',
+      10: '第二卷目录\n第一章 铜与制度 .... 1\n第二章 琥珀与贸易 .... 5',
+      13: '第一章 铜与制度',
+      17: '第二章 琥珀与贸易',
+    },
+    20,
+  );
+  expect(await preparePDFContents('/bound.pdf', doc)).toBe('generated');
+  expect(
+    native.save.mock.calls.at(-1)![2].map((row: { pageIndex: number }) => row.pageIndex),
+  ).toEqual([4, 8, 13, 17]);
+});
+
+it('keeps wrapped headings and excludes smaller synopsis paragraphs in their continuation column', async () => {
+  const lines: OCRPage['lines'] = [
+    { text: '目录', x: 0.7, y: 0.05, width: 0.1, height: 0.02, endLine: true },
+  ];
+  for (const [i, title] of ['第一节 铜的历史：', '第二节 银的历史：'].entries()) {
+    const y = 0.15 + i * 0.35;
+    lines.push(
+      { text: title, x: 0.14, y, width: 0.4, height: 0.02, endLine: true },
+      {
+        text: `从器物到社会 / ${701 + i * 4}`,
+        x: 0.24,
+        y: y + 0.03,
+        width: 0.6,
+        height: 0.02,
+        endLine: true,
+      },
+      {
+        text: '关于器物的使用与交换——讨论历史材料中的生产活动、社会组织和不同文化之间的接触。',
+        x: 0.24,
+        y: y + 0.07,
+        width: 0.6,
+        height: 0.014,
+        endLine: true,
+      },
+      {
+        text: '研究者如何解释这些材料——不同年代、地域、社会与知识传统中的记忆以及知识传播的变化。',
+        x: 0.24,
+        y: y + 0.095,
+        width: 0.6,
+        height: 0.014,
+        endLine: true,
+      },
+    );
+  }
+  native.cache.pages = [1];
+  native.read.mockImplementation(async (_id, index) =>
+    index === 1 ? { index: 1, native: false, lines } : null,
+  );
+  expect(
+    await preparePDFContents(
+      '/original.pdf',
+      document({ 4: '第一节 铜的历史：从器物到社会', 8: '第二节 银的历史：从器物到社会' }),
+    ),
+  ).toBe('generated');
+  expect(native.save.mock.calls.at(-1)![2]).toEqual([
+    { title: '第一节 铜的历史: 从器物到社会', pageIndex: 4, level: 0 },
+    { title: '第二节 银的历史: 从器物到社会', pageIndex: 8, level: 0 },
+  ]);
+});
+
+it('does not stop a table at a single wrapped slash-folio continuation', async () => {
+  const texts = {
+    1: '目录\n第一节 铜 / 701\n第二节 银 / 705',
+    2: '第三节 金 / 709\n材料的历史。\n历史的材料。\n知识。\n解释。\n文献。',
+    4: '第一节 铜',
+    8: '第二节 银',
+    12: '第三节 金',
+  };
+  const doc = document(texts);
+  doc.getPDFContentsLayout = async (index) =>
+    index === 2
+      ? texts[2]
+          .split('\n')
+          .map((text, i) => ({ text, x: 0.1, y: 0.15 + i * 0.07, width: 0.6, height: 0.02 }))
+      : [];
+  doc.getPDFContentsLines = async (index) =>
+    index === 2 ? ['第三节 金 / 709'] : (texts[index as keyof typeof texts] ?? '').split('\n');
+  expect(await preparePDFContents('/original.pdf', doc)).toBe('generated');
+  expect(native.save.mock.calls.at(-1)![2]).toHaveLength(3);
+});
+
+it('resumes bounded text discovery and indexing without restarting a long native book', async () => {
+  let saved: unknown = null;
+  const checkpoint = {
+    read: async () => structuredClone(saved),
+    write: async (value: unknown) => {
+      saved = structuredClone(value);
+    },
+  };
+  const texts: Record<number, string> = {
+    1: '目录\n第五编 铜的历史 / 901\n第六编 银的历史 / 905',
+    4: '第五编 铜的历史',
+    8: '第六编 银的历史',
+  };
+  const doc = document(texts, 1250);
+  doc.getPDFText = vi.fn(async (index) => texts[index] ?? '正文内容。'.repeat(410));
+  const reports: import('@/services/pdfAutoContents').PDFContentsReport[] = [];
+  let result: string = 'unavailable';
+  for (let attempt = 0; attempt < 5 && result !== 'generated'; attempt++) {
+    result = await preparePDFContents('/original.pdf', doc, undefined, (r) => reports.push(r), {
+      checkpoint,
+    }).catch((error) => {
+      expect(error.message).toBe('pdf_contents_text_limit');
+      return 'unavailable';
+    });
+  }
+  expect(result).toBe('generated');
+  expect(reports.some((r) => r.code === 'pdf_contents_text_limit' && r.canResume)).toBe(true);
+  expect(native.save).toHaveBeenCalledTimes(1);
+  expect(vi.mocked(doc.getPDFText).mock.calls.length).toBeLessThan(3000);
+}, 15000);
+it('discovers the second local table in an image-only bound volume', async () => {
+  const { doc } = scan(
+    {
+      1: '第一卷目录\n第一章 铜 / 1\n第二章 银 / 5',
+      4: '第一章 铜',
+      8: '第二章 银',
+      11: '第二卷目录\n第一章 金 / 1\n第二章 铁 / 5',
+      14: '第一章 金',
+      18: '第二章 铁',
+    },
+    24,
+  );
+  expect(await preparePDFContents('/original.pdf', doc)).toBe('generated');
+  expect(native.save.mock.calls.at(-1)![2].map((e: { pageIndex: number }) => e.pageIndex)).toEqual([
+    4, 8, 14, 18,
+  ]);
+});
+it.each([
+  true,
+  false,
+])('uses a whole-work table only with explicit current-volume evidence (%s)', async (identified) => {
+  const doc = document({
+    0: identified ? '典籍汇编\n第二卷' : '典籍汇编',
+    1: '总目录\n第一卷\n第一章 铜 / 1\n第二章 银 / 5\n第二卷\n第一章 金 / 701\n第二章 铁 / 705',
+    4: '第一章 金',
+    8: '第二章 铁',
+  });
+  const reports: import('@/services/pdfAutoContents').PDFContentsReport[] = [];
+  expect(await preparePDFContents('/original.pdf', doc, undefined, (r) => reports.push(r))).toBe(
+    identified ? 'generated' : 'unavailable',
+  );
+  if (identified)
+    expect(native.save.mock.calls.at(-1)![2]).toEqual([
+      { title: '第一章 金', pageIndex: 4, level: 0 },
+      { title: '第二章 铁', pageIndex: 8, level: 0 },
+    ]);
+  else {
+    expect(native.save).not.toHaveBeenCalled();
+    expect(reports.at(-1)?.code).toBe('pdf_contents_scope_unresolved');
+  }
+});
+
+it('reads centered title/subtitle/folio blocks and excludes an explicit plate-placement notice', async () => {
+  const line = (text: string, y: number, width = 0.4, height = 0.02) => ({
+    text,
+    x: 0.5 - width / 2,
+    y,
+    width,
+    height,
+    endLine: true,
+  });
+  const lines = [
+    line('Contents', 0.1),
+    line('Prologue', 0.2),
+    line('1', 0.23, 0.02),
+    line('Copper voyages', 0.3),
+    line('ANNA RIVERS', 0.33),
+    line('5', 0.36, 0.02),
+    line('Amber worlds', 0.43),
+    line('ELENA WOODS', 0.46),
+    line('9', 0.49, 0.02),
+    line('Notes .... 13', 0.6),
+    line('Illustrations follow pages', 0.8),
+    line('4, 8, and 12.', 0.83),
+  ];
+  native.cache.pages = [1];
+  native.read.mockImplementation(async (_id, index, _detect, contents) =>
+    index === 1
+      ? { index, native: false, lines }
+      : contents
+        ? { index, native: true, lines: [] }
+        : null,
+  );
+  const result = await preparePDFContents(
+    '/original.pdf',
+    document({
+      2: 'Prologue',
+      6: 'Copper voyages\nANNA RIVERS',
+      10: 'Amber worlds\nELENA WOODS',
+      14: 'Notes',
+    }),
+  );
+  expect(result).toBe('generated');
+  expect(native.save.mock.calls.at(-1)![2]).toEqual([
+    { title: 'Prologue', pageIndex: 2, level: 0 },
+    { title: 'Copper voyages ANNA RIVERS', pageIndex: 6, level: 0 },
+    { title: 'Amber worlds ELENA WOODS', pageIndex: 10, level: 0 },
+    { title: 'Notes', pageIndex: 14, level: 0 },
+  ]);
+});
+
+it.each([
+  true,
+  false,
+])('verifies transposed title and subtitle only in an isolated heading block (%s)', async (isolated) => {
+  const line = (text: string, y: number, height = 0.025) => ({
+    text,
+    x: 0.3,
+    y,
+    width: 0.4,
+    height,
+    endLine: true,
+  });
+  const lines = [
+    line('ANNA RIVERS', 0.08),
+    line('Copper voyages', 0.18, 0.04),
+    line('An ordinary paragraph provides unrelated evidence.', isolated ? 0.38 : 0.23),
+    line('The surrounding prose continues on the next line.', isolated ? 0.42 : 0.27),
+  ];
+  native.cache.pages = [4];
+  native.read.mockImplementation(async (_id, index, _detect, contents) =>
+    index === 4
+      ? { index, native: false, lines }
+      : contents
+        ? { index, native: true, lines: [] }
+        : null,
+  );
+  const result = await preparePDFContents(
+    '/original.pdf',
+    document({
+      1: 'Contents\nCopper voyages ANNA RIVERS .... 5\nAmber worlds .... 9',
+      8: 'Amber worlds',
+    }),
+  );
+  expect(result).toBe(isolated ? 'generated' : 'unavailable');
+});
+
+it('rejects a sparse back-matter list as a destination for each listed section', async () => {
+  const lines = ['Notes', 'Acknowledgments', 'Illustration Credits', 'Index'].map((text, i) => ({
+    text,
+    x: 0.3,
+    y: 0.12 + i * 0.06,
+    width: 0.4,
+    height: 0.02,
+    endLine: true,
+  }));
+  native.cache.pages = [4];
+  native.read.mockImplementation(async (_id, index, _detect, contents) =>
+    index === 4
+      ? { index, native: false, lines }
+      : contents
+        ? { index, native: true, lines: [] }
+        : null,
+  );
+  const result = await preparePDFContents(
+    '/original.pdf',
+    document({
+      1: 'Contents\nNotes .... 5\nAcknowledgments .... 9\nIllustration Credits .... 11\nIndex .... 13',
+      8: 'Acknowledgments',
+      10: 'Illustration Credits',
+      12: 'Index',
+    }),
+  );
+  expect(result).toBe('unavailable');
+  expect(native.save).not.toHaveBeenCalled();
+  for (const value of native.checkpoints.values()) {
+    const checks = value as { entries: { index: number }[] };
+    expect(checks.entries.some((entry) => entry.index === 4)).toBe(false);
+  }
 });

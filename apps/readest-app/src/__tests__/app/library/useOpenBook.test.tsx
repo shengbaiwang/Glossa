@@ -92,6 +92,27 @@ beforeEach(() => {
 });
 
 describe('useOpenBook — a missing local file must not delete the cloud copy (#5265)', () => {
+  it('opens a manifest-backed book without queuing a full download or recording local residency', async () => {
+    const book = makeBook({
+      uploadedAt: 10,
+      downloadedAt: null,
+      glossaCloud: {
+        origin: 'https://sync.example',
+        subject: 'test',
+        book_id: crypto.randomUUID(),
+        manifest_id: crypto.randomUUID(),
+        file_blake3: 'a'.repeat(64),
+      },
+    });
+    const { result, handleBookDownload } = setup();
+    await result.current.openBook(book);
+    await flushNavigation();
+    expect(handleBookDownload).not.toHaveBeenCalled();
+    expect(navigateToReader).toHaveBeenCalled();
+    expect(book.downloadedAt).toBeNull();
+    expect(deleteIntents).toEqual([]);
+  });
+
   it('never offers to delete a book whose bytes may still be on the file mirror', async () => {
     routing.backends = ['gdrive'];
     // The row right after "Remove from Device Only" on a device whose library

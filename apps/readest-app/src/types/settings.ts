@@ -51,7 +51,6 @@ export type KOSyncStrategy = 'prompt' | 'silent' | 'send' | 'receive';
 
 export interface ReadSettings {
   sideBarWidth: string;
-  isSideBarPinned: boolean;
   notebookWidth: string;
   isNotebookPinned: boolean;
   notebookActiveTab: NotebookTab;

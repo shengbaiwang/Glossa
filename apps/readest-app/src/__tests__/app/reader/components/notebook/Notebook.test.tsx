@@ -61,7 +61,10 @@ vi.mock('@/store/readerStore', () => ({
   }),
 }));
 vi.mock('@/utils/book', () => ({ getBookDirFromLanguage: () => (mocks.rtl ? 'rtl' : 'ltr') }));
-vi.mock('@/utils/misc', () => ({ uniqueId: () => 'new-note' }));
+vi.mock('@/utils/misc', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/utils/misc')>()),
+  uniqueId: () => 'new-note',
+}));
 vi.mock('@/app/reader/utils/annotatorUtil', () => ({
   applyNoteBubbleTransition: mocks.bubbleTransition,
   decideNoteBubbleTransition: vi.fn(() => 'remove'),
@@ -143,20 +146,20 @@ const openNotebook = async () => {
     </DropdownProvider>,
   );
   act(() => useNotebookStore.getState().setNotebookVisible(true));
-  await screen.findByRole('tab', { name: 'Conversation' });
+  await screen.findByRole('button', { name: 'Conversation' });
 };
 
 describe('Notebook reading assistant integration', () => {
   it('shows existing annotations in the right notes workspace instead of an empty state', async () => {
     mocks.notes = [editNote];
     await openNotebook();
-    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
     expect(screen.getByText('Annotations for first-0')).toBeTruthy();
     expect(screen.queryByText('No Notes')).toBeNull();
   });
   it('uses one destination row, with pane actions separate from the active reading tool', async () => {
     await openNotebook();
-    const tabs = screen.getByRole('tablist', { name: 'Notebook' });
+    const tabs = screen.getByRole('group', { name: 'Reading panels' });
     const header = document.querySelector('.notebook-header');
     expect(header?.contains(tabs)).toBe(true);
     expect(screen.queryByRole('heading', { name: 'Conversation' })).toBeNull();
@@ -164,38 +167,40 @@ describe('Notebook reading assistant integration', () => {
     expect(screen.queryByRole('button', { name: 'Pin Notebook' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Show Search Bar' })).toBeNull();
     expect(header?.contains(screen.getByRole('button', { name: 'Close' }))).toBe(true);
-    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
     const search = screen.getByRole('button', { name: 'Show Search Bar' });
     expect(header?.contains(search)).toBe(false);
     expect(screen.queryByText('Capture an idea as you read')).toBeNull();
   });
 
-  it('keeps one active tab and its controlled panel as keyboard navigation changes tools', async () => {
+  it('keeps open panels mounted as keyboard navigation adds another tool', async () => {
     await openNotebook();
-    const conversation = screen.getByRole('tab', { name: 'Conversation' });
+    const conversation = screen.getByRole('button', { name: 'Conversation' });
     fireEvent.keyDown(conversation, { key: 'ArrowRight' });
-    const map = screen.getByRole('tab', { name: 'Mind map' });
+    const map = screen.getByRole('button', { name: 'Mind map' });
     expect(document.activeElement).toBe(map);
-    expect(map.getAttribute('aria-selected')).toBe('true');
-    expect(conversation.getAttribute('aria-selected')).toBe('false');
-    expect(conversation.tabIndex).toBe(-1);
-    const activePanel = screen.getByRole('tabpanel', { name: 'Mind map' });
-    expect(map.getAttribute('aria-controls')).toBe(activePanel.id);
+    expect(map.getAttribute('aria-pressed')).toBe('true');
+    expect(conversation.getAttribute('aria-pressed')).toBe('true');
+    expect(conversation.tabIndex).toBe(0);
+    const activePanel = screen.getByRole('region', { name: 'Mind map' });
+    expect(activePanel.contains(document.getElementById(map.getAttribute('aria-controls')!))).toBe(
+      true,
+    );
     fireEvent.click(map);
     expect(useNotebookStore.getState().isNotebookVisible).toBe(true);
-    expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
+    expect(screen.getAllByRole('region')).toHaveLength(2);
   });
 
   it('closes the docked panel directly with Escape', async () => {
     await openNotebook();
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Conversation' }), { key: 'Escape' });
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Conversation' }), { key: 'Escape' });
     expect(useNotebookStore.getState().isNotebookVisible).toBe(false);
   });
 
   it('presents named icon destinations without visible text labels', async () => {
     await openNotebook();
     for (const name of ['Conversation', 'Mind map', 'Notes']) {
-      const tab = screen.getByRole('tab', { name });
+      const tab = screen.getByRole('button', { name });
       expect(tab.textContent).toBe('');
       expect(tab.querySelector('svg')).toBeTruthy();
       expect(tab.title).toBe(name);
@@ -204,34 +209,34 @@ describe('Notebook reading assistant integration', () => {
 
   it('removes the guide tab and opens conversation by default', async () => {
     await openNotebook();
-    expect(screen.queryByRole('tab', { name: 'Guide' })).toBeNull();
-    expect(screen.getByRole('tab', { name: 'Conversation' }).getAttribute('aria-selected')).toBe(
+    expect(screen.queryByRole('button', { name: 'Guide' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Conversation' }).getAttribute('aria-pressed')).toBe(
       'true',
     );
   });
 
   it('opens conversation beside the book and keeps it open when navigating to a source', async () => {
     await openNotebook();
-    fireEvent.click(screen.getByRole('tab', { name: 'Conversation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Conversation' }));
     await screen.findByText('Conversation panel');
     expect(screen.getByRole('group', { name: 'Notebook' }).style.position).toBe('relative');
     expect(document.querySelector('.overlay')).toBeNull();
     await act(() => eventDispatcher.dispatch('navigate'));
     expect(useNotebookStore.getState().isNotebookVisible).toBe(true);
-    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
-    expect(screen.queryByText('Conversation panel')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
+    expect(screen.queryByText('Conversation panel')).toBeTruthy();
   });
 
   it('opens the mind map beside the book and keeps it visible during source navigation', async () => {
     await openNotebook();
-    fireEvent.click(screen.getByRole('tab', { name: 'Mind map' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mind map' }));
     await screen.findByText('Mind map panel');
     const panel = screen.getByRole('group', { name: 'Notebook' });
     expect(panel.style.position).toBe('relative');
     await act(() => eventDispatcher.dispatch('navigate'));
     expect(useNotebookStore.getState().isNotebookVisible).toBe(true);
-    fireEvent.click(screen.getByRole('tab', { name: 'Conversation' }));
-    expect(screen.queryByText('Mind map panel')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Conversation' }));
+    expect(screen.queryByText('Mind map panel')).toBeTruthy();
   });
 
   it('opens a new annotation in excerpts and preserves its draft when returning from conversation', async () => {
@@ -247,29 +252,29 @@ describe('Notebook reading assistant integration', () => {
         cfi: 'epubcfi(/6/2)',
       }),
     );
-    expect(screen.getByRole('tab', { name: 'Notes' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Notes' }).getAttribute('aria-pressed')).toBe('true');
     fireEvent.change(screen.getByRole('textbox', { name: '' }), { target: { value: 'New idea' } });
-    fireEvent.click(screen.getByRole('tab', { name: 'Conversation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Conversation' }));
     expect(useNotebookStore.getState().notebookNewAnnotation?.text).toBe('Selected words');
-    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
     expect((screen.getByRole('textbox', { name: '' }) as HTMLTextAreaElement).value).toBe(
       'New idea',
     );
   });
 
-  it('opens conversation by default, keeps sources visible and cancels conversation when switching to excerpts', async () => {
+  it('keeps conversation and note drafts alive when stacking their panels', async () => {
     await openNotebook();
     await screen.findByText('Conversation for first-0');
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'View source' })));
     expect(useNotebookStore.getState().isNotebookVisible).toBe(true);
     act(() => useNotebookStore.getState().setNotebookEditAnnotation({ ...editNote }));
-    expect(screen.getByRole('tab', { name: 'Notes' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Notes' }).getAttribute('aria-pressed')).toBe('true');
     const editor = screen.getByRole('textbox', { name: '' });
     fireEvent.change(editor, { target: { value: 'Unfinished thought' } });
-    fireEvent.click(screen.getByRole('tab', { name: 'Conversation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Conversation' }));
     expect(await screen.findByText('Conversation for first-0')).toBeTruthy();
-    expect(mocks.conversationUnmount).toHaveBeenCalledWith('first-0');
-    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
+    expect(mocks.conversationUnmount).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
     expect((screen.getByRole('textbox', { name: '' }) as HTMLTextAreaElement).value).toBe(
       'Unfinished thought',
     );
@@ -281,7 +286,7 @@ describe('Notebook reading assistant integration', () => {
     act(() => useNotebookStore.getState().setNotebookEditAnnotation({ ...editNote }));
     act(() => useSidebarStore.getState().setSideBarBookKey('second-0'));
     expect(useNotebookStore.getState().notebookEditAnnotation).toBeNull();
-    fireEvent.click(screen.getByRole('tab', { name: 'Conversation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Conversation' }));
     expect(await screen.findByText('Conversation for second-0')).toBeTruthy();
     expect(screen.queryByText('Conversation for first-0')).toBeNull();
     expect(mocks.conversationUnmount).toHaveBeenCalledWith('first-0');
@@ -290,7 +295,7 @@ describe('Notebook reading assistant integration', () => {
 
   it('stays docked beside the text when following sources on wide windows', async () => {
     await openNotebook();
-    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
     expect(screen.getByRole('group', { name: 'Notebook' }).style.position).toBe('relative');
     expect(document.querySelector('.overlay')).toBeNull();
     await act(() => eventDispatcher.dispatch('navigate'));
@@ -302,13 +307,13 @@ describe('Notebook reading assistant integration', () => {
     document.documentElement.dir = 'rtl';
     document.documentElement.style.direction = 'rtl';
     await openNotebook();
-    const reading = screen.getByRole('tab', { name: 'Conversation' });
+    const reading = screen.getByRole('button', { name: 'Conversation' });
     fireEvent.keyDown(reading, { key: 'ArrowLeft' });
-    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Mind map' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Mind map' }));
     fireEvent.keyDown(document.activeElement!, { key: 'Home' });
-    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Conversation' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Conversation' }));
     fireEvent.keyDown(reading, { key: 'End' });
-    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Notes' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Notes' }));
     const slider = screen.getByRole('slider', { name: 'Resize Notebook' });
     fireEvent.keyDown(slider, { key: 'ArrowRight' });
     expect(parseFloat(useNotebookStore.getState().notebookWidth)).toBeGreaterThan(30);
@@ -333,7 +338,7 @@ describe('Notebook reading assistant integration', () => {
     await act(() => eventDispatcher.dispatch('navigate'));
     expect(useNotebookStore.getState().isNotebookVisible).toBe(false);
     act(() => useNotebookStore.getState().setNotebookVisible(true));
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Conversation' }), { key: 'Escape' });
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Conversation' }), { key: 'Escape' });
     expect(useNotebookStore.getState().isNotebookVisible).toBe(false);
   });
 
@@ -341,7 +346,7 @@ describe('Notebook reading assistant integration', () => {
     mocks.format = 'MOBI';
     render(<Notebook />);
     act(() => useNotebookStore.getState().setNotebookVisible(true));
-    expect(screen.queryByRole('tab', { name: 'Conversation' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Conversation' })).toBeNull();
     expect(screen.getByText('No Notes')).toBeTruthy();
   });
 });
@@ -416,9 +421,9 @@ describe('official reading modules', () => {
       </DropdownProvider>,
     );
     act(() => useNotebookStore.getState().setNotebookVisible(true));
-    fireEvent.click(screen.getByRole('tab', { name: 'Contents generator' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Contents generator' }));
     await screen.findByRole('button', { name: 'Generate contents' });
-    expect(screen.queryByRole('tab', { name: 'Conversation' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Conversation' })).toBeNull();
     mocks.officialModules = { pdfAutoContents: false };
     panel.rerender(
       <DropdownProvider>
@@ -445,11 +450,11 @@ describe('official reading modules', () => {
     );
     await screen.findByText('Mind map panel');
     expect(mocks.conversationUnmount).toHaveBeenCalledWith('first-0');
-    expect(screen.queryByRole('tab', { name: 'Conversation' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Conversation' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Ask about idea' })).toBeNull();
     expect(useNotebookStore.getState().notebookActiveTab).toBe('mindmap');
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Mind map' }), { key: 'ArrowRight' });
-    expect(screen.getByRole('tab', { name: 'Notes' }).getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Mind map' }), { key: 'ArrowRight' });
+    expect(screen.getByRole('button', { name: 'Notes' }).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('retains notes when both modules are disabled and can reopen a reenabled module', async () => {
@@ -461,7 +466,7 @@ describe('official reading modules', () => {
     );
     act(() => useNotebookStore.getState().setNotebookVisible(true));
     await screen.findByText('Conversation panel');
-    fireEvent.click(screen.getByRole('tab', { name: 'Mind map' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mind map' }));
     await screen.findByText('Mind map panel');
     mocks.officialModules = { conversation: false, mindmap: false };
     panel.rerender(
@@ -479,9 +484,9 @@ describe('official reading modules', () => {
         <Notebook />
       </DropdownProvider>,
     );
-    fireEvent.click(screen.getByRole('tab', { name: 'Conversation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Conversation' }));
     await screen.findByText('Conversation for first-0');
-    expect(screen.queryByRole('tab', { name: 'Mind map' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Mind map' })).toBeNull();
     expect(mocks.notes).toEqual([editNote]);
   });
 });

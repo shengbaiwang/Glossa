@@ -1,218 +1,75 @@
-import { useResponsiveSize } from '@/hooks/useResponsiveSize';
-import React from 'react';
-
-import {
-  Pin,
-  PinOff,
-  Columns2,
-  BookOpen,
-  Download,
-  FilePlus2,
-  Trash2,
-  ListOrdered,
-  RefreshCw,
-} from '@/components/GlossaIcons';
-import { useEnv } from '@/context/EnvContext';
-import { useBookDataStore } from '@/store/bookDataStore';
-import { useReaderStore } from '@/store/readerStore';
-import { useLibraryStore } from '@/store/libraryStore';
-import { useSidebarStore } from '@/store/sidebarStore';
-import { useTranslation } from '@/hooks/useTranslation';
-import { useParallelViewStore } from '@/store/parallelViewStore';
-import { eventDispatcher } from '@/utils/event';
-import { FIXED_LAYOUT_FORMATS } from '@/types/book';
-import { useSettingsStore } from '@/store/settingsStore';
-import { saveSysSettings, saveViewSettings } from '@/helpers/settings';
-
-import useBooksManager from '../../hooks/useBooksManager';
+import { Columns2, BookOpen } from '@/components/GlossaIcons';
 import MenuItem from '@/components/MenuItem';
-import PDFTools from './PDFTools';
-import { supportsLocalPDF } from '@/services/pdfEnhancement';
+import { useResponsiveSize } from '@/hooks/useResponsiveSize';
+import { useTranslation } from '@/hooks/useTranslation';
+import { useLibraryStore } from '@/store/libraryStore';
+import { useParallelViewStore } from '@/store/parallelViewStore';
+import { useReaderStore } from '@/store/readerStore';
+import { FIXED_LAYOUT_FORMATS } from '@/types/book';
+import useBooksManager from '../../hooks/useBooksManager';
+import ReaderCommandItem from '../ReaderCommandItem';
 
-interface BookMenuProps {
+export default function ParallelReadMenu({
+  bookKey,
+  setIsDropdownOpen,
+}: {
   bookKey: string;
-  setIsDropdownOpen?: (isOpen: boolean) => void;
-}
-
-const BookMenuItems: React.FC<BookMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
+  setIsDropdownOpen?: (open: boolean) => void;
+}) {
   const _ = useTranslation();
   const iconSize = useResponsiveSize(16);
-  const { envConfig } = useEnv();
-  const { bookKeys, recreateViewer, getViewSettings } = useReaderStore();
+  const { bookKeys } = useReaderStore();
   const { getVisibleLibrary } = useLibraryStore();
   const { openParallelView } = useBooksManager();
-  const {
-    isSideBarPinned: isPinned,
-    setSideBarPin,
-    setSideBarVisible,
-    setSideBarBookKey,
-  } = useSidebarStore();
-  const { settings } = useSettingsStore();
-  const onTogglePin = () => {
-    setSideBarPin(!isPinned);
-    if (!isPinned) setSideBarBookKey(bookKey);
-    setSideBarVisible(!isPinned);
-    saveSysSettings(envConfig, 'globalReadSettings', {
-      ...settings.globalReadSettings,
-      isSideBarPinned: !isPinned,
-    });
-  };
-  const { getConfig, getBookData } = useBookDataStore();
-  const bookDoc = getBookData(bookKey)?.bookDoc;
-  const { parallelViews, setParallel, unsetParallel } = useParallelViewStore();
-  const viewSettings = getViewSettings(bookKey);
-
-  const [isSortedTOC, setIsSortedTOC] = React.useState(viewSettings?.sortedTOC || false);
-
-  // Used purely to grey out "Clear Annotations" when there's nothing to
-  // clear. The actual delete + confirm dialog lives in Annotator (which
-  // outlives this dropdown menu, so the dialog isn't unmounted along
-  // with the menu when the user clicks the entry).
-  const annotationsToClear = React.useMemo(() => {
-    if (!bookKey) return 0;
-    const cfg = getConfig(bookKey);
-    if (!cfg?.booknotes) return 0;
-    return cfg.booknotes.filter((n) => n.type === 'annotation' && !n.deletedAt).length;
-  }, [bookKey, getConfig]);
-
+  const { parallelViews } = useParallelViewStore();
+  const books = getVisibleLibrary()
+    .filter((book) => !FIXED_LAYOUT_FORMATS.has(book.format) && !!book.downloadedAt)
+    .slice(0, 20);
   const handleParallelView = (id: string) => {
+    if (!useReaderStore.getState().bookKeys.includes(bookKey)) return;
     openParallelView(id, bookKey);
-    setIsDropdownOpen?.(false);
-  };
-  const handleReloadBook = () => {
-    recreateViewer(envConfig, bookKey);
-    setIsDropdownOpen?.(false);
-  };
-  const handleExportAnnotations = () => {
-    eventDispatcher.dispatch('export-annotations', { bookKey });
-    setIsDropdownOpen?.(false);
-  };
-  const handleImportAnnotations = () => {
-    eventDispatcher.dispatch('import-annotations', { bookKey });
-    setIsDropdownOpen?.(false);
-  };
-  const handleToggleSortTOC = () => {
-    setIsSortedTOC((prev) => !prev);
-    setIsDropdownOpen?.(false);
-    if (bookKey) {
-      saveViewSettings(envConfig, bookKey, 'sortedTOC', !isSortedTOC, true, false).then(() => {
-        recreateViewer(envConfig, bookKey);
-      });
-    }
-  };
-  const handleSetParallel = () => {
-    setParallel(bookKeys);
-    setIsDropdownOpen?.(false);
-  };
-  const handleUnsetParallel = () => {
-    unsetParallel(bookKeys);
-    setIsDropdownOpen?.(false);
-  };
-
-  // Routed through Annotator (per-book, long-lived) so that the
-  // confirmation dialog isn't unmounted with the dropdown menu.
-  const handleClearAnnotations = () => {
-    eventDispatcher.dispatch('clear-annotations', { bookKey });
     setIsDropdownOpen?.(false);
   };
 
   return (
-    <>
-      <MenuItem
-        label={isPinned ? _('Unpin Sidebar') : _('Pin Sidebar')}
-        buttonClass='hidden sm:flex'
-        Icon={
-          isPinned ? (
-            <PinOff size={iconSize} aria-hidden='true' />
-          ) : (
-            <Pin size={iconSize} aria-hidden='true' />
-          )
-        }
-        onClick={() => {
-          onTogglePin();
-          setIsDropdownOpen?.(false);
-        }}
-      />
-      <MenuItem
-        label={_('Parallel Read')}
-        buttonClass={bookKeys.length > 1 ? 'lg:tooltip lg:tooltip-bottom' : ''}
-        tooltip={parallelViews.length > 0 ? _('Disable') : _('Enable')}
-        Icon={<Columns2 size={iconSize} />}
-      >
-        <ul className='max-h-60 overflow-y-auto'>
-          {getVisibleLibrary()
-            .filter((book) => !FIXED_LAYOUT_FORMATS.has(book.format))
-            .filter((book) => !!book.downloadedAt)
-            .slice(0, 20)
-            .map((book) => (
-              <MenuItem
-                key={book.hash}
-                Icon={
-                  <img
-                    src={book.coverImageUrl!}
-                    alt={book.title}
-                    width={56}
-                    height={80}
-                    className='aspect-auto max-h-8 max-w-4 rounded-sm shadow-md'
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                }
-                label={book.title}
-                labelClass='max-w-36'
-                onClick={() => handleParallelView(book.hash)}
+    <MenuItem
+      label={_('Parallel Read')}
+      buttonClass={bookKeys.length > 1 ? 'lg:tooltip lg:tooltip-bottom' : ''}
+      disabled={!books.length && bookKeys.length < 2}
+      Icon={<Columns2 size={iconSize} />}
+    >
+      <ul className='max-h-60 overflow-y-auto'>
+        {books.map((book) => (
+          <MenuItem
+            key={book.hash}
+            Icon={
+              <img
+                src={book.coverImageUrl!}
+                alt={book.title}
+                width={56}
+                height={80}
+                className='aspect-auto max-h-8 max-w-4 rounded-sm shadow-md'
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
               />
-            ))}
-        </ul>
-      </MenuItem>
-      {bookKeys.length > 1 &&
-        (parallelViews.length > 0 ? (
-          <MenuItem
-            label={_('Exit Parallel Read')}
-            Icon={<BookOpen size={iconSize} />}
-            onClick={handleUnsetParallel}
-          />
-        ) : (
-          <MenuItem
-            label={_('Enter Parallel Read')}
-            Icon={<Columns2 size={iconSize} />}
-            onClick={handleSetParallel}
+            }
+            label={book.title}
+            labelClass='max-w-36'
+            onClick={() => handleParallelView(book.hash)}
           />
         ))}
-      <hr aria-hidden='true' className='border-base-200 my-1' />
-      <MenuItem
-        label={_('Export Annotations')}
-        Icon={<Download size={iconSize} />}
-        onClick={handleExportAnnotations}
-      />
-      <MenuItem
-        label={_('Import Annotations')}
-        Icon={<FilePlus2 size={iconSize} />}
-        onClick={handleImportAnnotations}
-      />
-      <MenuItem
-        label={_('Clear Annotations')}
-        Icon={<Trash2 size={iconSize} />}
-        disabled={annotationsToClear === 0}
-        onClick={handleClearAnnotations}
-      />
-      <MenuItem
-        label={_('Sort TOC by Page')}
-        Icon={<ListOrdered size={iconSize} />}
-        toggled={isSortedTOC}
-        onClick={handleToggleSortTOC}
-      />
-      {bookDoc?.getPDFText && supportsLocalPDF() && (
-        <PDFTools bookKey={bookKey} bookDoc={bookDoc} />
-      )}
-      <MenuItem
-        label={_('Reload Book')}
-        Icon={<RefreshCw size={iconSize} />}
-        onClick={handleReloadBook}
-      />
-    </>
+        {bookKeys.length > 1 && (
+          <ReaderCommandItem
+            id={parallelViews.length > 0 ? 'exitParallel' : 'enterParallel'}
+            bookKey={bookKey}
+            icon={
+              parallelViews.length > 0 ? <BookOpen size={iconSize} /> : <Columns2 size={iconSize} />
+            }
+            onClose={() => setIsDropdownOpen?.(false)}
+          />
+        )}
+      </ul>
+    </MenuItem>
   );
-};
-
-export default BookMenuItems;
+}

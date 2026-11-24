@@ -59,7 +59,7 @@ describe('TOC-to-CFI mapping with fragment hrefs (#3688)', () => {
     // and then apply per-open settings via updateToc.
     const nav = await computeBookNav(book);
     hydrateBookNav(book, nav);
-    await updateToc(book, false, 'none');
+    await updateToc(book, 'none');
   }, 30000);
 
   it('should assign valid CFIs to all TOC items', () => {

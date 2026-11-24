@@ -1382,8 +1382,14 @@ async function openBookFileContent(
 }
 
 export async function loadBookContent(fs: FileSystem, book: Book): Promise<BookContent> {
-  const { file } = await openBookFileContent(fs, book);
-  return { book, file };
+  const source = await resolveBookContentSource(fs, book);
+  if (isBookFileContentSource(source))
+    return { book, file: await fs.openFile(source.path, source.base) };
+  if (source.kind === 'missing' && book.glossaCloud && !book.deletedAt) {
+    const { openCloudBook } = await import('@/glossa/sync/cloudBook');
+    return { book, file: await openCloudBook(book) };
+  }
+  throw new BookFileNotFoundError();
 }
 
 /**

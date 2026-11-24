@@ -6,6 +6,8 @@ import type { SystemSettings } from '@/types/settings';
 import type { PDFCache } from '@/services/pdfEnhancement';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
+import { useReaderStore } from '@/store/readerStore';
+import type { FoliateView } from '@/types/view';
 import PDFContentsPanel from '@/glossa/plugins/PDFContentsPanel';
 
 const f = vi.hoisted(() => ({
@@ -89,7 +91,27 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   useBookDataStore.setState({ booksData: {} });
+});
+it('opens the printed source page for an unresolved heading without changing navigation', async () => {
+  const goTo = vi.fn();
+  vi.spyOn(useReaderStore.getState(), 'getView').mockReturnValue({
+    goTo,
+  } as unknown as FoliateView);
+  f.prepare.mockResolvedValueOnce({
+    result: 'unavailable',
+    report: {
+      code: 'pdf_contents_heading_unverified',
+      issues: [{ title: '第五编 铜的历史', sourcePage: 12, reason: 'heading_unverified' }],
+    },
+  });
+  await open();
+  fireEvent.click(screen.getByRole('button', { name: 'Generate contents' }));
+  fireEvent.click(await screen.findByRole('button', { name: '第五编 铜的历史' }));
+  expect(goTo).toHaveBeenCalledWith(12);
+  expect(bookDoc.toc).toEqual([]);
+  expect(f.save).not.toHaveBeenCalled();
 });
 const open = async () => {
   const view = render(<PDFContentsPanel book={book} bookDoc={bookDoc} bookKey='fixture-0' />);
@@ -97,7 +119,7 @@ const open = async () => {
     expect(
       (
         screen.getByRole('button', {
-          name: /^(Generate|Regenerate) contents$/,
+          name: /^(Generate|Show) contents$/,
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(false),
@@ -139,8 +161,10 @@ it('shows verified progress during an explicit resumed attempt', async () => {
   });
   await open();
   fireEvent.click(screen.getByRole('button', { name: 'Generate contents' }));
-  await screen.findByText(/2\s*\/\s*5/);
-  expect(screen.getByText(/Continuing from saved progress/)).toBeTruthy();
+  const progress = await screen.findByRole('progressbar', { name: 'Verifying chapter headings' });
+  expect(progress.getAttribute('aria-valuenow')).toBe('40');
+  expect(progress.textContent).toBe('');
+  expect(screen.queryByText(/2\s*\/\s*5/)).toBeNull();
   await act(async () => finish());
 });
 
@@ -159,7 +183,8 @@ it('reports incomplete groups as a failure and leaves existing navigation in pla
     },
   });
   await open();
-  fireEvent.click(screen.getByRole('button', { name: 'Regenerate contents' }));
+  fireEvent.keyDown(screen.getByRole('button', { name: 'More' }), { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Regenerate contents' }));
   await screen.findByText(
     'Contents groups are incomplete or inconsistent. Your existing contents are preserved.',
   );
@@ -173,12 +198,14 @@ it('saves one-step recovery before regenerating and restores it after reopening 
   const previous = [{ title: 'Previous chapter', pageIndex: 2, level: 0 }];
   f.cache = { ...f.cache, outline: previous, generator: 'glossa-contents-3', revision: 4 };
   const view = await open();
-  fireEvent.click(screen.getByRole('button', { name: 'Regenerate contents' }));
+  fireEvent.keyDown(screen.getByRole('button', { name: 'More' }), { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Regenerate contents' }));
   await screen.findByText('Contents are ready.');
   expect(f.records.size).toBe(1);
   view.unmount();
   await open();
-  fireEvent.click(await screen.findByRole('button', { name: 'Restore previous contents' }));
+  fireEvent.keyDown(screen.getByRole('button', { name: 'More' }), { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Restore previous contents' }));
   await screen.findByText('Previous contents restored.');
   expect(f.cache.outline).toEqual(previous);
   expect(bookDoc.toc?.[0]?.label).toBe('Previous chapter');
@@ -231,26 +258,48 @@ it('stops on Cancel or close and keeps the existing reading document intact', as
   await act(async () => finish());
   expect(bookDoc.destroy).not.toHaveBeenCalled();
 });
-it('shows a bounded failure and allows a new explicit retry without publishing partial contents', async () => {
+it.each([
+  'pdf_contents_timeout',
+  'pdf_contents_text_limit',
+])('shows a bounded failure and allows a new explicit retry without publishing partial contents (%s)', async (code) => {
   f.prepare.mockResolvedValueOnce({
     result: 'unavailable',
-    report: { code: 'pdf_contents_timeout' },
+    report: { code, canResume: true },
   });
   await open();
   fireEvent.click(screen.getByRole('button', { name: 'Generate contents' }));
   expect((await screen.findByRole('alert')).textContent).toContain('saved progress');
   expect(bookDoc.toc).toEqual([]);
-  fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Continue verification' }));
   await screen.findByText('Contents are ready.');
   expect(f.prepare).toHaveBeenCalledTimes(2);
+});
+it.each([
+  [
+    'pdf_contents_scope_unresolved',
+    'The volume covered by this contents list could not be confirmed. Your existing navigation is preserved.',
+  ],
+  [
+    'pdf_contents_heading_unverified',
+    'Some chapter headings could not be verified. Your existing navigation is preserved.',
+  ],
+  [
+    'pdf_contents_extraction_failed',
+    'The printed contents could not be read completely. Your existing navigation is preserved.',
+  ],
+])('explains the failure stage without publishing partial contents (%s)', async (code, message) => {
+  f.prepare.mockResolvedValueOnce({ result: 'unavailable', report: { code } });
+  await open();
+  fireEvent.click(screen.getByRole('button', { name: 'Generate contents' }));
+  expect((await screen.findByRole('alert')).textContent).toContain(message);
+  expect(bookDoc.toc).toEqual([]);
 });
 it('preserves personal contents, including a deliberately empty list', async () => {
   f.cache = { ...f.cache, revision: 3, outline: [] };
   render(<PDFContentsPanel book={book} bookDoc={bookDoc} bookKey='fixture-0' />);
   await screen.findByText('Your edited contents are preserved.');
-  expect(
-    (screen.getByRole('button', { name: 'Generate contents' }) as HTMLButtonElement).disabled,
-  ).toBe(true);
+  expect(screen.getByRole('button', { name: 'Show contents' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
   expect(f.prepare).not.toHaveBeenCalled();
   expect(f.save).not.toHaveBeenCalled();
 });
@@ -263,11 +312,13 @@ it('refuses to restore over a concurrent personal edit', async () => {
     revision: 4,
   };
   await open();
-  fireEvent.click(screen.getByRole('button', { name: 'Regenerate contents' }));
-  await screen.findByRole('button', { name: 'Restore previous contents' });
+  fireEvent.keyDown(screen.getByRole('button', { name: 'More' }), { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Regenerate contents' }));
+  await screen.findByRole('button', { name: 'More' });
   const personal = [{ title: 'Personal edit', pageIndex: 7, level: 0 }];
   f.cache = { ...f.cache, outline: personal, generator: null, revision: 6 };
-  fireEvent.click(screen.getByRole('button', { name: 'Restore previous contents' }));
+  fireEvent.keyDown(screen.getByRole('button', { name: 'More' }), { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Restore previous contents' }));
   await screen.findByRole('alert');
   expect(f.cache.outline).toEqual(personal);
   expect(f.save).not.toHaveBeenCalled();

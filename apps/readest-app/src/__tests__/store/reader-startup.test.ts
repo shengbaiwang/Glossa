@@ -1,6 +1,9 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { FoliateView } from '@/types/view';
 
+const { loadCachedPreview } = vi.hoisted(() => ({ loadCachedPreview: vi.fn() }));
+vi.mock('@/glossa/sync/previewCache', () => ({ cachedHeadPreview: loadCachedPreview }));
+
 vi.mock('@/store/bookDataStore', async () => {
   const { create } = await import('zustand');
   return {
@@ -134,6 +137,84 @@ const show = async () => {
 };
 
 describe('navigation on reader startup', () => {
+  test.each([
+    'fresh',
+    'prewarmed',
+    'resume',
+    'switch-account',
+    'deep-link',
+  ])('shows an opening preview only for a fresh current view (%s)', async (mode) => {
+    const pointer = {
+      origin: 'https://sync.example.test',
+      subject: 'fixture',
+      book_id: 'book',
+      manifest_id: 'manifest',
+      file_blake3: 'a'.repeat(64),
+    };
+    const book = { hash: 'cached', title: 'Example', format: 'EPUB', glossaCloud: pointer } as Book;
+    useLibraryStore.setState({ cloudSubject: 'fixture', getBookByHash: () => book });
+    useBookDataStore.setState({ booksData: {} });
+    const prior = await app.loadBookConfig(book, useSettingsStore.getState().settings);
+    vi.mocked(app.loadBookConfig).mockResolvedValue({
+      ...prior,
+      location: mode === 'resume' ? 'saved-cfi' : undefined,
+    });
+    const preview = {
+      format: 'epub',
+      file_bytes: 25,
+      source_file_blake3: pointer.file_blake3,
+      text: 'Chapter one',
+    };
+    const headPreview = vi.fn(async () => {
+      if (mode === 'switch-account') useLibraryStore.setState({ cloudSubject: 'other' });
+      return preview;
+    });
+    const content = {
+      book,
+      file: Object.assign(new File(['file'], 'sample.epub'), { headPreview }),
+    };
+    const manifest = Promise.withResolvers<typeof content>();
+    app.loadBookContent = vi.fn().mockReturnValue(manifest.promise);
+    if (mode === 'prewarmed') {
+      book.glossaDiscovery = {
+        seq: 1,
+        available: true,
+        title: book.title,
+        author: '',
+        status: 'unread',
+      };
+      loadCachedPreview.mockResolvedValue(preview);
+      vi.stubGlobal('caches', {});
+    } else manifest.resolve(content);
+    app.resolveNativeBookFilePath = vi.fn().mockResolvedValue(null);
+    const parsing = Promise.withResolvers<{ book: BookDoc }>();
+    vi.mocked(DocumentLoader).mockImplementation(function () {
+      return { open: () => parsing.promise } as unknown as DocumentLoader;
+    });
+    vi.stubGlobal('window', { location: { search: mode === 'deep-link' ? '?cfi=target' : '' } });
+    try {
+      const opening = open();
+      await vi.advanceTimersByTimeAsync(0);
+      const state = () => useReaderStore.getState().getViewState(key)?.headPreview;
+      const expected = mode === 'fresh' || mode === 'prewarmed' ? preview : undefined;
+      await vi.waitFor(() => expect(state()?.content).toEqual(expected));
+      expect(headPreview).toHaveBeenCalledTimes(
+        mode === 'fresh' || mode === 'switch-account' ? 1 : 0,
+      );
+      if (mode === 'prewarmed') expect(DocumentLoader).not.toHaveBeenCalled();
+      manifest.resolve(content);
+      parsing.resolve({ book: doc });
+      await opening;
+      expect(state()?.content).toEqual(expected);
+      await show();
+      expect(state()).toBeUndefined();
+    } finally {
+      manifest.resolve(content);
+      parsing.resolve({ book: doc });
+      useLibraryStore.setState({ cloudSubject: null });
+      vi.unstubAllGlobals();
+    }
+  });
   test('uses a valid cache in development without computing or rewriting', async () => {
     vi.stubEnv('NODE_ENV', 'development');
     const cache = { version: 4, source: 'source-1', toc: [], sections: {} };

@@ -7,8 +7,18 @@ import {
   useSpatialNavigation,
 } from '@/app/reader/hooks/useSpatialNavigation';
 
-const navigation = vi.hoisted(() => ({ goToFraction: vi.fn(), goTo: vi.fn() }));
-const state = vi.hoisted(() => ({ pdf: false }));
+const navigation = vi.hoisted(() => ({
+  goToFraction: vi.fn(),
+  goTo: vi.fn(),
+  navigate: vi.fn(async () => ({ status: 'arrived' })),
+}));
+const state = vi.hoisted(() => ({
+  pdf: false,
+  folios: false,
+  printedDoc: {
+    getPDFPrintedPage: async () => ({ number: 43, total: 419 }),
+  },
+}));
 
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (key: string) => key }));
 vi.mock('@/store/readerStore', () => ({
@@ -27,12 +37,14 @@ vi.mock('@/store/bookDataStore', () => ({
     getBookData: () => ({
       isFixedLayout: state.pdf,
       book: { format: state.pdf ? 'PDF' : 'EPUB' },
-      bookDoc: {
-        pageList: Array.from({ length: 423 }, (_, i) => ({
-          label: i === 46 ? '3' : String(i + 1),
-          href: String(i),
-        })),
-      },
+      bookDoc: state.folios
+        ? state.printedDoc
+        : {
+            pageList: Array.from({ length: 423 }, (_, i) => ({
+              label: i === 46 ? '3' : String(i + 1),
+              href: String(i),
+            })),
+          },
     }),
   }),
 }));
@@ -53,6 +65,7 @@ beforeEach(_resetLastKeyboardTime);
 afterEach(() => {
   cleanup();
   state.pdf = false;
+  state.folios = false;
   vi.clearAllMocks();
 });
 
@@ -95,4 +108,25 @@ it('keeps PDF file pages distinct from printed labels when editing and navigatin
   fireEvent.keyDown(input, { key: 'Enter' });
   expect(navigation.goTo).toHaveBeenCalledWith(49);
   expect(navigation.goToFraction).not.toHaveBeenCalled();
+});
+
+it('enters a printed folio in the footer and supports explicit file-page entry', async () => {
+  state.pdf = true;
+  state.folios = true;
+  render(<PageJumpInput bookKey='book' showFraction />);
+  const input = screen.getByRole<HTMLInputElement>('textbox', { name: 'Go to Page' });
+  await act(async () => {});
+  expect(input.value).toBe('43 / 419');
+  act(() => input.focus());
+  fireEvent.change(input, { target: { value: '50 / 419' } });
+  await act(async () => fireEvent.keyDown(input, { key: 'Enter' }));
+  expect(navigation.navigate).toHaveBeenCalledWith(
+    'pdf-printed-page:50/419',
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: /File page/ }));
+  expect(input.value).toBe('47 / 423');
+  fireEvent.change(input, { target: { value: '50 / 423' } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+  expect(navigation.goTo).toHaveBeenCalledExactlyOnceWith(49);
 });

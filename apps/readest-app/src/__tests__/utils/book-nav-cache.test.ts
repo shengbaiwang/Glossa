@@ -225,7 +225,7 @@ describe('updateToc compatibility after hydrateBookNav', () => {
     book = await openFixture('repro-3688.epub');
     const nav = await computeBookNav(book);
     hydrateBookNav(book, nav);
-    await updateToc(book, false, 'none');
+    await updateToc(book, 'none');
   }, 30000);
 
   it('assigns valid CFIs to all TOC items with href', () => {

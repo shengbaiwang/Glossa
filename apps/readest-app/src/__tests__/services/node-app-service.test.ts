@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import { NodeAppService } from '@/services/nodeAppService';
@@ -36,6 +36,41 @@ describe('NodeAppService', () => {
 
   afterEach(async () => {
     await fsp.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('writes File stream chunks in order without buffering the whole file', async () => {
+    const chunks = [new Uint8Array(96 * 1024).fill(37), Uint8Array.of(0, 255)];
+    const file = new File([], 'streamed.bin');
+    Object.defineProperties(file, {
+      stream: {
+        value: () =>
+          new ReadableStream({
+            start(controller) {
+              for (const chunk of chunks) controller.enqueue(chunk);
+              controller.close();
+            },
+          }),
+      },
+      arrayBuffer: {
+        value: () => {
+          throw new Error('unexpected whole-file read');
+        },
+      },
+    });
+    const target = path.join(tmpDir, 'nested', file.name);
+    await service.writeFile(target, 'None', file);
+    expect(await fsp.readFile(target)).toEqual(Buffer.concat(chunks));
+  });
+
+  it('cancels the File stream when the destination cannot be opened for writing', async () => {
+    const cancel = vi.fn();
+    const source = new ReadableStream<Uint8Array>({ cancel });
+    const file = new File([], 'streamed.bin');
+    Object.defineProperty(file, 'stream', { value: () => source });
+
+    await expect(service.writeFile(tmpDir, 'None', file)).rejects.toMatchObject({ code: 'EISDIR' });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(source.locked).toBe(false);
   });
 
   it('imports an original PDF with software metadata, saves the corrected title, and reopens identical bytes', async () => {

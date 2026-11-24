@@ -40,18 +40,11 @@ const SideBar = ({}) => {
   const [isFullHeightInMobile, setIsFullHeightInMobile] = useState(isMobile);
   const {
     sideBarWidth,
-    isSideBarPinned,
     isSideBarVisible,
     getSideBarWidth,
     setSideBarVisible,
     handleSideBarResize,
-  } = useSidebar(
-    settings.globalReadSettings.sideBarWidth,
-    isMobile ? false : settings.globalReadSettings.isSideBarPinned,
-  );
-  // A desktop pin remains a saved preference when the window becomes narrow;
-  // the mobile sheet still needs to cover the reader and dismiss like an overlay.
-  const isOverlay = isMobile || !isSideBarPinned;
+  } = useSidebar(settings.globalReadSettings.sideBarWidth);
 
   const onSearchEvent = async (event: CustomEvent) => {
     const { term, bookKey } = event.detail;
@@ -64,10 +57,7 @@ const SideBar = ({}) => {
   };
 
   const onNavigateEvent = async () => {
-    const { isSideBarPinned } = useSidebarStore.getState();
-    if (window.innerWidth < 640 || !isSideBarPinned) {
-      setSideBarVisible(false);
-    }
+    setSideBarVisible(false);
   };
 
   const {
@@ -96,7 +86,7 @@ const SideBar = ({}) => {
       overlayRef.current = null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSideBarVisible, isOverlay]);
+  }, [isSideBarVisible]);
 
   useEffect(() => {
     eventDispatcher.on('search-term', onSearchEvent);
@@ -135,10 +125,10 @@ const SideBar = ({}) => {
   const handleHideSideBar = useCallback(() => {
     if (isSearchBarVisible) {
       handleHideSearchBar();
-    } else if (isOverlay) {
+    } else {
       setSideBarVisible(false);
     }
-  }, [isSearchBarVisible, handleHideSearchBar, isOverlay, setSideBarVisible]);
+  }, [isSearchBarVisible, handleHideSearchBar, setSideBarVisible]);
 
   useShortcuts({ onShowSearchBar: handleShowSearchBar, onEscape: handleHideSideBar }, [
     handleShowSearchBar,
@@ -168,12 +158,10 @@ const SideBar = ({}) => {
 
   return isSideBarVisible ? (
     <>
-      {isOverlay && (
-        <Overlay
-          className={clsx('z-[45]', viewSettings?.isEink ? '' : 'bg-black/50 sm:bg-black/20')}
-          onDismiss={handleClickOverlay}
-        />
-      )}
+      <Overlay
+        className={clsx('z-[45]', viewSettings?.isEink ? '' : 'bg-black/50 sm:bg-black/20')}
+        onDismiss={handleClickOverlay}
+      />
       <div
         ref={sidebarRef}
         className={clsx(
@@ -181,8 +169,8 @@ const SideBar = ({}) => {
           'full-height transition-[padding-top] duration-300',
           viewSettings?.isEink ? 'bg-base-100' : 'bg-base-200',
           appService?.hasRoundedWindow && 'rounded-window-top-left rounded-window-bottom-left',
-          isOverlay ? 'z-[45] shadow-2xl' : 'z-20',
-          isOverlay && viewSettings?.isEink && 'border-base-content border-e',
+          'z-[45] shadow-2xl',
+          viewSettings?.isEink && 'border-base-content border-e',
         )}
         role='navigation'
         aria-label={_('Sidebar')}
@@ -192,7 +180,7 @@ const SideBar = ({}) => {
         style={{
           width: isMobile ? '100%' : `${sideBarWidth}`,
           maxWidth: isMobile ? '100%' : `${MAX_SIDEBAR_WIDTH * 100}%`,
-          position: isMobile ? 'fixed' : isSideBarPinned ? 'relative' : 'absolute',
+          position: isMobile ? 'fixed' : 'absolute',
           paddingTop: `${getPanelTopInset({
             isMobile,
             isFullHeightInMobile,

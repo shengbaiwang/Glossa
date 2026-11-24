@@ -17,7 +17,7 @@ const { pdf } = vi.hoisted(() => ({
     })),
     getMetadata: vi.fn(async () => ({ info: {} })),
     getOutline: vi.fn(),
-    getPageLabels: vi.fn(async () => ['i', 'ii', '1', '2']),
+    getPageLabels: vi.fn(async (): Promise<string[] | null> => ['i', 'ii', '1', '2']),
     getDestination: vi.fn(),
     getPageIndex: vi.fn(async (ref: { num: number }) => ref.num - 10),
     destroy: vi.fn(),
@@ -101,5 +101,31 @@ describe('PDF navigation shared with the reader', () => {
     await expect(book.resolveHref('malformed')).resolves.toBeUndefined();
     expect(book.splitTOCHref('"missing"')).toEqual([null, null]);
     book.destroy();
+  });
+
+  it('resolves visible printed folios across an unnumbered cover and insert', async () => {
+    pdf.getPageLabels.mockResolvedValueOnce(null);
+    const getPage = pdf.getPage.getMockImplementation()!;
+    const folios = ['', '1/2', '', '2/2'];
+    pdf.getPage.mockImplementation(async (...args: unknown[]) => ({
+      ...(await getPage()),
+      getTextContent: async () => ({
+        items: [
+          { str: '2/2', transform: [1, 0, 0, 1, 20, 500] },
+          { str: folios[Number(args[0]) - 1], transform: [1, 0, 0, 1, 280, 20] },
+        ],
+      }),
+    }));
+    try {
+      const book = await open();
+      await expect(book.getPDFPrintedPage!(1)).resolves.toEqual({ number: 1, total: 2 });
+      await expect(book.getPDFPrintedPage!(2)).resolves.toBeNull();
+      await expect(book.resolveHref('pdf-printed-page:2/2')).resolves.toEqual({ index: 3 });
+      await expect(book.resolveHref('pdf-printed-page:1/2')).resolves.toEqual({ index: 1 });
+      await expect(book.resolveHref('pdf-printed-page:3/2')).resolves.toBeUndefined();
+      book.destroy();
+    } finally {
+      pdf.getPage.mockImplementation(getPage);
+    }
   });
 });

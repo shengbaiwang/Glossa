@@ -92,16 +92,34 @@ export const openPDFCache = async (
 export const releasePDFSourceSession = async (cache: PDFCache | null) => {
   if (cache?.session) await call('pdf_release_source_session', { session: cache.session });
 };
-export const parseOCRPage = (value: unknown, index: number): OCRPage | null => {
-  const parsed = pageSchema.safeParse(value);
+const legacyDetectionPage = pageSchema.safeExtend({
+  lines: z
+    .array(
+      lineSchema
+        .safeExtend({
+          x: z.number().min(-0.000001).max(1),
+          y: z.number().min(-0.000001).max(1),
+        })
+        .transform((line) => ({ ...line, x: Math.max(0, line.x), y: Math.max(0, line.y) })),
+    )
+    .max(10000),
+});
+export const parseOCRPage = (value: unknown, index: number, detect = false): OCRPage | null => {
+  // Older detection sidecars can contain floating-point noise at the page edge.
+  // Never normalize the durable reading layer or accept an out-of-page box.
+  const legacy = detect ? legacyDetectionPage.safeParse(value) : undefined;
+  const parsed = pageSchema.safeParse(legacy?.success ? legacy.data : value);
   return parsed.success && parsed.data.index === index ? parsed.data : null;
 };
+export type PDFOCRRegion = readonly [x: number, y: number, width: number, height: number];
 export const readOCRPage = async (
   cacheId: string,
   index: number,
   detect = false,
   contents = false,
   heading = false,
+  region?: PDFOCRRegion,
+  regions?: readonly PDFOCRRegion[],
 ) =>
   parseOCRPage(
     await call('pdf_read_ocr_page', {
@@ -110,8 +128,11 @@ export const readOCRPage = async (
       ...(detect ? { detect } : {}),
       ...(contents ? { contents } : {}),
       ...(heading ? { heading } : {}),
+      ...(region ? { region } : {}),
+      ...(regions ? { regions } : {}),
     }),
     index,
+    detect,
   );
 export const startPDFOCR = async (
   source: string,
@@ -121,6 +142,8 @@ export const startPDFOCR = async (
   contents = false,
   heading = false,
   session?: string,
+  region?: PDFOCRRegion,
+  regions?: readonly PDFOCRRegion[],
 ) =>
   statusSchema.parse(
     await call('pdf_start_ocr', {
@@ -131,12 +154,17 @@ export const startPDFOCR = async (
         ...(detect ? { detect } : {}),
         ...(contents ? { contents } : {}),
         ...(heading ? { heading } : {}),
+        ...(region ? { region } : {}),
+        ...(regions ? { regions } : {}),
         ...(session ? { session } : {}),
       },
     }),
   );
-export const getPDFOCRStatus = async (cacheId: string): Promise<PDFOCRStatus | null> => {
-  const value = await call('pdf_ocr_status', { cacheId });
+export const getPDFOCRStatus = async (
+  cacheId: string,
+  jobId?: string,
+): Promise<PDFOCRStatus | null> => {
+  const value = await call('pdf_ocr_status', { cacheId, ...(jobId ? { jobId } : {}) });
   return value === null ? null : statusSchema.parse(value);
 };
 export const cancelPDFOCR = (cacheId: string, jobId?: string) =>
@@ -148,7 +176,7 @@ export const waitForPDFOCR = async (
   jobId?: string,
 ): Promise<PDFOCRStatus> => {
   while (!signal.aborted) {
-    const status = await getPDFOCRStatus(cacheId);
+    const status = await getPDFOCRStatus(cacheId, jobId);
     if (signal.aborted) break;
     if (!status) throw new Error('pdf_worker_unavailable');
     if (jobId && status.jobId !== jobId) throw new Error('pdf_job_changed');
@@ -356,6 +384,7 @@ export const savePDFOutline = async (
       outline,
       pageCount,
       generator: generator ?? null,
+      ...(cache.session ? { session: cache.session } : {}),
     }),
   );
 };

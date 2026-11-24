@@ -1,3 +1,4 @@
+import { CloudDownloadPolicy } from '@/components/settings/CloudDownloadPolicy';
 import ZoteroSourceInfo from './ZoteroSourceInfo';
 import BookReadingSpaces from './BookReadingSpaces';
 import clsx from 'clsx';
@@ -227,6 +228,7 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
         </div>
       </div>
 
+      {book.glossaCloud && <CloudDownloadPolicy pointer={book.glossaCloud} />}
       {onInlineEdit && <BookReadingSpaces book={book} />}
       {book.zoteroSource && <ZoteroSourceInfo source={book.zoteroSource} />}
       {onMetadataApply && <MetadataRecognition book={book} onApply={onMetadataApply} />}

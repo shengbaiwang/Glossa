@@ -219,6 +219,16 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
     target instanceof Element &&
     !!target.closest('button, input, select, textarea, form, [data-inline-edit]');
 
+  const menuSelection = (id: string) => {
+    const live = useLibraryStore.getState().selectedBooks;
+    return live.has(id) ? [...live] : [id];
+  };
+
+  const menuSelectionMatches = (id: string, ids: string[]) => {
+    const live = useLibraryStore.getState().selectedBooks;
+    return live.has(id) && live.size === ids.length && ids.every((key) => live.has(key));
+  };
+
   const buildBookMenuItems = (book: Book): BookContextMenuItem[] => {
     const osPlatform = getOSPlatform();
     const fileRevealLabel =
@@ -227,11 +237,12 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
     // in a single Menu.new({ items }) call. Appending items one-by-one with
     // un-awaited Menu.append() promises races on the Tauri IPC boundary and
     // shuffles the order on every open (issue #4389).
+    const ids = menuSelection(book.hash);
     const itemOptions: Record<BookContextMenuItemId, BookContextMenuItem> = {
       group: {
         text: _('Move to…'),
         action: async () => {
-          selectItem(book.hash, { preserve: true });
+          if (!menuSelectionMatches(book.hash, ids)) return;
           handleGroupBooks();
         },
       },
@@ -246,9 +257,8 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
         text: _('Delete'),
         destructive: true,
         action: async () => {
-          eventDispatcher.dispatch('delete-books', {
-            ids: itemSelected ? useLibraryStore.getState().getSelectedBooks() : [book.hash],
-          });
+          if (!menuSelectionMatches(book.hash, ids)) return;
+          eventDispatcher.dispatch('delete-books', { ids });
         },
       },
     };
@@ -258,22 +268,22 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
       )
       .map((id) => itemOptions[id]);
     items.splice(1, 0, ...transferMenuItems(book.hash));
+    items.unshift({ text: _('Open Book'), action: handleOpenItem });
     return items;
   };
 
-  const transferMenuItems = (id: string): BookContextMenuItem[] => [
+  const transferMenuItems = (id: string, ids = menuSelection(id)): BookContextMenuItem[] => [
     {
       text: _('Cut'),
       action: () => {
-        selectItem(id, { preserve: true });
-        cutLibraryItems(useLibraryStore.getState().getSelectedBooks());
+        if (menuSelectionMatches(id, ids)) cutLibraryItems(ids);
       },
     },
     {
       text: _('New group with selection'),
       action: () => {
-        selectItem(id, { preserve: true });
-        void eventDispatcher.dispatch('library-create-from-selection');
+        if (menuSelectionMatches(id, ids))
+          void eventDispatcher.dispatch('library-create-from-selection');
       },
     },
   ];
@@ -281,7 +291,9 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   const buildGroupMenuItems = (group: BooksGroup): BookContextMenuItem[] => {
     // Single Menu.new({ items }) call keeps the order deterministic — see the
     // note in bookContextMenuHandler about the Menu.append() IPC race (#4389).
+    const ids = menuSelection(group.id);
     return [
+      { text: _('Open Group'), action: handleOpenItem },
       ...(handleRenameFolder ? [{ text: _('Rename group'), action: () => setRenaming(true) }] : []),
       ...(handleCreateFolder && group.name.split('/').length < 4
         ? [
@@ -295,7 +307,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
       {
         text: handleRenameFolder ? _('Move to…') : _('Group Books'),
         action: async () => {
-          selectItem(group.id, { preserve: true });
+          if (!menuSelectionMatches(group.id, ids)) return;
           handleGroupBooks();
         },
       },
@@ -316,13 +328,11 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
       ...(handleRemoveFolder
         ? [
             {
-              text: selectedBooks.size > 1 ? _('Delete') : _('Delete group'),
+              text: ids.length > 1 ? _('Delete') : _('Delete group'),
               destructive: true,
               action: () => {
-                if (useLibraryStore.getState().getSelectedBooks().length > 1)
-                  void eventDispatcher.dispatch('delete-books', {
-                    ids: useLibraryStore.getState().getSelectedBooks(),
-                  });
+                if (!menuSelectionMatches(group.id, ids)) return;
+                if (ids.length > 1) void eventDispatcher.dispatch('delete-books', { ids });
                 else void handleRemoveFolder(group.name);
               },
             },
@@ -339,7 +349,10 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   // two-finger tap) are dismissed as soon as they map, flashing for a single
   // frame (issue #5360). The popup path (JS → Tauri IPC → muda → GTK) cannot
   // beat a tap's instant release, so Linux renders the menu in-app instead.
-  const [inAppMenuPosition, setInAppMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [inAppMenu, setInAppMenu] = useState<{
+    position: { x: number; y: number };
+    items: BookContextMenuItem[];
+  } | null>(null);
 
   // Building the menu crosses the Tauri IPC boundary and takes long enough
   // that the popup visibly lags the right-click (issue #5181). Cache the
@@ -379,7 +392,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
         appService?.isLinuxApp ||
         !appService?.hasContextMenu
       ) {
-        setInAppMenuPosition(position);
+        setInAppMenu({ position, items: buildMenuItems() });
         return;
       }
       if (!appService?.hasContextMenu) return;
@@ -587,11 +600,11 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
           )}
         </div>
       </div>
-      {inAppMenuPosition && (
+      {inAppMenu && (
         <BookContextMenuPopup
-          position={inAppMenuPosition}
-          items={buildMenuItems()}
-          onClose={() => setInAppMenuPosition(null)}
+          position={inAppMenu.position}
+          items={inAppMenu.items}
+          onClose={() => setInAppMenu(null)}
         />
       )}
     </div>

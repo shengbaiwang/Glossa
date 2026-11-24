@@ -99,6 +99,8 @@ export function observeReadingSurface(
   cell: HTMLElement | null,
   report = (kind: ReadingActivity) => reportReadingActivity(bookKey, kind),
 ) {
+  const renderer = view.renderer;
+  if (!renderer) return () => {};
   const lifetime = new AbortController();
   const docs = new Map<Document, AbortController>();
   const scrollRoots = new Map<EventTarget, AbortController>();
@@ -244,10 +246,11 @@ export function observeReadingSurface(
     );
   };
 
-  const rendererRoot = (view.renderer as unknown as HTMLElement).shadowRoot;
+  const rendererRoot = (renderer as unknown as HTMLElement).shadowRoot;
   const syncDocuments = (loaded?: Document) => {
+    if (view.renderer !== renderer) return;
     const current = new Set(
-      view.renderer
+      renderer
         .getContents()
         .map(({ doc }) => doc)
         .filter(Boolean),
@@ -287,7 +290,7 @@ export function observeReadingSurface(
   addInput(view, signal, false);
   // Fixed layout can scroll the renderer host itself without relocating to
   // another CFI, for example while panning a zoomed PDF.
-  view.renderer.addEventListener('scroll', scroll, { passive: true, signal });
+  renderer.addEventListener('scroll', scroll, { passive: true, signal });
   view.addEventListener('load', (event) => syncDocuments((event as CustomEvent).detail.doc), {
     signal,
   });
@@ -309,7 +312,7 @@ export function observeReadingSurface(
   };
   // Foliate's public relocate event omits the renderer's reason. The renderer
   // dispatches after Foliate has updated lastLocation.
-  view.renderer.addEventListener('relocate', relocate);
+  renderer.addEventListener('relocate', relocate, { signal });
   document.addEventListener(
     'keydown',
     (event) => {
@@ -338,7 +341,6 @@ export function observeReadingSurface(
 
   return () => {
     lifetime.abort();
-    view.renderer.removeEventListener('relocate', relocate);
     for (const scope of docs.values()) scope.abort();
     for (const scope of scrollRoots.values()) scope.abort();
   };

@@ -19,6 +19,7 @@ import type { createRunTrace } from './trace';
 
 const MAX_ROUNDS = 2;
 const MAX_TOOLS = 4;
+const MAX_TOOL_REQUESTS_PER_ROUND = 8;
 const MAX_SOURCE_CHARS = 30000; // Includes at most 12k of reverified history.
 const searchArgs = z
   .object({
@@ -110,8 +111,9 @@ export async function answerBookSearch({
   };
   const execute = async (name: string, argumentsText: string) => {
     checkAborted(signal);
-    if (++executions > MAX_TOOLS)
+    if (executions >= MAX_TOOLS)
       return { error: 'Tool budget exhausted. Answer from available evidence.' };
+    executions++;
     if (argumentsText.length > 4000) return { error: 'Arguments too large.' };
     let candidates: ChapterSource[];
     let offset = 0;
@@ -297,7 +299,7 @@ export async function answerBookSearch({
         if (rounds >= MAX_ROUNDS || executions >= MAX_TOOLS || recoveries > 0)
           throw new ConversationError(_('The reply could not be completed. Try again.'));
         if (
-          result.toolCalls.length > MAX_TOOLS ||
+          result.toolCalls.length > MAX_TOOL_REQUESTS_PER_ROUND ||
           new Set(result.toolCalls.map((c) => c.id)).size !== result.toolCalls.length
         )
           throw new ConversationError(_('The reading plan could not be understood. Try again.'));

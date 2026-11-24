@@ -374,13 +374,21 @@ describe('importBook BookDoc lifecycle', () => {
       imported = await importing;
       expect(imported).not.toBeNull();
       await vi.waitFor(() => expect(pdf.prepare).toHaveBeenCalled());
-      expect(pdf.prepare).toHaveBeenCalledWith(
+      expect(pdf.prepare).toHaveBeenCalledExactlyOnceWith(
         '/managed/original.pdf',
         background,
         expect.any(AbortSignal),
         expect.any(Function),
-        { owner: { bookId: imported!.hash, revision: 0 }, regenerate: undefined },
+        {
+          owner: { bookId: imported!.hash, revision: 0 },
+          regenerate: undefined,
+          checkpoint: undefined,
+          timeoutMs: expect.any(Number),
+        },
       );
+      const { timeoutMs } = pdf.prepare.mock.calls[0]![4];
+      expect(timeoutMs).toBeGreaterThan(0);
+      expect(timeoutMs).toBeLessThanOrEqual(540_000);
       expect(mockDestroy).toHaveBeenCalledOnce();
       expect(backgroundDestroy).not.toHaveBeenCalled();
     } finally {
@@ -487,13 +495,21 @@ describe('importBook BookDoc lifecycle', () => {
     vi.spyOn(service, 'loadBookContent').mockResolvedValue({ book, file });
     pdf.prepare.mockRejectedValue(new Error('pdf_recognition_failed'));
     await service.prepareBookContents(book);
-    expect(pdf.prepare).toHaveBeenCalledWith(
+    expect(pdf.prepare).toHaveBeenCalledExactlyOnceWith(
       '/managed/existing.pdf',
       document,
       expect.any(AbortSignal),
       expect.any(Function),
-      { owner: { bookId: book.hash, revision: 0 }, regenerate: undefined },
+      {
+        owner: { bookId: book.hash, revision: 0 },
+        regenerate: undefined,
+        checkpoint: undefined,
+        timeoutMs: expect.any(Number),
+      },
     );
+    const { timeoutMs } = pdf.prepare.mock.calls[0]![4];
+    expect(timeoutMs).toBeGreaterThan(0);
+    expect(timeoutMs).toBeLessThanOrEqual(540_000);
     await vi.waitFor(() => expect(mockDestroy).toHaveBeenCalledOnce());
     expect(close).toHaveBeenCalledOnce();
     expect(service.getFs().writeFile).not.toHaveBeenCalled();

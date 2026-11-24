@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, readdir, writeFile, realpath } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile, realpath, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { it, vi, expect } from 'vitest';
@@ -15,7 +15,7 @@ const fixtureSchema = z.object({
   source: z.string().min(1),
   md5: z.string().regex(/^[a-f0-9]{32}$/),
   pages: z.number().int().positive(),
-  expected: z.array(outlineEntrySchema).max(128),
+  expected: z.array(outlineEntrySchema).max(1000),
   audited: z.boolean(),
   review: z.string().max(1000),
   history: z.array(
@@ -40,7 +40,7 @@ const state = vi.hoisted(() => ({
   directory: '',
   helper: '',
   cache: { id: '', pages: [], outline: null, revision: 0 } as PDFCache,
-  calls: [] as { mode: string; indices: number[]; elapsedMs: number }[],
+  calls: [] as { mode: string; indices: number[]; regions?: number; elapsedMs: number }[],
 }));
 vi.mock('@/glossa/harness/derivedStore', async () => {
   const { createHash } = await import('node:crypto');
@@ -69,6 +69,13 @@ vi.mock('@/glossa/harness/derivedStore', async () => {
     }),
   };
 });
+const batchKey = vi.hoisted(
+  () => (regions: readonly (readonly number[])[]) =>
+    regions
+      .map((region) => region.join(','))
+      .sort()
+      .join('_'),
+);
 vi.mock('@/services/pdfEnhancement', async (original) => {
   const actual = await original<typeof import('@/services/pdfEnhancement')>();
   return {
@@ -80,6 +87,8 @@ vi.mock('@/services/pdfEnhancement', async (original) => {
       detect = false,
       contents = false,
       heading = false,
+      region?: readonly number[],
+      regions?: readonly (readonly number[])[],
     ) => {
       try {
         return actual.parseOCRPage(
@@ -88,18 +97,19 @@ vi.mock('@/services/pdfEnhancement', async (original) => {
               path.join(
                 state.directory,
                 heading
-                  ? 'vision-heading-1'
+                  ? `vision-heading-1${regions ? `-batch-${batchKey(regions)}` : region ? `-r-${region.join(',')}` : ''}`
                   : contents
                     ? 'vision-contents-1'
                     : detect
                       ? 'vision-detect-1'
                       : 'vision-pdf-1',
-                `page-${index}.json`,
+                `page-${index}${regions ? `-${region?.join(',')}` : ''}.json`,
               ),
               'utf8',
             ),
           ),
           index,
+          detect,
         );
       } catch {
         return null;
@@ -131,11 +141,14 @@ vi.mock('@/services/pdfOCR', () => ({
     detect = false,
     contents = false,
     heading = false,
+    _session?: string,
+    region?: readonly number[],
+    regions?: readonly (readonly number[])[],
   ) => {
     const directory = path.join(
       state.directory,
       heading
-        ? 'vision-heading-1'
+        ? `vision-heading-1${regions ? `-batch-${batchKey(regions)}` : region ? `-r-${region.join(',')}` : ''}`
         : contents
           ? 'vision-contents-1'
           : detect
@@ -149,6 +162,8 @@ vi.mock('@/services/pdfOCR', () => ({
         state.helper,
         [
           ...(heading ? ['--heading'] : contents ? ['--contents'] : detect ? ['--detect'] : []),
+          ...(region ? [`--region=${region.join(',')}`] : []),
+          ...(regions ? [`--regions=${regions.map((region) => region.join(',')).join(';')}`] : []),
           source,
           directory,
           indices.join(','),
@@ -159,6 +174,7 @@ vi.mock('@/services/pdfOCR', () => ({
       state.calls.push({
         mode: heading ? 'heading' : contents ? 'contents' : detect ? 'detection' : 'precise',
         indices,
+        regions: regions?.length,
         elapsedMs: Math.round(performance.now() - start),
       });
     }
@@ -191,6 +207,10 @@ await initVariants({
 });
 const mode = process.env['GLOSSA_PDF_CONTENTS_MODE'] ?? 'cold';
 if (!['cold', 'resume'].includes(mode)) throw new Error('Evaluation mode must be cold or resume.');
+const pause = process.env['GLOSSA_PDF_CONTENTS_PAUSE'];
+if (pause && (mode !== 'cold' || !['discovery', 'extraction', 'verification'].includes(pause))) {
+  throw new Error('Pause requires a cold evaluation and a valid checkpoint phase.');
+}
 const runID = process.env['GLOSSA_PDF_CONTENTS_RUN'] ?? `${Date.now()}`;
 if (!/^[a-zA-Z0-9-]{1,80}$/.test(runID)) throw new Error('Invalid evaluation run id');
 await mkdir(manifest.output, { recursive: true, mode: 0o700 });
@@ -260,12 +280,42 @@ for (const fixture of manifest.fixtures) {
     ).book;
     expect(document.sections.length).toBe(fixture.pages);
     const reports: PDFContentsReport[] = [];
+    const checkpointPath = path.join(state.directory, 'verification.json');
     let result = 'failed';
+    const controller = new AbortController();
+    let checkpointPhase: string | undefined;
     try {
-      result = await preparePDFContents(source, document, undefined, (value) =>
-        reports.push(value),
+      result = await preparePDFContents(
+        source,
+        document,
+        controller.signal,
+        (value) => {
+          reports.push(value);
+          if (pause && checkpointPhase === pause && value.canResume) controller.abort();
+        },
+        {
+          checkpoint: {
+            read: async () => JSON.parse(await readFile(checkpointPath, 'utf8')),
+            write: async (value) => {
+              const temporary = `${checkpointPath}.tmp`;
+              await writeFile(temporary, JSON.stringify(value), { mode: 0o600 });
+              await rename(temporary, checkpointPath);
+              const { checks } = value as {
+                checks: {
+                  scan?: { discovery: { next: number }; extraction?: { rows: unknown[] } };
+                  plan?: { completed: unknown[] };
+                };
+              };
+              if (checks.plan?.completed.length) checkpointPhase = 'verification';
+              else if (checks.scan?.extraction?.rows.length) checkpointPhase = 'extraction';
+              else if (checks.scan?.discovery.next && checks.scan.discovery.next >= 16)
+                checkpointPhase = 'discovery';
+            },
+          },
+        },
       );
     } catch {
+      if (controller.signal.aborted) result = 'cancelled';
       /* Safe failure details come from the production report. */
     } finally {
       await document.destroy?.();
@@ -310,5 +360,10 @@ for (const fixture of manifest.fixtures) {
       }),
     );
     expect(unchanged).toBe(true);
+    if (pause) {
+      expect(result).toBe('cancelled');
+      expect(last?.canResume).toBe(true);
+      expect(state.cache.outline).toBeNull();
+    }
   });
 }

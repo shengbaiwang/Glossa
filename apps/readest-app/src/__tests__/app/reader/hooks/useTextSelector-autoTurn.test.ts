@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
   },
   appService: { isAndroidApp: false, isMobile: false },
   osPlatform: 'macos',
+  pdf: false,
   viewSettings: { scrolled: false } as { scrolled: boolean },
 }));
 
@@ -32,7 +33,9 @@ vi.mock('@/store/readerStore', () => ({
   }),
 }));
 vi.mock('@/store/bookDataStore', () => ({
-  useBookDataStore: () => ({ getBookData: () => ({}) }),
+  useBookDataStore: () => ({
+    getBookData: () => ({ bookDoc: { getPDFAnnotationRects: h.pdf ? vi.fn() : undefined } }),
+  }),
 }));
 vi.mock('@/utils/event', () => ({
   eventDispatcher: { onSync: vi.fn(), offSync: vi.fn(), on: vi.fn(), off: vi.fn() },
@@ -134,6 +137,7 @@ beforeEach(() => {
   document.body.appendChild(cell);
   h.appService = { isAndroidApp: false, isMobile: false };
   h.osPlatform = 'macos';
+  h.pdf = false;
   h.viewSettings = { scrolled: false };
   h.view.renderer.containerPosition = 100;
 });
@@ -146,8 +150,40 @@ afterEach(() => {
 });
 
 describe('useTextSelector auto page-turn on corner dwell (#1354)', () => {
+  test('a PDF selection at the top-left edge never starts the generic corner turn', async () => {
+    h.pdf = true;
+    const { result } = setup();
+    result.current.handlePointerDown(doc, 0, { pointerType: 'mouse' } as PointerEvent);
+    pointerMove(result, 30, 30);
+    caretMove(result, 30, 30);
+    await advance();
+    expect(h.view.prev).not.toHaveBeenCalled();
+  });
+
+  test('release followed by a late selectionchange and hover cannot turn the page', async () => {
+    const { result } = setup();
+    result.current.handlePointerDown(doc, 0, { pointerType: 'mouse' } as PointerEvent);
+    pointerMove(result, 30, 30);
+    await result.current.handlePointerUp(doc, 0);
+    caretMove(result, 30, 30);
+    pointerMove(result, 30, 30);
+    await advance();
+    expect(h.view.prev).not.toHaveBeenCalled();
+  });
+
+  test('a canceled touch cannot turn after a late selectionchange', async () => {
+    const { result } = setup();
+    result.current.handleTouchStart();
+    pointerMove(result, 30, 30);
+    result.current.handleTouchCancel();
+    caretMove(result, 30, 30);
+    await advance();
+    expect(h.view.prev).not.toHaveBeenCalled();
+  });
+
   test('turns to the next page when a signal dwells in the bottom-right corner', async () => {
     const { result } = setup();
+    result.current.handlePointerDown(doc, 0, { pointerType: 'mouse' } as PointerEvent);
     pointerMove(result, 970, 970);
     await advance();
 
@@ -157,6 +193,7 @@ describe('useTextSelector auto page-turn on corner dwell (#1354)', () => {
 
   test('turns to the previous page (not goLeft) in the top-left corner', async () => {
     const { result } = setup();
+    result.current.handlePointerDown(doc, 0, { pointerType: 'mouse' } as PointerEvent);
     pointerMove(result, 30, 30);
     await advance();
 
@@ -167,6 +204,7 @@ describe('useTextSelector auto page-turn on corner dwell (#1354)', () => {
 
   test('does not turn when the pointer stays in the center', async () => {
     const { result } = setup();
+    result.current.handlePointerDown(doc, 0, { pointerType: 'mouse' } as PointerEvent);
     pointerMove(result, 500, 500);
     await advance();
 
@@ -176,6 +214,7 @@ describe('useTextSelector auto page-turn on corner dwell (#1354)', () => {
 
   test('does not turn until the dwell has elapsed', async () => {
     const { result } = setup();
+    result.current.handlePointerDown(doc, 0, { pointerType: 'mouse' } as PointerEvent);
     pointerMove(result, 970, 970);
     await vi.advanceTimersByTimeAsync(DWELL_MS - 100);
 
@@ -184,6 +223,7 @@ describe('useTextSelector auto page-turn on corner dwell (#1354)', () => {
 
   test('cancels the turn if the pointer leaves the corner before the dwell', async () => {
     const { result } = setup();
+    result.current.handlePointerDown(doc, 0, { pointerType: 'mouse' } as PointerEvent);
     pointerMove(result, 970, 970); // arms
     pointerMove(result, 500, 500); // leaves the corner -> disengage
     await advance();
@@ -193,6 +233,7 @@ describe('useTextSelector auto page-turn on corner dwell (#1354)', () => {
 
   test('turns one page per engagement and does not repeat while held', async () => {
     const { result } = setup();
+    result.current.handlePointerDown(doc, 0, { pointerType: 'mouse' } as PointerEvent);
     pointerMove(result, 970, 970);
     await advance();
     expect(h.view.next).toHaveBeenCalledTimes(1);
@@ -205,6 +246,7 @@ describe('useTextSelector auto page-turn on corner dwell (#1354)', () => {
 
   test('re-arms after the pointer leaves the corner and returns', async () => {
     const { result } = setup();
+    result.current.handlePointerDown(doc, 0, { pointerType: 'mouse' } as PointerEvent);
     pointerMove(result, 970, 970);
     await advance();
     expect(h.view.next).toHaveBeenCalledTimes(1);
@@ -217,6 +259,7 @@ describe('useTextSelector auto page-turn on corner dwell (#1354)', () => {
 
   test('ignores a pointer outside the reading area', async () => {
     const { result } = setup();
+    result.current.handlePointerDown(doc, 0, { pointerType: 'mouse' } as PointerEvent);
     pointerMove(result, VW + 200, 920); // beyond the frame's right edge
     await advance();
 
@@ -226,6 +269,7 @@ describe('useTextSelector auto page-turn on corner dwell (#1354)', () => {
   test('does not auto-turn in scrolled mode', async () => {
     h.viewSettings = { scrolled: true };
     const { result } = setup();
+    result.current.handlePointerDown(doc, 0, { pointerType: 'mouse' } as PointerEvent);
     pointerMove(result, 970, 970);
     await advance();
 
@@ -234,6 +278,7 @@ describe('useTextSelector auto page-turn on corner dwell (#1354)', () => {
 
   test('does not turn without a valid (non-collapsed) selection', async () => {
     const { result } = setup();
+    result.current.handlePointerDown(doc, 0, { pointerType: 'mouse' } as PointerEvent);
     pointerMove(result, 920, 920, false);
     await advance();
 
@@ -242,6 +287,7 @@ describe('useTextSelector auto page-turn on corner dwell (#1354)', () => {
 
   test('the selection caret is also an engagement signal', async () => {
     const { result } = setup();
+    result.current.handlePointerDown(doc, 0, { pointerType: 'mouse' } as PointerEvent);
     caretMove(result, 970, 970);
     await advance();
 
@@ -252,6 +298,7 @@ describe('useTextSelector auto page-turn on corner dwell (#1354)', () => {
     // A 100px inset shrinks the frame to [100,900]: the outer corner (960,960)
     // now falls outside the area, while (870,870) is inside the inset corner.
     const { result } = setup({ top: 100, right: 100, bottom: 100, left: 100 });
+    result.current.handlePointerDown(doc, 0, { pointerType: 'mouse' } as PointerEvent);
     pointerMove(result, 960, 960);
     await advance();
     expect(h.view.next).not.toHaveBeenCalled();
@@ -266,6 +313,7 @@ describe('useTextSelector auto page-turn on corner dwell (#1354)', () => {
     // to window x=970 (1670-700), landing in the bottom-right corner.
     frameOffset = { left: -700, top: 0 };
     const { result } = setup();
+    result.current.handlePointerDown(doc, 0, { pointerType: 'mouse' } as PointerEvent);
     pointerMove(result, 1670, 970);
     await advance();
 

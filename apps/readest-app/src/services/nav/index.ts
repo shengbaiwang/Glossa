@@ -110,14 +110,10 @@ const convertTocLabels = (items: TOCItem[], convertChineseVariant: ConvertChines
   });
 };
 
-// Per-open transformations: label conversion (user setting) and optional sort.
+// Per-open transformations: label conversion (user setting).
 // Structural location/cfi baking lives in computeBookNav/hydrateBookNav so
 // the cached BookNav carries the expensive-to-derive fields across opens.
-export const updateToc = async (
-  bookDoc: BookDoc,
-  sortedTOC: boolean,
-  convertChineseVariant: ConvertChineseVariant,
-) => {
+export const updateToc = async (bookDoc: BookDoc, convertChineseVariant: ConvertChineseVariant) => {
   if (bookDoc.rendition?.layout === 'pre-paginated') return;
 
   const items = bookDoc?.toc || [];
@@ -127,8 +123,6 @@ export const updateToc = async (
     await initSimpleCC();
     convertTocLabels(items, convertChineseVariant);
   }
-
-  if (sortedTOC) sortTocItems(items);
 };
 
 /**

@@ -44,6 +44,8 @@ import {
   redirectToLibrary,
   showReaderWindow,
   showLibraryWindow,
+  openLibraryForBrowsing,
+  isLibraryBrowseRequest,
   ensureMainLibraryWindow,
   closeReaderWindowOrGoToLibrary,
 } from '@/utils/nav';
@@ -378,6 +380,28 @@ describe('showLibraryWindow', () => {
     expect(url).toContain('/library?');
     expect(url).toContain('file=file1.epub');
     expect(url).toContain('file=file2.epub');
+  });
+});
+
+describe('opening a library from a live reader', () => {
+  test.each(['main', 'reader-file-open'])('keeps %s alive across repeated visits', (label) => {
+    const close = vi.fn();
+    vi.mocked(getCurrentWindow).mockReturnValue({ label, close } as never);
+    const reportFailure = vi.fn();
+    openLibraryForBrowsing(makeAppService() as never, reportFailure);
+    openLibraryForBrowsing(makeAppService() as never, reportFailure);
+    const windows = vi.mocked(WebviewWindow).mock.calls;
+    expect(windows).toHaveLength(2);
+    expect(new Set(windows.map(([id]) => id)).size).toBe(2);
+    for (const [id, options] of windows) {
+      expect(id).toMatch(/^reader-/);
+      const url = new URL(String(options?.url), 'https://local.test');
+      expect(url.pathname).toBe('/library');
+      expect(isLibraryBrowseRequest(url.searchParams)).toBe(true);
+      expect(url.searchParams.has('file')).toBe(false);
+    }
+    expect(close).not.toHaveBeenCalled();
+    expect(WebviewWindowCtor.getByLabel).not.toHaveBeenCalled();
   });
 });
 

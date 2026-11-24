@@ -4,7 +4,7 @@ import { useThemeStore } from '@/store/themeStore';
 import { Overlay } from '@/components/Overlay';
 import ModalPortal from '@/components/ModalPortal';
 import MenuItem from '@/components/MenuItem';
-import Menu from '@/components/Menu';
+import Menu, { MenuSeparator } from '@/components/Menu';
 
 const VIEWPORT_PADDING = 8;
 
@@ -107,21 +107,24 @@ const BookContextMenuPopup: React.FC<BookContextMenuPopupProps> = ({
         style={{ left: placement?.left ?? 0, top: placement?.top ?? 0 }}
       >
         <Menu
-          className='dropdown-content no-triangle bg-base-100 rounded-box !relative z-[1] !mt-0 p-2 shadow'
+          role='menu'
+          className='glossa-menu-surface dropdown-content no-triangle !relative z-[1] !mt-0'
           onCancel={onClose}
         >
-          {items.map(({ text, action, disabled, destructive }) => (
-            <MenuItem
-              key={text}
-              noIcon
-              disabled={disabled}
-              label={text}
-              buttonClass={destructive ? 'glossa-delete-action' : undefined}
-              onClick={() => {
-                onClose();
-                action();
-              }}
-            />
+          {items.map(({ text, action, disabled, destructive }, index) => (
+            <React.Fragment key={text}>
+              {destructive && index > 0 && !items[index - 1]?.destructive && <MenuSeparator />}
+              <MenuItem
+                noIcon
+                disabled={disabled}
+                label={text}
+                buttonClass={destructive ? 'glossa-delete-action' : undefined}
+                onClick={() => {
+                  onClose();
+                  action();
+                }}
+              />
+            </React.Fragment>
           ))}
         </Menu>
       </div>

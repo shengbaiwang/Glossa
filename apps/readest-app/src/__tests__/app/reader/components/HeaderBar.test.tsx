@@ -183,3 +183,36 @@ it('shows the clock on Mac for an enabled reader and hides it when disabled', ()
   renderBar();
   expect(screen.queryByRole('button', { name: 'Reading time' })).toBeNull();
 });
+
+it('opens customization in place and keeps Book Actions available after hiding a tool', () => {
+  renderBar();
+  const more = screen.getByRole('button', { name: 'Book Actions' });
+  fireEvent.contextMenu(more);
+  const customization = screen.getByRole('group', { name: 'Customize Toolbar' });
+  fireEvent.click(within(customization).getByRole('checkbox', { name: 'Bookmark' }));
+  expect(screen.queryByRole('button', { name: 'Add Bookmark' })).toBeNull();
+  expect(more).toBeTruthy();
+  fireEvent.click(within(customization).getByRole('button', { name: 'Restore Defaults' }));
+  expect(screen.getByRole('button', { name: 'Add Bookmark' })).toBeTruthy();
+  fireEvent.keyDown(customization, { key: 'Escape' });
+  expect(screen.queryByRole('group', { name: 'Customize Toolbar' })).toBeNull();
+  expect(document.activeElement).toBe(more);
+});
+
+it('loads the saved toolbar layout when the reader initializes again', async () => {
+  const key = 'glossa.readerToolbar';
+  localStorage.setItem(
+    key,
+    JSON.stringify({ order: ['bookmark', 'appearance'], hidden: ['appearance'] }),
+  );
+  try {
+    vi.resetModules();
+    const { useReaderToolbarLayout } = await import('@/components/settings/ReaderToolbarSettings');
+    expect(useReaderToolbarLayout.getState().layout).toEqual({
+      order: ['bookmark', 'appearance', 'annotation', 'readingTime'],
+      hidden: ['appearance'],
+    });
+  } finally {
+    localStorage.removeItem(key);
+  }
+});

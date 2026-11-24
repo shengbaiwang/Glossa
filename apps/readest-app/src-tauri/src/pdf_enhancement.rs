@@ -3,7 +3,7 @@ use crate::pdf_cache_ownership::{self as ownership, LegacyCache, Owner};
 use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     fs::{self, File},
     io::Read,
     path::{Path, PathBuf},
@@ -35,6 +35,8 @@ pub struct OcrOptions {
     contents: Option<bool>,
     heading: Option<bool>,
     session: Option<String>,
+    region: Option<[u16; 4]>,
+    regions: Option<Vec<[u16; 4]>>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -88,6 +90,7 @@ struct SourceSession {
     modified: Option<std::time::SystemTime>,
 }
 static JOB: OnceLock<Mutex<Option<Job>>> = OnceLock::new();
+static FINISHED_JOBS: OnceLock<Mutex<VecDeque<JobStatus>>> = OnceLock::new();
 static SOURCE_SESSIONS: OnceLock<Mutex<HashMap<String, SourceSession>>> = OnceLock::new();
 static NEXT_JOB: AtomicU64 = AtomicU64::new(1);
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
@@ -226,6 +229,29 @@ fn read_page_version(dir: &Path, index: usize, version: &str) -> Option<serde_js
     let value = read_json(&path, PAGE_LIMIT)?;
     valid_page(&value, index).then_some(value)
 }
+fn heading_region(region: [u16; 4], heading: bool) -> Result<String, String> {
+    let [x, y, width, height] = region.map(u32::from);
+    if !heading || width < 20 || height < 20 || x + width > 1000 || y + height > 1000 {
+        return Err("invalid_pdf_ocr_region".into());
+    }
+    Ok(format!("{x},{y},{width},{height}"))
+}
+
+fn heading_regions(regions: Vec<[u16; 4]>, heading: bool) -> Result<Vec<String>, String> {
+    if !(2..=4).contains(&regions.len()) {
+        return Err("invalid_pdf_ocr_region".into());
+    }
+    let mut keys = regions
+        .into_iter()
+        .map(|region| heading_region(region, heading))
+        .collect::<Result<Vec<_>, _>>()?;
+    keys.sort_unstable();
+    if keys.windows(2).any(|pair| pair[0] == pair[1]) {
+        return Err("invalid_pdf_ocr_region".into());
+    }
+    Ok(keys)
+}
+
 fn ocr_version(detect: bool, contents: bool, heading: bool) -> Result<&'static str, String> {
     match (detect, contents, heading) {
         (true, false, false) => Ok(DETECTION_VERSION),
@@ -393,6 +419,7 @@ pub async fn pdf_open_cache(
     .map_err(error)?
 }
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Named Tauri IPC fields preserve the existing wire protocol.
 pub async fn pdf_read_ocr_page(
     app: AppHandle,
     cache_id: String,
@@ -400,6 +427,8 @@ pub async fn pdf_read_ocr_page(
     detect: Option<bool>,
     contents: Option<bool>,
     heading: Option<bool>,
+    region: Option<[u16; 4]>,
+    regions: Option<Vec<[u16; 4]>>,
 ) -> Result<Option<serde_json::Value>, String> {
     if index >= 5000 {
         return Err("invalid_pdf_page".into());
@@ -407,16 +436,25 @@ pub async fn pdf_read_ocr_page(
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = CACHE_LOCK.lock().map_err(error)?;
         ownership::access(&root(&app)?, &cache_id, None)?;
-        let version = ocr_version(
-            detect.unwrap_or(false),
-            contents.unwrap_or(false),
-            heading.unwrap_or(false),
-        )?;
-        Ok(read_page_version(
-            &cache_dir(&app, &cache_id)?,
-            index,
-            version,
-        ))
+        let heading = heading.unwrap_or(false);
+        let version = ocr_version(detect.unwrap_or(false), contents.unwrap_or(false), heading)?;
+        let dir = cache_dir(&app, &cache_id)?;
+        if let Some(regions) = regions {
+            let keys = heading_regions(regions, heading)?;
+            let key = heading_region(region.ok_or("invalid_pdf_ocr_region")?, heading)?;
+            if !keys.contains(&key) {
+                return Err("invalid_pdf_ocr_region".into());
+            }
+            let path = dir
+                .join(format!("{version}-batch-{}", keys.join("_")))
+                .join(format!("page-{index}-{key}.json"));
+            return Ok(read_json(&path, PAGE_LIMIT).filter(|value| valid_page(value, index)));
+        }
+        let version = match region {
+            Some(region) => format!("{version}-r-{}", heading_region(region, heading)?),
+            None => version.to_string(),
+        };
+        Ok(read_page_version(&dir, index, &version))
     })
     .await
     .map_err(error)?
@@ -463,11 +501,25 @@ pub async fn pdf_start_ocr(
                 contents,
                 heading,
                 session,
+                region,
+                regions,
             } = options;
             let detect = detect.unwrap_or(false);
             let contents = contents.unwrap_or(false);
             let heading = heading.unwrap_or(false);
             let version = ocr_version(detect, contents, heading)?;
+            let region = region
+                .map(|value| heading_region(value, heading))
+                .transpose()?;
+            let regions = regions
+                .map(|value| heading_regions(value, heading))
+                .transpose()?;
+            let version = match (&region, &regions) {
+                (Some(_), Some(_)) => return Err("invalid_pdf_ocr_region".into()),
+                (Some(region), None) => format!("{version}-r-{region}"),
+                (None, Some(keys)) => format!("{version}-batch-{}", keys.join("_")),
+                (None, None) => version.to_string(),
+            };
             let _cache_guard = CACHE_LOCK.lock().map_err(error)?;
             let mut guard = jobs().lock().map_err(error)?;
             if guard.as_ref().is_some_and(|j| j.status.state == "running")
@@ -480,20 +532,33 @@ pub async fn pdf_start_ocr(
             if pages.is_empty() || pages.len() > 5000 || pages.iter().any(|i| *i >= 5000) {
                 return Err("pdf_page_limit".into());
             }
+            if (region.is_some() || regions.is_some()) && pages.len() != 1 {
+                return Err("invalid_pdf_ocr_region".into());
+            }
             let (path, source_id) = verified_source(&app, &source, &cache_id, session.as_deref())?;
             ownership::access(&root(&app)?, &cache_id, Some(&source_id))?;
             let id = cache_id;
             let dir = cache_dir(&app, &id)?;
-            fs::create_dir_all(dir.join(version)).map_err(error)?;
+            let ocr_dir = dir.join(&version);
+            fs::create_dir_all(&ocr_dir).map_err(error)?;
             if cache_size(&root(&app)?) >= 1024 * 1024 * 1024 || cache_size(&dir) >= CACHE_LIMIT {
                 return Err("pdf_cache_limit".into());
             }
             for index in &pages {
-                if read_page_version(&dir, *index, version).is_none() {
-                    let _ = fs::remove_file(dir.join(version).join(format!("page-{index}.json")));
+                if let Some(keys) = &regions {
+                    for key in keys {
+                        let path = ocr_dir.join(format!("page-{index}-{key}.json"));
+                        if !read_json(&path, PAGE_LIMIT)
+                            .is_some_and(|value| valid_page(&value, *index))
+                        {
+                            let _ = fs::remove_file(path);
+                        }
+                    }
+                } else if read_page_version(&dir, *index, &version).is_none() {
+                    let _ = fs::remove_file(ocr_dir.join(format!("page-{index}.json")));
                 }
             }
-            let _ = fs::remove_file(dir.join(version).join("progress.json"));
+            let _ = fs::remove_file(ocr_dir.join("progress.json"));
             let mut command = Command::new(helper(&app)?);
             if detect {
                 command.arg("--detect");
@@ -502,9 +567,15 @@ pub async fn pdf_start_ocr(
             } else if heading {
                 command.arg("--heading");
             }
+            if let Some(region) = region {
+                command.arg(format!("--region={region}"));
+            }
+            if let Some(keys) = regions {
+                command.arg(format!("--regions={}", keys.join(";")));
+            }
             let child = command
                 .arg(&path)
-                .arg(dir.join(version))
+                .arg(&ocr_dir)
                 .arg(
                     pages
                         .iter()
@@ -530,6 +601,18 @@ pub async fn pdf_start_ocr(
                 total: pages.len(),
                 error: None,
             };
+            // Keep terminal results until their original waiter can observe them.
+            // Other WebViews may start the next worker between polling intervals.
+            if let Some(previous) = guard.as_ref() {
+                let mut finished = FINISHED_JOBS
+                    .get_or_init(|| Mutex::new(VecDeque::new()))
+                    .lock()
+                    .map_err(error)?;
+                finished.push_back(previous.status.clone());
+                while finished.len() > 128 {
+                    finished.pop_front();
+                }
+            }
             *guard = Some(Job {
                 status: status.clone(),
                 child: child.clone(),
@@ -539,7 +622,7 @@ pub async fn pdf_start_ocr(
                 let started = Instant::now();
                 let outcome = loop {
                     std::thread::sleep(Duration::from_millis(300));
-                    let progress = read_json(&dir.join(version).join("progress.json"), 256);
+                    let progress = read_json(&ocr_dir.join("progress.json"), 256);
                     if let Ok(mut guard) = jobs().lock() {
                         if let Some(job) = guard.as_mut().filter(|j| Arc::ptr_eq(&j.child, &child))
                         {
@@ -583,7 +666,7 @@ pub async fn pdf_start_ocr(
                     if let Some(job) = guard.as_mut().filter(|j| Arc::ptr_eq(&j.child, &child)) {
                         if !unchanged {
                             // A changed source cannot leave resumable text under the old hash.
-                            let _ = fs::remove_dir_all(dir.join(version));
+                            let _ = fs::remove_dir_all(&ocr_dir);
                         }
                         if job.status.state == "running" {
                             match outcome {
@@ -614,13 +697,36 @@ pub async fn pdf_start_ocr(
     .map_err(error)?
 }
 #[tauri::command]
-pub fn pdf_ocr_status(cache_id: String) -> Result<Option<JobStatus>, String> {
-    Ok(jobs()
+pub fn pdf_ocr_status(
+    cache_id: String,
+    job_id: Option<String>,
+) -> Result<Option<JobStatus>, String> {
+    let active = jobs().lock().map_err(error)?;
+    let finished = FINISHED_JOBS
+        .get_or_init(|| Mutex::new(VecDeque::new()))
         .lock()
-        .map_err(error)?
-        .as_ref()
-        .filter(|j| j.status.cache_id == cache_id)
-        .map(|j| j.status.clone()))
+        .map_err(error)?;
+    Ok(find_job_status(
+        active.as_ref().map(|job| &job.status),
+        &finished,
+        &cache_id,
+        job_id.as_deref(),
+    ))
+}
+fn find_job_status(
+    active: Option<&JobStatus>,
+    finished: &VecDeque<JobStatus>,
+    cache_id: &str,
+    job_id: Option<&str>,
+) -> Option<JobStatus> {
+    let matches = |status: &&JobStatus| {
+        status.cache_id == cache_id && job_id.map_or(true, |id| status.job_id == id)
+    };
+    // Legacy callers without an id see only the active slot, never an old job.
+    active
+        .filter(matches)
+        .or_else(|| job_id.and_then(|_| finished.iter().rev().find(matches)))
+        .cloned()
 }
 #[tauri::command]
 pub fn pdf_cancel_ocr(cache_id: String, job_id: Option<String>) -> Result<(), String> {
@@ -680,6 +786,7 @@ fn validate_outline(entries: &[OutlineEntry], page_count: usize) -> bool {
     true
 }
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Named Tauri IPC fields preserve the existing wire protocol.
 pub async fn pdf_save_outline(
     app: AppHandle,
     source: String,
@@ -688,6 +795,7 @@ pub async fn pdf_save_outline(
     outline: Option<Vec<OutlineEntry>>,
     page_count: usize,
     generator: Option<String>,
+    session: Option<String>,
 ) -> Result<CacheInfo, String> {
     tauri::async_runtime::spawn_blocking(move || {
         if generator.as_deref().is_some_and(|value| {
@@ -718,6 +826,18 @@ pub async fn pdf_save_outline(
             generator,
         })
         .map_err(error)?;
+        let _session = if let Some(token) = session {
+            let sessions = source_sessions().lock().map_err(error)?;
+            if !sessions
+                .get(&token)
+                .is_some_and(|session| session.cache_id == id && session.fingerprint == source_id)
+            {
+                return Err("pdf_contents_cancelled".into());
+            }
+            Some(sessions)
+        } else {
+            None
+        };
         fs::write(dir.join("outline.tmp"), content).map_err(error)?;
         fs::rename(dir.join("outline.tmp"), dir.join("outline.json")).map_err(error)?;
         info(&dir, id)
@@ -741,6 +861,20 @@ mod tests {
             ocr_version(true, true, false).unwrap_err(),
             "invalid_pdf_ocr_mode"
         );
+    }
+    #[test]
+    fn heading_crop_validates_visual_page_coordinates() {
+        assert_eq!(
+            heading_region([800, 250, 100, 660], true).unwrap(),
+            "800,250,100,660"
+        );
+        for region in [[950, 0, 100, 50], [0, 970, 100, 50], [0, 0, 19, 100]] {
+            assert_eq!(
+                heading_region(region, true).unwrap_err(),
+                "invalid_pdf_ocr_region"
+            );
+        }
+        assert!(heading_region([0, 0, 100, 100], false).is_err());
     }
     #[cfg(target_os = "macos")]
     #[test]
@@ -767,6 +901,37 @@ mod tests {
             .success());
         assert!(Command::new(&executable).status().unwrap().success());
         fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn completed_status_survives_a_new_worker_without_crossing_owners() {
+        let first = JobStatus {
+            cache_id: "book".into(),
+            job_id: "first".into(),
+            state: "completed".into(),
+            completed: 1,
+            total: 1,
+            error: None,
+        };
+        let second = JobStatus {
+            job_id: "second".into(),
+            state: "running".into(),
+            ..first.clone()
+        };
+        let finished = VecDeque::from([first]);
+        assert_eq!(
+            find_job_status(Some(&second), &finished, "book", Some("first"))
+                .unwrap()
+                .state,
+            "completed"
+        );
+        assert!(find_job_status(Some(&second), &finished, "other", Some("first")).is_none());
+        assert!(find_job_status(Some(&second), &finished, "book", Some("unknown")).is_none());
+        assert_eq!(
+            find_job_status(Some(&second), &finished, "book", None)
+                .unwrap()
+                .job_id,
+            "second"
+        );
     }
     #[test]
     fn a_late_cancel_cannot_stop_a_new_job_for_the_same_book() {
@@ -1019,6 +1184,61 @@ mod tests {
         assert!(text.contains("本地阅读与文字识别"));
         assert!(read_page(&dir, 2).is_some(), "rotated page geometry");
         assert_eq!(read_page(&dir, 3).unwrap()["native"], true);
+        let crop_version = "vision-heading-1-r-20,50,960,500";
+        fs::create_dir_all(dir.join(crop_version)).unwrap();
+        assert!(Command::new(&executable)
+            .arg("--heading")
+            .arg("--region=20,50,960,500")
+            .arg(&source)
+            .arg(dir.join(crop_version))
+            .arg("2")
+            .status()
+            .unwrap()
+            .success());
+        let cropped = read_page_version(&dir, 2, crop_version).unwrap();
+        let words = cropped["lines"].as_array().unwrap();
+        assert!(words
+            .iter()
+            .map(|word| word["text"].as_str().unwrap())
+            .collect::<String>()
+            .contains("Chapter 2"));
+        for word in words {
+            let x = word["x"].as_f64().unwrap();
+            let y = word["y"].as_f64().unwrap();
+            assert!(x >= 0.018 && x + word["width"].as_f64().unwrap() <= 0.982);
+            assert!(y >= 0.048 && y + word["height"].as_f64().unwrap() <= 0.552);
+        }
+        let batch = dir.join("vision-heading-1-batch-test");
+        fs::create_dir_all(&batch).unwrap();
+        let batch_run = || {
+            Command::new(&executable)
+                .arg("--heading")
+                .arg("--regions=20,50,960,500;0,885,1000,115")
+                .arg(&source)
+                .arg(&batch)
+                .arg("2")
+                .status()
+                .unwrap()
+        };
+        assert!(batch_run().success());
+        let batched = batch.join("page-2-20,50,960,500.json");
+        let second = batch.join("page-2-0,885,1000,115.json");
+        let parsed = |file: &Path| {
+            serde_json::from_slice::<serde_json::Value>(&fs::read(file).unwrap()).unwrap()
+        };
+        assert_eq!(parsed(&batched), cropped);
+        let margin = parsed(&second);
+        assert_eq!(margin["index"], 2);
+        assert_eq!(margin["native"], false);
+        for line in margin["lines"].as_array().unwrap() {
+            assert!(line["y"].as_f64().unwrap() >= 0.883);
+        }
+        let modified = fs::metadata(&batched).unwrap().modified().unwrap();
+        assert!(batch_run().success());
+        assert_eq!(
+            fs::metadata(&batched).unwrap().modified().unwrap(),
+            modified
+        );
         // Low-resolution detection has its own resumable sidecar. It must
         // neither replace precise reading coordinates nor appear in CacheInfo.pages.
         fs::create_dir_all(dir.join(DETECTION_VERSION)).unwrap();

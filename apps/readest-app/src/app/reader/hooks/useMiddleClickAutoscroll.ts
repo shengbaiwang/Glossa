@@ -134,7 +134,8 @@ export const useMiddleClickAutoscroll = (
           break;
       }
     };
-    const onSingleClick = () => Date.now() < swallowClicksBeforeRef.current;
+    const onSingleClick = (event: CustomEvent) =>
+      event.detail?.bookKey === bookKey && Date.now() < swallowClicksBeforeRef.current;
     window.addEventListener('message', onMessage);
     eventDispatcher.onSync('iframe-single-click', onSingleClick);
     return () => {

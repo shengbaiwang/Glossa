@@ -152,8 +152,8 @@ export const useAutoScroll = (
     };
     // A tap on the page pauses/resumes the session; consuming the click keeps
     // it from also turning the page or toggling the header/footer bars.
-    const onSingleClick = () => {
-      if (!scroller.active) return false;
+    const onSingleClick = (event: CustomEvent) => {
+      if (event.detail?.bookKey !== bookKey || !scroller.active) return false;
       togglePause();
       return true;
     };

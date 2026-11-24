@@ -1,7 +1,7 @@
 import { getReadingQuickAction } from '@/utils/annotationToolbar';
 import clsx from 'clsx';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { LibraryBig, Ellipsis, Clock } from '@/components/GlossaIcons';
+import { LibraryBig, Ellipsis, Clock, Bookmark } from '@/components/GlossaIcons';
 
 import { Insets } from '@/types/misc';
 import { useEnv } from '@/context/EnvContext';
@@ -19,6 +19,14 @@ import { AnnotationToolType } from '@/types/annotator';
 import { saveViewSettings } from '@/helpers/settings';
 import { getHeaderTriggerHeight } from '@/utils/insets';
 import Dropdown from '@/components/Dropdown';
+import MenuItem from '@/components/MenuItem';
+import { Overlay } from '@/components/Overlay';
+import { useLongPress } from '@/hooks/useLongPress';
+import ReaderToolbarSettings, {
+  useReaderToolbarLayout,
+  type ReaderTool,
+} from '@/components/settings/ReaderToolbarSettings';
+import ReaderCommandItem from './ReaderCommandItem';
 import WindowButtons from '@/components/WindowButtons';
 import QuickActionMenu from './annotator/QuickActionMenu';
 import SidebarToggler from './SidebarToggler';
@@ -68,6 +76,10 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
   const { isNotebookVisible } = useNotebookStore();
   const { getView, getViewSettings, setHoveredBookKey } = useReaderStore();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [customizing, setCustomizing] = useState(false);
+  const customizeRef = useRef<HTMLDivElement>(null);
+  const customizeTrigger = useRef<HTMLElement | null>(null);
+  const { layout } = useReaderToolbarLayout();
   const [headerWidth, setHeaderWidth] = useState(0);
   const view = getView(bookKey);
   const viewSettings = getViewSettings(bookKey)!;
@@ -92,8 +104,22 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
   const handleToggleDropdown = (isOpen: boolean) => {
     setIsDropdownOpen(isOpen);
     onDropdownOpenChange?.(isOpen);
-    if (!isOpen) setHoveredBookKey('');
+    if (!isOpen && !headerRef.current?.contains(document.activeElement)) setHoveredBookKey('');
   };
+
+  const openCustomization = () => {
+    customizeTrigger.current =
+      headerRef.current?.querySelector<HTMLElement>('[data-book-actions] button') ?? null;
+    setCustomizing(true);
+  };
+  const closeCustomization = () => {
+    setCustomizing(false);
+    customizeTrigger.current?.focus({ preventScroll: true });
+  };
+  const { handlers: customizePress } = useLongPress({ onLongPress: openCustomization }, []);
+  useEffect(() => {
+    if (customizing) customizeRef.current?.focus();
+  }, [customizing]);
 
   const handleAnnotationQuickActionSelect = (action: AnnotationToolType | null) => {
     if (viewSettings?.annotationQuickAction === action) action = null;
@@ -137,7 +163,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
 
   const isHeaderCompact = headerWidth > 0 && headerWidth < 350;
   const insets = window.innerWidth < 640 ? screenInsets : gridInsets;
-  const isHeaderVisible = hoveredBookKey === bookKey || isDropdownOpen;
+  const isHeaderVisible = hoveredBookKey === bookKey || isDropdownOpen || customizing;
   const isMobile = appService?.isMobile || window.innerWidth < 640;
   const triggerHeight = viewSettings ? getHeaderTriggerHeight(gridInsets.top, viewSettings) : 0;
 
@@ -150,6 +176,82 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
   };
   const windowButtonVisible =
     appService?.hasWindowBar && !isTrafficLightVisible && !trafficLightInHeader;
+
+  const toolbarTools: Record<ReaderTool, React.ReactNode> = {
+    annotation:
+      enableAnnotationQuickActions && annotationQuickAction ? (
+        <Dropdown
+          label={_('Instant {{action}}', { action: _(annotationQuickActionButton.label) })}
+          className='exclude-title-bar-mousedown dropdown-bottom dropdown-center'
+          menuClassName='!relative'
+          buttonClassName={clsx(
+            'glossa-icon-button btn btn-ghost h-8 min-h-8 w-8 p-0',
+            viewSettings?.annotationQuickAction && 'bg-base-300/50',
+          )}
+          toggleButton={<AnnotationToolQuickActionIcon size={iconSize18} />}
+          onToggle={handleToggleDropdown}
+        >
+          <QuickActionMenu
+            selectedAction={viewSettings.annotationQuickAction}
+            onActionSelect={handleAnnotationQuickActionSelect}
+          />
+        </Dropdown>
+      ) : null,
+    readingTime: showReadingTime ? (
+      <Dropdown
+        label={_('Reading time')}
+        containerClassName='h-8'
+        className='exclude-title-bar-mousedown dropdown-bottom dropdown-end'
+        buttonClassName='glossa-icon-button btn btn-ghost h-8 min-h-8 w-8 p-0'
+        toggleButton={<Clock size={iconSize18} aria-hidden='true' />}
+        onToggle={handleToggleDropdown}
+      >
+        <div
+          aria-label={_('Reading time')}
+          className='glossa-group-card dropdown-content no-triangle z-20 mt-2 shadow-2xl'
+          role='region'
+        >
+          <React.Suspense fallback={<p role='status'>{_('Loading...')}</p>}>
+            <ReadingTimePanel bookKey={bookKey} />
+          </React.Suspense>
+        </div>
+      </Dropdown>
+    ) : null,
+    bookmark: <BookmarkToggler bookKey={bookKey} hidden={layout.hidden.includes('bookmark')} />,
+    appearance: !isHeaderCompact ? <SettingsToggler bookKey={bookKey} /> : null,
+  };
+  const fallbackTools = (close: () => void) => (
+    <>
+      {layout.hidden.includes('bookmark') && (
+        <ReaderCommandItem
+          id='bookmark'
+          bookKey={bookKey}
+          icon={<Bookmark size={16} />}
+          onClose={close}
+        />
+      )}
+      {layout.hidden.includes('readingTime') && showReadingTime && (
+        <MenuItem label={_('Reading time')} Icon={<Clock size={16} />}>
+          <React.Suspense fallback={<p role='status'>{_('Loading...')}</p>}>
+            <ReadingTimePanel bookKey={bookKey} />
+          </React.Suspense>
+        </MenuItem>
+      )}
+      {layout.hidden.includes('annotation') && toolbarTools.annotation && (
+        <MenuItem
+          label={_('Annotation Actions')}
+          Icon={<AnnotationToolQuickActionIcon size={16} />}
+        >
+          <QuickActionMenu
+            menuClassName='!static !m-0 !w-full !border-0 !shadow-none'
+            selectedAction={viewSettings.annotationQuickAction}
+            onActionSelect={handleAnnotationQuickActionSelect}
+            setIsDropdownOpen={close}
+          />
+        </MenuItem>
+      )}
+    </>
+  );
 
   return (
     <div
@@ -270,61 +372,84 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
           </div>
         </div>
 
-        <div className='header-tools-end bg-base-100 z-20 ms-auto flex h-full min-w-max items-center gap-x-3 ps-2 max-[350px]:gap-x-2'>
-          {enableAnnotationQuickActions && annotationQuickAction && (
-            <Dropdown
-              label={_('Instant {{action}}', { action: _(annotationQuickActionButton.label) })}
-              className='exclude-title-bar-mousedown dropdown-bottom dropdown-center'
-              menuClassName='!relative'
-              buttonClassName={clsx(
-                'glossa-icon-button btn btn-ghost h-8 min-h-8 w-8 p-0',
-                viewSettings?.annotationQuickAction && 'bg-base-300/50',
-              )}
-              toggleButton={<AnnotationToolQuickActionIcon size={iconSize18} />}
-              onToggle={handleToggleDropdown}
-            >
-              <QuickActionMenu
-                selectedAction={viewSettings.annotationQuickAction}
-                onActionSelect={handleAnnotationQuickActionSelect}
-              />
-            </Dropdown>
+        <div
+          className='header-tools-end bg-base-100 z-20 ms-auto flex h-full min-w-max items-center gap-x-3 ps-2 max-[350px]:gap-x-2'
+          onPointerDown={(event) => {
+            if (!customizing && event.pointerType !== 'mouse') customizePress.onPointerDown(event);
+          }}
+          onPointerMove={customizePress.onPointerMove}
+          onPointerUp={customizePress.onPointerUp}
+          onPointerCancel={customizePress.onPointerCancel}
+          onPointerLeave={customizePress.onPointerLeave}
+          onClickCapture={
+            customizing
+              ? (event) => {
+                  if (
+                    !customizeRef.current?.contains(event.target as Node) &&
+                    !(event.target as HTMLElement).closest('.overlay')
+                  ) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }
+                }
+              : undefined
+          }
+          onContextMenu={(event) => {
+            if (customizing) return;
+            event.preventDefault();
+            event.stopPropagation();
+            openCustomization();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+              event.preventDefault();
+              event.stopPropagation();
+              openCustomization();
+            }
+          }}
+        >
+          {customizing && (
+            <>
+              <Overlay onDismiss={closeCustomization} />
+              <div
+                ref={customizeRef}
+                tabIndex={-1}
+                role='group'
+                aria-label={_('Customize Toolbar')}
+                className='glossa-menu-surface eink-bordered bg-base-100 absolute end-2 top-full z-50 w-80 max-w-[calc(100vw-16px)] rounded-lg shadow-md'
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.stopPropagation();
+                    closeCustomization();
+                  }
+                }}
+              >
+                <ReaderToolbarSettings inline />
+              </div>
+            </>
           )}
-          {showReadingTime && (
+          {layout.order
+            .filter((tool) => tool === 'bookmark' || !layout.hidden.includes(tool))
+            .map((tool) => (
+              <React.Fragment key={tool}>{toolbarTools[tool]}</React.Fragment>
+            ))}
+          <div data-book-actions>
             <Dropdown
-              label={_('Reading time')}
+              label={_('Book Actions')}
               containerClassName='h-8'
               className='exclude-title-bar-mousedown dropdown-bottom dropdown-end'
-              buttonClassName='glossa-icon-button btn btn-ghost h-8 min-h-8 w-8 p-0'
-              toggleButton={<Clock size={iconSize18} aria-hidden='true' />}
+              buttonClassName='glossa-icon-button btn btn-ghost h-8 min-h-8 w-8 p-0 mt-0'
+              toggleButton={<Ellipsis size={iconSize18} aria-hidden='true' />}
               onToggle={handleToggleDropdown}
             >
-              <div
-                aria-label={_('Reading time')}
-                className='glossa-group-card dropdown-content no-triangle z-20 mt-2 shadow-2xl'
-                role='region'
-              >
-                <React.Suspense fallback={<p role='status'>{_('Loading...')}</p>}>
-                  <ReadingTimePanel bookKey={bookKey} />
-                </React.Suspense>
-              </div>
+              <ViewMenu
+                bookKey={bookKey}
+                showReadingAppearance={isHeaderCompact || layout.hidden.includes('appearance')}
+                fallbackTools={fallbackTools}
+                onCloseBook={handleCloseBook}
+              />
             </Dropdown>
-          )}
-          <BookmarkToggler bookKey={bookKey} />
-          {!isHeaderCompact && <SettingsToggler bookKey={bookKey} />}
-          <Dropdown
-            label={_('Book Actions')}
-            containerClassName='h-8'
-            className='exclude-title-bar-mousedown dropdown-bottom dropdown-end'
-            buttonClassName='glossa-icon-button btn btn-ghost h-8 min-h-8 w-8 p-0 mt-0'
-            toggleButton={<Ellipsis size={iconSize18} aria-hidden='true' />}
-            onToggle={handleToggleDropdown}
-          >
-            <ViewMenu
-              bookKey={bookKey}
-              showReadingAppearance={isHeaderCompact}
-              onCloseBook={handleCloseBook}
-            />
-          </Dropdown>
+          </div>
           {(!isNotebookVisible || sideBarBookKey !== bookKey || isMobile) && (
             <NotebookToggler bookKey={bookKey} />
           )}

@@ -91,6 +91,29 @@ describe('iframeEventHandlers click gestures', () => {
     expect(postedTypes(postSpy)).toContain('iframe-single-click');
   });
 
+  test('never delivers the deferred page click for a completed PDF selection', async () => {
+    const { handleClick, handleMousedown, handleMouseup } = await importHandlers();
+    handleMousedown('book-1', mouseEvent());
+    handleMouseup('book-1', mouseEvent());
+    handleClick('book-1', { current: false }, true, mouseEvent(), true, 1);
+    vi.advanceTimersByTime(350);
+    expect(postedTypes(postSpy)).not.toContain('iframe-single-click');
+  });
+
+  test('rapid clicks in different page documents stay independent', async () => {
+    const { handleClick, handleMousedown, handleMouseup } = await importHandlers();
+    for (const id of ['a', 'b']) {
+      const target = document.implementation.createHTMLDocument(id).body;
+      handleMousedown(id, mouseEvent({ target }));
+      handleMouseup(id, mouseEvent({ target }));
+      handleClick(id, { current: false }, true, mouseEvent({ target }));
+    }
+    vi.advanceTimersByTime(350);
+    const types = postedTypes(postSpy);
+    expect(types.filter((type) => type === 'iframe-single-click')).toHaveLength(2);
+    expect(types).not.toContain('iframe-double-click');
+  });
+
   test('a plain double-click posts iframe-double-click and not iframe-single-click', async () => {
     const { handleClick, handleMousedown, handleMouseup } = await importHandlers();
     const doubleClickDisabled = { current: false };

@@ -171,11 +171,8 @@ export async function loadLibraryRows(
       const books = await safeLoadJSON<Book[]>(io, getLibraryFilename(), 'Books', []);
       return hashes ? books.filter((book) => hashes.includes(book.hash)) : books;
     }
-    const raw: unknown = JSON.parse(
-      (await io.readFile(getLibraryFilename(), 'Books', 'text')) as string,
-    );
-    assertRows(raw);
-    return hashes ? raw.filter((book) => hashes.includes(book.hash)) : raw;
+    const rows = await legacyMigrationRows(io, '');
+    return hashes ? rows.filter((book) => hashes.includes(book.hash)) : rows;
   }
   const rows = await db.select<{ payload: string }>(
     hashes

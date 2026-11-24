@@ -9,9 +9,11 @@ import { useCommandPalette } from './CommandPaletteProvider';
 import { CommandSearchResult, getCategoryLabel, CommandCategory } from '@/services/commandRegistry';
 import HighlightChars from './HighlightChars';
 
+const orderedCategories: CommandCategory[] = ['settings', 'actions', 'navigation'];
+
 const CommandPalette: React.FC = () => {
   const _ = useTranslation();
-  const { isOpen, close, query, setQuery, results, groupedResults, recentItems, executeCommand } =
+  const { isOpen, close, query, setQuery, groupedResults, recentItems, executeCommand } =
     useCommandPalette();
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -22,7 +24,7 @@ const CommandPalette: React.FC = () => {
   // flatten results for keyboard navigation
   const flattenedResults = useMemo(() => {
     if (query.trim()) {
-      return results;
+      return orderedCategories.flatMap((category) => groupedResults[category]);
     }
     // show recent items when no query
     return recentItems.map((item) => ({
@@ -31,7 +33,7 @@ const CommandPalette: React.FC = () => {
       positions: new Set<number>(),
       highlightIndices: new Set<number>(),
     }));
-  }, [query, results, recentItems]);
+  }, [query, groupedResults, recentItems]);
 
   // reset selection when results change - legitimate derived state reset
   useEffect(() => {
@@ -119,9 +121,6 @@ const CommandPalette: React.FC = () => {
   const showEmptyState = query.trim() && flattenedResults.length === 0;
   const showRecentState = !query.trim() && recentItems.length > 0;
   const showNoRecentState = !query.trim() && recentItems.length === 0;
-
-  // group results by category for display
-  const orderedCategories: CommandCategory[] = ['settings', 'actions', 'navigation'];
 
   return (
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions

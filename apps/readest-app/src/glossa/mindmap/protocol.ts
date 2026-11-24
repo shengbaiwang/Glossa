@@ -31,11 +31,7 @@ function parse<T>(raw: string, schema: z.ZodType<T>): T {
 }
 function checkCoverage(ids: string[], sources: Sources): void {
   const supplied = new Set(sources.map((source) => source.sourceId));
-  if (
-    ids.length !== sources.length ||
-    new Set(ids).size !== ids.length ||
-    ids.some((id) => !supplied.has(id))
-  )
+  if (new Set(ids).size !== supplied.size || ids.some((id) => !supplied.has(id)))
     throw new MapOutputError({
       kind: 'coverage',
       issues: [{ path: ['coveredSourceIds'], rule: 'complete_coverage' }],

@@ -90,14 +90,15 @@ export default function PDFRangeEditor(props: Props) {
     update();
     view.addEventListener('relocate', update);
     view.addEventListener('pdf-selection-preview', update);
-    view.renderer.addEventListener('scroll', update);
+    const renderer = view.renderer;
+    renderer?.addEventListener('scroll', update);
     return () => {
       revision.current++;
       drag.current = null;
       view.stopPDFSelectionHandle?.();
       view.removeEventListener('relocate', update);
       view.removeEventListener('pdf-selection-preview', update);
-      view.renderer.removeEventListener('scroll', update);
+      renderer?.removeEventListener('scroll', update);
     };
   }, [view, bookKey, selection]);
 

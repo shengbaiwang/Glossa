@@ -1,3 +1,4 @@
+import ReaderToolbarSettings from './ReaderToolbarSettings';
 import clsx from 'clsx';
 import React, { useEffect, useRef, useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
@@ -185,7 +186,7 @@ const SettingsDialog: React.FC<{
 
   const categories = [
     { id: 'Account', label: _('Account'), icon: CircleUserRound, tabs: ['Account'] },
-    { id: 'General', label: _('General'), icon: Settings2, tabs: ['General', 'Language', 'Theme'] },
+    { id: 'General', label: _('General'), icon: Settings2, tabs: ['General', 'Theme', 'Language'] },
     {
       id: 'Reading',
       label: _('Reading'),
@@ -635,6 +636,7 @@ const SettingsDialog: React.FC<{
               onRegisterReset={(fn) => registerResetFunction(activePanel, fn)}
             />
           )}
+          {!reading && activePanel === 'Theme' && <ReaderToolbarSettings />}
           {activePanel === 'Control' && (
             <ControlPanel
               key={panelBookKey}

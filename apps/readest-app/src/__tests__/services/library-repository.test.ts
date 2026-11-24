@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Book } from '@/types/book';
 import type { FileSystem } from '@/types/system';
 import { getLibraryFilename, getLocalBookFilename } from '@/utils/book';
+import { recordPublication } from '@/glossa/sync/recordPublication';
 import { registerBookDownload } from '@/services/bookDownloadIdentity';
 import { fingerprintFile } from '@/services/bookIdentity';
 import { NodeDatabaseService } from '@/services/database/nodeDatabaseService';
@@ -88,6 +89,53 @@ afterEach(async () => {
 });
 
 describe('library repository with a real disk database', () => {
+  it('attaches a published manifest to the current book and rejects a late receipt after trash', async () => {
+    const initial = book('publication');
+    const f = await fixture([initial, book('unrelated')]);
+    const sha = 'sha256:' + 'a'.repeat(64);
+    const pointer = {
+      book_id: crypto.randomUUID(),
+      manifest_id: crypto.randomUUID(),
+      file_blake3: 'c'.repeat(64),
+      origin: 'https://sync.example',
+      subject: 'test-user',
+    };
+    await saveLibraryBooks(f.fs, [
+      {
+        ...initial,
+        title: 'Personal edit',
+        updatedAt: 20,
+        metadataUpdatedAt: 20,
+        progress: [8, 27],
+      },
+    ]);
+    await recordPublication(f.fs, initial.hash, pointer, sha, async () => true);
+    await saveLibraryBooks(f.fs, [{ ...initial, uploadedAt: null }]);
+    const [row, other] = await loadLibraryRows(f.fs);
+    expect(row).toMatchObject({
+      title: 'Personal edit',
+      progress: [8, 27],
+      glossaCloud: pointer,
+      storedContentFingerprint: sha,
+      uploadedAt: expect.any(Number),
+    });
+    expect(other?.hash).toBe('unrelated');
+    await expect(
+      recordPublication(
+        f.fs,
+        initial.hash,
+        { ...pointer, subject: 'another-user' },
+        sha,
+        async () => true,
+      ),
+    ).rejects.toThrow('cloud_binding_conflict');
+    await saveLibraryBooks(f.fs, [{ ...row!, deletedAt: 60 }]);
+    await expect(
+      recordPublication(f.fs, initial.hash, pointer, sha, async () => true),
+    ).rejects.toThrow('book_unavailable');
+    expect((await loadLibraryRows(f.fs))[0]?.deletedAt).toBe(60);
+  });
+
   it('reads only requested records by bound primary keys without scanning unrelated payloads', async () => {
     const f = await fixture([book('wanted'), book('other')]);
     await loadLibraryRows(f.fs);

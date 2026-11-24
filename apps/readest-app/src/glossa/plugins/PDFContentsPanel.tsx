@@ -1,4 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import { Ellipsis } from '@/components/GlossaIcons';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/primitives/dropdown-menu';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useBookDataStore } from '@/store/bookDataStore';
@@ -13,6 +20,7 @@ import {
   type PDFCache,
 } from '@/services/pdfEnhancement';
 import type { PDFContentsReport } from '@/services/pdfAutoContents';
+import { pdfContentsCheckpointStorage } from '@/services/pdfContentsCheckpoint';
 import { pluginLoaders } from './loaders';
 import { runPluginTask } from './runtime';
 import { previousPDFContents, rememberPDFContents, restorePDFContents } from './pdfContentsHistory';
@@ -27,12 +35,32 @@ const stages: Record<PDFContentsReport['stage'], string> = {
   save: 'Saving contents',
 };
 function failure(report?: PDFContentsReport) {
+  if (report?.checkpointValidationFailed)
+    return 'Contents groups are incomplete or inconsistent. Your existing contents are preserved.';
+  if (report?.checkpointSaveFailed)
+    return 'Could not save verification progress. Your existing navigation is preserved.';
+  if (report?.failureCategory === 'recognition')
+    return 'Local text recognition could not finish. Your existing navigation is preserved.';
   if (report?.code === 'pdf_contents_structure_incomplete')
     return 'Contents groups are incomplete or inconsistent. Your existing contents are preserved.';
   if (report?.code === 'outline_changed' || report?.code === 'source_changed')
     return 'The PDF or contents changed. Open this panel again to retry.';
-  if (report?.code === 'pdf_contents_timeout' || report?.code === 'pdf_contents_ocr_limit')
-    return 'Generation reached its limit. Try again to continue from saved progress.';
+  if (report?.code === 'pdf_contents_scope_unresolved')
+    return 'The volume covered by this contents list could not be confirmed. Your existing navigation is preserved.';
+  if (report?.code === 'pdf_contents_extraction_failed')
+    return 'The printed contents could not be read completely. Your existing navigation is preserved.';
+  if (report?.code === 'pdf_contents_heading_unverified')
+    return 'Some chapter headings could not be verified. Your existing navigation is preserved.';
+  if (report?.code === 'pdf_contents_heading_ambiguous' || report?.code === 'pdf_contents_order')
+    return 'Chapter destinations conflict or are ambiguous. Your existing navigation is preserved.';
+  if (
+    report?.code === 'pdf_contents_timeout' ||
+    report?.code === 'pdf_contents_ocr_limit' ||
+    report?.code === 'pdf_contents_text_limit'
+  )
+    return report.canResume
+      ? 'Generation reached its limit. Try again to continue from saved progress.'
+      : 'This PDF exceeds automatic contents limits. Page navigation is available.';
   if (report?.code?.endsWith('_limit'))
     return 'This PDF exceeds automatic contents limits. Page navigation is available.';
   if (report?.stage === 'save') return 'Contents could not be saved. Try again.';
@@ -82,6 +110,23 @@ function PDFContentsBook({ book, bookDoc, bookKey }: ReadingPanelProps) {
               bookId: book.hash,
               revision: book.removal?.revision ?? 0,
             }).catch(() => null));
+          if (current && appService && !controller.signal.aborted) {
+            const storage = pdfContentsCheckpointStorage(appService, {
+              bookId: book.hash,
+              revision: book.removal?.revision ?? 0,
+            });
+            if (storage) {
+              const { readPDFContentsCheckpoint } = await import('@/services/pdfAutoContents');
+              const saved = await readPDFContentsCheckpoint(storage, current, count).catch(
+                () => undefined,
+              );
+              if (!controller.signal.aborted && saved) {
+                setReport(saved);
+                if (saved.state !== 'cancelled' && saved.state !== 'running')
+                  setError(failure(saved));
+              }
+            }
+          }
           if (controller.signal.aborted) return;
           setSource(path);
           setCache(current);
@@ -167,11 +212,13 @@ function PDFContentsBook({ book, bookDoc, bookKey }: ReadingPanelProps) {
           const outcome = await plugin.prepareContents(appService, book, undefined, signal, {
             regenerate: !!current?.outline?.length,
             notify: false,
+            autoContinue: true,
             onReport: (next) => {
               if (!signal.aborted) setReport(next);
             },
           });
           if (signal.aborted) return;
+          if (outcome.report && mounted.current) setReport(outcome.report);
           if (outcome.result === 'generated' || outcome.result === 'preserved') {
             const saved = await openPDFCache(source, false, {
               bookId: book.hash,
@@ -206,9 +253,38 @@ function PDFContentsBook({ book, bookDoc, bookKey }: ReadingPanelProps) {
       }
     }
   };
+  const showContents = () => {
+    const sidebar = useSidebarStore.getState();
+    const store = useBookDataStore.getState();
+    const config = store.getConfig(bookKey);
+    if (config?.viewSettings)
+      store.setConfig(bookKey, {
+        viewSettings: { ...config.viewSettings, sideBarTab: 'toc' },
+      });
+    sidebar.setSideBarBookKey(bookKey);
+    sidebar.setSearchBarVisible(false);
+    sidebar.setSideBarVisible(true);
+    if (window.innerWidth < 640) useNotebookStore.getState().setNotebookVisible(false);
+  };
+  const primary = personal
+    ? 'Show contents'
+    : report?.canResume
+      ? 'Continue verification'
+      : report?.failureCategory === 'recognition'
+        ? 'Retry text recognition'
+        : error
+          ? 'Try again'
+          : generated
+            ? 'Show contents'
+            : 'Generate contents';
+  const actOnPrimary = () => {
+    if (!ready) setAttempt((value) => value + 1);
+    else if (primary === 'Show contents') showContents();
+    else void run();
+  };
   return (
     <section
-      className='flex h-full flex-col gap-4 overflow-y-auto p-4'
+      className='flex h-full flex-col gap-2 overflow-y-auto px-3 py-2 text-sm'
       aria-label={_('Contents generator')}
     >
       {!supported ? (
@@ -216,93 +292,143 @@ function PDFContentsBook({ book, bookDoc, bookKey }: ReadingPanelProps) {
       ) : (
         <>
           <div className='flex flex-wrap items-center gap-2'>
-            <button
-              type='button'
-              className='btn btn-sm btn-contrast min-h-11'
-              disabled={!ready || working || !!personal}
-              onClick={() => void run()}
-            >
-              {_(
-                error && ready
-                  ? 'Try again'
-                  : generated
-                    ? 'Regenerate contents'
-                    : 'Generate contents',
-              )}
-            </button>
-            {working && (
+            {(working || (!ready && !error)) && (
+              <ContentsProgress
+                label={_(report ? stages[report.stage] : 'Preparing contents')}
+                value={
+                  working && report?.stage === 'verification' && report.totalCount
+                    ? Math.round((100 * (report.verifiedCount ?? 0)) / report.totalCount)
+                    : undefined
+                }
+              />
+            )}
+            {working ? (
               <button
                 type='button'
                 className='btn btn-ghost btn-sm eink-bordered min-h-11'
                 onClick={() => {
                   operation.current?.abort();
-                  setMessage('Generation stopped. Saved progress is available for retry.');
+                  setMessage('Generation stopped.');
                 }}
               >
                 {_('Cancel')}
               </button>
+            ) : (
+              (ready || error) && (
+                <button
+                  type='button'
+                  className='btn btn-ghost btn-sm eink-bordered min-h-11'
+                  onClick={actOnPrimary}
+                >
+                  {_(primary)}
+                </button>
+              )
             )}
-            {canRestore && !working && (
-              <button
-                type='button'
-                className='btn btn-ghost btn-sm eink-bordered min-h-11'
-                onClick={() => void run(true)}
-              >
-                {_('Restore previous contents')}
-              </button>
+            {ready && !working && (generated || canRestore) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type='button'
+                    aria-label={_('More')}
+                    className='btn btn-ghost btn-sm btn-square eink-bordered min-h-11 min-w-11'
+                  >
+                    <Ellipsis size={16} aria-hidden='true' />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='end'>
+                  {generated && (
+                    <DropdownMenuItem onSelect={() => void run()}>
+                      {_('Regenerate contents')}
+                    </DropdownMenuItem>
+                  )}
+                  {canRestore && (
+                    <DropdownMenuItem onSelect={() => void run(true)}>
+                      {_('Restore previous contents')}
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
-          {working && (
+          {personal && <p role='status'>{_('Your edited contents are preserved.')}</p>}
+          {message && message !== 'Contents are ready.' && (
             <p role='status' aria-live='polite'>
-              {_(report ? stages[report.stage] : 'Preparing contents')}
-              {!!report?.totalCount && ` · ${report.verifiedCount ?? 0}/${report.totalCount}`}
-              {report?.resumed && ` · ${_('Continuing from saved progress')}`}
+              {_(message)}
             </p>
           )}
-          {!working && !ready && !error && <p role='status'>{_('Loading...')}</p>}
-          {personal && <p role='status'>{_('Your edited contents are preserved.')}</p>}
-          {message && (
-            <p role='status' aria-live='polite'>
+          {message === 'Contents are ready.' && (
+            <p className='sr-only' role='status'>
               {_(message)}
             </p>
           )}
           {error && (
             <div role='alert'>
               <p>{_(error)}</p>
-              {!ready && (
-                <button
-                  type='button'
-                  className='glossa-button min-h-11'
-                  onClick={() => setAttempt((value) => value + 1)}
-                >
-                  {_('Try again')}
-                </button>
+              {!!report?.issues?.length && (
+                <details className='mt-1'>
+                  <summary className='cursor-pointer'>{_('Details')}</summary>
+                  <ul className='mt-1 space-y-1'>
+                    {report.issues.map((issue, index) => (
+                      <li key={`${issue.sourcePage}:${index}`}>
+                        <button
+                          type='button'
+                          className='text-start underline underline-offset-4'
+                          disabled={issue.sourcePage === undefined}
+                          onClick={() => {
+                            if (issue.sourcePage !== undefined)
+                              void useReaderStore
+                                .getState()
+                                .getView(bookKey)
+                                ?.goTo(issue.sourcePage);
+                          }}
+                        >
+                          {issue.title}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               )}
             </div>
-          )}
-          {(generated || personal) && !working && (
-            <button
-              type='button'
-              className='glossa-button min-h-11 self-start'
-              onClick={() => {
-                const sidebar = useSidebarStore.getState();
-                const store = useBookDataStore.getState();
-                const config = store.getConfig(bookKey);
-                if (config?.viewSettings)
-                  store.setConfig(bookKey, {
-                    viewSettings: { ...config.viewSettings, sideBarTab: 'toc' },
-                  });
-                sidebar.setSideBarBookKey(bookKey);
-                sidebar.setSearchBarVisible(false);
-                sidebar.setSideBarVisible(true);
-                if (window.innerWidth < 640) useNotebookStore.getState().setNotebookVisible(false);
-              }}
-            >
-              {_('Show contents')}
-            </button>
           )}
         </>
       )}
     </section>
+  );
+}
+
+function ContentsProgress({ label, value }: { label: string; value?: number }) {
+  return (
+    <svg
+      role='progressbar'
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={value}
+      viewBox='0 0 32 32'
+      className={`h-4 w-4 shrink-0 ${value === undefined ? 'motion-safe:animate-spin' : ''}`}
+    >
+      <circle
+        cx='16'
+        cy='16'
+        r='13'
+        fill='none'
+        stroke='currentColor'
+        strokeWidth='2'
+        opacity='.15'
+      />
+      <circle
+        cx='16'
+        cy='16'
+        r='13'
+        fill='none'
+        stroke='currentColor'
+        strokeWidth='2'
+        strokeLinecap='round'
+        pathLength='100'
+        strokeDasharray={`${value ?? 25} 100`}
+        transform='rotate(-90 16 16)'
+      />
+    </svg>
   );
 }

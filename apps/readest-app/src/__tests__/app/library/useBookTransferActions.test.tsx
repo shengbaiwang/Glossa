@@ -86,6 +86,28 @@ beforeEach(() => {
 });
 
 describe('useBookTransferActions upload routing (issue #5062)', () => {
+  it('sends an explicit upload only to Glossa when its endpoint is configured', async () => {
+    vi.stubEnv('NEXT_PUBLIC_GLOSSA_SYNC_ORIGIN', 'https://sync.example');
+    try {
+      routing.backends = ['webdav'];
+      const uploadBook = vi.fn(async () => {});
+      const { result } = renderHook(() =>
+        useBookTransferActions(
+          envConfig,
+          { uploadBook } as unknown as AppService,
+          vi.fn(),
+          vi.fn(),
+        ),
+      );
+      const book = makeBook();
+      expect(await result.current.handleBookUpload(book)).toBe(true);
+      expect(uploadBook).toHaveBeenCalledWith(book);
+      expect(queueUpload).not.toHaveBeenCalled();
+      expect(runFileBookUpload).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   it('reaches every enabled destination when Readest Cloud and a file backend are both on', async () => {
     routing.readestEnabled = true;
     routing.backends = ['gdrive'];

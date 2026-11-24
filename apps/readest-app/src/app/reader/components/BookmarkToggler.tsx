@@ -15,6 +15,7 @@ import { createBookmark, extractBookmarkExcerpt, findBookmarksAtLocation } from 
 
 interface BookmarkTogglerProps {
   bookKey: string;
+  hidden?: boolean;
 }
 
 /**
@@ -25,7 +26,7 @@ interface BookmarkTogglerProps {
  * add and remove are symmetric, and a page that reflowed since the bookmark was
  * saved still toggles off instead of gaining a duplicate.
  */
-const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey }) => {
+const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey, hidden }) => {
   const _ = useTranslation();
   const { envConfig } = useEnv();
   const settings = useSettingsStore((s) => s.settings);
@@ -135,6 +136,8 @@ const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey }) => {
     fixedLayout,
     setBookmarkRibbonVisibility,
   ]);
+
+  if (hidden) return null;
 
   return (
     <Button

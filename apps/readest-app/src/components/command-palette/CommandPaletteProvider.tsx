@@ -36,6 +36,7 @@ interface CommandPaletteContextValue {
   recentItems: CommandItem[];
   executeCommand: (item: CommandItem) => void;
   commandItems: CommandItem[];
+  setReaderCommands: (commands: CommandItem[]) => void;
 }
 
 const CommandPaletteContext = createContext<CommandPaletteContextValue | null>(null);
@@ -60,6 +61,7 @@ export const CommandPaletteProvider: React.FC<CommandPaletteProviderProps> = ({ 
 
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [readerCommands, setReaderCommands] = useState<CommandItem[]>([]);
   const shortcuts = useShortcutConfig();
 
   const isDesktop = isTauriAppPlatform() && !appService?.isMobile;
@@ -142,12 +144,17 @@ export const CommandPaletteProvider: React.FC<CommandPaletteProviderProps> = ({ 
     ],
   );
 
+  const commands = useMemo(
+    () => [...commandItems, ...readerCommands],
+    [commandItems, readerCommands],
+  );
+
   // search results
-  const results = useMemo(() => searchCommands(query, commandItems), [query, commandItems]);
+  const results = useMemo(() => searchCommands(query, commands), [query, commands]);
   const groupedResults = useMemo(() => groupResultsByCategory(results), [results]);
 
   // recent items
-  const recentItems = useMemo(() => getRecentCommands(commandItems, 5), [commandItems]);
+  const recentItems = useMemo(() => getRecentCommands(commands, 5), [commands, isOpen]);
 
   // palette controls
   const open = useCallback(() => {
@@ -171,6 +178,7 @@ export const CommandPaletteProvider: React.FC<CommandPaletteProviderProps> = ({ 
   // execute command
   const executeCommand = useCallback(
     (item: CommandItem) => {
+      if (item.isAvailable && !item.isAvailable()) return;
       trackCommandUsage(item.id);
       close();
       // slight delay to allow modal to close before action
@@ -217,7 +225,8 @@ export const CommandPaletteProvider: React.FC<CommandPaletteProviderProps> = ({ 
       groupedResults,
       recentItems,
       executeCommand,
-      commandItems,
+      commandItems: commands,
+      setReaderCommands,
     }),
     [
       isOpen,
@@ -230,7 +239,7 @@ export const CommandPaletteProvider: React.FC<CommandPaletteProviderProps> = ({ 
       groupedResults,
       recentItems,
       executeCommand,
-      commandItems,
+      commands,
     ],
   );
 

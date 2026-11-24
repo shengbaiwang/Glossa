@@ -13,6 +13,10 @@ export const bookRemovalSchema = z.object({
   mode: z.enum(['trash', 'purge', 'restore', 'local']),
   local: z.enum(['pending', 'complete', 'failed']),
   cloud: z.enum(['none', 'pending', 'complete', 'failed']),
+  // Device-only target captured before an R2-backed local release.
+  cloudScope: z.string().optional(),
+  downloadedAt: z.number().nullable().optional(),
+  releaseAfterDays: z.number().int().positive().optional(),
   conflict: z.boolean().optional(),
   failure: z.enum(['unavailable-copy', 'changed-file', 'storage']).optional(),
   cloudTargets: z

@@ -30,8 +30,7 @@ const FooterBar: React.FC<FooterBarProps> = ({
   const { getConfig, setConfig, getBookData } = useBookDataStore();
   const { hoveredBookKey, setHoveredBookKey, bottomBarTab, setBottomBarTab } = useReaderStore();
   const { getView, getViewSettings } = useReaderStore();
-  const { isSideBarVisible, isSideBarPinned, setSideBarVisible, setSideBarBookKey } =
-    useSidebarStore();
+  const { isSideBarVisible, setSideBarVisible, setSideBarBookKey } = useSidebarStore();
   const { setNotebookVisible, setNotebookActiveTab } = useNotebookStore();
   const { acquireBackKeyInterception, releaseBackKeyInterception } = useDeviceControlStore();
 
@@ -211,7 +210,7 @@ const FooterBar: React.FC<FooterBarProps> = ({
     !forceMobileLayout && 'sm:h-[52px] sm:bg-base-100 sm:border-none',
     'not-eink:border-base-300/50 eink:border-base-content border-t',
     'transition-[opacity,transform] duration-300',
-    getFooterBarPosition(forceMobileLayout || window.innerWidth < 640, isSideBarPinned),
+    getFooterBarPosition(forceMobileLayout || window.innerWidth < 640),
     appService?.hasRoundedWindow && 'rounded-window-bottom-right',
     !isSideBarVisible && appService?.hasRoundedWindow && 'rounded-window-bottom-left',
     isHoveredAnim && 'hover-bar-anim',
@@ -250,8 +249,9 @@ const FooterBar: React.FC<FooterBarProps> = ({
         dir={viewSettings?.rtl ? 'rtl' : 'ltr'}
         onFocus={() => !appService?.isMobile && setHoveredBookKey(bookKey)}
         onMouseLeave={() => {
-          // Keep the captured slider alive when a drag moves outside the bar.
-          if (footerBarRef.current?.querySelector('[data-scrubbing="true"]')) return;
+          // Keep a page draft or captured slider alive when the pointer leaves.
+          if (footerBarRef.current?.querySelector('[data-scrubbing="true"], [data-editing="true"]'))
+            return;
           if (window.innerWidth >= 640) setHoveredBookKey('');
         }}
       >

@@ -1,4 +1,7 @@
+import { holdBookForReader } from '@/glossa/sync/bookUse';
 import { create } from 'zustand';
+import type { HeadPreview } from '@/glossa/sync/headPreview';
+import type { CloudReaderFile } from '@/glossa/sync/readerFile';
 
 import {
   BookContent,
@@ -102,6 +105,7 @@ const publishNavigation = (bookDoc: BookDoc, staged: BookDoc) => {
 };
 
 interface ViewState {
+  headPreview?: { content: HeadPreview; subject: string; manifest: string; origin: string };
   /* Unique key for each book view */
   key: string;
   view: FoliateView | null;
@@ -281,6 +285,10 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
         );
         throw new Error('Book not found');
       }
+      if (book.format === 'EPUB' || book.format === 'PDF') {
+        await holdBookForReader(book.hash, signal);
+        assertNavActive(signal);
+      }
       const isPseStream = !!book.url && isPseStreamFileName(book.url);
       const isFeed = !!book.url && isFeedBookUrl(book.url);
       const needsNav = book.format === 'EPUB';
@@ -288,6 +296,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       // with the new file's identity when the background calculation finishes.
       let navSource = needsNav ? await appService.getBookNavSource(book) : null;
       assertNavActive(signal);
+      let openingConfig: Promise<BookConfig> | undefined;
       let bookDoc = bookData?.bookDoc;
       let file: File | null = bookData?.file ?? null;
       const sourceChanged =
@@ -309,7 +318,65 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
           file = null;
         } else {
           const fileStarted = performance.now();
-          const content = (await appService.loadBookContent(book)) as BookContent;
+          const opening = appService.loadBookContent(book);
+          const pointer = book.glossaCloud;
+          if (
+            pointer &&
+            !reload &&
+            !book.progress &&
+            !book.downloadedAt &&
+            (!book.readingStatus || book.readingStatus === 'unread') &&
+            !new URLSearchParams(window.location.search).has('cfi')
+          ) {
+            openingConfig = appService.loadBookConfig(book, settings);
+            const format = book.format === 'PDF' ? 'pdf' : 'epub';
+            const current = () => {
+              const library = useLibraryStore.getState();
+              const row = library.getBookByHash(id);
+              const view = get().viewStates[key];
+              return (
+                isCurrent() &&
+                view &&
+                !view.inited &&
+                !view.error &&
+                !row?.deletedAt &&
+                row?.glossaDiscovery?.available !== false &&
+                library.cloudSubject === pointer.subject &&
+                row?.glossaCloud?.origin === pointer.origin &&
+                row.glossaCloud.subject === pointer.subject &&
+                row.glossaCloud.manifest_id === pointer.manifest_id
+              );
+            };
+            void openingConfig
+              .then(async (config) => {
+                if (!current() || config.location || config.progress || config.xpointer) return;
+                let content: HeadPreview | undefined;
+                if (book.glossaDiscovery && typeof caches !== 'undefined') {
+                  const { cachedHeadPreview } = await import('@/glossa/sync/previewCache');
+                  content = await cachedHeadPreview(pointer, format).catch(() => undefined);
+                }
+                if (!content && current()) {
+                  const file = (await opening).file;
+                  if (file && 'headPreview' in file && current())
+                    content = await (file as CloudReaderFile).headPreview(format);
+                }
+                if (!content || !current()) return;
+                const headPreview = {
+                  content,
+                  subject: pointer.subject,
+                  origin: pointer.origin,
+                  manifest: pointer.manifest_id,
+                };
+                set((state) => ({
+                  viewStates: {
+                    ...state.viewStates,
+                    [key]: { ...state.viewStates[key]!, headPreview },
+                  },
+                }));
+              })
+              .catch(() => {});
+          }
+          const content = (await opening) as BookContent;
           measureReaderPhase('file-open', fileStarted);
           file = content.file;
           if (file !== bookData?.file) ownedFile = file;
@@ -338,7 +405,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       documentSources.set(bookDoc, navSource);
       if (!originalTocs.has(bookDoc)) originalTocs.set(bookDoc, cloneTocItems(bookDoc.toc ?? []));
       const configStarted = performance.now();
-      const config = await appService.loadBookConfig(book, settings);
+      const config = await (openingConfig ?? appService.loadBookConfig(book, settings));
       measureReaderPhase('config-read', configStarted);
       assertNavActive(signal);
       // Import annotations from third-party readers on first open
@@ -419,11 +486,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
                       (ownerKey) => get().viewStates[ownerKey]?.isPrimary,
                     ) ?? navigation.owners.values().next().value;
                   const latestSettings = owner ? get().viewStates[owner]?.viewSettings : undefined;
-                  await updateToc(
-                    staged,
-                    latestSettings?.sortedTOC ?? false,
-                    latestSettings?.convertChineseVariant ?? 'none',
-                  );
+                  await updateToc(staged, latestSettings?.convertChineseVariant ?? 'none');
                   if (!navIsCurrent()) return;
                   // Publish the complete artifact synchronously. Once committed,
                   // finish progress refreshes for all surviving views even if
@@ -475,11 +538,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
           task.start = () => afterReaderPaint(signal, () => navigation.start?.());
         }
       }
-      await updateToc(
-        bookDoc,
-        config.viewSettings?.sortedTOC ?? false,
-        config.viewSettings?.convertChineseVariant ?? 'none',
-      );
+      await updateToc(bookDoc, config.viewSettings?.convertChineseVariant ?? 'none');
       assertNavActive(signal);
       if (!bookDoc.metadata.title && file) {
         bookDoc.metadata.title = getBaseFilename(file.name);
@@ -566,6 +625,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
             loading: false,
             inited: false,
             error: 'Failed to load book.',
+            headPreview: undefined,
             ribbonVisible: false,
             ttsEnabled: false,
             autoScrollEnabled: false,
@@ -789,6 +849,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
         [key]: {
           ...state.viewStates[key]!,
           inited,
+          headPreview: inited ? undefined : state.viewStates[key]?.headPreview,
         },
       },
     }));

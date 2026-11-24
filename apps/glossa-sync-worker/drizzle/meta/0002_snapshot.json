@@ -1,0 +1,1897 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "47cc464c-d8e2-47ce-bfd6-58ad9a6ec866",
+  "prevId": "c9b5ef4c-18bb-445d-88d3-c949d36ea82b",
+  "tables": {
+    "annotations": {
+      "name": "annotations",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "book_id": {
+          "name": "book_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "page_index": {
+          "name": "page_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "cfi": {
+          "name": "cfi",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rects_json": {
+          "name": "rects_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "text_fingerprint": {
+          "name": "text_fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "anchor_version": {
+          "name": "anchor_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "style_json": {
+          "name": "style_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rev": {
+          "name": "rev",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "annotations_book": {
+          "name": "annotations_book",
+          "columns": ["user_id", "book_id", "deleted_at", "id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "annotations_user_id_book_id_books_user_id_id_fk": {
+          "name": "annotations_user_id_book_id_books_user_id_id_fk",
+          "tableFrom": "annotations",
+          "tableTo": "books",
+          "columnsFrom": ["user_id", "book_id"],
+          "columnsTo": ["user_id", "id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "annotations_user_id_id_pk": {
+          "columns": ["user_id", "id"],
+          "name": "annotations_user_id_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "annotations_check_1": {
+          "name": "annotations_check_1",
+          "value": "kind IN ('highlight','note')"
+        },
+        "annotations_check_2": {
+          "name": "annotations_check_2",
+          "value": "page_index>=0"
+        },
+        "annotations_check_3": {
+          "name": "annotations_check_3",
+          "value": "json_type(rects_json)='array'"
+        },
+        "annotations_check_4": {
+          "name": "annotations_check_4",
+          "value": "json_type(style_json)='object'"
+        },
+        "annotations_check_5": {
+          "name": "annotations_check_5",
+          "value": "page_index IS NOT NULL OR cfi IS NOT NULL"
+        }
+      }
+    },
+    "books": {
+      "name": "books",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "group_id": {
+          "name": "group_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "file_hash": {
+          "name": "file_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "authors_json": {
+          "name": "authors_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "language": {
+          "name": "language",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "format": {
+          "name": "format",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "thumbhash": {
+          "name": "thumbhash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'unread'"
+        },
+        "progress_bp": {
+          "name": "progress_bp",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "furthest_bp": {
+          "name": "furthest_bp",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "anchor_json": {
+          "name": "anchor_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "position_rev": {
+          "name": "position_rev",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "position_epoch": {
+          "name": "position_epoch",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rev": {
+          "name": "rev",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "books_trash": {
+          "name": "books_trash",
+          "columns": ["deleted_at", "user_id", "id"],
+          "isUnique": false,
+          "where": "deleted_at IS NOT NULL"
+        },
+        "books_group": {
+          "name": "books_group",
+          "columns": ["user_id", "group_id", "deleted_at"],
+          "isUnique": false
+        },
+        "books_user_id_file_hash_unique": {
+          "name": "books_user_id_file_hash_unique",
+          "columns": ["user_id", "file_hash"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "books_user_id_group_id_groups_user_id_id_fk": {
+          "name": "books_user_id_group_id_groups_user_id_id_fk",
+          "tableFrom": "books",
+          "tableTo": "groups",
+          "columnsFrom": ["user_id", "group_id"],
+          "columnsTo": ["user_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "books_user_id_users_id_fk": {
+          "name": "books_user_id_users_id_fk",
+          "tableFrom": "books",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "books_user_id_id_pk": {
+          "columns": ["user_id", "id"],
+          "name": "books_user_id_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "books_check_1": {
+          "name": "books_check_1",
+          "value": "length(file_hash)=64 AND file_hash NOT GLOB '*[^0-9a-f]*'"
+        },
+        "books_check_2": {
+          "name": "books_check_2",
+          "value": "json_type(authors_json)='array'"
+        },
+        "books_check_3": {
+          "name": "books_check_3",
+          "value": "status IN ('unread','reading','finished')"
+        },
+        "books_check_4": {
+          "name": "books_check_4",
+          "value": "progress_bp BETWEEN 0 AND 10000"
+        },
+        "books_check_5": {
+          "name": "books_check_5",
+          "value": "furthest_bp BETWEEN progress_bp AND 10000"
+        },
+        "books_check_6": {
+          "name": "books_check_6",
+          "value": "anchor_json IS NULL OR json_valid(anchor_json)"
+        }
+      }
+    },
+    "current_manifests": {
+      "name": "current_manifests",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "book_id": {
+          "name": "book_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "manifest_id": {
+          "name": "manifest_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "file_bytes": {
+          "name": "file_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "chunk_count": {
+          "name": "chunk_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "profile": {
+          "name": "profile",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "manifest_digest": {
+          "name": "manifest_digest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rev": {
+          "name": "rev",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "current_manifests_user_id_book_id_manifest_id_uploads_user_id_book_id_id_fk": {
+          "name": "current_manifests_user_id_book_id_manifest_id_uploads_user_id_book_id_id_fk",
+          "tableFrom": "current_manifests",
+          "tableTo": "uploads",
+          "columnsFrom": ["user_id", "book_id", "manifest_id"],
+          "columnsTo": ["user_id", "book_id", "id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "current_manifests_user_id_book_id_pk": {
+          "columns": ["user_id", "book_id"],
+          "name": "current_manifests_user_id_book_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "current_manifests_check_1": {
+          "name": "current_manifests_check_1",
+          "value": "file_bytes>0"
+        },
+        "current_manifests_check_2": {
+          "name": "current_manifests_check_2",
+          "value": "chunk_count>0"
+        }
+      }
+    },
+    "devices": {
+      "name": "devices",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ack_seq": {
+          "name": "ack_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "delivered_seq": {
+          "name": "delivered_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "last_lamport": {
+          "name": "last_lamport",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "devices_user_id_users_id_fk": {
+          "name": "devices_user_id_users_id_fk",
+          "tableFrom": "devices",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "devices_user_id_id_pk": {
+          "columns": ["user_id", "id"],
+          "name": "devices_user_id_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "devices_check_1": {
+          "name": "devices_check_1",
+          "value": "ack_seq >= 0"
+        },
+        "devices_check_2": {
+          "name": "devices_check_2",
+          "value": "delivered_seq >= ack_seq"
+        },
+        "devices_check_3": {
+          "name": "devices_check_3",
+          "value": "last_lamport >= 0"
+        }
+      }
+    },
+    "groups": {
+      "name": "groups",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name_key": {
+          "name": "name_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sort_key": {
+          "name": "sort_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rev": {
+          "name": "rev",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "placement_rev": {
+          "name": "placement_rev",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "groups_children": {
+          "name": "groups_children",
+          "columns": ["user_id", "parent_id", "deleted_at", "sort_key", "id"],
+          "isUnique": false
+        },
+        "groups_sibling_name": {
+          "name": "groups_sibling_name",
+          "columns": ["user_id", "ifnull(parent_id,'')", "name_key"],
+          "isUnique": true,
+          "where": "deleted_at IS NULL"
+        }
+      },
+      "foreignKeys": {
+        "groups_user_id_parent_id_groups_user_id_id_fk": {
+          "name": "groups_user_id_parent_id_groups_user_id_id_fk",
+          "tableFrom": "groups",
+          "tableTo": "groups",
+          "columnsFrom": ["user_id", "parent_id"],
+          "columnsTo": ["user_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "groups_user_id_users_id_fk": {
+          "name": "groups_user_id_users_id_fk",
+          "tableFrom": "groups",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "groups_user_id_id_pk": {
+          "columns": ["user_id", "id"],
+          "name": "groups_user_id_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "groups_check_1": {
+          "name": "groups_check_1",
+          "value": "parent_id IS NULL OR parent_id <> id"
+        }
+      }
+    },
+    "manifest_assets": {
+      "name": "manifest_assets",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "manifest_id": {
+          "name": "manifest_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "codec_version": {
+          "name": "codec_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "manifest_asset_refs": {
+          "name": "manifest_asset_refs",
+          "columns": ["user_id", "object_id", "manifest_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "manifest_assets_user_id_object_id_objects_user_id_id_fk": {
+          "name": "manifest_assets_user_id_object_id_objects_user_id_id_fk",
+          "tableFrom": "manifest_assets",
+          "tableTo": "objects",
+          "columnsFrom": ["user_id", "object_id"],
+          "columnsTo": ["user_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "manifest_assets_user_id_manifest_id_uploads_user_id_id_fk": {
+          "name": "manifest_assets_user_id_manifest_id_uploads_user_id_id_fk",
+          "tableFrom": "manifest_assets",
+          "tableTo": "uploads",
+          "columnsFrom": ["user_id", "manifest_id"],
+          "columnsTo": ["user_id", "id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "manifest_assets_user_id_manifest_id_role_pk": {
+          "columns": ["user_id", "manifest_id", "role"],
+          "name": "manifest_assets_user_id_manifest_id_role_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "manifest_assets_check_1": {
+          "name": "manifest_assets_check_1",
+          "value": "role IN ('layout_manifest','search_sidecar','head_preview_chunk','cover_avif')"
+        }
+      }
+    },
+    "manifest_chunks": {
+      "name": "manifest_chunks",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "manifest_id": {
+          "name": "manifest_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ordinal": {
+          "name": "ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "start_byte": {
+          "name": "start_byte",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "end_byte": {
+          "name": "end_byte",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "manifest_chunk_refs": {
+          "name": "manifest_chunk_refs",
+          "columns": ["user_id", "object_id", "manifest_id"],
+          "isUnique": false
+        },
+        "manifest_seek": {
+          "name": "manifest_seek",
+          "columns": ["user_id", "manifest_id", "end_byte"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "manifest_chunks_user_id_object_id_objects_user_id_id_fk": {
+          "name": "manifest_chunks_user_id_object_id_objects_user_id_id_fk",
+          "tableFrom": "manifest_chunks",
+          "tableTo": "objects",
+          "columnsFrom": ["user_id", "object_id"],
+          "columnsTo": ["user_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "manifest_chunks_user_id_manifest_id_uploads_user_id_id_fk": {
+          "name": "manifest_chunks_user_id_manifest_id_uploads_user_id_id_fk",
+          "tableFrom": "manifest_chunks",
+          "tableTo": "uploads",
+          "columnsFrom": ["user_id", "manifest_id"],
+          "columnsTo": ["user_id", "id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "manifest_chunks_user_id_manifest_id_ordinal_pk": {
+          "columns": ["user_id", "manifest_id", "ordinal"],
+          "name": "manifest_chunks_user_id_manifest_id_ordinal_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "manifest_chunks_check_1": {
+          "name": "manifest_chunks_check_1",
+          "value": "ordinal>=0"
+        },
+        "manifest_chunks_check_2": {
+          "name": "manifest_chunks_check_2",
+          "value": "start_byte>=0"
+        },
+        "manifest_chunks_check_3": {
+          "name": "manifest_chunks_check_3",
+          "value": "end_byte>=start_byte"
+        }
+      }
+    },
+    "manifest_parts": {
+      "name": "manifest_parts",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "upload_id": {
+          "name": "upload_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "part": {
+          "name": "part",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "count": {
+          "name": "count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "end_byte": {
+          "name": "end_byte",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "digest": {
+          "name": "digest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "prefix_digest": {
+          "name": "prefix_digest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "manifest_parts_user_id_upload_id_uploads_user_id_id_fk": {
+          "name": "manifest_parts_user_id_upload_id_uploads_user_id_id_fk",
+          "tableFrom": "manifest_parts",
+          "tableTo": "uploads",
+          "columnsFrom": ["user_id", "upload_id"],
+          "columnsTo": ["user_id", "id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "manifest_parts_user_id_upload_id_part_pk": {
+          "columns": ["user_id", "upload_id", "part"],
+          "name": "manifest_parts_user_id_upload_id_part_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "manifest_parts_check_1": {
+          "name": "manifest_parts_check_1",
+          "value": "part>=0"
+        },
+        "manifest_parts_check_2": {
+          "name": "manifest_parts_check_2",
+          "value": "count BETWEEN 1 AND 128"
+        }
+      }
+    },
+    "objects": {
+      "name": "objects",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_key": {
+          "name": "object_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "blake3": {
+          "name": "blake3",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "bytes": {
+          "name": "bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "md5_b64": {
+          "name": "md5_b64",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "mime": {
+          "name": "mime",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "etag": {
+          "name": "etag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "put_until": {
+          "name": "put_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "keep_until": {
+          "name": "keep_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "retry_at": {
+          "name": "retry_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "objects_gc": {
+          "name": "objects_gc",
+          "columns": ["state", "retry_at", "keep_until", "put_until"],
+          "isUnique": false
+        },
+        "objects_live_cas": {
+          "name": "objects_live_cas",
+          "columns": ["user_id", "kind", "blake3"],
+          "isUnique": true,
+          "where": "state <> 'gc'"
+        },
+        "objects_object_key_unique": {
+          "name": "objects_object_key_unique",
+          "columns": ["object_key"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "objects_user_id_users_id_fk": {
+          "name": "objects_user_id_users_id_fk",
+          "tableFrom": "objects",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "objects_user_id_id_pk": {
+          "columns": ["user_id", "id"],
+          "name": "objects_user_id_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "objects_check_1": {
+          "name": "objects_check_1",
+          "value": "kind IN ('chunk','layout_manifest','search_sidecar','head_preview_chunk','cover_avif')"
+        },
+        "objects_check_2": {
+          "name": "objects_check_2",
+          "value": "length(blake3)=64 AND blake3 NOT GLOB '*[^0-9a-f]*'"
+        },
+        "objects_check_3": {
+          "name": "objects_check_3",
+          "value": "bytes>0"
+        },
+        "objects_check_4": {
+          "name": "objects_check_4",
+          "value": "state IN ('reserved','ready','gc')"
+        }
+      }
+    },
+    "op_receipts": {
+      "name": "op_receipts",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "op_id": {
+          "name": "op_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "device_id": {
+          "name": "device_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "request_digest": {
+          "name": "request_digest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "result_json": {
+          "name": "result_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "op_receipts_user_id_device_id_devices_user_id_id_fk": {
+          "name": "op_receipts_user_id_device_id_devices_user_id_id_fk",
+          "tableFrom": "op_receipts",
+          "tableTo": "devices",
+          "columnsFrom": ["user_id", "device_id"],
+          "columnsTo": ["user_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "op_receipts_user_id_users_id_fk": {
+          "name": "op_receipts_user_id_users_id_fk",
+          "tableFrom": "op_receipts",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "op_receipts_user_id_op_id_pk": {
+          "columns": ["user_id", "op_id"],
+          "name": "op_receipts_user_id_op_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "op_receipts_check_1": {
+          "name": "op_receipts_check_1",
+          "value": "json_valid(result_json)"
+        }
+      }
+    },
+    "oplog": {
+      "name": "oplog",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "server_seq": {
+          "name": "server_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "event_json": {
+          "name": "event_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "oplog_retention": {
+          "name": "oplog_retention",
+          "columns": ["created_at", "user_id", "server_seq"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "oplog_user_id_users_id_fk": {
+          "name": "oplog_user_id_users_id_fk",
+          "tableFrom": "oplog",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "oplog_user_id_server_seq_pk": {
+          "columns": ["user_id", "server_seq"],
+          "name": "oplog_user_id_server_seq_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "oplog_check_1": {
+          "name": "oplog_check_1",
+          "value": "server_seq>0"
+        },
+        "oplog_check_2": {
+          "name": "oplog_check_2",
+          "value": "json_valid(event_json)"
+        }
+      }
+    },
+    "purge_fences": {
+      "name": "purge_fences",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "purge_seq": {
+          "name": "purge_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "purge_fences_user_id_users_id_fk": {
+          "name": "purge_fences_user_id_users_id_fk",
+          "tableFrom": "purge_fences",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "purge_fences_user_id_kind_id_pk": {
+          "columns": ["user_id", "kind", "id"],
+          "name": "purge_fences_user_id_kind_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "refresh_tokens": {
+      "name": "refresh_tokens",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "jti_digest": {
+          "name": "jti_digest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "used_at": {
+          "name": "used_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "refresh_family": {
+          "name": "refresh_family",
+          "columns": ["user_id", "session_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "refresh_tokens_user_id_session_id_sessions_user_id_id_fk": {
+          "name": "refresh_tokens_user_id_session_id_sessions_user_id_id_fk",
+          "tableFrom": "refresh_tokens",
+          "tableTo": "sessions",
+          "columnsFrom": ["user_id", "session_id"],
+          "columnsTo": ["user_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "refresh_tokens_user_id_jti_digest_pk": {
+          "columns": ["user_id", "jti_digest"],
+          "name": "refresh_tokens_user_id_jti_digest_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "sessions": {
+      "name": "sessions",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "device_id": {
+          "name": "device_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "sessions_device": {
+          "name": "sessions_device",
+          "columns": ["user_id", "device_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "sessions_user_id_device_id_devices_user_id_id_fk": {
+          "name": "sessions_user_id_device_id_devices_user_id_id_fk",
+          "tableFrom": "sessions",
+          "tableTo": "devices",
+          "columnsFrom": ["user_id", "device_id"],
+          "columnsTo": ["user_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "sessions_user_id_id_pk": {
+          "columns": ["user_id", "id"],
+          "name": "sessions_user_id_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "sync_state": {
+      "name": "sync_state",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "head_seq": {
+          "name": "head_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "floor_seq": {
+          "name": "floor_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "lamport": {
+          "name": "lamport",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "sync_state_user_id_users_id_fk": {
+          "name": "sync_state_user_id_users_id_fk",
+          "tableFrom": "sync_state",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "sync_state_check_0": {
+          "name": "sync_state_check_0",
+          "value": "lamport>=0"
+        },
+        "sync_state_check_1": {
+          "name": "sync_state_check_1",
+          "value": "head_seq >= floor_seq AND floor_seq >= 0"
+        }
+      }
+    },
+    "trash_policy": {
+      "name": "trash_policy",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "days": {
+          "name": "days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "trash_policy_user_id_users_id_fk": {
+          "name": "trash_policy_user_id_users_id_fk",
+          "tableFrom": "trash_policy",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "trash_policy_check_0": {
+          "name": "trash_policy_check_0",
+          "value": "days BETWEEN 1 AND 3650"
+        }
+      }
+    },
+    "upload_objects": {
+      "name": "upload_objects",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "upload_id": {
+          "name": "upload_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "verified_at": {
+          "name": "verified_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "codec_version": {
+          "name": "codec_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "upload_objects_pin": {
+          "name": "upload_objects_pin",
+          "columns": ["user_id", "object_id", "upload_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "upload_objects_user_id_object_id_objects_user_id_id_fk": {
+          "name": "upload_objects_user_id_object_id_objects_user_id_id_fk",
+          "tableFrom": "upload_objects",
+          "tableTo": "objects",
+          "columnsFrom": ["user_id", "object_id"],
+          "columnsTo": ["user_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "upload_objects_user_id_upload_id_uploads_user_id_id_fk": {
+          "name": "upload_objects_user_id_upload_id_uploads_user_id_id_fk",
+          "tableFrom": "upload_objects",
+          "tableTo": "uploads",
+          "columnsFrom": ["user_id", "upload_id"],
+          "columnsTo": ["user_id", "id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "upload_objects_user_id_upload_id_object_id_pk": {
+          "columns": ["user_id", "upload_id", "object_id"],
+          "name": "upload_objects_user_id_upload_id_object_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "upload_objects_check_1": {
+          "name": "upload_objects_check_1",
+          "value": "verified_at IS NULL OR verified_at >= 0"
+        }
+      }
+    },
+    "uploads": {
+      "name": "uploads",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "book_id": {
+          "name": "book_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "device_id": {
+          "name": "device_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "base_manifest_id": {
+          "name": "base_manifest_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sealed_request_json": {
+          "name": "sealed_request_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "commit_op_id": {
+          "name": "commit_op_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "uploads_expiry": {
+          "name": "uploads_expiry",
+          "columns": ["state", "expires_at"],
+          "isUnique": false
+        },
+        "uploads_user_id_book_id_id_unique": {
+          "name": "uploads_user_id_book_id_id_unique",
+          "columns": ["user_id", "book_id", "id"],
+          "isUnique": true
+        },
+        "uploads_user_id_commit_op_id_unique": {
+          "name": "uploads_user_id_commit_op_id_unique",
+          "columns": ["user_id", "commit_op_id"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "uploads_user_id_device_id_devices_user_id_id_fk": {
+          "name": "uploads_user_id_device_id_devices_user_id_id_fk",
+          "tableFrom": "uploads",
+          "tableTo": "devices",
+          "columnsFrom": ["user_id", "device_id"],
+          "columnsTo": ["user_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "uploads_user_id_book_id_books_user_id_id_fk": {
+          "name": "uploads_user_id_book_id_books_user_id_id_fk",
+          "tableFrom": "uploads",
+          "tableTo": "books",
+          "columnsFrom": ["user_id", "book_id"],
+          "columnsTo": ["user_id", "id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "uploads_user_id_id_pk": {
+          "columns": ["user_id", "id"],
+          "name": "uploads_user_id_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "uploads_check_1": {
+          "name": "uploads_check_1",
+          "value": "sealed_request_json IS NULL OR json_valid(sealed_request_json)"
+        },
+        "uploads_check_2": {
+          "name": "uploads_check_2",
+          "value": "state IN ('open','sealed','committed','aborted')"
+        }
+      }
+    },
+    "users": {
+      "name": "users",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "issuer": {
+          "name": "issuer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "users_issuer_subject_unique": {
+          "name": "users_issuer_subject_unique",
+          "columns": ["issuer", "subject"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "write_guard": {
+      "name": "write_guard",
+      "columns": {
+        "ok": {
+          "name": "ok",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "write_guard_check_0": {
+          "name": "write_guard_check_0",
+          "value": "ok = 1"
+        }
+      }
+    }
+  },
+  "views": {
+    "book_covers": {
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "book_id": {
+          "name": "book_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cover_avif_key": {
+          "name": "cover_avif_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "name": "book_covers",
+      "isExisting": false,
+      "definition": "SELECT c.user_id,c.book_id,o.object_key AS cover_avif_key\n  FROM current_manifests c JOIN manifest_assets a ON\n    (a.user_id,a.manifest_id,a.role)=(c.user_id,c.manifest_id,'cover_avif')\n  JOIN objects o ON (o.user_id,o.id)=(a.user_id,a.object_id)"
+    },
+    "object_refcounts": {
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "refs": {
+          "name": "refs",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "name": "object_refcounts",
+      "isExisting": false,
+      "definition": "SELECT r.user_id,r.object_id,count(*) AS refs FROM (\n    SELECT user_id,object_id FROM manifest_chunks UNION ALL\n    SELECT user_id,object_id FROM manifest_assets\n  ) r GROUP BY r.user_id,r.object_id"
+    },
+    "unverified_manifest_objects": {
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "manifest_id": {
+          "name": "manifest_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "name": "unverified_manifest_objects",
+      "isExisting": false,
+      "definition": "SELECT m.user_id,m.manifest_id,m.object_id FROM (\n    SELECT user_id,manifest_id,object_id FROM manifest_chunks UNION ALL\n    SELECT user_id,manifest_id,object_id FROM manifest_assets\n  ) m LEFT JOIN upload_objects u\n    ON (u.user_id,u.upload_id,u.object_id)=(m.user_id,m.manifest_id,m.object_id)\n  JOIN objects o ON (o.user_id,o.id)=(m.user_id,m.object_id)\n  WHERE u.verified_at IS NULL OR o.state <> 'ready'"
+    }
+  },
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {
+      "groups_sibling_name": {
+        "columns": {
+          "ifnull(parent_id,'')": {
+            "isExpression": true
+          }
+        }
+      }
+    }
+  }
+}

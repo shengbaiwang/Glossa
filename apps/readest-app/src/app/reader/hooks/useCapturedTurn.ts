@@ -268,7 +268,8 @@ export const useCapturedTurn = (bookKey: string, viewRef: React.RefObject<Foliat
   };
 
   useEffect(() => {
-    if (!view) return;
+    if (!view?.renderer) return;
+    const eventRenderer = view.renderer;
 
     let toolbarSyncEpoch = 0;
     const waitForPaint = () =>
@@ -330,8 +331,8 @@ export const useCapturedTurn = (bookKey: string, viewRef: React.RefObject<Foliat
       setLayeredTurnTouchClaimed(bookKey, true);
     };
     const cleanupLayeredTurn = () => {
-      view.renderer.removeEventListener('layered-turn-state', handleLayeredTurnState);
-      view.renderer.removeEventListener(
+      eventRenderer.removeEventListener('layered-turn-state', handleLayeredTurnState);
+      eventRenderer.removeEventListener(
         'layered-turn-gesture-claimed',
         handleLayeredTurnGestureClaimed,
       );
@@ -340,8 +341,8 @@ export const useCapturedTurn = (bookKey: string, viewRef: React.RefObject<Foliat
       restoreToolbarOnCancelRef.current = false;
       clearToolbarSyncClass();
     };
-    view.renderer.addEventListener('layered-turn-state', handleLayeredTurnState);
-    view.renderer.addEventListener('layered-turn-gesture-claimed', handleLayeredTurnGestureClaimed);
+    eventRenderer.addEventListener('layered-turn-state', handleLayeredTurnState);
+    eventRenderer.addEventListener('layered-turn-gesture-claimed', handleLayeredTurnGestureClaimed);
 
     // Browser View Transitions emit the same lifecycle as Tauri layered
     // turns, so toolbar/snapshot synchronization is shared. Only the native
@@ -513,7 +514,7 @@ export const useCapturedTurn = (bookKey: string, viewRef: React.RefObject<Foliat
     view.addEventListener('relocate', handleCapturedSurfaceChange);
     view.addEventListener('draw-annotation', handleCapturedSurfaceChange);
     view.addEventListener('show-annotation', handleCapturedSurfaceChange);
-    view.renderer.addEventListener('stabilized', handleCapturedSurfaceChange);
+    eventRenderer.addEventListener('stabilized', handleCapturedSurfaceChange);
 
     const gridCell = document.getElementById(`gridcell-${bookKey}`);
     const resizeObserver =
@@ -607,7 +608,8 @@ export const useCapturedTurn = (bookKey: string, viewRef: React.RefObject<Foliat
 
     const capturedTurn = async (forward: boolean, distance?: number) => {
       const viewSettings = getViewSettings(bookKey);
-      const boundary = forward ? view.renderer.atEnd : view.renderer.atStart;
+      if (cleanedUp || view.renderer !== eventRenderer) return;
+      const boundary = forward ? eventRenderer.atEnd : eventRenderer.atStart;
       const style =
         viewSettings && distance === undefined && !boundary
           ? getCapturedTurnStyle(viewSettings, isFixedLayout())
@@ -617,7 +619,7 @@ export const useCapturedTurn = (bookKey: string, viewRef: React.RefObject<Foliat
       }
       const programmaticTurn = Symbol('captured-turn');
       programmaticTurnsInFlightRef.current.add(programmaticTurn);
-      view.renderer.setAttribute(NATIVE_PROGRAMMATIC_TURN_ATTRIBUTE, '');
+      eventRenderer.setAttribute(NATIVE_PROGRAMMATIC_TURN_ATTRIBUTE, '');
       // If another input starts a programmatic turn while a finger is still
       // pending, that navigation owns the rest of the touch sequence. Do not
       // let later samples reuse the old origin and launch a second turn after
@@ -633,11 +635,12 @@ export const useCapturedTurn = (bookKey: string, viewRef: React.RefObject<Foliat
         await controller.turn(forward, viewSettings.rtl, style);
       } catch (error) {
         markCaptureBroken(error);
-        return forward ? originals.next() : originals.prev();
+        if (!cleanedUp && view.renderer === eventRenderer)
+          return forward ? originals.next() : originals.prev();
       } finally {
         programmaticTurnsInFlightRef.current.delete(programmaticTurn);
         if (programmaticTurnsInFlightRef.current.size === 0) {
-          view.renderer.removeAttribute(NATIVE_PROGRAMMATIC_TURN_ATTRIBUTE);
+          eventRenderer.removeAttribute(NATIVE_PROGRAMMATIC_TURN_ATTRIBUTE);
         }
         schedulePreparedCapture();
       }
@@ -669,13 +672,13 @@ export const useCapturedTurn = (bookKey: string, viewRef: React.RefObject<Foliat
       view.removeEventListener('relocate', handleCapturedSurfaceChange);
       view.removeEventListener('draw-annotation', handleCapturedSurfaceChange);
       view.removeEventListener('show-annotation', handleCapturedSurfaceChange);
-      view.renderer.removeEventListener('stabilized', handleCapturedSurfaceChange);
+      eventRenderer.removeEventListener('stabilized', handleCapturedSurfaceChange);
       view.prev = originals.prev;
       view.next = originals.next;
       controller.dispose();
       cleanupLayeredTurn();
       programmaticTurnsInFlightRef.current.clear();
-      view.renderer.removeAttribute(NATIVE_PROGRAMMATIC_TURN_ATTRIBUTE);
+      eventRenderer.removeAttribute(NATIVE_PROGRAMMATIC_TURN_ATTRIBUTE);
       dragRef.current = null;
       gestureIntentRef.current = null;
       gestureClaimed.current = false;

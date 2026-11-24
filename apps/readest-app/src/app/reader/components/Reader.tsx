@@ -67,7 +67,7 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
   const { hoveredBookKey } = useReaderStore();
   const { showSystemUI, dismissSystemUI } = useThemeStore();
   const { acquireBackKeyInterception, releaseBackKeyInterception } = useDeviceControlStore();
-  const { isSideBarVisible, isSideBarPinned } = useSidebarStore();
+  const { isSideBarVisible } = useSidebarStore();
   const { getIsSideBarVisible, setSideBarVisible } = useSidebarStore();
   const { isNotebookVisible } = useNotebookStore();
   const { getIsNotebookVisible, setNotebookVisible } = useNotebookStore();
@@ -96,7 +96,7 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
       if (hoveredBookKey) {
         setHoveredBookKey('');
         (document.activeElement as HTMLElement)?.blur();
-      } else if (getIsSideBarVisible() && !isSideBarPinned) {
+      } else if (getIsSideBarVisible()) {
         setSideBarVisible(false);
       } else if (getIsNotebookVisible()) {
         setNotebookVisible(false);
@@ -128,13 +128,7 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    appService?.isAndroidApp,
-    sideBarBookKey,
-    isSideBarPinned,
-    isSideBarVisible,
-    isNotebookVisible,
-  ]);
+  }, [appService?.isAndroidApp, sideBarBookKey, isSideBarVisible, isNotebookVisible]);
 
   useEffect(() => {
     if (!appService?.isMobileApp) return;

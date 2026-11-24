@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 import type { Book } from '@/types/book';
+import { useLibraryStore } from '@/store/libraryStore';
+import { resolveLibrarySelection } from '@/app/library/utils/librarySelection';
 
 /**
  * Issue #5360 — on Linux/Wayland the native GTK context menu is popped up
@@ -82,7 +84,11 @@ const renderItem = (overrides: Partial<React.ComponentProps<typeof BookshelfItem
     itemSelected: false,
     transferProgress: null,
     setLoading: vi.fn(),
-    selectItem: vi.fn(),
+    selectItem: vi.fn((id: string, options?: Parameters<typeof resolveLibrarySelection>[4]) => {
+      const { getSelectedBooks, setSelectedBooks } = useLibraryStore.getState();
+      const { selected } = resolveLibrarySelection(getSelectedBooks(), null, id, [], options);
+      setSelectedBooks(selected);
+    }),
     handleGroupBooks: vi.fn(),
     handleBookDownload: vi.fn(async () => true),
     handleBookUpload: vi.fn(async () => true),
@@ -105,6 +111,7 @@ const openContextMenu = () =>
 describe('library context menu on Linux desktop (issue #5360)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useLibraryStore.getState().setSelectedBooks([]);
     appService.isLinuxApp = true;
   });
 
@@ -119,7 +126,14 @@ describe('library context menu on Linux desktop (issue #5360)', () => {
 
     // The downloaded, never-uploaded, statusless test book resolves to this
     // ordered id list via getBookContextMenuItemIds.
-    const labels = ['Move to…', 'Cut', 'New group with selection', 'Reveal in Folder', 'Delete'];
+    const labels = [
+      'Open Book',
+      'Move to…',
+      'Cut',
+      'New group with selection',
+      'Reveal in Folder',
+      'Delete',
+    ];
     const menuItems = await screen.findAllByRole('menuitem');
     expect(menuItems.map((el) => el.textContent)).toEqual(labels);
 
@@ -191,6 +205,17 @@ describe('library context menu on Linux desktop (issue #5360)', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Move to…' }));
 
     expect(props.handleGroupBooks).toHaveBeenCalled();
+    expect(screen.queryByRole('menuitem')).toBeNull();
+  });
+
+  it('ignores a bulk action if the selection changes while the menu is open', async () => {
+    useLibraryStore.getState().setSelectedBooks([book.hash, 'hash-2']);
+    const { props } = renderItem({ itemSelected: true });
+    openContextMenu();
+    const move = await screen.findByRole('menuitem', { name: 'Move to…' });
+    act(() => useLibraryStore.getState().setSelectedBooks([book.hash, 'hash-3']));
+    fireEvent.click(move);
+    expect(props.handleGroupBooks).not.toHaveBeenCalled();
     expect(screen.queryByRole('menuitem')).toBeNull();
   });
 

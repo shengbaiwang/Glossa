@@ -192,3 +192,20 @@ it('moves, resizes and restores the native settings window', () => {
   expect(constrained.top).toBe(16);
   expect(constrained.right).toBeLessThanOrEqual(window.innerWidth - 16);
 });
+
+it('persists toolbar visibility through the application appearance settings', () => {
+  fixture.requestedPanel = 'Theme';
+  render(<SettingsDialog bookKey='' scope='application' />);
+  const bookmark = screen.getByRole('checkbox', { name: 'Bookmark' });
+  expect((bookmark as HTMLInputElement).checked).toBe(true);
+  fireEvent.click(bookmark);
+  expect(JSON.parse(localStorage.getItem('glossa.readerToolbar') ?? '{}').hidden).toEqual([
+    'bookmark',
+  ]);
+  fireEvent.click(
+    within(bookmark.closest('[data-setting-id]') as HTMLElement).getByRole('button', {
+      name: 'Restore Defaults',
+    }),
+  );
+  expect((bookmark as HTMLInputElement).checked).toBe(true);
+});

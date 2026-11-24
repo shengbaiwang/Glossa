@@ -1,7 +1,9 @@
 import type { FileSystem } from '@/types/system';
 
 type LockFileSystem = Pick<FileSystem, 'getPrefix'>;
-const queues = new Map<string | LockFileSystem, Promise<unknown>>();
+const queues = new Map<string, Promise<unknown>>();
+const unnamedRoots = new WeakMap<LockFileSystem, number>();
+let nextRoot = 0;
 
 /** A live read/write transaction is exclusive across windows and drops on close/crash. */
 async function withDatabaseLock<T>(
@@ -60,15 +62,18 @@ async function withDatabaseLock<T>(
 export async function withLibraryLock<T>(
   fs: LockFileSystem,
   task: () => Promise<T>,
-  namespace: 'library' | 'book-data' | 'settings' = 'library',
+  namespace: 'library' | 'book-data' | 'settings' | 'sync-replica' = 'library',
 ): Promise<T> {
-  const prefix = (await fs.getPrefix?.(namespace === 'settings' ? 'Settings' : 'Books')) ?? '';
-  const key = prefix ? `${namespace}:${prefix}` : fs;
+  const base =
+    namespace === 'settings' ? 'Settings' : namespace === 'sync-replica' ? 'Data' : 'Books';
+  const prefix = (await fs.getPrefix?.(base)) ?? '';
+  if (!prefix && !unnamedRoots.has(fs)) unnamedRoots.set(fs, ++nextRoot);
+  const key = JSON.stringify([namespace, prefix || unnamedRoots.get(fs)]);
   const previous = queues.get(key) ?? Promise.resolve();
   const next = previous
     .catch(() => undefined)
     .then(async () => {
-      if (prefix && typeof navigator !== 'undefined' && navigator.locks) {
+      if (typeof window !== 'undefined' && typeof navigator !== 'undefined' && navigator.locks) {
         return navigator.locks.request(`glossa-${namespace}:${prefix}`, task);
       }
       if (prefix && typeof indexedDB !== 'undefined')

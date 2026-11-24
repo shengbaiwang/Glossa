@@ -2,7 +2,7 @@
 docker/.env
 
 # dependencies
-/node_modules
+node_modules/
 /.pnpm-store/
 /.pnp
 .pnp.js
@@ -10,6 +10,8 @@ docker/.env
 
 # testing
 /coverage
+apps/readest-app/src/__tests__/**/test-results/
+apps/readest-app/src/__tests__/**/__screenshots__/*.tauri.test.*/
 
 # next.js
 /.next/

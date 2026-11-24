@@ -1,5 +1,5 @@
 import { stubTranslation as _ } from '@/utils/misc';
-import { filterPlatformKeys, isValidShortcut } from '@/utils/shortcutKeys';
+import { filterPlatformKeys, formatKeyForDisplay, isValidShortcut } from '@/utils/shortcutKeys';
 
 export type ShortcutEntry = {
   keys: string[];
@@ -246,6 +246,20 @@ type ShortcutDisplaySection = {
   section: string;
   items: ShortcutDisplayItem[];
 };
+
+export function formatShortcutBinding(
+  action: keyof ShortcutConfig,
+  shortcuts: ShortcutConfig,
+  isMac: boolean,
+) {
+  const { keys } = shortcuts[action];
+  const defaults = DEFAULT_SHORTCUTS[action].keys;
+  const unchanged =
+    defaults.length === keys.length && defaults.every((key, index) => key === keys[index]);
+  return (unchanged ? filterPlatformKeys(keys, isMac) : keys).map((key) =>
+    formatKeyForDisplay(key, isMac),
+  );
+}
 
 export const getShortcutsForDisplay = (
   isMac: boolean,

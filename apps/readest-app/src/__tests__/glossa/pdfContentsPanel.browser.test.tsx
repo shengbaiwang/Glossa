@@ -128,9 +128,11 @@ it('generates from a real click, updates live chapter navigation, regenerates an
   );
   expect(bookDoc.toc).toBe(tocBefore);
   expect(readingView.lastLocation?.tocItem?.label).toBe('Chapter 3 Silver');
-  await userEvent.click(screen.getByRole('button', { name: 'Regenerate contents' }));
-  await screen.findByRole('button', { name: 'Restore previous contents' });
-  await userEvent.click(screen.getByRole('button', { name: 'Restore previous contents' }));
+  await userEvent.click(screen.getByRole('button', { name: 'More' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Regenerate contents' }));
+  await screen.findByText('Contents are ready.');
+  await userEvent.click(screen.getByRole('button', { name: 'More' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Restore previous contents' }));
   await screen.findByText('Previous contents restored.');
   expect(f.saves).toBe(3);
   expect(readingView.renderer).toBe(renderer);

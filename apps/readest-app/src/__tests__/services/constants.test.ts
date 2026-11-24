@@ -364,7 +364,6 @@ describe('services/constants', () => {
 
     it('has sidebar and notebook settings', () => {
       expect(typeof DEFAULT_READSETTINGS.sideBarWidth).toBe('string');
-      expect(typeof DEFAULT_READSETTINGS.isSideBarPinned).toBe('boolean');
       expect(typeof DEFAULT_READSETTINGS.notebookWidth).toBe('string');
       expect(typeof DEFAULT_READSETTINGS.isNotebookPinned).toBe('boolean');
       expect(typeof DEFAULT_READSETTINGS.notebookActiveTab).toBe('string');
@@ -392,7 +391,6 @@ describe('services/constants', () => {
     it('is a partial object with expected overrides', () => {
       expect(typeof DEFAULT_MOBILE_READSETTINGS).toBe('object');
       expect(typeof DEFAULT_MOBILE_READSETTINGS.sideBarWidth).toBe('string');
-      expect(DEFAULT_MOBILE_READSETTINGS.isSideBarPinned).toBe(false);
     });
   });
 
@@ -636,7 +634,6 @@ describe('services/constants', () => {
     });
 
     it('has sorted TOC and UI language', () => {
-      expect(typeof DEFAULT_VIEW_CONFIG.sortedTOC).toBe('boolean');
       expect(typeof DEFAULT_VIEW_CONFIG.uiLanguage).toBe('string');
     });
   });

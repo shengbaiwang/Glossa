@@ -49,7 +49,7 @@ const SectionInfo: React.FC<SectionInfoProps> = ({
   const maskHeight = Math.min(topInset, band.bottom);
 
   const handleNotchClick = () => {
-    if (eventDispatcher.dispatchSync('iframe-single-click')) return;
+    if (eventDispatcher.dispatchSync('iframe-single-click', { bookKey })) return;
     if (isScrolled) {
       const view = getView(bookKey);
       const resourceIndex =
@@ -61,7 +61,7 @@ const SectionInfo: React.FC<SectionInfoProps> = ({
   };
 
   const handleSectionClick = () => {
-    if (eventDispatcher.dispatchSync('iframe-single-click')) return;
+    if (eventDispatcher.dispatchSync('iframe-single-click', { bookKey })) return;
     setHoveredBookKey(bookKey);
   };
 

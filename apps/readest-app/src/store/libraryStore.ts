@@ -7,9 +7,12 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { collectFolderPaths } from '@/app/library/utils/libraryFolders';
 import { protectBookRemoval } from '@/services/bookRemovalState';
 import { mergeLibraryBook } from '@/utils/libraryMerge';
+import { visibleCloudRow } from '@/glossa/sync/shelfScope';
 import { getVisibleBooks } from '@/utils/book';
 
 interface LibraryState {
+  cloudSubject: string | null;
+  setCloudSubject: (subject: string | null) => void;
   library: Book[]; // might contain deleted books
   libraryLoaded: boolean;
   isSyncing: boolean;
@@ -72,6 +75,12 @@ function buildHashIndex(books: Book[]): Map<string, number> {
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
+  cloudSubject: null,
+  setCloudSubject: (subject) => {
+    if (get().cloudSubject === subject) return;
+    set({ cloudSubject: subject, selectedBooks: new Set(), currentBookshelf: [] });
+    get().setLibrary(get().library);
+  },
   library: [],
   libraryLoaded: false,
   isSyncing: false,
@@ -94,7 +103,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   setCurrentBookshelf: (bookshelf: Book[]) => {
-    set({ currentBookshelf: bookshelf });
+    set({
+      currentBookshelf: bookshelf.filter((book) => visibleCloudRow(book, get().cloudSubject)),
+    });
   },
 
   setCheckOpenWithBooks: (check) => set({ checkOpenWithBooks: check }),
@@ -103,6 +114,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   // establish readiness and membership, while preserving newer personal edits
   // made in memory while disk rows and cover URLs were loading.
   setLibrary: (books, complete = false) => {
+    books = books.filter((book) => visibleCloudRow(book, get().cloudSubject));
     const current = new Map(get().library.map((book) => [book.hash, book]));
     if (complete) {
       books = books.map((book) => {
@@ -169,6 +181,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     book = withoutSubjects(book);
     const appService = await envConfig.getAppService();
     const { library, hashIndex } = get();
+    if (!visibleCloudRow(book, get().cloudSubject)) return;
     const idx = hashIndex.get(book.hash);
     if (idx !== undefined) book = protectBookRemoval(book, library[idx]!);
     // Build the new library immutably — never mutate the previous-state array.
@@ -216,6 +229,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       library = get().library;
     }
 
+    books = books.filter((book) => visibleCloudRow(book, get().cloudSubject));
     const existingByHash = new Map(library.map((b) => [b.hash, b]));
     books = books.map((b) =>
       existingByHash.has(b.hash) ? mergeLibraryBook(existingByHash.get(b.hash)!, b) : b,

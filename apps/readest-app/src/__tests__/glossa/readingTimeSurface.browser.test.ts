@@ -34,6 +34,32 @@ const status = () =>
   }>('reading_time', { activity: { type: 'status' } });
 
 describe('trusted reading surface', () => {
+  it('detaches the reading observer after the view releases its renderer', async () => {
+    const { book } = await new DocumentLoader(await fixture('pdf')).open();
+    const view = document.createElement('foliate-view') as FoliateView;
+    view.style.cssText = 'display:block;width:520px;height:340px';
+    document.body.append(view);
+    try {
+      await view.open(book);
+      await view.goTo(0);
+      const detach = observeReadingSurface(
+        view,
+        'test-key',
+        () => true,
+        view,
+        () => {},
+      );
+      view.close();
+      expect(view.renderer).toBeNull();
+      expect(detach).not.toThrow();
+      expect(detach).not.toThrow();
+    } finally {
+      if (view.renderer) view.close();
+      view.remove();
+      await book.destroy?.();
+    }
+  });
+
   it.each([
     'pdf',
     'epub',

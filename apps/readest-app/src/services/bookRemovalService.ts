@@ -1,3 +1,4 @@
+import { recoveryScope } from '@/glossa/sync/releasePolicy';
 import type { Book } from '@/types/book';
 import { activateBookData } from './bookDataLifecycle';
 import type { FileSystem } from '@/types/system';
@@ -76,6 +77,7 @@ export async function prepareRemoval(
   hashes: string[],
   mode: RemovalMode,
   options: {
+    releaseAfterDays?: number;
     cloud?: boolean;
     cloudTargets?: string[];
     expected?: Record<string, number>;
@@ -97,6 +99,7 @@ export async function prepareRemoval(
         intents(b).some(
           (intent) =>
             intent.local !== 'complete' &&
+            !(mode === 'local' && intent.mode === 'local' && intent.local === 'failed') &&
             !(mode === 'purge' && options.allowConflict && intent === b.removal && intent.conflict),
         )
       )
@@ -111,6 +114,13 @@ export async function prepareRemoval(
         removalHistory: archiveRemoval(b, mode === 'local' ? 'localRemoval' : 'removal'),
         [mode === 'local' ? 'localRemoval' : 'removal']: {
           version: 1,
+          ...(mode === 'local' && b.glossaCloud
+            ? {
+                cloudScope: recoveryScope(b.glossaCloud),
+                downloadedAt: b.downloadedAt ?? null,
+                releaseAfterDays: options.releaseAfterDays,
+              }
+            : {}),
           id,
           revision: now,
           requestedAt: now,
@@ -141,64 +151,82 @@ export async function runRemoval(
   id: string,
   options: {
     clean: (book: Book, mode: 'purge' | 'local') => Promise<void>;
+    prepareLocal?: (book: Book, signal?: AbortSignal) => Promise<(current: Book) => Promise<void>>;
     signal?: AbortSignal;
     onProgress?: (result: RemovalResult) => void;
   },
 ): Promise<RemovalResult> {
-  const targets = (await loadRemovalBooks(io))
-    .filter((b) => intents(b).some((intent) => intent.id === id))
-    .map((b) => b.hash);
-  for (const hash of targets) {
+  const targets = (await loadRemovalBooks(io)).filter((b) =>
+    intents(b).some((intent) => intent.id === id && intent.local !== 'complete'),
+  );
+  for (const snapshot of targets) {
+    const hash = snapshot.hash;
     if (options.signal?.aborted) break;
-    await withLibraryLock(io, async () => {
-      if (options.signal?.aborted) return;
-      const rows = await loadRemovalBooks(io),
-        index = rows.findIndex((b) => b.hash === hash);
-      const book = rows[index],
-        intent = book && intents(book).find((v) => v.id === id);
-      if (!book || !intent || intent.id !== id || intent.local === 'complete') return;
-      if (intent.conflict && intent.mode === 'purge') return;
-      const field = fieldFor(intent);
+    // Network verification runs outside the library lock. The short commit
+    // resolves the durable intent again and validates the book it will unlink.
+    let release: ((current: Book) => Promise<void>) | undefined;
+    if (snapshot.localRemoval?.id === id && snapshot.glossaCloud && options.prepareLocal) {
       try {
-        // Trash is a reversible state change. Files and every personal sidecar stay in place.
-        if (intent.mode === 'purge') {
-          rows[index] = { ...book, deletedAt: intent.requestedAt };
-          await persist(io, rows);
-        }
-        if (intent.mode === 'purge' || intent.mode === 'local')
-          await options.clean({ ...book }, intent.mode);
-        rows[index] = {
-          ...book,
-          deletedAt: intent.mode === 'local' ? book.deletedAt : intent.requestedAt,
-          [field]: { ...intent, local: 'complete', failure: undefined },
-          ...(intent.mode === 'local' || intent.mode === 'purge' ? { downloadedAt: null } : {}),
-          ...(intent.mode === 'purge'
-            ? {
-                coverDownloadedAt: null,
-                coverImageUrl: null,
-                progress: undefined,
-                tags: undefined,
-                groupId: undefined,
-                groupName: undefined,
-                groupUpdatedAt: Math.max(Date.now(), (book.groupUpdatedAt ?? 0) + 1),
-                metadata: undefined,
-                readingStatus: undefined,
-              }
-            : {}),
-        };
+        release = await options.prepareLocal(snapshot, options.signal);
       } catch (error) {
-        rows[index] = {
-          ...rows[index]!,
-          [field]: {
-            ...intent,
-            local: 'failed',
-            failure: error instanceof BookRemovalError ? error.code : 'storage',
-          },
+        release = async () => {
+          throw error;
         };
       }
-      // If this write fails, pending intent remains durable and cleanup is safe to repeat.
-      await persist(io, rows);
-    });
+    }
+    const commit = () =>
+      withLibraryLock(io, async () => {
+        if (options.signal?.aborted) return;
+        const rows = await loadRemovalBooks(io),
+          index = rows.findIndex((b) => b.hash === hash);
+        const book = rows[index],
+          intent = book && intents(book).find((v) => v.id === id);
+        if (!book || !intent || intent.id !== id || intent.local === 'complete') return;
+        if (intent.conflict && intent.mode === 'purge') return;
+        const field = fieldFor(intent);
+        try {
+          // Trash is a reversible state change. Files and every personal sidecar stay in place.
+          if (intent.mode === 'purge') {
+            rows[index] = { ...book, deletedAt: intent.requestedAt };
+            await persist(io, rows);
+          }
+          if (intent.mode === 'local' && release) await release(book);
+          else if (intent.mode === 'purge' || intent.mode === 'local')
+            await options.clean({ ...book }, intent.mode);
+          rows[index] = {
+            ...book,
+            deletedAt: intent.mode === 'local' ? book.deletedAt : intent.requestedAt,
+            [field]: { ...intent, local: 'complete', failure: undefined },
+            ...(intent.mode === 'local' || intent.mode === 'purge' ? { downloadedAt: null } : {}),
+            ...(intent.mode === 'purge'
+              ? {
+                  coverDownloadedAt: null,
+                  coverImageUrl: null,
+                  progress: undefined,
+                  tags: undefined,
+                  groupId: undefined,
+                  groupName: undefined,
+                  groupUpdatedAt: Math.max(Date.now(), (book.groupUpdatedAt ?? 0) + 1),
+                  metadata: undefined,
+                  readingStatus: undefined,
+                }
+              : {}),
+          };
+        } catch (error) {
+          rows[index] = {
+            ...rows[index]!,
+            [field]: {
+              ...intent,
+              local: 'failed',
+              failure: error instanceof BookRemovalError ? error.code : 'storage',
+            },
+          };
+        }
+        // If this write fails, pending intent remains durable and cleanup is safe to repeat.
+        await persist(io, rows);
+      });
+    if (release) await withLibraryLock(io, commit, 'sync-replica');
+    else await commit();
     options.onProgress?.(await removalResult(io, id));
   }
   return removalResult(io, id);

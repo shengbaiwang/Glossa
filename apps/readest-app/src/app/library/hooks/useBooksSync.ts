@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef } from 'react';
 import { Book } from '@/types/book';
 import { useSync } from '@/hooks/useSync';
 import { useEnv } from '@/context/EnvContext';
+import { notifyLibraryUpdated } from '@/utils/libraryEvents';
+import { hasGlossaSyncConfig } from '@/glossa/sync/config';
 import { useAuth } from '@/context/AuthContext';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -38,6 +40,50 @@ export const useBooksSync = () => {
   const { useSyncInited, syncedBooks, syncBooks, lastSyncedAtBooks } = useSync();
   const { syncClient } = useSyncContext();
   const isPullingRef = useRef(false);
+  const subject = user?.id;
+  const selected = useLibraryStore((s) => s.selectedBooks);
+  const single = selected?.size === 1 ? selected.values().next().value : undefined;
+  const candidate = single ? useLibraryStore.getState().getBookByHash(single) : undefined;
+  useEffect(() => {
+    const pointer = candidate?.glossaCloud;
+    if (
+      !subject ||
+      !pointer ||
+      !candidate.glossaDiscovery?.available ||
+      pointer.subject !== subject ||
+      candidate.downloadedAt ||
+      candidate.deletedAt ||
+      !hasGlossaSyncConfig() ||
+      typeof caches === 'undefined'
+    )
+      return;
+    const controller = new AbortController();
+    const warm = async () => {
+      const { cachedHeadPreview } = await import('@/glossa/sync/previewCache');
+      const format = candidate.format === 'EPUB' ? 'epub' : 'pdf';
+      if (await cachedHeadPreview(pointer, format).catch(() => undefined)) return;
+      const { openCloudBook } = await import('@/glossa/sync/cloudBook');
+      controller.signal.throwIfAborted();
+      const file = await openCloudBook(candidate, controller);
+      try {
+        await file.headPreview(format);
+      } finally {
+        await file.close();
+      }
+    };
+    const timer = setTimeout(() => {
+      void warm().catch(() => {});
+    }, 400);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [candidate, subject]);
+  const discoveryRef = useRef<{
+    subject: string;
+    app: typeof appService;
+    pending: Promise<number>;
+  } | null>(null);
 
   const getNewBooks = useCallback(() => {
     if (!user) return {};
@@ -79,6 +125,38 @@ export const useBooksSync = () => {
       // row, BackupWindow — routes through here. The file pass works
       // logged out (file sync has no Readest account dependency); the
       // native pull below still requires `user`.
+      if (hasGlossaSyncConfig()) {
+        if (!subject || !appService || !libraryLoaded) return;
+        try {
+          let task = discoveryRef.current;
+          if (!task || task.subject !== subject || task.app !== appService) {
+            const pending = appService.discoverCloudBooks(subject);
+            void pending
+              .then(async () => {
+                const { releaseFinishedDownload } = await import('@/glossa/sync/releaseFinished');
+                await releaseFinishedDownload(appService, subject);
+              })
+              .catch(() => {
+                /* The next catalog refresh can retry the policy check. */
+              });
+            task = { subject, app: appService, pending };
+            discoveryRef.current = task;
+          }
+          const count = await task.pending;
+          if (verbose)
+            eventDispatcher.dispatch('toast', {
+              type: 'info',
+              message: _('{{count}} book(s) synced', { count }),
+            });
+        } catch {
+          if (verbose)
+            eventDispatcher.dispatch('toast', { type: 'error', message: _('Sync failed') });
+        } finally {
+          if (discoveryRef.current?.subject === subject && discoveryRef.current.app === appService)
+            discoveryRef.current = null;
+        }
+        return;
+      }
       const settingsNow = useSettingsStore.getState().settings;
       const backends = getActiveFileSyncBackends(settingsNow);
       const readest = isReadestCloudEnabled(settingsNow);
@@ -129,14 +207,14 @@ export const useBooksSync = () => {
         isPullingRef.current = false;
       }
     },
-    [_, user, libraryLoaded, syncBooks, envConfig],
+    [_, user, subject, libraryLoaded, syncBooks, envConfig, appService],
   );
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleAutoSync = useCallback(
     throttle(
       async () => {
-        if (isPullingRef.current) return;
+        if (hasGlossaSyncConfig() || isPullingRef.current) return;
         // Readest Cloud unchecked: the native book channel is gated, so the
         // interval runs the read-only mixed-fleet probe instead — a device
         // still writing natively would otherwise fork progress silently
@@ -168,7 +246,7 @@ export const useBooksSync = () => {
   }, [user, library, handleAutoSync]);
 
   const pushLibrary = useCallback(async () => {
-    if (!user) return;
+    if (!user || hasGlossaSyncConfig()) return;
     const newBooks = getNewBooks();
     if (newBooks.lastSyncedAt) {
       await syncBooks(newBooks?.books, 'push');
@@ -176,8 +254,34 @@ export const useBooksSync = () => {
   }, [user, syncBooks, getNewBooks]);
 
   useEffect(() => {
-    if (!user || !useSyncInited || !libraryLoaded) return;
-    pullLibrary();
+    if (!user || !libraryLoaded) return;
+    if (hasGlossaSyncConfig()) {
+      // Refresh the cached catalog on sign-in even while the network is unavailable.
+      notifyLibraryUpdated();
+      let busy = false,
+        active = true;
+      const poll = async () => {
+        if (!active || busy || document.visibilityState === 'hidden' || !navigator.onLine) return;
+        busy = true;
+        try {
+          await pullLibrary();
+        } finally {
+          busy = false;
+        }
+      };
+      void poll();
+      const timer = window.setInterval(poll, 60_000);
+      window.addEventListener('online', poll);
+      document.addEventListener('visibilitychange', poll);
+      return () => {
+        active = false;
+        window.clearInterval(timer);
+        window.removeEventListener('online', poll);
+        document.removeEventListener('visibilitychange', poll);
+      };
+    }
+    if (useSyncInited) void pullLibrary();
+    return undefined;
   }, [user, useSyncInited, libraryLoaded, pullLibrary]);
 
   const updateLibrary = useCallback(async () => {

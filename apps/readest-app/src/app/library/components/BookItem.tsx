@@ -17,6 +17,7 @@ import {
   getActiveFileSyncBackends,
   isReadestCloudStorageActive,
 } from '@/services/sync/cloudSyncProvider';
+import { syncOrigin } from '@/glossa/sync/config';
 import { isFeedBook } from '@/services/rss/feedBookUrl';
 import { formatAuthors, formatDescription, formatSeries } from '@/utils/book';
 import ReadingProgress from './ReadingProgress';
@@ -55,6 +56,12 @@ const BookItem: React.FC<BookItemProps> = ({
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
   const hasFileProvider = getActiveFileSyncBackends(settings).length > 0;
+  const r2 = Boolean(syncOrigin());
+  const canUpload = r2
+    ? !book.glossaCloud && (book.format === 'PDF' || book.format === 'EPUB')
+    : !book.uploadedAt && (isReadestCloudStorageActive(settings) || hasFileProvider);
+  const canDownload =
+    !book.downloadedAt && (r2 ? Boolean(book.glossaCloud) : !book.glossaCloud && book.uploadedAt);
   const iconSize15 = useResponsiveSize(15);
 
   const [statusPosition, setStatusPosition] = useState<{ x: number; y: number } | null>(null);
@@ -260,11 +267,10 @@ const BookItem: React.FC<BookItemProps> = ({
               // A feed book has no file to move either way, so it never gets a
               // cloud badge — it would only queue a transfer that fails (#5307).
               !isFeedBook(book) &&
-              ((!book.uploadedAt && (isReadestCloudStorageActive(settings) || hasFileProvider)) ||
-                (book.uploadedAt && !book.downloadedAt)) && (
+              (canUpload || canDownload) && (
                 <button
                   type='button'
-                  aria-label={!book.uploadedAt ? _('Upload Book') : _('Download Book')}
+                  aria-label={canUpload ? _('Upload Book') : _('Download Book')}
                   className='show-cloud-button glossa-book-cloud-button'
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => {
@@ -272,18 +278,15 @@ const BookItem: React.FC<BookItemProps> = ({
                       navigateToLogin(router);
                       return;
                     }
-                    if (!book.uploadedAt) {
+                    if (canUpload) {
                       handleBookUpload(book);
                     } else if (!book.downloadedAt) {
                       handleBookDownload(book, { queued: true });
                     }
                   }}
                 >
-                  {!book.uploadedAt &&
-                    (isReadestCloudStorageActive(settings) || hasFileProvider) && (
-                      <CloudUpload size={iconSize15} />
-                    )}
-                  {book.uploadedAt && !book.downloadedAt && <CloudDownload size={iconSize15} />}
+                  {canUpload && <CloudUpload size={iconSize15} />}
+                  {canDownload && <CloudDownload size={iconSize15} />}
                 </button>
               )
             )}

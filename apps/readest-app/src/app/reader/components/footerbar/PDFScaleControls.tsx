@@ -46,8 +46,9 @@ export default function PDFScaleControls({ bookKey }: { bookKey: string }) {
       const level = (event as CustomEvent<{ level: number }>).detail.level;
       if (Number.isFinite(level)) applyRef.current?.(level);
     };
-    view?.renderer?.addEventListener('pdf-zoom-commit', commit);
-    return () => view?.renderer?.removeEventListener('pdf-zoom-commit', commit);
+    const renderer = view?.renderer;
+    renderer?.addEventListener('pdf-zoom-commit', commit);
+    return () => renderer?.removeEventListener('pdf-zoom-commit', commit);
   }, [view]);
   useEffect(() => {
     alive.current = true;

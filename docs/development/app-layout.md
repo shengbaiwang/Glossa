@@ -8,7 +8,13 @@
 
 保留日常安装版、独立开发环境、最新正式构建，以及所有 `target/`、`.next/`、前端导出和开发构建产物。书库、笔记、配置、钥匙串、`Glossa Signing`、个人数据及源码备份均不动；不顺带清理测试截图、日志或运行时临时目录。历史清单保留为追溯记录，已轮换文件以本次清理记录为准。
 
-当前恢复包：`.glossa-build/archives/20261112-daily-release/latest-Glossa.zip`（SHA-256：`847c4b9e0181bbc0141b0aecded7c013e63aeb6c147ac6baadc5c887a4b65aca`）。2026-11-12 启动验收后实际解压，逐项核对文件内容、权限、符号链接、扩展属性及固定证书严格签名。已轮换旧 ZIP 和替换副本，历史清单保留。清理记录：`.glossa-build/archives/cleanup-20261112-daily-release.json`。
+2026-11-22 日常安装版已通过 Finder 默认打开 PDF、第二页选文划线、两次打开独立书库以及逐窗关闭验收。最新恢复包为 `.glossa-build/archives/20261122-final/latest-Glossa.zip`，SHA-256 为 `4518073d6e6f68e20c4b504a3b84ec04dfdb043d6d8a985381a0d9e9a4ae8693`。安装后已实际解压并核对固定签名及 13 项清单，验收见 `.glossa-dev/qa/install-daily-20261122-final/ACCEPTANCE.md`，旧包清理见 `.glossa-build/archives/cleanup-20261122-final.json`。替换期间，旧应用临时副本使用非 `.app` 后缀，避免 Finder 将它选作同标识的打开程序。
+
+2026-11-18 日常安装版（PDF 目录 v19 与关窗修复）的历史恢复包为 `.glossa-build/archives/20261118-daily/latest-Glossa.zip`，SHA-256 为 `a9c6cb6471ebf8203b3b0b85ac0ecad929bca8467f7492044487049ac9659470`。已实际解压核对 13 项内容、权限、符号链接、扩展属性及固定证书签名。日常原生书库启动显示 65 本书；验收见 `.glossa-dev/qa/install-daily-20261118/ACCEPTANCE.md`，清理见 `.glossa-build/archives/cleanup-20261118-daily.json`。
+
+2026-11-16 英文扫描书目录 v18 历史恢复包 `.glossa-build/archives/20261116-pdf-english/latest-Glossa.zip` 已由上述新包替代，原 SHA-256 为 `9212a4813ae34ef0c161a3fe8338e25b4ce2155bab34d66f5f89ae488f07cdc2`。原书九项目录保存与重开后点击通过，首轮索引加载停滞单独记录在 `.glossa-dev/qa/install-pdf-english-20261116/ACCEPTANCE.md`。
+
+以下是同日较早 v17 的历史恢复记录，其ZIP已被本轮核验后的新包替代： `.glossa-build/archives/20261116-pdf-volumes/latest-Glossa.zip`，SHA-256 为 `af6a7ef53cab668a70265c80d0368be6eae9b64238f9f8469bd5cc1651b9de0d`。日常版已在原 676 页《中国思想史》第二卷实际生成 29 项，核对首／中／末目录跳转及应用完整退出重开后的保存。恢复包已实际解压，13 项文件内容、权限、符号链接、扩展属性和固定证书签名全部通过。同日较早的 pdf-dock ZIP 与旧安装替换副本已核验后移除，保留正式构建、开发环境及全部编译缓存。清理记录在 `.glossa-build/archives/cleanup-20261116-pdf-volumes.json`，安装验收在 `.glossa-dev/qa/install-pdf-volumes-20261116/ACCEPTANCE.md`。
 
 | 用途 | 位置或入口 | 应用标识 |
 | --- | --- | --- |

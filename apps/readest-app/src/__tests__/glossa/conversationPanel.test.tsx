@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { Book } from '@/types/book';
 import type { BookDoc } from '@/libs/document';
@@ -296,17 +296,15 @@ it('does not make invented reading citations clickable and preserves the saved s
   fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
   await screen.findByRole('switch', { name: 'Citations', checked: true });
 });
+const messageBox = () =>
+  screen.getByLabelText<HTMLTextAreaElement>('Message', { selector: 'textarea' });
+const sendButton = () =>
+  screen.getByLabelText<HTMLButtonElement>('Send message', { selector: 'button' });
 async function typeQuestion(question = 'Explain this') {
-  fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
-    target: { value: question },
-  });
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'Send message' }).hasAttribute('disabled')).toBe(
-      false,
-    ),
-  );
+  fireEvent.change(messageBox(), { target: { value: question } });
+  await waitFor(() => expect(sendButton().disabled).toBe(false));
 }
-const send = () => fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+const send = () => fireEvent.click(sendButton());
 async function answer() {
   await waitFor(() =>
     expect(document.querySelector('.glossa-chat-answer')?.textContent).toBe('The explanation.'),
@@ -463,21 +461,23 @@ it('starts an empty conversation, restores per-session drafts, and deletes only 
   await answer();
   await typeQuestion('Unsent first draft');
   const oldId = f.save.mock.calls.at(-1)![0].activeId as string;
-  fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
-  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('');
+  fireEvent.click(screen.getByLabelText('New conversation', { selector: 'button' }));
+  expect(messageBox().value).toBe('');
   expect(document.querySelector('.glossa-chat-answer')).toBeNull();
   await typeQuestion('A new subject');
   send();
   await answer();
   expect(f.generate.mock.calls[1]![0].turns).toEqual([]);
   expect(f.save.mock.calls.at(-1)![0].activeId).not.toBe(oldId);
-  fireEvent.click(screen.getByRole('button', { name: 'Conversation history' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Explain this' }));
+  fireEvent.click(screen.getByLabelText('Conversation history', { selector: 'button' }));
+  const history = screen.getByLabelText('Conversation history', { selector: '[role="dialog"]' });
+  fireEvent.click(within(history).getByRole('button', { name: 'Explain this' }));
   expect(f.save.mock.calls.at(-1)![0].activeId).toBe(oldId);
-  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Unsent first draft');
-  fireEvent.click(screen.getByRole('button', { name: 'Conversation menu' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Delete conversation' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+  expect(messageBox().value).toBe('Unsent first draft');
+  fireEvent.click(screen.getByLabelText('Conversation menu', { selector: 'button' }));
+  const menu = screen.getByLabelText('Conversation menu', { selector: '[role="dialog"]' });
+  fireEvent.click(within(menu).getByRole('button', { name: 'Delete conversation' }));
+  fireEvent.click(within(screen.getByRole('alert')).getByRole('button', { name: 'Delete' }));
   expect(screen.queryByText('Explain this')).toBeNull();
   expect(document.querySelector('.glossa-chat-question')?.textContent).toBe('A new subject');
 });

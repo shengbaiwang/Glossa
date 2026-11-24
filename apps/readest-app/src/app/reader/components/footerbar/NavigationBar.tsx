@@ -8,7 +8,6 @@ import {
 } from '@/components/GlossaIcons';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useSidebarStore } from '@/store/sidebarStore';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import Button from '@/components/Button';
 import { Insets } from '@/types/misc';
@@ -31,8 +30,6 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
   const _ = useTranslation();
   const { appService } = useEnv();
 
-  const { isSideBarVisible, isSideBarPinned } = useSidebarStore();
-
   const tocIconSize = useResponsiveSize(18);
   const fontIconSize = useResponsiveSize(18);
   const navPadding = isMobile ? `${gridInsets.bottom * 0.33 + 16}px` : '0px';
@@ -50,14 +47,12 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
           : navPadding,
       }}
     >
-      {isSideBarVisible && isSideBarPinned ? null : (
-        <Button
-          className='glossa-icon-button'
-          label={_('Table of Contents')}
-          icon={<TOCIcon size={tocIconSize} />}
-          onClick={() => onSetActionTab('toc')}
-        />
-      )}
+      <Button
+        className='glossa-icon-button'
+        label={_('Table of Contents')}
+        icon={<TOCIcon size={tocIconSize} />}
+        onClick={() => onSetActionTab('toc')}
+      />
       <Button
         className='glossa-icon-button'
         label={_('Color')}

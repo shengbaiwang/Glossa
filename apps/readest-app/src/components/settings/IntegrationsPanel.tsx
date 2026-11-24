@@ -1,3 +1,5 @@
+import { hasGlossaSyncConfig } from '@/glossa/sync/config';
+import { CloudDownloadPolicy } from '@/components/settings/CloudDownloadPolicy';
 import clsx from 'clsx';
 import React, { useEffect, useState } from 'react';
 import { ChevronRight as MdChevronRight } from '@/components/GlossaIcons';
@@ -52,12 +54,48 @@ type SubPage = 'webdav' | 'gdrive' | 's3' | 'onedrive' | 'icloud' | null;
  * this panel and CustomDictionaries should both consume them instead of
  * inlining the chassis.
  */
-const IntegrationsPanel: React.FC<{ onSyncLibrary?: () => void }> = ({ onSyncLibrary }) => {
+type PanelProps = { onSyncLibrary?: () => void };
+
+function SyncActions({ onSyncLibrary }: PanelProps) {
   const _ = useTranslation();
   const { setIsTransferQueueOpen } = useTransferQueue();
+  const isLibrarySyncing = useLibraryStore((state) => state.isSyncing);
+  return (
+    <>
+      {onSyncLibrary && (
+        <NavigationRow
+          title={_('Sync Library')}
+          status={isLibrarySyncing ? _('Syncing…') : undefined}
+          disabled={isLibrarySyncing}
+          onClick={onSyncLibrary}
+        />
+      )}
+      <NavigationRow
+        title={_('Cloud File Transfers')}
+        onClick={() => {
+          useSettingsStore.getState().setSettingsDialogOpen(false);
+          setIsTransferQueueOpen(true);
+        }}
+      />
+    </>
+  );
+}
+
+function IntegrationsPanel(props: PanelProps) {
+  if (!hasGlossaSyncConfig()) return <PersonalCloudSettings {...props} />;
+  return (
+    <div className='my-4 w-full' data-setting-id='settings.integrations.cloudSync'>
+      <h2 className='mb-4 px-4 text-lg font-semibold'>Glossa R2</h2>
+      <SyncActions {...props} />
+      <CloudDownloadPolicy />
+    </div>
+  );
+}
+
+const PersonalCloudSettings: React.FC<PanelProps> = ({ onSyncLibrary }) => {
+  const _ = useTranslation();
   const { envConfig, appService } = useEnv();
   const { settings, requestedSubPage, setRequestedSubPage } = useSettingsStore();
-  const isLibrarySyncing = useLibraryStore((state) => state.isSyncing);
 
   // Surface a library-wide WebDAV sync that's mid-flight in the row's
   // status line. Keeps the user from feeling like the run was lost
@@ -273,21 +311,7 @@ const IntegrationsPanel: React.FC<{ onSyncLibrary?: () => void }> = ({ onSyncLib
       </div>
 
       <div className='w-full' data-setting-id='settings.integrations.cloudSync'>
-        {onSyncLibrary && (
-          <NavigationRow
-            title={_('Sync Library')}
-            status={isLibrarySyncing ? _('Syncing…') : undefined}
-            disabled={isLibrarySyncing}
-            onClick={onSyncLibrary}
-          />
-        )}
-        <NavigationRow
-          title={_('Cloud File Transfers')}
-          onClick={() => {
-            useSettingsStore.getState().setSettingsDialogOpen(false);
-            setIsTransferQueueOpen(true);
-          }}
-        />
+        <SyncActions onSyncLibrary={onSyncLibrary} />
         <SectionTitle className='mb-2'>{_('Cloud Sync')}</SectionTitle>
         <div className='card eink-bordered border-base-200 bg-base-100 overflow-hidden border'>
           <div

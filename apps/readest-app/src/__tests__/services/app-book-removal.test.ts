@@ -4,7 +4,7 @@ import type { AppService, BaseDir } from '@/types/system';
 import type { FileSyncProvider } from '@/services/sync/file/provider';
 import { cleanRemovedBook, removeAppBooks, bookRemovalIO } from '@/services/appBookRemoval';
 import { runRemoval } from '@/services/bookRemovalService';
-import { getLocalBookFilename } from '@/utils/book';
+import { getLibraryFilename, getLocalBookFilename } from '@/utils/book';
 
 const transport = vi.hoisted(() => ({
   ready: vi.fn(() => ['webdav']),
@@ -208,6 +208,8 @@ describe('local download removal verifies recoverability', () => {
     let library = JSON.stringify([m.selected]);
     const app = {
       ...m.app,
+      exists: async (path: string, base: BaseDir) =>
+        (base === 'Books' && path === getLibraryFilename()) || m.app.exists(path, base),
       readFile: async () => library,
       writeFile: async (_path: string, _base: BaseDir, content: string) => {
         library = content;

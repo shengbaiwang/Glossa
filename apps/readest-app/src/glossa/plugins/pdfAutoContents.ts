@@ -4,20 +4,24 @@ import type { BookDoc } from '@/libs/document';
 import type { ClosableFile } from '@/utils/file';
 import type { PDFContentsReport } from '@/services/pdfAutoContents';
 import { eventDispatcher } from '@/utils/event';
+import { pdfContentsCheckpointStorage } from '@/services/pdfContentsCheckpoint';
 import { enqueuePDFContentsTask } from '@/services/pdfContentsTaskQueue';
 
 // Only the existing document-access services are passed to this bundled plugin.
-type Host = Pick<AppService, 'resolveNativeBookFilePath' | 'loadBookContent'>;
+type Host = Pick<AppService, 'resolveNativeBookFilePath' | 'loadBookContent'> &
+  Partial<Pick<AppService, 'readFile' | 'writeFile' | 'deleteFile'>>;
+type PreparationRequest = {
+  regenerate?: boolean;
+  notify?: boolean;
+  autoContinue?: boolean;
+  onReport?: (report: PDFContentsReport) => void;
+};
 export async function prepareContents(
   host: Host,
   book: Book,
   document: BookDoc | undefined,
   signal: AbortSignal,
-  options: {
-    regenerate?: boolean;
-    notify?: boolean;
-    onReport?: (report: PDFContentsReport) => void;
-  } = {},
+  options: PreparationRequest = {},
 ): Promise<{ result: string; report?: PDFContentsReport }> {
   if (book.format !== 'PDF' || signal.aborted) return { result: 'cancelled' };
   try {
@@ -37,11 +41,7 @@ async function prepareContentsNow(
   book: Book,
   document: BookDoc | undefined,
   signal: AbortSignal,
-  options: {
-    regenerate?: boolean;
-    notify?: boolean;
-    onReport?: (report: PDFContentsReport) => void;
-  },
+  options: PreparationRequest,
 ): Promise<{ result: string; report?: PDFContentsReport }> {
   if (signal.aborted) return { result: 'cancelled' };
   const { supportsLocalPDF, openPDFCache } = await import('@/services/pdfEnhancement');
@@ -75,14 +75,32 @@ async function prepareContentsNow(
     if (signal.aborted || !document) return { result: 'cancelled' };
     const { preparePDFContents } = await import('@/services/pdfAutoContents');
     if (signal.aborted) return { result: 'cancelled' };
-    const receive = (value: PDFContentsReport) => {
-      report = value;
-      options.onReport?.(value);
-    };
-    result = await preparePDFContents(source, document, signal, receive, {
-      regenerate: options.regenerate,
-      owner: { bookId: book.hash, revision: book.removal?.revision ?? 0 },
-    });
+    const owner = { bookId: book.hash, revision: book.removal?.revision ?? 0 };
+    const checkpoint = pdfContentsCheckpointStorage(host, owner);
+    const deadline = performance.now() + 540_000;
+    for (let round = 0; round < (options.autoContinue ? 3 : 1); round++) {
+      const timeoutMs = deadline - performance.now();
+      if (timeoutMs <= 0 || signal.aborted) break;
+      const roundReport: { value?: PDFContentsReport } = {};
+      const receive = (value: PDFContentsReport) => {
+        roundReport.value = value;
+        options.onReport?.(value);
+      };
+      try {
+        result = await preparePDFContents(source, document, signal, receive, {
+          regenerate: options.regenerate,
+          owner,
+          checkpoint,
+          timeoutMs,
+        });
+      } catch {
+        // The service also reports bounded interruptions that throw. A durable
+        // cursor, rather than the transport of the error, controls continuation.
+        result = 'unavailable';
+      }
+      report = roundReport.value;
+      if (result !== 'unavailable' || !report?.canResume || !report.checkpointAdvanced) break;
+    }
   } catch {
     // The preparation report holds only safe phase/error codes. Preserve the
     // imported book and all native checkpoints for the next explicit retry.

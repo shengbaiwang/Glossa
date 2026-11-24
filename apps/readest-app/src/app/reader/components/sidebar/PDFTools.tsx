@@ -6,9 +6,8 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { Download, Type, ListTree } from '@/components/GlossaIcons';
-import { useNotebookStore } from '@/store/notebookStore';
-import { useSidebarStore } from '@/store/sidebarStore';
 import { isPluginEnabled } from '@/glossa/plugins/registry';
+import { runReaderCommand } from '@/services/readerCommands';
 import MenuItem from '@/components/MenuItem';
 import {
   cancelPDFExport,
@@ -22,7 +21,15 @@ import { recognizePDFPages } from '@/services/pdfOCR';
 import { preparePDFAnnotations } from '@/services/pdfWorkspace';
 
 /** Optional whole-document actions live in the existing book menu. */
-export default function PDFTools({ bookKey, bookDoc }: { bookKey: string; bookDoc: BookDoc }) {
+export default function PDFTools({
+  bookKey,
+  bookDoc,
+  onOpenContents,
+}: {
+  bookKey: string;
+  bookDoc: BookDoc;
+  onOpenContents?: () => void;
+}) {
   const _ = useTranslation();
   const { appService, envConfig } = useEnv();
   const { settings } = useSettingsStore();
@@ -141,10 +148,8 @@ export default function PDFTools({ bookKey, bookDoc }: { bookKey: string; bookDo
           label={_('Contents generator')}
           Icon={<ListTree size={16} />}
           onClick={() => {
-            useSidebarStore.getState().setSideBarBookKey(bookKey);
-            const notebook = useNotebookStore.getState();
-            notebook.setNotebookActiveTab('pdfAutoContents');
-            notebook.setNotebookVisible(true);
+            onOpenContents?.();
+            runReaderCommand(envConfig, 'pdfContents', bookKey);
           }}
         />
       )}

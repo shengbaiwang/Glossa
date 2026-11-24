@@ -3,6 +3,7 @@ packages:
   - apps/readest-app/workers/send-email
   - apps/readest-app/workers/iap-reconcile
   - apps/readest-app/extensions/*
+  - packages/glossa-sync-contracts
   - packages/foliate-js
 
 allowBuilds:

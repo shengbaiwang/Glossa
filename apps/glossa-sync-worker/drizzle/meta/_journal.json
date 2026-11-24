@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1795488041981,
+      "tag": "0000_cloud",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1795488369146,
+      "tag": "0001_upload_assets",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795500787739,
+      "tag": "0002_release_unused_leases",
+      "breakpoints": true
+    }
+  ]
+}

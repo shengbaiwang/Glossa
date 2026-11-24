@@ -29,7 +29,7 @@ vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (key: string) =
 vi.mock('@/store/bookDataStore', () => ({
   useBookDataStore: {
     getState: () => ({
-      getBookData: () => ({ book: { hash: 'a', format: 'PDF' } }),
+      getBookData: () => ({ book: { hash: 'a', format: 'PDF' }, bookDoc: doc }),
       getConfig: () => ({ updatedAt: 1, location: 'old', booknotes: [{ id: 'keep' }] }),
       setConfig: mocks.setConfig,
       saveConfig: mocks.saveConfig,
@@ -39,6 +39,7 @@ vi.mock('@/store/bookDataStore', () => ({
 vi.mock('@/store/readerStore', () => ({
   useReaderStore: {
     getState: () => ({
+      bookKeys: ['a-view'],
       getView: () => ({ lastLocation: { cfi: 'current-page-cfi' }, goTo: vi.fn() }),
       recreateViewer: mocks.recreate,
     }),
@@ -51,6 +52,7 @@ vi.mock('@/store/settingsStore', () => ({
 }));
 vi.mock('@/services/pdfEnhancement', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/pdfEnhancement')>()),
+  supportsLocalPDF: () => true,
   openPDFCache: vi.fn(async () => ({ ...mocks.cache })),
   getPDFOCRStatus: vi.fn(async () => null),
   startPDFOCR: mocks.start,

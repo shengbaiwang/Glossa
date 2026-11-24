@@ -27,6 +27,7 @@ export default defineConfig({
       '@tauri-apps/api/path',
       '@tauri-apps/api/core',
       '@testing-library/react',
+      'react-dom/client',
       '@radix-ui/react-dialog',
       '@radix-ui/react-slot',
       '@radix-ui/react-dropdown-menu',

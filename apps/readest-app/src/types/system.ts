@@ -250,6 +250,7 @@ export interface AppService {
   prepareBookContents?(book: Book, document?: BookDoc, signal?: AbortSignal): Promise<void>;
   loadFeeds(): Promise<RssFeed[]>;
   saveFeeds(feeds: RssFeed[]): Promise<void>;
+  discoverCloudBooks(subject: string): Promise<number>;
   loadLibraryBooks(hashes?: string[]): Promise<Book[]>;
   saveLibraryBooks(books: Book[], options?: SaveLibraryBooksOptions): Promise<Book[] | void>;
   getCoverImageUrl(book: Book): string;

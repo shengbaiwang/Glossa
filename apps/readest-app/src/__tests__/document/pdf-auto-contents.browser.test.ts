@@ -108,7 +108,11 @@ it('restores unnumbered parts across printed contents pages, then reopens, folds
   expect(layout.find((row) => row.text === 'Part I Hills')!.height).toBeGreaterThan(
     layout.find((row) => row.text.startsWith('Copper observations'))!.height,
   );
-  expect(await preparePDFContents('/original.pdf', book)).toBe('generated');
+  const reports: import('@/services/pdfAutoContents').PDFContentsReport[] = [];
+  const result = await preparePDFContents('/original.pdf', book, undefined, (report) =>
+    reports.push(report),
+  );
+  expect(result, JSON.stringify(reports.at(-1))).toBe('generated');
   expect(storage.cache.outline).toEqual(expected);
   expect(storage.saves).toBe(1);
   await book.destroy?.();

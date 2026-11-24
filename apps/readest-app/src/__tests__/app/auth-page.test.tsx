@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@supabase/auth-ui-react', () => ({ Auth: () => null }));
 vi.mock('@supabase/auth-ui-shared', () => ({ ThemeSupa: {} }));
+// Keep this rejection-handling test independent of asynchronous i18n initialization.
+vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => (key: string) => key }));
 
 import { ProviderLogin } from '@/app/auth/components/ProviderLogin';
 

@@ -181,8 +181,13 @@ const LibrarySearchResults = ({
   // Key on content identity only: opening a result bumps the book's progress
   // timestamp and its recency-sort position, and neither changes what a
   // rescan would find — index staleness is handled per book at search time.
+  const hasCloudBooks = books.some((book) => book.glossaCloud);
   const booksKey = books
-    .map((book) => book.hash)
+    .map((book) =>
+      book.glossaCloud
+        ? JSON.stringify([book.hash, book.glossaCloud, book.primaryLanguage])
+        : book.hash,
+    )
     .sort()
     .join('|');
   const configKey = [
@@ -198,7 +203,7 @@ const LibrarySearchResults = ({
     activeSearchKeyRef.current = searchKey;
     controllerRef.current?.abort();
     const snapshot = completedSearchSnapshot;
-    if (snapshot && snapshot.searchKey === searchKey) {
+    if (!hasCloudBooks && snapshot && snapshot.searchKey === searchKey) {
       groupsRef.current = snapshot.groups;
       issuesRef.current = snapshot.issues;
       skippedRef.current = snapshot.skipped;
@@ -297,14 +302,16 @@ const LibrarySearchResults = ({
           setActiveBook('');
           setPhase('completed');
           setTruncated(Boolean(event.truncated));
-          completedSearchSnapshot = {
-            searchKey,
-            groups: groupsRef.current,
-            issues: issuesRef.current,
-            skipped: skippedRef.current,
-            truncated: Boolean(event.truncated),
-            expandedBooks: [],
-          };
+          completedSearchSnapshot = hasCloudBooks
+            ? null
+            : {
+                searchKey,
+                groups: groupsRef.current,
+                issues: issuesRef.current,
+                skipped: skippedRef.current,
+                truncated: Boolean(event.truncated),
+                expandedBooks: [],
+              };
           if (event.matchCount > 0) addLibrarySearchHistory(query);
         }
       }
@@ -315,7 +322,7 @@ const LibrarySearchResults = ({
       clearTimeout(timeout);
       controller.abort();
     };
-  }, [appService, searchKey, session]);
+  }, [appService, hasCloudBooks, searchKey, session]);
 
   const onProgressRef = useRef(onProgress);
   onProgressRef.current = onProgress;

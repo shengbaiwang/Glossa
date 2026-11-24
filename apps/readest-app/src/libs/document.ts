@@ -1,3 +1,4 @@
+import { CloudReaderFile } from '@/glossa/sync/readerFile';
 import { removeBookSubjectMetadata } from '@/utils/bookMetadata';
 import { BookFormat } from '@/types/book';
 import { Collection, Contributor, Identifier, LanguageMap } from '@/utils/book';
@@ -106,6 +107,8 @@ export interface PDFContentsLine {
 }
 
 export interface BookDoc {
+  /** Actual PDF PageLabels only; synthetic reader page numbers are not evidence. */
+  getPDFPageLabels?(): string[] | null;
   getPDFAnnotationRects?(
     cfi: string,
   ): Promise<{ index: number; rects: { x: number; y: number; width: number; height: number }[] }>;
@@ -113,9 +116,11 @@ export interface BookDoc {
     index: number,
     width: number,
     region?: { x: number; y: number; width: number; height: number },
+    signal?: AbortSignal,
   ): Promise<Blob>;
   pdfCache?: PDFCache;
   getPDFText?(index: number): Promise<string>;
+  getPDFPrintedPage?(index: number): Promise<{ number: number; total: number } | null>;
   getPDFContentsLines?(index: number, allRows?: boolean): Promise<string[]>;
   getPDFContentsLayout?(index: number): Promise<PDFContentsLine[]>;
   getPDFContentsLinks?(index: number): Promise<PDFOutlineEntry[] | null>;
@@ -309,15 +314,19 @@ export class DocumentLoader {
     const getEntry = (name: string) =>
       map.get(name) ?? lowercaseMap.get(name.toLowerCase()) ?? null;
     const load =
-      (f: (entry: Entry, type?: string) => Promise<string | Blob> | null) =>
+      (f: (entry: Entry, type?: string) => Promise<string | Blob | null> | null) =>
       (name: string, ...args: [string?]) => {
         const entry = getEntry(name);
         return entry ? f(entry, ...args) : null;
       };
 
-    const zipLoadText = load((entry: Entry) =>
-      !entry.directory ? entry.getData(new TextWriter()) : null,
-    );
+    const zipLoadText = load(async (entry: Entry) => {
+      if (entry.directory) return null;
+      if (this.file instanceof CloudReaderFile && /\.(?:x?html?|xml)$/i.test(entry.filename)) {
+        await this.file.warmEpubText(entry).catch(() => undefined);
+      }
+      return entry.getData(new TextWriter());
+    });
     const loadBlob = load((entry: Entry, type?: string) =>
       !entry.directory ? entry.getData(new BlobWriter(type!)) : null,
     );

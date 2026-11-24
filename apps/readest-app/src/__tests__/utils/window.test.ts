@@ -6,7 +6,7 @@ vi.mock('@tauri-apps/api/window', () => ({
 }));
 
 vi.mock('@tauri-apps/api/event', () => ({
-  emitTo: vi.fn().mockResolvedValue(undefined),
+  emit: vi.fn().mockResolvedValue(undefined),
   TauriEvent: { WINDOW_FOCUS: 'tauri://focus' },
 }));
 
@@ -23,6 +23,7 @@ vi.mock('@/utils/event', () => ({
 }));
 
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { emit } from '@tauri-apps/api/event';
 import { type as osType } from '@tauri-apps/plugin-os';
 import {
   formatAppWindowTitle,
@@ -102,20 +103,41 @@ describe('tauriHandleOnCloseWindow', () => {
     expect(win.destroy).toHaveBeenCalled();
   });
 
-  test('on macOS, dedicated reader windows still destroy after 300ms', async () => {
+  test('saves and destroys a reader window once despite repeated close or unavailable library', async () => {
     vi.mocked(osType).mockReturnValue('macos');
     const { win, trigger } = makeWindow('reader-0');
     vi.mocked(getCurrentWindow).mockReturnValue(
       win as unknown as ReturnType<typeof getCurrentWindow>,
     );
 
-    const callback = vi.fn();
+    let finish!: () => void;
+    const callback = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+    vi.mocked(emit).mockRejectedValueOnce(new Error('library closed'));
     await tauriHandleOnCloseWindow(callback);
+    const pending = trigger();
     await trigger();
 
+    expect(callback).toHaveBeenCalledOnce();
     expect(win.destroy).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(300);
-    expect(win.destroy).toHaveBeenCalled();
+    finish();
+    await pending;
+    expect(win.destroy).toHaveBeenCalledOnce();
+  });
+
+  test('allows a reader close to be retried if saving fails', async () => {
+    const { win, trigger } = makeWindow('reader-0');
+    vi.mocked(getCurrentWindow).mockReturnValue(
+      win as unknown as ReturnType<typeof getCurrentWindow>,
+    );
+    const save = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('save failed'))
+      .mockResolvedValue(undefined);
+    await tauriHandleOnCloseWindow(save);
+    await trigger();
+    expect(win.destroy).not.toHaveBeenCalled();
+    await trigger();
+    expect(win.destroy).toHaveBeenCalledOnce();
   });
 });
 

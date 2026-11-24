@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
+import { useLibraryStore } from '@/store/libraryStore';
 import { supabase } from '@/utils/supabase';
 import { isGlossaAuthConfigured } from '@/glossa/account/config';
 
@@ -34,6 +35,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     let revision = 0;
     const syncSession = (session: Session | null) => {
       if (!active) return;
+      useLibraryStore.getState().setCloudSubject(session?.user?.id ?? null);
       setToken(session?.access_token ?? null);
       setUser(session?.user ?? null);
     };
@@ -58,6 +60,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = useCallback((newToken: string, newUser: User) => {
     if (!isGlossaAuthConfigured()) return;
+    useLibraryStore.getState().setCloudSubject(newUser.id);
     setToken(newToken);
     setUser(newUser);
   }, []);
@@ -67,6 +70,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const { error } = await supabase.auth.signOut({ scope: 'local' });
       if (error) throw error;
     }
+    useLibraryStore.getState().setCloudSubject(null);
     setToken(null);
     setUser(null);
   }, []);

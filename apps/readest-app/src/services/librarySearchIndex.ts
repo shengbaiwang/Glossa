@@ -244,8 +244,49 @@ export const writeSearchIndexNodes = async (
 
 const escapeLike = (value: string) => value.replace(/[\\%_]/g, (char) => `\\${char}`);
 
-export const loadSearchIndexSections = (db: DatabaseService): Promise<SearchIndexSection[]> =>
-  db.select<SectionRow>('SELECT idx, label, text FROM search_sections ORDER BY idx');
+export async function persistCloudSearchSections(
+  db: DatabaseService,
+  scope: string,
+  rows: SearchIndexSection[],
+  signal?: AbortSignal,
+) {
+  // The scope includes the immutable manifest. Interrupted writers may leave
+  // rows behind; readers only use a generation after every section exists.
+  for (const row of rows) {
+    signal?.throwIfAborted();
+    const folded = foldValue(row.text, FOLD_OPTIONS);
+    await db.execute(
+      'INSERT OR IGNORE INTO cloud_search_sections(scope,idx,label,text,folded) VALUES(?,?,?,?,?)',
+      [scope, row.idx, row.label, row.text, folded === row.text ? null : folded],
+    );
+  }
+  signal?.throwIfAborted();
+  await db.execute(
+    `INSERT OR IGNORE INTO cloud_search_meta(scope,total_sections)
+    SELECT ?,? WHERE (SELECT COUNT(*) FROM cloud_search_sections WHERE scope=?)=?`,
+    [scope, rows.length, scope, rows.length],
+  );
+}
+
+export async function cachedCloudSectionCount(db: DatabaseService, scope: string) {
+  return (
+    await db.select<{ total_sections: number }>(
+      'SELECT total_sections FROM cloud_search_meta WHERE scope=?',
+      [scope],
+    )
+  )[0]?.total_sections;
+}
+
+export const loadSearchIndexSections = (
+  db: DatabaseService,
+  scope?: string,
+): Promise<SearchIndexSection[]> =>
+  scope
+    ? db.select<SectionRow>(
+        'SELECT idx,label,text FROM cloud_search_sections WHERE scope=? ORDER BY idx',
+        [scope],
+      )
+    : db.select<SectionRow>('SELECT idx, label, text FROM search_sections ORDER BY idx');
 
 /**
  * Superset prefilter for contains/whole-words: sections whose folded text
@@ -255,9 +296,15 @@ export const loadSearchIndexSections = (db: DatabaseService): Promise<SearchInde
 export const loadSearchIndexCandidates = (
   db: DatabaseService,
   query: string,
+  scope?: string,
 ): Promise<SearchIndexSection[]> => {
   const folded = foldValue(query, FOLD_OPTIONS);
-  if (!folded) return loadSearchIndexSections(db);
+  if (!folded) return loadSearchIndexSections(db, scope);
+  if (scope)
+    return db.select<SectionRow>(
+      "SELECT idx,label,text FROM cloud_search_sections WHERE scope=? AND COALESCE(folded,text) LIKE ? ESCAPE '\\' ORDER BY idx",
+      [scope, `%${escapeLike(folded)}%`],
+    );
   return db.select<SectionRow>(
     "SELECT idx, label, text FROM search_sections WHERE COALESCE(folded, text) LIKE ? ESCAPE '\\' ORDER BY idx",
     [`%${escapeLike(folded)}%`],

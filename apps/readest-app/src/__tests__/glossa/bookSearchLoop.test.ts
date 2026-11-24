@@ -68,6 +68,25 @@ it('rejects invented chapter IDs locally and bounds repeated tool requests', asy
   expect(completeTools.mock.calls.length).toBeLessThanOrEqual(4);
 });
 
+it('answers an oversized tool batch within the original execution budget', async () => {
+  const input = fixture();
+  const completeTools = vi.fn(async (request: ToolCompletionRequest) => {
+    if (completeTools.mock.calls.length === 1)
+      return {
+        text: '',
+        toolCalls: Array.from({ length: 5 }, (_, i) => ({ ...readCall(), id: `call-${i}` })),
+      };
+    expect(request.toolChoice).toBe('none');
+    const responses = request.messages.filter((message) => message.role === 'tool');
+    expect(responses).toHaveLength(5);
+    expect(responses[4]!.content).toContain('Tool budget exhausted');
+    return { text: '作者意在纠正误解。[1](#source-preface)', toolCalls: [] };
+  });
+  const answer = await generateBookConversation(input, { completeTools });
+  expect(input.access.readChapter).toHaveBeenCalledTimes(4);
+  expect(answer.sources).toContainEqual(preface);
+});
+
 it('falls back to one bounded evidence plan when native tools are unsupported', async () => {
   const input = fixture();
   const { ModelServiceError } = await import('@/glossa/ai/provider');

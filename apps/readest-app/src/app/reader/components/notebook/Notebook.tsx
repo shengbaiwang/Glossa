@@ -1,6 +1,7 @@
-import ReaderPaneTabs from '../ReaderPaneTabs';
+import ReaderPanelMenu from '../ReaderPanelMenu';
+import ReaderPanelDock from '../ReaderPanelDock';
 import clsx from 'clsx';
-import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   NotebookPen,
   Search,
@@ -14,7 +15,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
-import { useNotebookStore } from '@/store/notebookStore';
+import { type NotebookTab, useNotebookStore } from '@/store/notebookStore';
 
 import { useTranslation } from '@/hooks/useTranslation';
 import { useThemeStore } from '@/store/themeStore';
@@ -88,7 +89,6 @@ const Notebook: React.FC = ({}) => {
   useEffect(() => setIdeaDraft(null), [sideBarBookKey, conversationEnabled]);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 640);
   const [isFullHeightInMobile, setIsFullHeightInMobile] = useState(isMobile);
-  const tabId = useId();
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 640);
@@ -146,12 +146,7 @@ const Notebook: React.FC = ({}) => {
   }, []);
 
   useEffect(() => {
-    if (
-      !isNotebookVisible ||
-      notebookActiveTab !== 'notes' ||
-      notebookNewAnnotation ||
-      notebookEditAnnotation
-    ) {
+    if (!isNotebookVisible || notebookNewAnnotation || notebookEditAnnotation) {
       setIsSearchBarVisible(false);
       setSearchResults(null);
       setSearchTerm('');
@@ -380,8 +375,6 @@ const Notebook: React.FC = ({}) => {
   }
   const { book, bookDoc } = bookData;
   const languageDir = getBookDirFromLanguage(bookDoc.metadata.language);
-  const supportsConversation = book.format === 'EPUB' || book.format === 'MD';
-  const supportsMindmap = book.format === 'EPUB';
   const activeTab = availableTab;
   const tabs = [
     ...PANEL_MODULES.filter(
@@ -399,8 +392,6 @@ const Notebook: React.FC = ({}) => {
     })),
     { id: 'notes' as const, label: _('Notes'), Icon: Highlight },
   ];
-
-  const hasAssistantTabs = tabs.length > 1;
 
   const hasAnnotations = allNotes.some((note) => note.type === 'annotation' && !note.deletedAt);
   const hasSearchResults =
@@ -496,234 +487,202 @@ const Notebook: React.FC = ({}) => {
               <div className='bg-base-content/50 h-1 w-10 rounded-full'></div>
             </div>
           )}
-          <NotebookHeader handleClose={() => setNotebookVisible(false)}>
-            {hasAssistantTabs && (
-              <ReaderPaneTabs
-                label={_('Notebook')}
-                activeTab={activeTab}
-                onTabChange={setNotebookActiveTab}
-                idPrefix={tabId}
-                tabs={tabs.map((tab) => ({ ...tab, panelId: `${tabId}-panel-${tab.id}` }))}
-              />
-            )}
-          </NotebookHeader>
-
-          {activeTab === 'notes' && (
-            <div className='glossa-notebook-excerpts-toolbar'>
-              <button
-                type='button'
-                title={isSearchBarVisible ? _('Hide Search Bar') : _('Show Search Bar')}
-                aria-label={isSearchBarVisible ? _('Hide Search Bar') : _('Show Search Bar')}
-                aria-expanded={isSearchBarVisible}
-                aria-pressed={isSearchBarVisible}
-                onClick={handleToggleSearchBar}
-                className='glossa-icon-button touch-target btn btn-ghost h-8 min-h-8 w-8 p-0'
-              >
-                <Search size={18} aria-hidden='true' />
-              </button>
-            </div>
-          )}
-
-          <div
-            hidden={activeTab !== 'notes' || !isSearchBarVisible}
-            className={clsx('search-bar', {
-              'search-bar-visible': isSearchBarVisible,
-            })}
-          >
-            <SearchBar
-              isVisible={isSearchBarVisible}
-              bookKey={sideBarBookKey}
-              searchTerm={searchTerm}
-              onSearchResultChange={setSearchResults}
-            />
-          </div>
         </div>
-        {supportsConversation && activeTab === 'conversation' && (
-          <div
-            className='glossa-notebook-content min-h-0 flex-1 overflow-hidden'
-            role='tabpanel'
-            id={`${tabId}-panel-conversation`}
-            aria-labelledby={`${tabId}-tab-conversation`}
-          >
-            <OfficialModulePanel
-              moduleId='conversation'
-              book={book}
-              bookDoc={bookDoc}
-              bookKey={sideBarBookKey}
-              ideaDraft={ideaDraft}
-              onIdeaDraftConsumed={() => setIdeaDraft(null)}
-            />
-          </div>
-        )}
-        {supportsMindmap && activeTab === 'mindmap' && (
-          <div
-            className='glossa-notebook-content min-h-0 flex-1 overflow-hidden'
-            role='tabpanel'
-            id={`${tabId}-panel-mindmap`}
-            aria-labelledby={`${tabId}-tab-mindmap`}
-            tabIndex={0}
-          >
-            <OfficialModulePanel
-              moduleId='mindmap'
-              book={book}
-              bookDoc={bookDoc}
-              bookKey={sideBarBookKey}
-              onAsk={
-                conversationEnabled
-                  ? (draft) => {
-                      setIdeaDraft(draft);
-                      setNotebookActiveTab('conversation');
-                    }
-                  : undefined
-              }
-            />
-          </div>
-        )}
-        {activeTab === 'pdfAutoContents' && book.format === 'PDF' && (
-          <div
-            className='glossa-notebook-content min-h-0 flex-1 overflow-hidden'
-            role='tabpanel'
-            id={`${tabId}-panel-pdfAutoContents`}
-            aria-labelledby={`${tabId}-tab-pdfAutoContents`}
-          >
-            <OfficialModulePanel
-              moduleId='pdfAutoContents'
-              book={book}
-              bookDoc={bookDoc}
-              bookKey={sideBarBookKey}
-            />
-          </div>
-        )}
-        <div
-          className='scroll-container min-h-0 flex-1 overflow-y-auto'
-          role={hasAssistantTabs ? 'tabpanel' : undefined}
-          id={`${tabId}-panel-notes`}
-          aria-labelledby={hasAssistantTabs ? `${tabId}-tab-notes` : undefined}
-          hidden={activeTab !== 'notes'}
-          tabIndex={0}
-        >
-          {isNotesTabEmpty ? (
-            <div className='glossa-reader-empty-region'>
-              <EmptyState Icon={NotebookPen} label={_('No Notes')} />
-            </div>
-          ) : (
-            <div className='flex-grow px-3'>
-              {notebookNewAnnotation && !isSearchBarVisible && (
-                <NoteEditor
-                  key={sideBarBookKey}
+        <ReaderPanelDock
+          key={sideBarBookKey}
+          activePanel={activeTab}
+          onActivate={(id) => setNotebookActiveTab(id as NotebookTab)}
+          onEmpty={() => setNotebookVisible(false)}
+          onClose={(id) => {
+            if (id === 'notes') {
+              handleCancelNewAnnotation(sideBarBookKey);
+              setNotebookEditAnnotation(null);
+            }
+          }}
+          header={(buttons) => (
+            <NotebookHeader handleClose={() => setNotebookVisible(false)}>{buttons}</NotebookHeader>
+          )}
+          panels={tabs.map((tab) => ({
+            ...tab,
+            content:
+              tab.id === 'notes' ? (
+                <>
+                  <div className='glossa-notebook-excerpts-toolbar'>
+                    <button
+                      type='button'
+                      title={isSearchBarVisible ? _('Hide Search Bar') : _('Show Search Bar')}
+                      aria-label={isSearchBarVisible ? _('Hide Search Bar') : _('Show Search Bar')}
+                      aria-expanded={isSearchBarVisible}
+                      aria-pressed={isSearchBarVisible}
+                      onClick={handleToggleSearchBar}
+                      className='glossa-icon-button touch-target btn btn-ghost h-8 min-h-8 w-8 p-0'
+                    >
+                      <Search size={18} aria-hidden='true' />
+                    </button>
+                    <ReaderPanelMenu bookKey={sideBarBookKey} />
+                  </div>
+
+                  <div
+                    hidden={!isSearchBarVisible}
+                    className={clsx('search-bar', {
+                      'search-bar-visible': isSearchBarVisible,
+                    })}
+                  >
+                    <SearchBar
+                      isVisible={isSearchBarVisible}
+                      bookKey={sideBarBookKey}
+                      searchTerm={searchTerm}
+                      onSearchResultChange={setSearchResults}
+                    />
+                  </div>
+                  <div className='scroll-container min-h-0 flex-1 overflow-y-auto' tabIndex={0}>
+                    {isNotesTabEmpty ? (
+                      <div className='glossa-reader-empty-region'>
+                        <EmptyState Icon={NotebookPen} label={_('No Notes')} />
+                      </div>
+                    ) : (
+                      <div className='flex-grow px-3'>
+                        {notebookNewAnnotation && !isSearchBarVisible && (
+                          <NoteEditor
+                            key={sideBarBookKey}
+                            bookKey={sideBarBookKey}
+                            active
+                            onSave={handleSaveNote}
+                            onEdit={(item) => handleEditNote(item, false)}
+                          />
+                        )}
+                        {hasAnnotations && (
+                          <BooknoteView
+                            key={sideBarBookKey}
+                            bookKey={sideBarBookKey}
+                            toc={bookDoc.toc ?? []}
+                            notebookSearch={{ results: isSearchBarVisible ? searchResults : null }}
+                            useNotebookEditor
+                            noteEditor={
+                              notebookEditAnnotation
+                                ? {
+                                    id: notebookEditAnnotation.id,
+                                    content: (
+                                      <NoteEditor
+                                        key={`${sideBarBookKey}:${notebookEditAnnotation.id}`}
+                                        bookKey={sideBarBookKey}
+                                        active
+                                        onSave={handleSaveNote}
+                                        onEdit={(item) => handleEditNote(item, false)}
+                                      />
+                                    ),
+                                  }
+                                : undefined
+                            }
+                          />
+                        )}
+                        {isSearchBarVisible &&
+                          searchResults &&
+                          !hasSearchResults &&
+                          hasAnyNotes &&
+                          !hasAnnotations && (
+                            <div className='flex h-32 items-center justify-center text-gray-500'>
+                              <p className='font-size-sm text-center'>
+                                {_('No notes match your search')}
+                              </p>
+                            </div>
+                          )}
+                        <div dir='ltr'>
+                          {filteredExcerptNotes.length > 0 && (
+                            <p className='glossa-eyebrow my-4'>
+                              {_('Excerpts')}
+                              {isSearchBarVisible && searchResults && (
+                                <span className='font-size-xs ms-2 text-gray-500'>
+                                  ({filteredExcerptNotes.length})
+                                </span>
+                              )}
+                            </p>
+                          )}
+                        </div>
+                        <ul dir={viewSettings?.rtl && languageDir === 'rtl' ? 'rtl' : 'ltr'}>
+                          {filteredExcerptNotes.map((item, index) => (
+                            <li key={`${index}-${item.id}`} className='my-2'>
+                              <div
+                                role='button'
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Backspace' || e.key === 'Delete') {
+                                    handleEditNote(item, true);
+                                  }
+                                }}
+                                className='booknote-item glossa-reader-excerpt collapse-arrow border-base-300 bg-base-100 collapse border'
+                              >
+                                <div
+                                  className={clsx(
+                                    'collapse-title pe-8 text-sm font-medium',
+                                    'h-[2.5rem] min-h-[2.5rem] p-[0.6rem]',
+                                  )}
+                                  style={
+                                    {
+                                      '--top-override': '1.25rem',
+                                      '--end-override': '0.7rem',
+                                    } as React.CSSProperties
+                                  }
+                                >
+                                  <p className='line-clamp-1'>
+                                    {item.text || `Excerpt ${index + 1}`}
+                                  </p>
+                                </div>
+                                <div className='collapse-content font-size-xs select-text px-3 pb-0'>
+                                  <p className='hyphens-auto text-justify'>{item.text}</p>
+                                  <div className='flex justify-end' dir='ltr'>
+                                    {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions*/}
+                                    <div
+                                      className='font-size-xs cursor-pointer align-bottom text-red-500 hover:text-red-600'
+                                      onClick={handleEditNote.bind(null, item, true)}
+                                      aria-label={_('Delete')}
+                                    >
+                                      {_('Delete')}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                        <div dir='ltr'>
+                          {notebookEditAnnotation && !hasAnnotations && !isSearchBarVisible && (
+                            <p className='glossa-eyebrow my-4'>{_('Notes')}</p>
+                          )}
+                        </div>
+                        {notebookEditAnnotation && !hasAnnotations && !isSearchBarVisible && (
+                          <NoteEditor
+                            key={sideBarBookKey}
+                            bookKey={sideBarBookKey}
+                            active
+                            onSave={handleSaveNote}
+                            onEdit={(item) => handleEditNote(item, false)}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <OfficialModulePanel
+                  moduleId={tab.id}
+                  book={book}
+                  bookDoc={bookDoc}
                   bookKey={sideBarBookKey}
-                  active={activeTab === 'notes'}
-                  onSave={handleSaveNote}
-                  onEdit={(item) => handleEditNote(item, false)}
-                />
-              )}
-              {activeTab === 'notes' && hasAnnotations && (
-                <BooknoteView
-                  key={sideBarBookKey}
-                  bookKey={sideBarBookKey}
-                  toc={bookDoc.toc ?? []}
-                  notebookSearch={{ results: isSearchBarVisible ? searchResults : null }}
-                  useNotebookEditor
-                  noteEditor={
-                    notebookEditAnnotation
-                      ? {
-                          id: notebookEditAnnotation.id,
-                          content: (
-                            <NoteEditor
-                              key={`${sideBarBookKey}:${notebookEditAnnotation.id}`}
-                              bookKey={sideBarBookKey}
-                              active={activeTab === 'notes'}
-                              onSave={handleSaveNote}
-                              onEdit={(item) => handleEditNote(item, false)}
-                            />
-                          ),
+                  ideaDraft={tab.id === 'conversation' ? ideaDraft : undefined}
+                  onIdeaDraftConsumed={() => setIdeaDraft(null)}
+                  onAsk={
+                    conversationEnabled
+                      ? (draft) => {
+                          setIdeaDraft(draft);
+                          setNotebookActiveTab('conversation');
                         }
                       : undefined
                   }
                 />
-              )}
-              {isSearchBarVisible &&
-                searchResults &&
-                !hasSearchResults &&
-                hasAnyNotes &&
-                !hasAnnotations && (
-                  <div className='flex h-32 items-center justify-center text-gray-500'>
-                    <p className='font-size-sm text-center'>{_('No notes match your search')}</p>
-                  </div>
-                )}
-              <div dir='ltr'>
-                {filteredExcerptNotes.length > 0 && (
-                  <p className='glossa-eyebrow my-4'>
-                    {_('Excerpts')}
-                    {isSearchBarVisible && searchResults && (
-                      <span className='font-size-xs ms-2 text-gray-500'>
-                        ({filteredExcerptNotes.length})
-                      </span>
-                    )}
-                  </p>
-                )}
-              </div>
-              <ul dir={viewSettings?.rtl && languageDir === 'rtl' ? 'rtl' : 'ltr'}>
-                {filteredExcerptNotes.map((item, index) => (
-                  <li key={`${index}-${item.id}`} className='my-2'>
-                    <div
-                      role='button'
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Backspace' || e.key === 'Delete') {
-                          handleEditNote(item, true);
-                        }
-                      }}
-                      className='booknote-item glossa-reader-excerpt collapse-arrow border-base-300 bg-base-100 collapse border'
-                    >
-                      <div
-                        className={clsx(
-                          'collapse-title pe-8 text-sm font-medium',
-                          'h-[2.5rem] min-h-[2.5rem] p-[0.6rem]',
-                        )}
-                        style={
-                          {
-                            '--top-override': '1.25rem',
-                            '--end-override': '0.7rem',
-                          } as React.CSSProperties
-                        }
-                      >
-                        <p className='line-clamp-1'>{item.text || `Excerpt ${index + 1}`}</p>
-                      </div>
-                      <div className='collapse-content font-size-xs select-text px-3 pb-0'>
-                        <p className='hyphens-auto text-justify'>{item.text}</p>
-                        <div className='flex justify-end' dir='ltr'>
-                          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions*/}
-                          <div
-                            className='font-size-xs cursor-pointer align-bottom text-red-500 hover:text-red-600'
-                            onClick={handleEditNote.bind(null, item, true)}
-                            aria-label={_('Delete')}
-                          >
-                            {_('Delete')}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-              <div dir='ltr'>
-                {notebookEditAnnotation && !hasAnnotations && !isSearchBarVisible && (
-                  <p className='glossa-eyebrow my-4'>{_('Notes')}</p>
-                )}
-              </div>
-              {notebookEditAnnotation && !hasAnnotations && !isSearchBarVisible && (
-                <NoteEditor
-                  key={sideBarBookKey}
-                  bookKey={sideBarBookKey}
-                  active={activeTab === 'notes'}
-                  onSave={handleSaveNote}
-                  onEdit={(item) => handleEditNote(item, false)}
-                />
-              )}
-            </div>
-          )}
-        </div>
+              ),
+          }))}
+        />
         <div
           className='flex-shrink-0'
           style={{

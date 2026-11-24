@@ -22,6 +22,7 @@ pub struct BookSession {
 
 struct Span {
     window: String,
+    native_window_id: usize,
     session: BookSession,
     cursor: Instant,
     wall_ms: u64,
@@ -83,9 +84,18 @@ impl Tracker {
         }
     }
 
-    fn signal(&mut self, window: &str, session: BookSession, now: Instant, wall_ms: u64) {
+    fn signal(
+        &mut self,
+        window: &str,
+        native_window_id: usize,
+        session: BookSession,
+        now: Instant,
+        wall_ms: u64,
+    ) {
         let switching = self.active.as_ref().is_some_and(|span| {
-            span.window != window || span.session.session_id != session.session_id
+            span.native_window_id != native_window_id
+                || span.window != window
+                || span.session.session_id != session.session_id
         });
         self.advance(now, wall_ms, switching);
         if self.unavailable != 0 {
@@ -96,12 +106,24 @@ impl Tracker {
         } else {
             self.active = Some(Span {
                 window: window.into(),
+                native_window_id,
                 session,
                 cursor: now,
                 wall_ms,
                 deadline: now + IDLE,
             });
         }
+    }
+    fn pause_window(&mut self, id: Option<usize>, now: Instant, wall: u64) -> bool {
+        if !self
+            .active
+            .as_ref()
+            .is_some_and(|span| id.map_or(true, |id| id == span.native_window_id))
+        {
+            return false;
+        }
+        self.advance(now, wall, true);
+        true
     }
 }
 
@@ -124,11 +146,10 @@ fn wall_ms() -> u64 {
         .as_millis() as u64
 }
 
-fn window_visible(window: &WebviewWindow) -> bool {
-    let Ok(ptr) = window.ns_window() else {
+fn window_visible(ns_window: *mut Object) -> bool {
+    if ns_window.is_null() {
         return false;
-    };
-    let ns_window = ptr.cast::<Object>();
+    }
     unsafe {
         let occlusion: usize = msg_send![ns_window, occlusionState];
         let minimized: objc::runtime::BOOL = msg_send![ns_window, isMiniaturized];
@@ -138,26 +159,22 @@ fn window_visible(window: &WebviewWindow) -> bool {
     }
 }
 
-// AppKit calls and the observers below run on the main thread. The mutex only
-// protects plain data, and is never held while dispatching an event.
-fn pause_if_hidden(app: &AppHandle, closing: Option<*mut Object>) {
-    let label = TRACKER
+// AppKit may send these notifications synchronously inside Tao's window teardown.
+// Never look up a Tauri window or dispatch into WebKit on that callback stack.
+fn notify_writer(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = app.emit("reading-time-flush", ());
+    });
+}
+
+fn pause_from_notification(app: &AppHandle, id: Option<usize>) {
+    if TRACKER
         .lock()
         .unwrap()
-        .active
-        .as_ref()
-        .map(|span| span.window.clone());
-    let Some(label) = label else { return };
-    let blocked = app.get_webview_window(&label).map_or(true, |window| {
-        closing.is_some_and(|ptr| window.ns_window().ok() == Some(ptr.cast()))
-            || !window_visible(&window)
-    });
-    if blocked {
-        TRACKER
-            .lock()
-            .unwrap()
-            .advance(Instant::now(), wall_ms(), true);
-        let _ = app.emit("reading-time-flush", ());
+        .pause_window(id, Instant::now(), wall_ms())
+    {
+        notify_writer(app);
     }
 }
 
@@ -187,18 +204,25 @@ fn install_observers(app: &AppHandle) {
         for name in [
             "NSWindowDidChangeOcclusionStateNotification",
             "NSWindowDidMiniaturizeNotification",
-            "NSApplicationDidHideNotification",
+            "NSWindowWillCloseNotification",
         ] {
             let app = app.clone();
-            observers.push(observe(center, name, move |_| pause_if_hidden(&app, None)));
+            observers.push(observe(center, name, move |notification| {
+                let window: *mut Object = msg_send![notification, object];
+                if !window.is_null()
+                    && (name != "NSWindowDidChangeOcclusionStateNotification"
+                        || !window_visible(window))
+                {
+                    pause_from_notification(&app, Some(window as usize));
+                }
+            }));
         }
         let handle = app.clone();
         observers.push(observe(
             center,
-            "NSWindowWillCloseNotification",
-            move |notification| {
-                let window: *mut Object = msg_send![notification, object];
-                pause_if_hidden(&handle, Some(window));
+            "NSApplicationDidHideNotification",
+            move |_| {
+                pause_from_notification(&handle, None);
             },
         ));
 
@@ -239,7 +263,7 @@ fn install_observers(app: &AppHandle) {
                     tracker.unavailable |= bit;
                     tracker.advance(Instant::now(), wall_ms(), true);
                 }
-                let _ = app.emit("reading-time-flush", ());
+                notify_writer(&app);
             }));
             observers.push(observe(center, resume, move |_| {
                 TRACKER.lock().unwrap().unavailable &= !bit
@@ -360,7 +384,11 @@ pub async fn reading_time(window: WebviewWindow, activity: Activity) -> Result<S
             if matches!(activity, Activity::Disable) {
                 uninstall_observers();
             }
-            let visible = window_visible(&reader);
+            let native_window = reader
+                .ns_window()
+                .unwrap_or(std::ptr::null_mut())
+                .cast::<Object>();
+            let visible = window_visible(native_window);
             let label = reader.label();
             let is_reader = label == "main" || label.starts_with("reader-");
             let mut tracker = TRACKER.lock().unwrap();
@@ -375,7 +403,7 @@ pub async fn reading_time(window: WebviewWindow, activity: Activity) -> Result<S
                         && !session.book_hash.is_empty()
                         && session.book_hash.len() <= 128 =>
                 {
-                    tracker.signal(label, session, now, wall_ms());
+                    tracker.signal(label, native_window as usize, session, now, wall_ms());
                 }
                 Activity::Pause { session } => {
                     let owns = tracker.active.as_ref().is_some_and(|span| {
@@ -435,10 +463,23 @@ mod tests {
     }
 
     #[test]
+    fn closing_a_library_does_not_stop_the_reader_and_duplicate_close_is_harmless() {
+        let mut tracker = Tracker::default();
+        let now = Instant::now();
+        tracker.signal("reader-a", 11, session("a"), now, 1000);
+        let later = now + Duration::from_secs(3);
+        assert!(!tracker.pause_window(Some(22), later, 4000));
+        assert!(tracker.active.is_some());
+        assert!(tracker.pause_window(Some(11), later, 4000));
+        assert!(!tracker.pause_window(Some(11), later, 4000));
+        assert_eq!(elapsed(&tracker), 3000);
+    }
+
+    #[test]
     fn expires_at_two_minutes_and_does_not_backfill() {
         let mut tracker = Tracker::default();
         let start = Instant::now();
-        tracker.signal("reader-a", session("a"), start, 10_000);
+        tracker.signal("reader-a", 1, session("a"), start, 10_000);
         for second in [15, 30, 45, 60, 75, 90, 105, 119] {
             tracker.advance(
                 start + Duration::from_secs(second),
@@ -452,7 +493,7 @@ mod tests {
         assert_eq!(elapsed(&tracker), 120_000);
 
         let resumed = start + Duration::from_secs(600);
-        tracker.signal("reader-a", session("a"), resumed, 610_000);
+        tracker.signal("reader-a", 1, session("a"), resumed, 610_000);
         tracker.advance(resumed + Duration::from_secs(4), 4 * 1_000, true);
         assert_eq!(elapsed(&tracker), 124_000);
     }
@@ -461,9 +502,10 @@ mod tests {
     fn switching_owner_and_blocking_the_screen_cut_off_at_the_boundary() {
         let mut tracker = Tracker::default();
         let start = Instant::now();
-        tracker.signal("reader-a", session("a"), start, 10_000);
+        tracker.signal("reader-a", 1, session("a"), start, 10_000);
         tracker.signal(
             "reader-b",
+            2,
             session("b"),
             start + Duration::from_secs(7),
             17_000,
@@ -472,6 +514,7 @@ mod tests {
         tracker.advance(start + Duration::from_secs(12), 12 * 1_000, true);
         tracker.signal(
             "reader-a",
+            1,
             session("a"),
             start + Duration::from_secs(13),
             23_000,
@@ -490,7 +533,7 @@ mod tests {
     fn wall_clock_change_reanchors_future_intervals_without_changing_duration() {
         let mut tracker = Tracker::default();
         let start = Instant::now();
-        tracker.signal("reader-a", session("a"), start, 3_000_000);
+        tracker.signal("reader-a", 1, session("a"), start, 3_000_000);
         tracker.advance(start + Duration::from_secs(15), 40_000, false);
         tracker.advance(start + Duration::from_secs(30), 55_000, false);
         assert_eq!(elapsed(&tracker), 30_000);
@@ -502,10 +545,11 @@ mod tests {
     fn observation_gap_is_not_backfilled_and_wall_clock_cannot_change_duration() {
         let mut tracker = Tracker::default();
         let start = Instant::now();
-        tracker.signal("reader-a", session("a"), start, 3_000_000);
+        tracker.signal("reader-a", 1, session("a"), start, 3_000_000);
         tracker.advance(start + Duration::from_secs(15), 15 * 1_000, false);
         tracker.signal(
             "reader-a",
+            1,
             session("a"),
             start + Duration::from_secs(18),
             10_000,

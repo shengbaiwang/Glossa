@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import { Writable } from 'node:stream';
 import { createHash } from 'node:crypto';
 import * as fsp from 'node:fs/promises';
 import * as nodePath from 'node:path';
@@ -230,9 +231,11 @@ export const nodeFileSystem: FileSystem = {
 
   async openFile(filePath: string, base: BaseDir, name?: string): Promise<File> {
     const fullPath = await toAbsolute(this.resolvePath(filePath, base));
-    const buffer = await fsp.readFile(fullPath);
-    const fileName = name || nodePath.basename(fullPath);
-    return new File([buffer], fileName);
+    const data =
+      typeof File.prototype.stream === 'function' && typeof fs.openAsBlob === 'function'
+        ? await fs.openAsBlob(fullPath)
+        : await fsp.readFile(fullPath);
+    return new File([data], name || nodePath.basename(fullPath));
   },
 
   async fingerprint(filePath: string, base: BaseDir, signal?: AbortSignal) {
@@ -287,8 +290,11 @@ export const nodeFileSystem: FileSystem = {
     if (typeof content === 'string') {
       await fsp.writeFile(fullPath, content, 'utf-8');
     } else if (content instanceof File) {
-      const buffer = Buffer.from(await content.arrayBuffer());
-      await fsp.writeFile(fullPath, buffer);
+      if (typeof content.stream === 'function') {
+        await content.stream().pipeTo(Writable.toWeb(fs.createWriteStream(fullPath)));
+      } else {
+        await fsp.writeFile(fullPath, Buffer.from(await content.arrayBuffer()));
+      }
     } else {
       await fsp.writeFile(fullPath, Buffer.from(content));
     }

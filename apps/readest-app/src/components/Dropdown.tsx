@@ -85,6 +85,7 @@ const Dropdown: React.FC<DropdownProps> = ({
   const context = useDropdownContext();
   const isOpen = context ? context.openDropdownId === dropdownId : false;
   const containerRef = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const [isFocused, setIsFocused] = useState(false);
 
@@ -129,6 +130,9 @@ const Dropdown: React.FC<DropdownProps> = ({
         context.closeDropdown(dropdownId);
       }
     }
+    if (!open && detailsRef.current?.contains(document.activeElement)) {
+      toggleRef.current?.focus({ preventScroll: true });
+    }
     onToggle?.(open);
   };
 
@@ -145,6 +149,20 @@ const Dropdown: React.FC<DropdownProps> = ({
       // shortcuts bound to Enter/Space (e.g. next page in the reader) don't
       // fire while a dropdown button is focused.
       e.stopPropagation();
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDropdownOpen(true);
+      const fromEnd = e.key === 'ArrowUp';
+      requestAnimationFrame(() => {
+        const items = detailsRef.current?.querySelectorAll<HTMLElement>(
+          '[role^="menuitem"]:not([disabled]), summary[role="button"]:not([aria-disabled="true"])',
+        );
+        const available = Array.from(items ?? []).filter(
+          (item) => item.getClientRects().length > 0,
+        );
+        (fromEnd ? available.at(-1) : available[0])?.focus();
+      });
     } else if (e.key === 'Escape') {
       setIsDropdownOpen(false);
       e.stopPropagation();
@@ -166,6 +184,7 @@ const Dropdown: React.FC<DropdownProps> = ({
       {isOpen && <Overlay onDismiss={() => setIsDropdownOpen(false)} />}
       <div className={clsx('relative', isOpen && 'z-50')}>
         <button
+          ref={toggleRef}
           tabIndex={0}
           aria-haspopup='menu'
           aria-expanded={isOpen}

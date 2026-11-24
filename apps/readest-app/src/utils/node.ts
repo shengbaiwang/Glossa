@@ -54,3 +54,9 @@ export const createRejectFilter = ({
     return NodeFilter.FILTER_ACCEPT;
   };
 };
+
+export const searchTextFilter = (language?: string) =>
+  createRejectFilter({
+    tags: language?.startsWith('ja') ? ['rt'] : [],
+    attributes: ['cfi-inert'],
+  });

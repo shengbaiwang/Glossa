@@ -48,7 +48,7 @@ export const useOpenBook = ({ setLoading, handleBookDownload }: UseOpenBookOptio
       // so a row it has not reconciled yet (or one poisoned by a pre-#5087
       // client, #5265) can be sitting on the mirror without carrying the stamp.
       // Ask the mirror before giving up on it.
-      if (!book.uploadedAt && !hasFileSyncMirror()) return true;
+      if (book.glossaCloud || (!book.uploadedAt && !hasFileSyncMirror())) return true;
       // The row's `downloadedAt` is not proof that the file is still here: a
       // "Remove from Device Only" evicts the file, and an in-place original can
       // be moved or deleted behind our back. Probe, and re-fetch from the cloud
@@ -91,7 +91,13 @@ export const useOpenBook = ({ setLoading, handleBookDownload }: UseOpenBookOptio
       // missing LOCAL file is not evidence that the user wants the REMOTE copy
       // destroyed, and there the book is very likely still on the mirror;
       // `makeBookAvailable` below fetches it back instead.
-      if (book.filePath && !book.uploadedAt && !book.deletedAt && !hasFileSyncMirror()) {
+      if (
+        book.filePath &&
+        !book.glossaCloud &&
+        !book.uploadedAt &&
+        !book.deletedAt &&
+        !hasFileSyncMirror()
+      ) {
         const available = await appService?.isBookAvailable(book);
         if (!available) {
           eventDispatcher.dispatch('toast', {

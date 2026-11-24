@@ -240,7 +240,8 @@ describe('useTextSelector hold-a-word engagement', () => {
     // The trailing synthetic click after the release must be consumed (so it
     // doesn't paginate) WITHOUT dismissing the freshly opened editor.
     const click = h.onSyncHandlers['iframe-single-click']!;
-    expect(click()).toBe(true);
+    expect(click(new CustomEvent('click', { detail: { bookKey: 'other-book' } }))).toBe(false);
+    expect(click(new CustomEvent('click', { detail: { bookKey: 'book-1' } }))).toBe(true);
     expect(dismiss).not.toHaveBeenCalled();
     expect(h.view.deselect).not.toHaveBeenCalled();
   });

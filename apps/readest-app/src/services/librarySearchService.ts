@@ -15,7 +15,7 @@ import { findContainsMatches } from '@/utils/containsSearch';
 import { findFuzzyMatches, MAX_FUZZY_QUERY_LENGTH } from '@/utils/fuzzySearch';
 import type { LibrarySearchWorkerMatch } from '@/utils/librarySearchWorkerProtocol';
 import { findNearbyMatches } from '@/utils/nearbySearch';
-import { createRejectFilter } from '@/utils/node';
+import { searchTextFilter } from '@/utils/node';
 import { compileSearchRegex, filterWholeWordMatches, findRegexMatches } from '@/utils/textSearch';
 import { BookFileNotFoundError } from './errors';
 import {
@@ -283,11 +283,7 @@ const closeBook = async (book: SearchableBookDoc | null, file: File | null) => {
   }
 };
 
-const makeAcceptNode = (book: Book) =>
-  createRejectFilter({
-    tags: book.primaryLanguage?.startsWith('ja') ? ['rt'] : [],
-    attributes: ['cfi-inert'],
-  });
+const makeAcceptNode = (book: Book) => searchTextFilter(book.primaryLanguage);
 
 interface CachedSearchBook {
   file: File;
@@ -435,15 +431,22 @@ interface SectionMatchOutcome {
   truncated: boolean;
 }
 
+async function sectionDigest(text: string) {
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 const toSubitems = (
   mode: LibrarySearchConfig['mode'],
   sectionIndex: number,
   text: string,
   matches: LibrarySearchWorkerMatch[],
+  sectionTextSha256?: string,
 ): LibrarySearchMatch[] =>
   matches.map((match) => {
     const locator: SearchResultLocator = {
       section: sectionIndex,
+      ...(sectionTextSha256 ? { sectionTextSha256 } : {}),
       start: match.start,
       end: match.end,
       ...(match.runs.length ? { runs: match.runs } : {}),
@@ -634,7 +637,7 @@ export async function* searchLibraryBooks(
         const hasIndex = await appService
           .databaseExists(`${book.hash}/search.db`, 'Books')
           .catch(() => false);
-        if (!hasIndex) {
+        if (!hasIndex && !book.glossaCloud) {
           skippedBooks++;
           yield { type: 'book-skipped', book, reason: 'unavailable' };
           continue;
@@ -661,15 +664,27 @@ export async function* searchLibraryBooks(
       let bookMatches = 0;
       let bookTruncated = false;
 
-      if (indexDb && isSearchIndexFresh(meta, book) && nodesFresh) {
+      const localIndexFresh = isSearchIndexFresh(meta, book) && nodesFresh;
+      const cloud =
+        !localIndexFresh && localSize == null && book.glossaCloud
+          ? await (await import('@/glossa/sync/cloudSearch')).cloudSearchIndex(
+              appService,
+              book,
+              indexDb,
+              signal,
+            )
+          : undefined;
+      if ((indexDb && localIndexFresh) || cloud) {
         // Indexed path: search cached text; the book file is never opened.
         const usePrefilter = config.mode === 'contains' || config.mode === 'whole-words';
-        let sections: SearchIndexSection[] = usePrefilter
-          ? await loadSearchIndexCandidates(indexDb, query)
-          : await loadSearchIndexSections(indexDb);
+        let sections: SearchIndexSection[] =
+          cloud?.rows ??
+          (usePrefilter
+            ? await loadSearchIndexCandidates(indexDb!, query, cloud?.scope)
+            : await loadSearchIndexSections(indexDb!, cloud?.scope));
         sections = sections.filter((section) => includesSection(section.idx));
         if (signal?.aborted) return;
-        const totalSections = meta!.totalSections;
+        const totalSections = cloud?.count ?? meta!.totalSections;
         for (const section of sections) {
           if (signal?.aborted) return;
           const remaining = MAX_BOOK_SEARCH_RESULTS - bookMatches;
@@ -687,7 +702,15 @@ export async function* searchLibraryBooks(
           if (signal?.aborted) return;
           if (outcome.truncated) bookTruncated = true;
           if (outcome.matches.length) {
-            const subitems = toSubitems(config.mode, section.idx, section.text, outcome.matches);
+            const digest = cloud ? await sectionDigest(section.text) : undefined;
+            await cloud?.checkOwner();
+            const subitems = toSubitems(
+              config.mode,
+              section.idx,
+              section.text,
+              outcome.matches,
+              digest,
+            );
             bookMatches += subitems.length;
             totalMatches += subitems.length;
             yield {
@@ -711,7 +734,7 @@ export async function* searchLibraryBooks(
         // A stale or incomplete index and no local file to rescan from: the
         // db is a useless artifact that would cost a full database open on
         // every future search, so delete it and skip.
-        if (indexDb) {
+        if (indexDb && !book.glossaCloud) {
           if (options.session) options.session.dropIndexDb(book);
           else {
             await indexDb.close().catch(() => {});
@@ -935,10 +958,15 @@ export const resolveSearchResultCfis = async (
           ? await section.createDocument()
           : null;
       if (!doc) {
-        for (const position of positions) resolved[position] = { cfi: baseCFI };
+        for (const position of positions) {
+          if (!locators[position]?.sectionTextSha256) resolved[position] = { cfi: baseCFI };
+        }
         continue;
       }
       const prepared = prepareSearchSection('resolve', doc, makeAcceptNode(book));
+      const digest = positions.some((i) => locators[i]?.sectionTextSha256)
+        ? await sectionDigest(prepared.text)
+        : undefined;
       const rangeCfi = (start: number, end: number): string | null => {
         if (end > prepared.text.length || start >= end) return null;
         const from = findNodeOffset(prepared.cumulative, start, 'right');
@@ -948,6 +976,7 @@ export const resolveSearchResultCfis = async (
       };
       for (const position of positions) {
         const locator = locators[position]!;
+        if (locator.sectionTextSha256 && locator.sectionTextSha256 !== digest) continue;
         const cfi = rangeCfi(locator.start, locator.end) ?? baseCFI;
         const runCfis = locator.runs
           ?.map((run) => rangeCfi(run.start, run.end))

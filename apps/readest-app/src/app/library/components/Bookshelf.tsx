@@ -83,6 +83,7 @@ export interface ContentSearchRequest {
 }
 
 interface BookshelfProps {
+  searchSubject?: string;
   libraryBooks: Book[];
   onScrollerRef: (el: HTMLDivElement | null) => void;
   handleImportBooks: (anchor: HTMLElement) => void;
@@ -223,6 +224,7 @@ const LIST_VIRTUOSO_COMPONENTS: Components<unknown, BookshelfListContext> = {
 
 const Bookshelf: React.FC<BookshelfProps> = ({
   libraryBooks: allLibraryBooks,
+  searchSubject,
   onScrollerRef,
   handleImportBooks,
   renderGroupNavigation,
@@ -1260,6 +1262,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       )}
       {contentSearch?.query.trim() && appService ? (
         <LibrarySearchResults
+          key={searchSubject ?? 'signed-out'}
           appService={appService}
           books={currentShelfBooks}
           query={contentSearch.query.trim()}

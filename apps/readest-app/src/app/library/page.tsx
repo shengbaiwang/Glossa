@@ -27,7 +27,12 @@ import { debounce } from '@/utils/debounce';
 import { DEFAULT_NEARBY_WORDS } from '@/utils/searchConfig';
 import { clearLibrarySearchHistory, loadLibrarySearchHistory } from './utils/searchHistory';
 import type { LibrarySearchTarget } from '@/types/book';
-import { navigateToLibrary, navigateToLogin, navigateToReader } from '@/utils/nav';
+import {
+  isLibraryBrowseRequest,
+  navigateToLibrary,
+  navigateToLogin,
+  navigateToReader,
+} from '@/utils/nav';
 import { getBookWithUpdatedMetadata, listFormater } from '@/utils/book';
 import { getImportErrorMessage } from '@/services/errors';
 import { fingerprintPath, libraryIdentityIO } from '@/services/bookIdentity';
@@ -516,8 +521,8 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       const unlisten = currentWebview.listen('close-reader-window', async () => {
         // Reader windows are independent Tauri webviews with their own
         // libraryStore instance — progress / readingStatus / move-to-front
-        // updates from the reader window do NOT propagate to this main
-        // window's store. Reload from disk so the library reflects the
+        // updates from the reader window do not propagate to other windows'
+        // stores. Reload from disk so each open library reflects the
         // changes the reader just persisted.
         const appService = await envConfig.getAppService();
         const settings = await appService.loadSettings();
@@ -729,11 +734,12 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       const current = useLibraryStore.getState();
       const library = current.libraryLoaded ? current.library : loaded;
       let opened = false;
-      if (checkOpenWithBooks) {
+      const browseOnly = isLibraryBrowseRequest(new URLSearchParams(libraryInitKey));
+      if (!browseOnly && checkOpenWithBooks) {
         opened = await handleOpenWithBooks(appService, library);
       }
       setCheckOpenWithBooks(opened);
-      if (!opened && checkLastOpenBooks && settings.openLastBooks) {
+      if (!browseOnly && !opened && checkLastOpenBooks && settings.openLastBooks) {
         opened = await handleOpenLastBooks(appService, settings.lastOpenBooks, library);
       }
       setCheckLastOpenBooks(opened);
@@ -1868,6 +1874,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
                 >
                   <DropIndicator />
                   <Bookshelf
+                    searchSubject={user?.id}
                     libraryBooks={libraryBooks}
                     onScrollerRef={handleScrollerRef}
                     renderGroupNavigation={

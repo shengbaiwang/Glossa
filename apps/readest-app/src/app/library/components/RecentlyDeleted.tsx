@@ -10,6 +10,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import {
   bookRemovalIO,
   cleanRemovedBook,
+  prepareLocalRelease,
   removeAppBooks,
   removalScope,
   removalFeedback,
@@ -108,6 +109,7 @@ export default function RecentlyDeleted() {
         await runRemoval(bookRemovalIO(appService), id, {
           signal: controller.current!.signal,
           clean: cleanRemovedBook(appService),
+          prepareLocal: prepareLocalRelease(appService),
           onProgress: apply,
         }),
       );

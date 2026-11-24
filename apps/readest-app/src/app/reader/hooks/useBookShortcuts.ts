@@ -3,7 +3,12 @@ import { useReaderStore } from '@/store/readerStore';
 import { useNotebookStore } from '@/store/notebookStore';
 import { isTauriAppPlatform } from '@/services/environment';
 import { useSidebarStore } from '@/store/sidebarStore';
-import { useSettingsStore } from '@/store/settingsStore';
+import { useEnv } from '@/context/EnvContext';
+import {
+  currentReaderBook,
+  runReaderCommand,
+  type ReaderCommandId,
+} from '@/services/readerCommands';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useCommandPalette } from '@/components/command-palette';
 import { tauriHandleClose, tauriHandleToggleFullScreen, tauriQuitApp } from '@/utils/window';
@@ -26,7 +31,7 @@ interface UseBookShortcutsProps {
 const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) => {
   const { getView, getViewSettings, setViewSettings } = useReaderStore();
   const { toggleSideBar, setSideBarBookKey } = useSidebarStore();
-  const { openSettingsDialog } = useSettingsStore();
+  const { envConfig } = useEnv();
   const { getBookData } = useBookDataStore();
   const { toggleNotebook } = useNotebookStore();
   const { getNextBookKey } = useBooksManager();
@@ -289,17 +294,9 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
     setHoveredBookKey(hoveredBookKey === sideBarBookKey ? '' : sideBarBookKey);
   };
 
-  const toggleBookmark = () => {
-    if (!sideBarBookKey) return;
-    eventDispatcher.dispatch('toggle-bookmark', { bookKey: sideBarBookKey });
-  };
-
-  const toggleAutoScroll = () => {
-    if (!sideBarBookKey) return;
-    // Auto Scroll only exists in scrolled mode (#4998); the View menu item is
-    // disabled outside it, so the shortcut silently no-ops there too.
-    if (!getViewSettings(sideBarBookKey)?.scrolled) return;
-    eventDispatcher.dispatch('autoscroll-toggle', { bookKey: sideBarBookKey });
+  const runBookAction = (id: ReaderCommandId) => {
+    const bookKey = currentReaderBook();
+    if (bookKey) runReaderCommand(envConfig, id, bookKey);
   };
 
   const handlePinchZoom = (event: CustomEvent) => {
@@ -332,12 +329,11 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
       onToggleSideBar: toggleSideBar,
       onToggleNotebook: toggleNotebook,
       onToggleScrollMode: toggleScrollMode,
-      onToggleBookmark: toggleBookmark,
+      onToggleBookmark: () => runBookAction('bookmark'),
 
-      onToggleAutoScroll: toggleAutoScroll,
+      onToggleAutoScroll: () => runBookAction('autoScroll'),
       onToggleToolbar: toggleToolbar,
-      onOpenFontLayoutSettings: () =>
-        openSettingsDialog('reading', sideBarBookKey || bookKeys[0] || ''),
+      onOpenFontLayoutSettings: () => runBookAction('appearance'),
       onShowSearchBar: showSearchBar,
       onToggleFullscreen: toggleFullscreen,
 

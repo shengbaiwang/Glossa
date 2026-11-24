@@ -1,5 +1,6 @@
 export interface ReadestRuntimeConfig {
   glossaAuthUrl?: string;
+  glossaSyncOrigin?: string;
   glossaAuthKey?: string;
   glossaAuthRedirectUrl?: string;
   supabaseUrl?: string;
@@ -20,6 +21,7 @@ export const getRuntimeConfig = () =>
   typeof window === 'undefined' ? undefined : window.__READEST_RUNTIME_CONFIG;
 
 export const getServerRuntimeConfig = (): ReadestRuntimeConfig => ({
+  glossaSyncOrigin: process.env['NEXT_PUBLIC_GLOSSA_SYNC_ORIGIN'],
   glossaAuthUrl: process.env['NEXT_PUBLIC_GLOSSA_AUTH_URL'],
   glossaAuthKey: process.env['NEXT_PUBLIC_GLOSSA_AUTH_KEY'],
   glossaAuthRedirectUrl: process.env['NEXT_PUBLIC_GLOSSA_AUTH_REDIRECT_URL'],

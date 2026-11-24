@@ -152,6 +152,20 @@ export interface Book {
   // the auto-import scan doesn't treat a known duplicate as a new file on every
   // pass. Device-local like `filePath`: never published to peers.
   altFilePaths?: string[];
+  glossaCloud?: import('@glossa/sync-contracts/reader').CloudBookIdentity & {
+    origin: string;
+    subject: string;
+  };
+  // A shelf entry first discovered on this device, with the last confirmed server values.
+  glossaDiscovery?: {
+    seq: number;
+    available: boolean;
+    title: string;
+    author: string;
+    language?: string;
+    status: ReadingStatus;
+    finishedAt?: number;
+  };
   // Stable storage identifier. Legacy identifiers are preserved on verified re-import.
   hash: string;
   // SHA-256 of complete imported bytes (Markdown resource snapshots include the
@@ -378,7 +392,6 @@ export type PageTurnStyle = 'push' | 'slide' | 'curl' | 'paper';
 export interface ViewConfig {
   sideBarTab: string;
   uiLanguage: string;
-  sortedTOC: boolean;
 
   doubleBorder: boolean;
   borderColor: string;
@@ -600,6 +613,8 @@ export interface BookSearchMatch {
 // carry locators instead of CFIs; the CFI is resolved lazily on click so
 // searching never needs live DOM Ranges (see librarySearchService).
 export interface SearchResultLocator {
+  // Cloud offsets are valid only for the exact text the search pack indexed.
+  sectionTextSha256?: string;
   section: number;
   start: number;
   end: number;

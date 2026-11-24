@@ -604,6 +604,15 @@ export const buildCommandRegistry = (options: CommandRegistryOptions): CommandIt
   items.push(
     createSettingsItem(
       {
+        id: 'settings.theme.readerToolbar',
+        labelKey: _('Customize Toolbar'),
+        keywords: ['toolbar', 'appearance', 'reading', '工具栏', '阅读'],
+      },
+      'Theme',
+      'General',
+    ),
+    createSettingsItem(
+      {
         id: 'settings.shortcuts.bindings',
         labelKey: _('Shortcuts'),
         keywords: ['keyboard', 'shortcut', 'hotkey', 'keybinding', '快捷键', '按键'],
@@ -832,9 +841,12 @@ export const getRecentCommands = (items: CommandItem[], limit = 5): CommandItem[
   try {
     const recentIds = JSON.parse(localStorage.getItem('recentCommands') || '[]') as string[];
     return recentIds
-      .slice(0, limit)
       .map((id) => items.find((item) => item.id === id))
-      .filter((item): item is CommandItem => item !== undefined);
+      .filter(
+        (item): item is CommandItem =>
+          item !== undefined && (!item.isAvailable || item.isAvailable()),
+      )
+      .slice(0, limit);
   } catch {
     return [];
   }

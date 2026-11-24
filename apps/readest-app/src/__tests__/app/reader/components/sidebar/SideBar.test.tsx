@@ -32,7 +32,7 @@ vi.mock('@/store/sidebarStore', () => ({
       setSearchTerm: mocks.setSearchTerm,
       clearSearch: mocks.clearSearch,
     }),
-    { getState: () => ({ isSideBarPinned: true }) },
+    { getState: () => ({}) },
   ),
 }));
 vi.mock('@/store/bookDataStore', () => ({
@@ -47,7 +47,6 @@ vi.mock('@/store/readerStore', () => ({
 vi.mock('@/app/reader/hooks/useSidebar', () => ({
   default: () => ({
     sideBarWidth: '240px',
-    isSideBarPinned: true,
     isSideBarVisible: true,
     setSideBarVisible: mocks.setSideBarVisible,
   }),
@@ -65,8 +64,22 @@ vi.mock('@/hooks/useSwipeToDismiss', () => ({
     panelHeight: { current: 1 },
   }),
 }));
-vi.mock('@/app/reader/components/sidebar/Header', () => ({ default: () => null }));
-vi.mock('@/app/reader/components/sidebar/Content', () => ({ default: () => null }));
+vi.mock('@/hooks/useTrafficLight', () => ({
+  useTrafficLight: () => ({ isTrafficLightVisible: false }),
+}));
+vi.mock('@/hooks/useResponsiveSize', () => ({ useResponsiveSize: (size: number) => size }));
+vi.mock('@/app/reader/components/sidebar/Content', () => ({
+  default: ({
+    renderNavigation,
+  }: {
+    renderNavigation: (tabs: React.ReactNode) => React.ReactNode;
+  }) =>
+    renderNavigation(
+      <button type='button' role='tab'>
+        Contents
+      </button>,
+    ),
+}));
 vi.mock('@/app/reader/components/sidebar/SearchBar', () => ({ default: () => null }));
 vi.mock('@/app/reader/components/sidebar/SearchResults', () => ({ default: () => null }));
 
@@ -81,10 +94,19 @@ afterEach(() => {
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
 });
 
-describe('sidebar when a pinned desktop reader becomes mobile', () => {
-  it('uses an overlay above the mobile header and dismisses after navigation without changing the saved pin', async () => {
+describe('sidebar across reader sizes', () => {
+  it('keeps the close button and tab accessible without an overlapping menu', () => {
+    const { container } = render(<SideBar />);
+    const header = container.querySelector('.sidebar-header')!;
+    expect(screen.getByRole('tab', { name: 'Contents' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Toggle Sidebar' })).toBeTruthy();
+    expect(header.querySelectorAll('button')).toHaveLength(2);
+    expect(header.querySelector('[aria-haspopup]')).toBeNull();
+  });
+
+  it('dismisses the overlay after navigation on desktop and mobile', async () => {
     const { container, rerender } = render(<SideBar />);
-    expect(container.querySelector('.overlay')).toBeNull();
+    expect(container.querySelector('.overlay')).toBeTruthy();
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
     rerender(<SideBar />);
 

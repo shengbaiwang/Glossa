@@ -109,14 +109,20 @@ func write<T: Encodable>(_ value: T, to url: URL) throws {
     try data.write(to: url, options: .atomic)
 }
 
-func recognize(_ page: PDFPage, index: Int, detect: Bool = false, contents: Bool = false, heading: Bool = false) throws -> PageText {
+func recognize(_ page: PDFPage, index: Int, detect: Bool = false, contents: Bool = false, heading: Bool = false, region: CGRect? = nil) throws -> PageText {
     // Preserve the native text layer, including its original CFI text offsets.
-    if !contents && !heading && !(page.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-        return PageText(index: index, native: true, lines: [])
+    if !contents && !heading {
+        let native = (page.string ?? "").unicodeScalars.filter {
+            !CharacterSet.whitespacesAndNewlines.contains($0)
+        }
+        let damaged = detect ? native.filter {
+            $0.value == 0xfffd || $0.properties.generalCategory == .privateUse
+        }.count : 0
+        if !native.isEmpty && (damaged < 4 || damaged * 4 < native.count) {
+            return PageText(index: index, native: true, lines: [])
+        }
     }
-    var bounds = page.bounds(for: .cropBox).size
-    if abs(page.rotation) % 180 == 90 { bounds = NSSize(width: bounds.height, height: bounds.width) }
-    guard bounds.width > 0, bounds.height > 0 else { throw NSError(domain: "page", code: 1) }
+    let bounds = try recognitionBounds(page)
     if contents {
         // Dense tables need the larger raster for short folios and similar
         // Chinese glyphs. Retain the other precise pass for uncovered rows.
@@ -133,27 +139,51 @@ func recognize(_ page: PDFPage, index: Int, detect: Bool = false, contents: Bool
     if heading {
         // Upper interior excludes running heads and footers. Both precise scales
         // remain independent; a successful first reading never hides the second.
-        let region = CGRect(x: 0.04, y: 0.10, width: 0.92, height: 0.65)
-        var passes: [[Word]] = []
-        for edge in [1600.0, 2400.0] {
-            passes.append(try recognizeAtScale(page, bounds: bounds, detect: false, longestEdge: edge, region: region).words)
-        }
-        return PageText(index: index, native: false, lines: passes[0], recognizer: headingRecognizer,
-                        emptyReason: passes.allSatisfy({ $0.isEmpty }) ? "no_observations" : nil,
-                        alternatives: Array(passes.dropFirst()))
+        let region = region ?? CGRect(x: 0.04, y: 0.10, width: 0.92, height: 0.65)
+        return try recognizeRegions(page, index: index, bounds: bounds, regions: [region])[0]
     }
     return try recognizeWithRecovery(index: index, detect: detect, maximumDimension: max(bounds.width, bounds.height), contents: contents) {
         try recognizeAtScale(page, bounds: bounds, detect: detect, longestEdge: $0)
     }
 }
 
-func recognizeAtScale(_ page: PDFPage, bounds: NSSize, detect: Bool, longestEdge: Double, region: CGRect? = nil) throws -> RecognitionPass {
+func recognitionBounds(_ page: PDFPage) throws -> NSSize {
+    var bounds = page.bounds(for: .cropBox).size
+    if abs(page.rotation) % 180 == 90 { bounds = NSSize(width: bounds.height, height: bounds.width) }
+    guard bounds.width > 0, bounds.height > 0 else { throw NSError(domain: "page", code: 1) }
+    return bounds
+}
+
+func recognizeRegions(_ page: PDFPage, index: Int, bounds: NSSize, regions: [CGRect]) throws -> [PageText] {
+    var passes = Array(repeating: [[Word]](), count: regions.count)
+    for edge in [1600.0, 2400.0] {
+        let raster = try renderRecognitionPage(page, bounds: bounds, longestEdge: edge)
+        for (i, region) in regions.enumerated() {
+            passes[i].append(try recognizeRaster(raster, detect: false, region: region).words)
+        }
+    }
+    return passes.map {
+        PageText(index: index, native: false, lines: $0[0], recognizer: headingRecognizer,
+                 emptyReason: $0.allSatisfy { $0.isEmpty } ? "no_observations" : nil,
+                 alternatives: Array($0.dropFirst()))
+    }
+}
+
+func recognizeAtScale(_ page: PDFPage, bounds: NSSize, detect: Bool, longestEdge: Double) throws -> RecognitionPass {
+    try recognizeRaster(renderRecognitionPage(page, bounds: bounds, longestEdge: longestEdge), detect: detect)
+}
+
+func renderRecognitionPage(_ page: PDFPage, bounds: NSSize, longestEdge: Double) throws -> CGImage {
     let scale = min(3, longestEdge / max(bounds.width, bounds.height))
     let image = page.thumbnail(of: NSSize(width: bounds.width * scale, height: bounds.height * scale), for: .cropBox)
     var rect = NSRect(origin: .zero, size: image.size)
     guard let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else {
         throw NSError(domain: "render", code: 1)
     }
+    return cgImage
+}
+
+func recognizeRaster(_ cgImage: CGImage, detect: Bool, region: CGRect? = nil) throws -> RecognitionPass {
     let crop = region ?? CGRect(x: 0, y: 0, width: 1, height: 1)
     let pixels = CGRect(x: crop.minX * Double(cgImage.width), y: crop.minY * Double(cgImage.height),
                         width: crop.width * Double(cgImage.width), height: crop.height * Double(cgImage.height)).integral
@@ -175,7 +205,10 @@ func recognizeAtScale(_ page: PDFPage, bounds: NSSize, detect: Bool, longestEdge
         let text = candidate.string
         if detect {
             let box = observation.boundingBox
-            words.append(Word(text: text, x: box.minX, y: 1 - box.maxY, width: box.width, height: box.height, endLine: true))
+            let x = max(0, box.minX), y = max(0, 1 - box.maxY)
+            let width = min(1, box.maxX) - x, height = min(1, 1 - box.minY) - y
+            guard width > 0, height > 0 else { continue }
+            words.append(Word(text: text, x: x, y: y, width: width, height: height, endLine: true))
             continue
         }
         var cursor = text.startIndex
@@ -359,7 +392,7 @@ func portablePDF(_ source: URL, cache: URL, request: URL, output: URL) throws {
 // Discovery reads every scanned page when relocation needs a unique heading.
 // Two isolated PDFKit documents keep that bounded scan inside the import budget;
 // reading/contents jobs remain serial and retain exactly the same recognizer.
-func recognizePages(source: URL, output: URL, indices: [Int], detect: Bool, contents: Bool, heading: Bool = false) throws {
+func recognizePages(source: URL, output: URL, indices: [Int], detect: Bool, contents: Bool, heading: Bool = false, region: CGRect? = nil) throws {
     let lock = NSLock()
     var cursor = 0
     var completed = 0
@@ -379,7 +412,7 @@ func recognizePages(source: URL, output: URL, indices: [Int], detect: Bool, cont
                     let saved = (try? Data(contentsOf: target)).flatMap { try? JSONDecoder().decode(RecognitionCheckpoint.self, from: $0) }
                     if needsRecognition(saved, index: index, detect: detect, contents: contents, heading: heading) {
                         guard let page = document.page(at: index) else { throw NSError(domain: "page", code: 1) }
-                        try write(recognize(page, index: index, detect: detect, contents: contents, heading: heading), to: target)
+                        try write(recognize(page, index: index, detect: detect, contents: contents, heading: heading, region: region), to: target)
                     }
                 }
                 lock.lock()
@@ -435,6 +468,33 @@ do {
     let contents = args.count > 1 && args[1] == "--contents"
     let heading = args.count > 1 && args[1] == "--heading"
     if detect || contents || heading { args.remove(at: 1) }
+    var region: CGRect?
+    var regionBatch: [(String, CGRect)] = []
+    if heading && args.count > 1 && args[1].hasPrefix("--regions=") {
+        let values = args.remove(at: 1).dropFirst("--regions=".count).split(separator: ";", omittingEmptySubsequences: false)
+        guard (2...4).contains(values.count), Set(values).count == values.count else { exit(2) }
+        for value in values {
+            let fields = value.split(separator: ",", omittingEmptySubsequences: false)
+            let numbers = fields.compactMap { Int($0) }
+            guard fields.count == 4, numbers.count == 4,
+                  numbers.allSatisfy({ (0...1000).contains($0) }),
+                  numbers[2] >= 20, numbers[3] >= 20,
+                  numbers[0] + numbers[2] <= 1000, numbers[1] + numbers[3] <= 1000 else { exit(2) }
+            regionBatch.append((numbers.map(String.init).joined(separator: ","),
+                                CGRect(x: Double(numbers[0]) / 1000, y: Double(numbers[1]) / 1000,
+                                       width: Double(numbers[2]) / 1000, height: Double(numbers[3]) / 1000)))
+        }
+        guard Set(regionBatch.map { $0.0 }).count == regionBatch.count else { exit(2) }
+    }
+    if regionBatch.isEmpty && heading && args.count > 1 && args[1].hasPrefix("--region=") {
+        let values = args.remove(at: 1).dropFirst("--region=".count)
+            .split(separator: ",").compactMap { Int($0) }
+        guard values.count == 4, values.allSatisfy({ (0...1000).contains($0) }),
+              values[2] >= 20, values[3] >= 20,
+              values[0] + values[2] <= 1000, values[1] + values[3] <= 1000 else { exit(2) }
+        region = CGRect(x: Double(values[0]) / 1000, y: Double(values[1]) / 1000,
+                        width: Double(values[2]) / 1000, height: Double(values[3]) / 1000)
+    }
     if args.count == 6 && args[1] == "--export" {
         try portablePDF(URL(fileURLWithPath: args[2]), cache: URL(fileURLWithPath: args[3]), request: URL(fileURLWithPath: args[4]), output: URL(fileURLWithPath: args[5]))
         exit(0)
@@ -446,7 +506,24 @@ do {
     guard !indices.isEmpty, indices.count <= 5000,
           Set(indices).count == indices.count,
           indices.allSatisfy({ $0 >= 0 && $0 < document.pageCount }) else { exit(2) }
-    try recognizePages(source: URL(fileURLWithPath: args[1]), output: output, indices: indices, detect: detect, contents: contents, heading: heading)
+    if !regionBatch.isEmpty {
+        guard indices.count == 1, let page = document.page(at: indices[0]) else { exit(2) }
+        let index = indices[0]
+        let pending = regionBatch.filter { key, _ in
+            let target = output.appendingPathComponent("page-\(index)-\(key).json")
+            let saved = (try? Data(contentsOf: target)).flatMap { try? JSONDecoder().decode(RecognitionCheckpoint.self, from: $0) }
+            return needsRecognition(saved, index: index, detect: false, heading: true)
+        }
+        if !pending.isEmpty {
+            let results = try recognizeRegions(page, index: index, bounds: recognitionBounds(page), regions: pending.map { $0.1 })
+            for (region, result) in zip(pending, results) {
+                try write(result, to: output.appendingPathComponent("page-\(index)-\(region.0).json"))
+            }
+        }
+        try write(Progress(completed: 1, total: 1), to: output.appendingPathComponent("progress.json"))
+    } else {
+        try recognizePages(source: URL(fileURLWithPath: args[1]), output: output, indices: indices, detect: detect, contents: contents, heading: heading, region: region)
+    }
 } catch {
     // Neither source text nor arbitrary native errors leave this worker.
     exit(1)

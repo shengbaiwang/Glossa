@@ -50,10 +50,11 @@ export const useTextSelector = (
   const { getView, getViewSettings, getProgress } = useReaderStore();
   const view = getView(bookKey);
   const bookData = getBookData(bookKey);
+  const pdfOwnsSelectionTurns = !!bookData?.bookDoc?.getPDFAnnotationRects;
   const osPlatform = getOSPlatform();
 
-  // Corner-dwell auto page-turn (#1354), now driven by every selection gesture
-  // through a shared engagement point — see useAutoPageTurn.
+  // Reflowable selection and instant annotations can turn at a held corner.
+  // The PDF text-selection coordinator handles its own cross-page drag.
   const {
     isAutoTurning,
     cornerAtPoint,
@@ -362,6 +363,8 @@ export const useTextSelector = (
   };
 
   const handlePointerDown = (doc: Document, index: number, ev: PointerEvent) => {
+    cancelAutoTurn();
+    pointerPos.current = null;
     selectionRevision.current++;
     lastPointerType.current = ev.pointerType;
     isPointerDown.current = true;
@@ -447,7 +450,8 @@ export const useTextSelector = (
     const viewSettings = getViewSettings(bookKey);
     const sel = doc.getSelection();
     const valid = !!sel && isValidSelection(sel);
-    const corner = !viewSettings?.scrolled && valid ? pointerCornerNow() : null;
+    const corner =
+      canTurnNativeSelection() && !viewSettings?.scrolled && valid ? pointerCornerNow() : null;
     noteCorner(corner, (c) => inCorner(c, doc));
   };
 
@@ -467,12 +471,14 @@ export const useTextSelector = (
     }
     const sel = doc.getSelection();
     const valid = !!sel && isValidSelection(sel);
-    const corner = !viewSettings?.scrolled && valid ? pointerCornerNow() : null;
+    const corner =
+      canTurnNativeSelection() && !viewSettings?.scrolled && valid ? pointerCornerNow() : null;
     noteCorner(corner, (c) => inCorner(c, doc));
   };
 
   const handlePointerCancel = (_doc: Document, _index: number, _ev: PointerEvent) => {
     isPointerDown.current = false;
+    if (!isTouchStarted.current) cancelAutoTurn();
     mouseDoubleClickRef.current = null;
     // A pending still-hold that never engaged: drop it so a swipe-takeover
     // (Android fires pointercancel when the browser starts scrolling) keeps its
@@ -594,6 +600,7 @@ export const useTextSelector = (
 
   const handlePointerUp = async (doc: Document, index: number, ev?: PointerEvent) => {
     isPointerDown.current = false;
+    cancelAutoTurn();
     if (view?.getPDFSelection?.()?.length) return;
     const mouseDoubleClick = mouseDoubleClickRef.current;
     mouseDoubleClickRef.current = null;
@@ -669,6 +676,13 @@ export const useTextSelector = (
     // must not steer this gesture's selection repair. Touch moves re-feed it.
     pointerPos.current = null;
   };
+  const handleTouchCancel = () => {
+    isTouchStarted.current = false;
+    isPointerDown.current = false;
+    pendingTouchSelection.current = false;
+    pointerPos.current = null;
+    cancelAutoTurn();
+  };
   const handleTouchMove = (ev: TouchEvent) => {
     if (isInstantAnnotating.current) {
       ev.preventDefault();
@@ -680,6 +694,7 @@ export const useTextSelector = (
   // Android native-touch bridge calls this without a doc (it never defers).
   const handleTouchEnd = (doc?: Document, index?: number) => {
     isTouchStarted.current = false;
+    cancelAutoTurn();
     if (!pendingTouchSelection.current) return;
     pendingTouchSelection.current = false;
     if (!doc || index === undefined) return;
@@ -695,6 +710,11 @@ export const useTextSelector = (
     }
   };
 
+  // The PDF renderer owns cross-page selection and requires an actual edge drag.
+  // A stationary caret or a hover after release is never a navigation gesture.
+  const canTurnNativeSelection = () =>
+    !pdfOwnsSelectionTurns && (isPointerDown.current || isTouchStarted.current);
+
   // The corner the latest pointer (pointermove / native touchmove) position is in.
   const pointerCornerNow = (): Corner | null => cornerAtPoint(pointerPos.current);
   // The corner the selection caret (focus) is in.
@@ -707,7 +727,7 @@ export const useTextSelector = (
   // Injected into the dwell machine as the native-selection liveness predicate so
   // the page only turns while the caret OR the finger is still in the corner.
   const inCorner = (c: Corner, doc: Document): boolean =>
-    pointerCornerNow() === c || caretCornerNow(doc) === c;
+    canTurnNativeSelection() && (pointerCornerNow() === c || caretCornerNow(doc) === c);
 
   const handleSelectionchange = (doc: Document, index: number) => {
     if (view?.getPDFSelection?.()?.length) return;
@@ -742,7 +762,7 @@ export const useTextSelector = (
     // signals on every platform (and the only one on Android during a native
     // selection drag, where pointer/touch-move don't fire). Feed it into the same
     // dwell machine the pointer uses.
-    if (isValidSelection(sel)) {
+    if (isValidSelection(sel) && canTurnNativeSelection()) {
       noteCorner(!viewSettings?.scrolled ? caretCornerNow(doc) : null, (c) => inCorner(c, doc));
     } else {
       cancelAutoTurn();
@@ -828,7 +848,8 @@ export const useTextSelector = (
   };
 
   useEffect(() => {
-    const handleSingleClick = (): boolean => {
+    const handleSingleClick = (event: CustomEvent): boolean => {
+      if (event.detail?.bookKey !== bookKey) return false;
       if (isUpToPopup.current) {
         isUpToPopup.current = false;
         return true;
@@ -836,7 +857,7 @@ export const useTextSelector = (
       if (isTextSelected.current) {
         handleDismissPopup();
         isTextSelected.current = false;
-        view?.deselect();
+        getView(bookKey)?.deselect();
         return true;
       }
       if (isPopuped.current) {
@@ -869,6 +890,7 @@ export const useTextSelector = (
     handleTouchStart,
     handleTouchMove,
     handleTouchEnd,
+    handleTouchCancel,
     handleMouseDown,
     handlePointerDown,
     handlePointerMove,

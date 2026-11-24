@@ -282,7 +282,6 @@ export const DEFAULT_READSETTINGS: ReadSettings = {
   sideBarWidth: '15%',
   // Content first: both side panels start hidden; opening one floats it over
   // the page until the reader pins it into the layout.
-  isSideBarPinned: false,
   notebookWidth: '25%',
   isNotebookPinned: false,
   notebookActiveTab: 'notes',
@@ -305,7 +304,6 @@ export const DEFAULT_READSETTINGS: ReadSettings = {
 
 export const DEFAULT_MOBILE_READSETTINGS: Partial<ReadSettings> = {
   sideBarWidth: '25%',
-  isSideBarPinned: false,
 };
 
 export const DEFAULT_BOOK_FONT: BookFont = {
@@ -422,7 +420,6 @@ export const DEFAULT_PARAGRAPH_MODE_CONFIG: ParagraphModeConfig = {
 export const DEFAULT_VIEW_CONFIG: ViewConfig = {
   sideBarTab: 'toc',
   uiLanguage: '',
-  sortedTOC: false,
 
   doubleBorder: false,
   borderColor: 'red',

@@ -66,7 +66,8 @@ const TOCItemView = React.memo<{
       onKeyDown={item.href ? (e) => e.key === 'Enter' && handleClickItem(e) : undefined}
       aria-label={ariaLabel}
       aria-current={isActive ? 'page' : undefined}
-      aria-expanded={item.subitems ? (flatItem.isExpanded ? 'true' : 'false') : undefined}
+      aria-expanded={item.subitems?.length ? !!flatItem.isExpanded : undefined}
+      aria-level={depth + 1}
       aria-selected={isActive ? 'true' : 'false'}
       data-href={item.href ? getContentMd5(item.href) : undefined}
       className={clsx(
@@ -74,37 +75,33 @@ const TOCItemView = React.memo<{
       )}
       style={{
         height: itemSize ? `${itemSize}px` : 'auto',
-        paddingInlineStart: `${(depth + 1) * 12}px`,
+        paddingInlineStart: `${12 + depth * 20}px`,
       }}
     >
-      {item.subitems && (
+      {item.subitems?.length ? (
         <button
           onClick={handleToggleExpand}
           onKeyDown={(e) => {
             e.stopPropagation();
           }}
           aria-label={flatItem.isExpanded ? `Collapse ${item.label}` : `Expand ${item.label}`}
-          className='inline-block cursor-pointer'
+          className='inline-flex w-5 shrink-0 cursor-pointer items-center justify-center'
           style={{
-            padding: '12px',
-            margin: '-12px',
+            paddingBlock: '12px',
+            marginBlock: '-12px',
           }}
         >
           {createExpanderIcon(flatItem.isExpanded || false)}
         </button>
+      ) : (
+        <span aria-hidden='true' className='w-5 shrink-0' />
       )}
-      <div
-        className='ms-2 truncate text-ellipsis'
-        style={{
-          maxWidth: 'calc(100% - 24px)',
-          whiteSpace: 'nowrap',
-          textOverflow: 'ellipsis',
-        }}
-      >
-        {item.label}
-      </div>
+      <div className='ms-2 min-w-0 truncate'>{item.label}</div>
       {(item.location || item.index !== undefined) && (
-        <div aria-hidden='true' className='glossa-reader-toc-page ms-auto ps-2 font-mono sm:pe-2'>
+        <div
+          aria-hidden='true'
+          className='glossa-reader-toc-page ms-auto shrink-0 ps-2 font-mono sm:pe-2'
+        >
           {item.location ? item.location.current + 1 : item.index + 1}
         </div>
       )}

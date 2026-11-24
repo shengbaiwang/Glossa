@@ -1,3 +1,4 @@
+import { hasGlossaSyncConfig } from '@/glossa/sync/config';
 import type { SystemSettings } from '@/types/settings';
 import type { UserPlan } from '@/types/quota';
 import { isCloudSyncAllowed } from '@/utils/access';
@@ -33,6 +34,7 @@ export const cloudProviderDisplayName = (kind: CloudSyncProviderKind): string =>
 export const getEnabledFileSyncBackends = (
   settings: SystemSettings | null | undefined,
 ): FileSyncBackendKind[] => {
+  if (hasGlossaSyncConfig()) return [];
   const enabled: FileSyncBackendKind[] = [];
   if (settings?.webdav?.enabled) enabled.push('webdav');
   if (settings?.googleDrive?.enabled) enabled.push('gdrive');

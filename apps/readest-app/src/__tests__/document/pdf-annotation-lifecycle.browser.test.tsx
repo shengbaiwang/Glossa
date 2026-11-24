@@ -74,6 +74,7 @@ afterEach(async () => {
   view?.remove();
   await book?.destroy?.();
   config.booknotes = [];
+  viewSettings.scrolled = true;
   vi.clearAllMocks();
 });
 
@@ -145,6 +146,61 @@ function point(span: HTMLElement, end: boolean) {
 const popup = () => document.querySelector('.selection-popup');
 const hasPopup = () => expect.poll(() => !!popup()).toBe(true);
 const noPopup = () => expect.poll(() => !!popup()).toBe(false);
+
+it.each([
+  'Copy',
+  'Highlight',
+])('keeps page two visible after selecting text and choosing %s', async (action) => {
+  await open(false);
+  viewSettings.scrolled = false;
+  view.renderer.setAttribute('flow', 'paginated');
+  await view.goTo(1);
+  await expect.poll(() => view.renderer.index).toBe(1);
+  await expect
+    .poll(() =>
+      view.renderer
+        .getContents()
+        .find((c) => c.index === 1)
+        ?.doc.querySelector('.textLayer span'),
+    )
+    .toBeTruthy();
+  const doc = view.renderer.getContents().find((c) => c.index === 1)!.doc;
+  const word = words(doc)[0]!;
+  await commands.dragPDFText(point(word, false), point(word, true));
+  await hasPopup();
+  await userEvent.click(screen.getByRole('button', { name: action }));
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  expect(view.renderer.primaryIndex).toBe(1);
+  if (action === 'Highlight') expect(config.booknotes?.some((note) => note.page === 2)).toBe(true);
+});
+
+it('fills an older note’s page without reverting newer edits or additions', async () => {
+  const [doc] = await open(false);
+  showAnnotator(false);
+  const range = doc!.createRange();
+  range.selectNodeContents(words(doc!)[0]!);
+  const cfi = view.getCFI(0, range);
+  const old: BookNote = {
+    id: 'old',
+    cfi,
+    type: 'annotation',
+    note: 'draft',
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  config.booknotes = [old];
+  showAnnotator(true);
+  (view.renderer as unknown as EventTarget).dispatchEvent(new Event('stabilized'));
+  config.booknotes = [
+    { ...old, note: 'edited', updatedAt: 2 },
+    { ...old, id: 'new', page: 2 },
+  ];
+  await expect.poll(() => config.booknotes?.[0]?.page, { timeout: 9000 }).toBe(1);
+  expect(config.booknotes).toMatchObject([
+    { id: 'old', note: 'edited', updatedAt: 2 },
+    { id: 'new', page: 2 },
+  ]);
+}, 15000);
 
 it('reconnects selection tools to already-loaded pages after the annotator remounts', async () => {
   const [a] = await open();

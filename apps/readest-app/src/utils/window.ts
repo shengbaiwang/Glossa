@@ -1,7 +1,8 @@
 import { getAllWindows, getCurrentWindow } from '@tauri-apps/api/window';
-import { emitTo, TauriEvent } from '@tauri-apps/api/event';
+import { emit, TauriEvent } from '@tauri-apps/api/event';
 import { exit } from '@tauri-apps/plugin-process';
 import { type as osType } from '@tauri-apps/plugin-os';
+import i18next from 'i18next';
 import { eventDispatcher } from './event';
 
 import { getAppName } from '@/services/environment';
@@ -65,8 +66,9 @@ export const tauriHandleClose = async () => {
   getCurrentWindow().close();
 };
 
-export const tauriHandleOnCloseWindow = async (callback: () => void) => {
+export const tauriHandleOnCloseWindow = async (callback: () => void | Promise<void>) => {
   const currentWindow = getCurrentWindow();
+  let closing = false;
   return await currentWindow.onCloseRequested(async (event) => {
     event.preventDefault();
     // On macOS, the main window's close is intercepted by the Rust backend
@@ -76,12 +78,27 @@ export const tauriHandleOnCloseWindow = async (callback: () => void) => {
     if (currentWindow.label === 'main' && (await osType()) === 'macos') {
       return;
     }
-    await callback();
-    if (currentWindow.label.startsWith('reader')) {
-      await emitTo('main', 'close-reader-window', { label: currentWindow.label });
-      setTimeout(() => currentWindow.destroy(), 300);
-    } else if (currentWindow.label === 'main') {
-      await currentWindow.destroy();
+    if (closing) return;
+    closing = true;
+    try {
+      await callback();
+      if (currentWindow.label.startsWith('reader')) {
+        await emit('close-reader-window', { label: currentWindow.label }).catch((error) =>
+          console.warn('Could not refresh the library after closing the reader:', error),
+        );
+        await currentWindow.destroy();
+      } else if (currentWindow.label === 'main') {
+        await currentWindow.destroy();
+      }
+    } catch (error) {
+      closing = false;
+      console.error('Could not close the window:', error);
+      await eventDispatcher.dispatch('toast', {
+        message: i18next.t('Could not close the window. Try again.', {
+          defaultValue: 'Could not close the window. Try again.',
+        }),
+        type: 'error',
+      });
     }
   });
 };

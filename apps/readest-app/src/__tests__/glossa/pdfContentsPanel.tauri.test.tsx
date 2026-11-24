@@ -1,7 +1,16 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { userEvent } from 'vitest/browser';
-import { mkdir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs';
+import {
+  exists,
+  mkdir,
+  readFile,
+  readTextFile,
+  remove,
+  rename,
+  writeFile,
+  writeTextFile,
+} from '@tauri-apps/plugin-fs';
 import { appLocalDataDir, join } from '@tauri-apps/api/path';
 import { invoke } from '@tauri-apps/api/core';
 import { DocumentLoader, type BookDoc } from '@/libs/document';
@@ -10,6 +19,8 @@ import {
   getPDFOCRStatus,
   supportsLocalPDF,
   readOCRPage,
+  releasePDFSourceSession,
+  savePDFOutline,
   OCRContentsLines,
   type OCRPage,
 } from '@/services/pdfEnhancement';
@@ -22,6 +33,7 @@ import type { SystemSettings } from '@/types/settings';
 import PDFContentsPanel from '@/glossa/plugins/PDFContentsPanel';
 import type { PDFContentsReport } from '@/services/pdfAutoContents';
 import { preparePDFContents } from '@/services/pdfAutoContents';
+import { pdfContentsCheckpointStorage } from '@/services/pdfContentsCheckpoint';
 import TOCView from '@/app/reader/components/sidebar/TOCView';
 import 'foliate-js/view.js';
 
@@ -46,8 +58,20 @@ vi.mock('@/glossa/plugins/pdfAutoContents', async (original) => {
 let source = '';
 let file: File;
 const host = {
+  exists: async (path: string) => exists(await join(sandbox, path)),
   resolveNativeBookFilePath: async () => source,
   loadBookContent: async () => ({ file }),
+  readFile: async (path: string) => readTextFile(await join(sandbox, path)),
+  writeFile: async (path: string, _base: string, text: string) => {
+    const destination = await join(sandbox, path);
+    await mkdir(destination.slice(0, destination.lastIndexOf('/')), { recursive: true });
+    await writeTextFile(destination, text);
+  },
+  deleteFile: async (path: string) => remove(await join(sandbox, path)),
+  fs: {
+    moveFile: async (from: string, _base: string, to: string) =>
+      rename(await join(sandbox, from), await join(sandbox, to)),
+  },
 };
 let documentBook: BookDoc | undefined;
 let view: FoliateView | undefined;
@@ -127,7 +151,7 @@ it('cancels real OCR from the panel, explicitly retries, saves and reopens nativ
     .poll(async () => (await getPDFOCRStatus(initial!.id))?.state, { timeout: 15000 })
     .toBe('running');
   await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-  await screen.findByText('Generation stopped. Saved progress is available for retry.');
+  await screen.findByText('Generation stopped.');
   await waitFor(() => expect((generate as HTMLButtonElement).disabled).toBe(false), {
     timeout: 10000,
   });
@@ -145,6 +169,11 @@ it('cancels real OCR from the panel, explicitly retries, saves and reopens nativ
   const saved = await openPDFCache(source, false, owner);
   expect(saved?.outline?.map((entry) => entry.pageIndex)).toEqual([1, 2]);
   expect(saved?.generator).toBe('glossa-contents-3');
+  const checkpoint = JSON.parse(await host.readFile(`${bookID}/pdf-contents-checkpoint.json`));
+  expect(checkpoint).toMatchObject({ version: 2, generation: 0 });
+  expect(
+    await pdfContentsCheckpointStorage(host, { bookId: bookID, revision: 0 })!.read(),
+  ).toMatchObject({ checks: { run: { state: 'completed', verifiedCount: 2 } } });
   expect(view.renderer).toBe(renderer);
   expect(documentBook.toc?.map((entry) => entry.label)).toEqual(
     saved?.outline?.map((entry) => entry.title),
@@ -224,7 +253,10 @@ it('persists part ownership through real native save and reopen, with folding an
   await userEvent.click(screen.getByRole('button', { name: 'Collapse Part I Hills' }));
   await waitFor(() => expect(screen.queryByText('Copper observations')).toBeNull());
   await userEvent.click(screen.getByRole('button', { name: 'Expand Part I Hills' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Expand Part II Cities' }));
+  // Native input returns before React has necessarily replaced the folded row.
+  await screen.findByText('Amber experiments');
+  await userEvent.click(await screen.findByRole('button', { name: 'Expand Part II Cities' }));
+  await screen.findByText('Silver results');
   const flatten = (items: NonNullable<BookDoc['toc']>): NonNullable<BookDoc['toc']> =>
     items.flatMap((item) => [item, ...flatten(item.subitems ?? [])]);
   for (const [index, entry] of flatten(documentBook.toc!).entries()) {
@@ -319,6 +351,12 @@ it('preserves small parents through real Rust JSON IPC and rejects an incomplete
     ['Afterword', 0],
     ['Appendix 1: Materials', 0],
   ]);
+  const cancelled = (await openPDFCache(source, false, undefined, true))!;
+  expect(cancelled.session).toBeTruthy();
+  await releasePDFSourceSession(cancelled);
+  await expect(
+    savePDFOutline(source, cancelled, [], documentBook.sections.length, 'glossa-contents-3'),
+  ).rejects.toBe('pdf_contents_cancelled');
   scans[1]!.lines[1]!.text = 'Part III Cities';
   await persistScan(scans[1]!);
   const reports: PDFContentsReport[] = [];
@@ -327,7 +365,11 @@ it('preserves small parents through real Rust JSON IPC and rejects an incomplete
       regenerate: true,
     }),
   ).toBe('unavailable');
-  expect(reports.at(-1)?.code).toBe('pdf_contents_structure_incomplete');
+  // Gaps in part numbering are legal; the changed title still lacks target evidence.
+  expect(reports.at(-1)?.code).toBe('pdf_contents_heading_unverified');
+  expect(reports.at(-1)?.issues).toEqual(
+    expect.arrayContaining([expect.objectContaining({ title: 'Part III Cities', sourcePage: 1 })]),
+  );
   const retained = await openPDFCache(source);
   expect(retained!.outline).toEqual(saved!.outline);
   expect(retained!.revision).toBe(saved!.revision);
