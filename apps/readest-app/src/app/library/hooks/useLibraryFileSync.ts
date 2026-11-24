@@ -3,6 +3,7 @@ import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useQuotaStats } from '@/hooks/useQuotaStats';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useFileSyncStore } from '@/store/fileSyncStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { debounce } from '@/utils/debounce';
 import { getActiveFileSyncBackends } from '@/services/sync/cloudSyncProvider';
@@ -43,9 +44,48 @@ export const useLibraryFileSync = () => {
   // Keep one stable debounced trigger that always calls the latest pass (via
   // ref), so it isn't recreated — and lost — on every settings change.
   const passRef = useRef<() => void>(() => {});
-  passRef.current = () => void runFileLibrarySyncPass(envConfig, _);
+  const retry = useRef({ target: '', failures: 0, after: 0 });
+  passRef.current = async () => {
+    const target =
+      settings.icloud?.enabled && settings.icloud.vaultId
+        ? JSON.stringify([settings.icloud.vaultId, settings.icloud.documentsPath])
+        : '';
+    if (retry.current.target !== target) retry.current = { target, failures: 0, after: 0 };
+    if (target && Date.now() < retry.current.after) {
+      await runFileLibrarySyncPass(envConfig, _, (kind) => kind !== 'icloud');
+      return;
+    }
+    await runFileLibrarySyncPass(envConfig, _);
+    if (!target || retry.current.target !== target) return;
+    const failed = !!useFileSyncStore.getState().lastErrorByKind.icloud;
+    const failures = failed ? Math.min(8, retry.current.failures + 1) : 0;
+    retry.current = {
+      target,
+      failures,
+      after: failed ? Date.now() + Math.min(900_000, 5000 * 2 ** failures) : 0,
+    };
+  };
   const debouncedSync = useMemo(() => debounce(() => passRef.current(), SYNC_DEBOUNCE_MS), []);
   useEffect(() => () => debouncedSync.cancel(), [debouncedSync]);
+
+  useEffect(() => {
+    if (!settings.icloud?.vaultId || !settings.icloud.enabled || !libraryLoaded) return;
+    const refresh = () => {
+      if (document.visibilityState !== 'hidden') debouncedSync();
+    };
+    const online = () => {
+      retry.current.after = 0;
+      refresh();
+    };
+    window.addEventListener('online', online);
+    document.addEventListener('visibilitychange', refresh);
+    const timer = window.setInterval(refresh, 60_000);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('online', online);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [settings.icloud?.vaultId, settings.icloud?.enabled, libraryLoaded, debouncedSync]);
 
   // Library changes — import (adds a row), delete (sets deletedAt), book close
   // (bumps updatedAt) — all mutate `library`, so this single effect covers them

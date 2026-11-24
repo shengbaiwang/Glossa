@@ -16,7 +16,10 @@ const mocks = vi.hoisted(() => {
     setNotebookEditAnnotation: vi.fn(),
     addAnnotation: vi.fn(),
     saveConfig: vi.fn(),
-    updateBooknotes: vi.fn(() => ({ booknotes: state.booknotes })),
+    updateBooknotes: vi.fn((_key: string, notes: BookNote[]) => {
+      state.booknotes = notes;
+      return { booknotes: notes };
+    }),
   };
 });
 
@@ -94,6 +97,30 @@ afterEach(() => {
 });
 
 describe('BooknoteItem', () => {
+  it('shows both offline drafts inline and resolves the observed parents when a version is chosen', () => {
+    const context = {
+      vault: 'vault',
+      seen: {},
+      hashes: {},
+      parents: { note: ['p', 'q'] },
+      bodies: [
+        { id: 'p', text: '甲' },
+        { id: 'q', text: '乙' },
+      ],
+    };
+    const item = makeItem({ note: '甲', icloudEdit: context });
+    mocks.state.booknotes = [item];
+    renderItem(item, true);
+    fireEvent.click(screen.getByText('Note versions'));
+    expect(screen.getByText('乙')).toBeTruthy();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Use this version' })[1]!);
+    expect(mocks.saveConfig).toHaveBeenCalledTimes(1);
+    expect(mocks.state.booknotes[0]).toMatchObject({
+      note: '乙',
+      icloudEdit: { resolveBody: true, parents: { note: ['p', 'q'] } },
+    });
+  });
+
   it('never opens the notebook when a noted item is clicked', () => {
     renderItem(makeItem({ note: 'my note' }));
     fireEvent.click(screen.getByText('highlighted words'));

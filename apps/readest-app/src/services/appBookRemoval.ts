@@ -57,7 +57,14 @@ export const bookRemovalIO = (app: AppService) => {
 export const prepareLocalRelease =
   (app: AppService) => async (book: Book, signal?: AbortSignal) => {
     const { prepareCloudRelease } = await import('@/glossa/sync/dehydrateBook');
-    const release = await prepareCloudRelease(app, book, signal);
+    const release =
+      !book.glossaCloud && book.icloudAsset
+        ? await (await import('./sync/providers/icloud/release')).prepareVaultRelease(
+            app,
+            book,
+            signal,
+          )
+        : await prepareCloudRelease(app, book, signal);
     return async (latest: Book) => {
       const { withBookDataWrite } = await import('./bookDataLifecycle');
       await withBookDataWrite(latest.hash, latest.removal?.revision ?? 0, () => release(latest));
@@ -75,7 +82,7 @@ export const cleanRemovedBook =
         }
         await app.deleteBook(book, mode);
       });
-    } else if (book.glossaCloud || book.localRemoval?.cloudScope) {
+    } else if (book.glossaCloud || book.icloudAsset || book.localRemoval?.cloudScope) {
       throw new Error('Cloud recovery must be verified before committing local removal.');
     } else {
       const [{ withBookDataWrite }, { clearVerifiedBookDownload }] = await Promise.all([

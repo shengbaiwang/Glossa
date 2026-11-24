@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   platform: 'macos',
   stat: vi.fn(),
   container: vi.fn(),
+  probe: vi.fn(),
   provider: vi.fn(),
 }));
 vi.mock('@/services/environment', () => ({
@@ -12,7 +13,10 @@ vi.mock('@/services/environment', () => ({
 }));
 vi.mock('@/utils/misc', () => ({ getOSPlatform: () => mocks.platform }));
 vi.mock('@tauri-apps/plugin-fs', () => ({ stat: mocks.stat }));
-vi.mock('@/utils/bridge', () => ({ getICloudContainerStatus: mocks.container }));
+vi.mock('@/utils/bridge', () => ({
+  getICloudContainerStatus: mocks.container,
+  icloudEnsureDownloaded: mocks.probe,
+}));
 vi.mock('@/services/sync/providers/icloud/ICloudProvider', () => ({
   createICloudProvider: mocks.provider,
 }));
@@ -35,6 +39,18 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 describe('Glossa iCloud Drive folder boundary', () => {
+  it('checks the iOS File Provider domain through Foundation before accepting a directory', async () => {
+    mocks.platform = 'ios';
+    const folder =
+      '/private/var/mobile/Containers/Shared/AppGroup/' +
+      crypto.randomUUID() +
+      '/File Provider Storage/Glossa';
+    mocks.probe.mockResolvedValueOnce({ status: 'notFound' });
+    expect(await resolveICloudDocumentsPath(folder)).toBeNull();
+    mocks.probe.mockResolvedValueOnce({ status: 'driveDirectory' });
+    expect(await resolveICloudDocumentsPath(folder)).toBe(folder);
+    expect(mocks.probe).toHaveBeenCalledWith({ path: folder, directoryOnly: true });
+  });
   it('accepts a selected dedicated folder and never silently selects the drive root', async () => {
     expect(await resolveICloudDocumentsPath()).toBeNull();
     expect(await resolveICloudDocumentsPath(root)).toBeNull();
@@ -56,6 +72,13 @@ describe('Glossa iCloud Drive folder boundary', () => {
     expect(await resolveICloudDocumentsPath(`${root}/Glossa`)).toBeNull();
     mocks.stat.mockRejectedValueOnce(new Error('access denied'));
     expect(await resolveICloudDocumentsPath(`${root}/Glossa`)).toBeNull();
+  });
+  it('reopens the explicitly selected iOS Drive folder without a private app container', async () => {
+    mocks.platform = 'ios';
+    const path = '/private/var/mobile/Library/Mobile Documents/com~apple~CloudDocs/Research';
+    expect(await resolveICloudDocumentsPath(path)).toBe(path);
+    expect(await resolveICloudDocumentsPath('/private/var/mobile/Documents/Research')).toBeNull();
+    expect(mocks.container).not.toHaveBeenCalled();
   });
   it('never uses the upstream iOS container without an own container configuration', async () => {
     mocks.platform = 'ios';

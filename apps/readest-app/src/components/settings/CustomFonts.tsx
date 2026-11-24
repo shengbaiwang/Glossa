@@ -1,4 +1,4 @@
-import { LoaderCircle } from '@/components/GlossaIcons';
+import { CloudUpload, LoaderCircle } from '@/components/GlossaIcons';
 import clsx from 'clsx';
 import React, { useState } from 'react';
 import { Plus as MdAdd, Trash2 as MdDelete } from '@/components/GlossaIcons';
@@ -40,6 +40,68 @@ const CustomFonts: React.FC<CustomFontsProps> = ({ bookKey, onBack }) => {
   const { getViewSettings } = useReaderStore();
   const viewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
   const [isDeleteMode, setIsDeleteMode] = useState(false);
+  const [cloudFonts, setCloudFonts] = useState<
+    import('@/services/sync/providers/icloud/fonts').CloudFont[]
+  >([]);
+  const [fontBusy, setFontBusy] = useState(false);
+  const fontAction = async (work: () => Promise<void>) => {
+    if (fontBusy) return;
+    setFontBusy(true);
+    setFontError('');
+    try {
+      await work();
+    } catch {
+      setFontError(_('Unable to sync fonts. Please try again.'));
+    } finally {
+      setFontBusy(false);
+    }
+  };
+  const accessCloud = async (direction: 'push' | 'pull') => {
+    const observed = useSettingsStore.getState().settings.icloud;
+    const { createFileSyncProvider } = await import('@/services/sync/file/providerRegistry');
+    const provider = await createFileSyncProvider('icloud', useSettingsStore.getState().settings);
+    const check = () => {
+      const now = useSettingsStore.getState().settings.icloud;
+      if (
+        !now?.enabled ||
+        !provider?.vaultId ||
+        now.strategy === (direction === 'push' ? 'receive' : 'send') ||
+        now.vaultId !== provider.vaultId ||
+        now.documentsPath !== observed.documentsPath
+      )
+        throw new Error('iCloud library changed');
+    };
+    check();
+    await (await import('@/services/sync/providers/icloud/vault')).verifyVault(
+      provider!,
+      provider!.vaultId!,
+    );
+    return { provider: provider!, check };
+  };
+  const chooseFontFamily = (family: FontFamily) =>
+    fontAction(async () => {
+      if (!appService) return;
+      const vault = settings.icloud.vaultId!;
+      const { selectFont } = await import('@/services/sync/providers/icloud/fonts');
+      const selected: import('@/services/sync/providers/icloud/fonts').FontSelection[] = [];
+      for (const font of family.fonts) selected.push(await selectFont(appService, font));
+      const latest = useSettingsStore.getState().settings;
+      if (latest.icloud.vaultId !== vault || !latest.icloud.enabled)
+        throw new Error('iCloud library changed');
+      const old = latest.icloud.fontSelection;
+      const files = [
+        ...(old?.vault === vault ? old.files : []).filter(
+          (f) => !selected.some((s) => s.id === f.id),
+        ),
+        ...selected,
+      ];
+      const next = { ...latest, icloud: { ...latest.icloud, fontSelection: { vault, files } } };
+      await appService.saveSettings(next);
+      useSettingsStore.getState().setSettings(next);
+      const { provider, check } = await accessCloud('push');
+      const { pushSelectedFonts } = await import('@/services/sync/providers/icloud/fonts');
+      await pushSelectedFonts(appService, provider, family.fonts, selected, check);
+    });
   const [deleting, setDeleting] = useState(false);
   const [fontError, setFontError] = useState('');
   // null = idle, true = importing (spinner), { family } = done importing (show font name).
@@ -276,6 +338,24 @@ const CustomFonts: React.FC<CustomFontsProps> = ({ bookKey, onBack }) => {
               >
                 {family.name}
               </div>
+              {settings.icloud?.enabled &&
+                settings.icloud.vaultId &&
+                settings.icloud.strategy !== 'receive' &&
+                !isDeleteMode && (
+                  <button
+                    type='button'
+                    className='btn btn-ghost btn-xs absolute end-1 top-1'
+                    title={_('Share font via iCloud')}
+                    aria-label={_('Share font via iCloud')}
+                    disabled={fontBusy}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void chooseFontFamily(family);
+                    }}
+                  >
+                    <CloudUpload size={14} />
+                  </button>
+                )}
               {isDeleteMode && (
                 <button
                   onClick={() => handleDeleteFamily(family)}
@@ -291,6 +371,57 @@ const CustomFonts: React.FC<CustomFontsProps> = ({ bookKey, onBack }) => {
         ))}
       </div>
 
+      {settings.icloud?.enabled &&
+        settings.icloud.vaultId &&
+        settings.icloud.strategy !== 'send' && (
+          <details
+            onToggle={(e) => {
+              if (e.currentTarget.open)
+                void fontAction(async () => {
+                  const { provider, check } = await accessCloud('pull');
+                  const { listFonts } = await import('@/services/sync/providers/icloud/fonts');
+                  const rows = await listFonts(provider, check);
+                  check();
+                  setCloudFonts(rows);
+                });
+            }}
+          >
+            <summary>{_('Fonts in iCloud Drive')}</summary>
+            {cloudFonts
+              .filter((f) => f.asset.vault === settings.icloud.vaultId)
+              .map((row) => (
+                <button
+                  key={row.asset.manifest + row.filename}
+                  type='button'
+                  disabled={
+                    fontBusy || customFonts.some((f) => !f.deletedAt && f.name === row.name)
+                  }
+                  onClick={() =>
+                    void fontAction(async () => {
+                      if (!appService) return;
+                      const { provider, check } = await accessCloud('pull');
+                      const { readFont } = await import('@/services/sync/providers/icloud/fonts');
+                      const info = await appService.importFont(
+                        await readFont(provider, row, check),
+                      );
+                      if (!info) throw new Error('Font import failed');
+                      if (
+                        useCustomFontStore
+                          .getState()
+                          .fonts.some((f) => !f.deletedAt && f.name === info.name)
+                      )
+                        throw new Error('Font name already exists');
+                      const imported = addFont(info.path, info);
+                      await saveCustomFonts(envConfig);
+                      mountCustomFont(document, await loadFont(envConfig, imported.id));
+                    })
+                  }
+                >
+                  {row.name}
+                </button>
+              ))}
+          </details>
+        )}
       {fontError && (
         <p role='alert' className='mt-4 text-sm text-error'>
           {fontError}

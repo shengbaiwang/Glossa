@@ -51,14 +51,14 @@ it('opens cloud transfers after closing the settings layer', () => {
   expect(useTransferStore.getState().isTransferQueueOpen).toBe(true);
 });
 
-it('uses the dedicated Glossa backend and stores the release period for the current device account', () => {
+it('shows personal destinations and stores the release period for the current device account', () => {
   vi.stubEnv('NEXT_PUBLIC_GLOSSA_SYNC_ORIGIN', 'https://policy.example.test');
   const subject = crypto.randomUUID();
   try {
     useLibraryStore.setState({ cloudSubject: subject });
     render(<IntegrationsPanel />);
-    expect(screen.getByRole('heading', { name: 'Glossa R2' })).toBeDefined();
-    expect(screen.queryByText('WebDAV')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Glossa R2' })).toBeNull();
+    expect(screen.getByText('WebDAV')).toBeDefined();
     const select = screen.getByLabelText('Clear downloads after finishing') as HTMLSelectElement;
     expect(select.value).toBe('0');
     fireEvent.change(select, { target: { value: '30' } });

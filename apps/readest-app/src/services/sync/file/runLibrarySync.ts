@@ -63,7 +63,11 @@ export const canBackendRun = (
     if (!isICloudSupportedPlatform()) return false;
     if (getOSPlatform() === 'macos' && !isICloudDriveFolder(settings?.icloud?.documentsPath ?? ''))
       return false;
-    if (getOSPlatform() === 'ios' && !process.env['NEXT_PUBLIC_GLOSSA_ICLOUD_CONTAINER'])
+    if (
+      getOSPlatform() === 'ios' &&
+      !isICloudDriveFolder(settings?.icloud?.documentsPath ?? '') &&
+      !process.env['NEXT_PUBLIC_GLOSSA_ICLOUD_CONTAINER']
+    )
       return false;
   }
   return true;
@@ -136,7 +140,14 @@ const syncOneBackend = async (
     },
   });
 
+  if (result.failures) return result;
   const latest = useSettingsStore.getState().settings;
+  if (
+    kind === 'icloud' &&
+    (current.icloud.vaultId !== latest.icloud.vaultId ||
+      current.icloud.documentsPath !== latest.icloud.documentsPath)
+  )
+    return result;
   const next = { ...latest, [key]: { ...latest[key], lastSyncedAt: Date.now() } };
   useSettingsStore.getState().setSettings(next);
   await appService.saveSettings(next);
@@ -165,8 +176,11 @@ const syncOneBackend = async (
 export const runFileLibrarySyncPass = async (
   envConfig: EnvConfigType,
   _: TranslationFunc,
+  include?: (kind: FileSyncBackendKind) => boolean,
 ): Promise<SyncLibraryResult | null> => {
-  const backends = getReadyFileSyncBackends(useSettingsStore.getState().settings);
+  const backends = getReadyFileSyncBackends(useSettingsStore.getState().settings).filter(
+    (kind) => !include || include(kind),
+  );
   if (backends.length === 0) return null;
 
   // NEVER sync a library that is not loaded from disk: pushing an empty index
@@ -182,7 +196,7 @@ export const runFileLibrarySyncPass = async (
       if (i > 0) useFileSyncStore.getState().switchSync(kind, _('Syncing…'));
       try {
         const result = await syncOneBackend(envConfig, kind, _);
-        useFileSyncStore.getState().setLastError(kind, null);
+        useFileSyncStore.getState().setLastError(kind, result?.failedBooks?.[0]?.reason ?? null);
         if (result) {
           merged = merged
             ? { ...result, booksSynced: merged.booksSynced + result.booksSynced }

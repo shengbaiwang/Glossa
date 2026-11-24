@@ -140,7 +140,18 @@ export function useLibraryFolders() {
           ),
           replacements: result.replacements,
         };
+        if (before.icloud?.vaultId && result.replacements) {
+          const { folderMoves } = await import('@/services/sync/providers/icloud/groups');
+          folderMoves.set(nextSettings, result.replacements);
+        }
         await appService.saveSettings(nextSettings);
+        for (const book of changedBooks) {
+          const context = nextSettings.icloudFolders;
+          if (context && context.vault === before.icloud?.vaultId) {
+            const id = book.groupName && context.paths[book.groupName];
+            book.icloudGroup = id ? { vault: context.vault, id } : null;
+          }
+        }
         try {
           const current = useSettingsStore.getState().settings;
           if (
@@ -161,6 +172,7 @@ export function useLibraryFolders() {
                 // A progress/title change while the catalog was saving must survive.
                 ...latest.get(book.hash),
                 groupName: book.groupName,
+                icloudGroup: book.icloudGroup,
                 groupId: book.groupId,
                 groupUpdatedAt: book.groupUpdatedAt,
                 updatedAt: Math.max(book.updatedAt, latest.get(book.hash)?.updatedAt ?? 0),
@@ -175,6 +187,7 @@ export function useLibraryFolders() {
         const currentSettings = {
           ...useSettingsStore.getState().settings,
           libraryFolders: result.paths,
+          icloudFolders: nextSettings.icloudFolders,
           autoImportFolderGroups: useSettingsStore.getState().settings.autoImportFolderGroups && {
             ...useSettingsStore.getState().settings.autoImportFolderGroups,
             ...Object.fromEntries(record.imports.map((entry) => [entry.key, entry.after])),
@@ -192,6 +205,7 @@ export function useLibraryFolders() {
               ? {
                   ...book,
                   groupName: updated.groupName,
+                  icloudGroup: updated.icloudGroup,
                   groupId: updated.groupId,
                   groupUpdatedAt: updated.groupUpdatedAt,
                   updatedAt: Math.max(book.updatedAt, updated.updatedAt),

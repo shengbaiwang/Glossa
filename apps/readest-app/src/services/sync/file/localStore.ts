@@ -20,6 +20,21 @@ export interface BookBytes {
  *     resolving on-disk paths for streaming, and mutating the local library).
  */
 export interface LocalStore {
+  pushVaultFile?(
+    provider: import('./provider').FileSyncProvider,
+    book: Book,
+  ): Promise<import('./engine').PushBookFileResult>;
+  downloadVaultFile?(provider: import('./provider').FileSyncProvider, book: Book): Promise<boolean>;
+  syncVaultCatalog?(
+    provider: import('./provider').FileSyncProvider,
+    direction: 'pull' | 'push',
+  ): Promise<{ books: Book[]; changed: number; unverified?: Pick<Book, 'hash' | 'title'>[] }>;
+  syncVaultConfig?(
+    provider: import('./provider').FileSyncProvider,
+    book: Book,
+    direction: 'pull' | 'push',
+    config: BookConfig,
+  ): Promise<import('./engine').PullResult>;
   /** Load a book's local config (progress + booknotes), or null if none. */
   loadConfig(book: Book): Promise<BookConfig | null>;
   /** Persist a (merged) config to local disk. */

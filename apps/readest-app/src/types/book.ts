@@ -139,6 +139,8 @@ export interface ZoteroSource {
 }
 
 export interface Book {
+  icloudGroup?: { vault: string; id: string } | null;
+  icloudAsset?: import('@/services/sync/providers/icloud/blob').VaultAsset;
   readingSpaces?: ReadingSpace[];
   readingSpacesUpdatedAt?: number;
   zoteroSource?: ZoteroSource;
@@ -249,6 +251,7 @@ export interface TimeInfo {
 }
 
 export interface BookNote {
+  icloudEdit?: import('@/services/sync/providers/icloud/noteJournal').NoteEditContext;
   bookHash?: string;
   metaHash?: string;
   id: string;
@@ -643,6 +646,8 @@ export interface BookSearchResult {
 export const BOOK_CONFIG_SCHEMA_VERSION = 3;
 
 export interface BookConfig {
+  icloudTypography?: import('@/services/sync/providers/icloud/typography').TypographyContext;
+  icloudPosition?: import('@/services/sync/providers/icloud/positionJournal').ProgressContext;
   schemaVersion?: number;
   bookHash?: string;
   metaHash?: string;

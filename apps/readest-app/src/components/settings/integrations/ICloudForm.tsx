@@ -4,7 +4,6 @@ import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
 import { broadcastGlobalSettings } from '@/utils/settingsSync';
-import { getOSPlatform } from '@/utils/misc';
 import {
   isICloudDriveFolder,
   resolveICloudDocumentsPath,
@@ -21,7 +20,6 @@ export default function ICloudForm() {
   const [available, setAvailable] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const macOS = getOSPlatform() === 'macos';
 
   useEffect(() => {
     let disposed = false;
@@ -57,12 +55,37 @@ export default function ICloudForm() {
         setError(_('Choose a folder in iCloud Drive.'));
         return;
       }
-      await mkdir(path, { recursive: true });
+      if (path !== selected) await mkdir(path, { recursive: true });
       if (!(await resolveICloudDocumentsPath(path))) throw new Error('Folder unavailable');
-      await persist({ documentsPath: path });
+      await persist({
+        documentsPath: path,
+        ...(path !== stored?.documentsPath ? { vaultId: undefined, enabled: false } : {}),
+      });
       setAvailable(true);
     } catch {
       setError(_('Unable to access this folder. Please choose it again.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const bindVault = async (create: boolean) => {
+    if (!stored?.documentsPath || busy) return;
+    const selected = stored.documentsPath;
+    setBusy(true);
+    setError('');
+    try {
+      const path = await resolveICloudDocumentsPath(selected);
+      if (!path) throw new Error();
+      const { createICloudProvider } = await import(
+        '@/services/sync/providers/icloud/ICloudProvider'
+      );
+      const { selectVault } = await import('@/services/sync/providers/icloud/vault');
+      const vaultId = await selectVault(createICloudProvider(path), create);
+      if (useSettingsStore.getState().settings.icloud?.documentsPath !== selected)
+        throw new Error();
+      await persist({ vaultId });
+    } catch {
+      setError(_('Could not open the iCloud library. Check the folder and try again.'));
     } finally {
       setBusy(false);
     }
@@ -81,26 +104,42 @@ export default function ICloudForm() {
   };
   return (
     <div className='space-y-5'>
-      {macOS && (
-        <div className='flex items-center justify-between gap-4'>
-          <span className='text-base-content/70 truncate text-sm'>
-            {stored?.documentsPath?.split('/').pop() ?? _('iCloud Drive folder')}
-          </span>
+      <div className='flex items-center justify-between gap-4'>
+        <span className='text-base-content/70 truncate text-sm'>
+          {stored?.documentsPath?.split('/').pop() ?? _('iCloud Drive folder')}
+        </span>
+        <button
+          type='button'
+          disabled={busy}
+          onClick={() => void chooseFolder()}
+          className='btn btn-ghost shrink-0 rounded-lg'
+        >
+          {_('Choose folder')}
+        </button>
+      </div>
+      {available && stored?.documentsPath && !stored.vaultId && (
+        <div className='flex flex-wrap gap-2'>
           <button
             type='button'
+            className='btn btn-ghost'
             disabled={busy}
-            onClick={() => void chooseFolder()}
-            className='btn btn-ghost shrink-0 rounded-lg'
+            onClick={() => void bindVault(false)}
           >
-            {_('Choose folder')}
+            {_('Open iCloud library')}
+          </button>
+          <button
+            type='button'
+            className='btn btn-ghost'
+            disabled={busy}
+            onClick={() => void bindVault(true)}
+          >
+            {_('Create iCloud library')}
           </button>
         </div>
       )}
       {available === false && (
         <p role='status' className='text-base-content/70 text-sm'>
-          {macOS
-            ? _('Choose a folder in iCloud Drive.')
-            : _('iCloud is not available on this device.')}
+          {_('Choose a folder in iCloud Drive.')}
         </p>
       )}
       {stored?.enabled && (
@@ -114,7 +153,7 @@ export default function ICloudForm() {
       <div className='flex justify-end'>
         <button
           type='button'
-          disabled={busy || (!stored?.enabled && available !== true)}
+          disabled={busy || (!stored?.enabled && (available !== true || !stored?.vaultId))}
           onClick={() => void toggle(!stored?.enabled)}
           className='btn btn-contrast rounded-lg'
         >

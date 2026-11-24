@@ -86,10 +86,12 @@ beforeEach(() => {
 });
 
 describe('useBookTransferActions upload routing (issue #5062)', () => {
-  it('sends an explicit upload only to Glossa when its endpoint is configured', async () => {
+  it('uses the selected personal destination even with an archived official endpoint', async () => {
     vi.stubEnv('NEXT_PUBLIC_GLOSSA_SYNC_ORIGIN', 'https://sync.example');
     try {
       routing.backends = ['webdav'];
+      routing.readestEnabled = false;
+      runFileBookUpload.mockResolvedValue(true);
       const uploadBook = vi.fn(async () => {});
       const { result } = renderHook(() =>
         useBookTransferActions(
@@ -101,9 +103,9 @@ describe('useBookTransferActions upload routing (issue #5062)', () => {
       );
       const book = makeBook();
       expect(await result.current.handleBookUpload(book)).toBe(true);
-      expect(uploadBook).toHaveBeenCalledWith(book);
+      expect(uploadBook).not.toHaveBeenCalled();
       expect(queueUpload).not.toHaveBeenCalled();
-      expect(runFileBookUpload).not.toHaveBeenCalled();
+      expect(runFileBookUpload).toHaveBeenCalledWith(envConfig, book);
     } finally {
       vi.unstubAllEnvs();
     }

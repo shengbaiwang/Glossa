@@ -116,6 +116,7 @@ export const useFileSync = (bookKey: string) => {
 
   /** Flips true on the first local change after a push, false right before each push. */
   const dirtyRef = useRef(false);
+  const prompted = useRef('');
   /** Last successful pull timestamp; gates window-focus and open-book pulls. */
   const lastPulledAtRef = useRef(0);
   const hasPulledOnce = useRef(false);
@@ -133,7 +134,11 @@ export const useFileSync = (bookKey: string) => {
 
   // Switching the enabled backend SET mid-session resets the per-book locks so
   // newly-active backends do a fresh pull-on-open and re-check file/cover.
-  const activeKindsKey = activeKinds.join(',');
+  const activeKindsKey = JSON.stringify([
+    activeKinds,
+    settings.icloud?.vaultId,
+    settings.icloud?.documentsPath,
+  ]);
   useEffect(() => {
     hasPulledOnce.current = false;
     fileSyncedRef.current.clear();
@@ -227,12 +232,22 @@ export const useFileSync = (bookKey: string) => {
     const c = settings.s3;
     return [
       activeKindsKey,
+      settings.icloud?.vaultId,
+      settings.icloud?.documentsPath,
       `webdav:${w?.serverUrl}:${w?.username}:${w?.password}:${w?.rootPath}`,
       `gdrive:${settings.googleDrive?.enabled}`,
       `s3:${c?.endpoint}:${c?.region}:${c?.bucket}:${c?.accessKeyId}:${c?.secretAccessKey}`,
       `onedrive:${settings.onedrive?.enabled}`,
     ].join('|');
-  }, [activeKindsKey, settings.webdav, settings.googleDrive, settings.s3, settings.onedrive]);
+  }, [
+    activeKindsKey,
+    settings.webdav,
+    settings.googleDrive,
+    settings.s3,
+    settings.onedrive,
+    settings.icloud?.documentsPath,
+    settings.icloud?.vaultId,
+  ]);
 
   const [engines, setEngines] = useState<
     Array<{ kind: FileSyncBackendKind; engine: FileSyncEngine }>
@@ -311,7 +326,12 @@ export const useFileSync = (bookKey: string) => {
       const ps = sliceFor(kind);
       const wantProgress = ps?.syncProgress ?? true;
       const wantNotes = ps?.syncNotes ?? true;
-      if (!wantProgress && !wantNotes) continue;
+      if (
+        !wantProgress &&
+        !wantNotes &&
+        !(kind === 'icloud' && useSettingsStore.getState().settings.icloud?.vaultId)
+      )
+        continue;
       try {
         await engine.pushBookConfig(book, config, ensureDeviceId(kind));
         // This backend's session is proven live — clear its own expired-auth
@@ -430,7 +450,12 @@ export const useFileSync = (bookKey: string) => {
       const ps = sliceFor(kind);
       const wantProgress = ps?.syncProgress ?? true;
       const wantNotes = ps?.syncNotes ?? true;
-      if (!wantProgress && !wantNotes) continue;
+      if (
+        !wantProgress &&
+        !wantNotes &&
+        !(kind === 'icloud' && useSettingsStore.getState().settings.icloud?.vaultId)
+      )
+        continue;
       const before = working;
       try {
         const result = await engine.pullBookConfig(book, working);
@@ -439,6 +464,26 @@ export const useFileSync = (bookKey: string) => {
         // expired-session notice without touching a sibling's.
         authNotifiedRef.current.delete(kind);
         pulledKinds.push(kind);
+        const candidate = result.progressCandidate;
+        if (wantProgress && candidate && prompted.current !== candidate.id) {
+          prompted.current = candidate.id;
+          void eventDispatcher.dispatch('readingProgressDiverged', { bookKey, ...candidate });
+          void eventDispatcher.dispatch('toast', {
+            message: candidate.page
+              ? _('{{device}} is on page {{page}}', {
+                  device: candidate.device,
+                  page: candidate.page,
+                })
+              : _('{{device}} has another reading position', { device: candidate.device }),
+            action: {
+              label: _('Jump'),
+              onClick: () => {
+                if (getBookData(bookKey)?.book?.hash === book.hash)
+                  void getView(bookKey)?.goTo(candidate.location);
+              },
+            },
+          });
+        }
         if (!result.applied || !result.mergedConfig) continue;
         applied = true;
         let merged = result.mergedConfig;
@@ -466,6 +511,9 @@ export const useFileSync = (bookKey: string) => {
     if (pulledKinds.length > 0) await updateLastSyncedAt(pulledKinds, Date.now());
     if (!applied) return false;
 
+    // A local edit made while the provider was materialising a placeholder
+    // owns the live view. The committed remote operations remain in SQLite.
+    if (getConfig(bookKey) !== config && settings.icloud?.vaultId) return false;
     // Surface merged notes through the live view so highlights re-appear /
     // disappear without waiting for the next render pass. `mergedNotes` is
     // only ever set from a backend that wanted notes, so this already
@@ -612,6 +660,20 @@ export const useFileSync = (bookKey: string) => {
       eventDispatcher.off('flush-file-sync', handlePush);
     };
   }, [bookKey, debouncedPush]);
+
+  useEffect(() => {
+    if (!isReady || !settings.icloud?.enabled || !settings.icloud.vaultId) return;
+    const refresh = () => {
+      if (document.visibilityState !== 'hidden')
+        void syncRefs.current.pullNow().then(() => syncRefs.current.pushNow());
+    };
+    const timer = window.setInterval(refresh, PULL_COOLDOWN_MS);
+    window.addEventListener('online', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('online', refresh);
+    };
+  }, [isReady, settings.icloud?.enabled, settings.icloud?.vaultId]);
 
   // Window blur ⇒ push pending changes. Window focus ⇒ pull (cooldown-gated).
   useWindowActiveChanged((isActive) => {

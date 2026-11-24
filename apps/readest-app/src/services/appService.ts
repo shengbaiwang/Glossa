@@ -295,10 +295,59 @@ export abstract class BaseAppService implements AppService {
   async loadSettings(): Promise<SystemSettings> {
     const settings = await Settings.loadSettings(this.settingsCtx);
     this.localBooksDir = settings.localBooksDir;
+    if (settings.icloud?.vaultId && this.appPlatform !== 'web') {
+      const { withGlobalTypography, typographyProfile } = await import(
+        './sync/providers/icloud/typography'
+      );
+      const profile = typographyProfile(this);
+      const result = await withGlobalTypography(this, settings.icloud.vaultId, async (log) => {
+        if (settings.icloudFolders?.vault !== settings.icloud.vaultId)
+          await log.groups.save(settings.libraryFolders ?? []);
+        const folders = await log.groups.project();
+        settings.icloudFolders = folders;
+        settings.libraryFolders = folders.order;
+        const defaults = this.getDefaultViewSettings();
+        await log.save(settings.globalViewSettings, profile, undefined, defaults);
+        return log.project(settings.globalViewSettings, profile, defaults);
+      });
+      settings.globalViewSettings = { ...settings.globalViewSettings, ...result.view };
+      settings.icloudTypography = result.context;
+    }
     return settings;
   }
 
   async saveSettings(settings: SystemSettings): Promise<void> {
+    if (settings.icloud?.vaultId && settings.globalViewSettings && this.appPlatform !== 'web') {
+      const { withGlobalTypography, typographyProfile } = await import(
+        './sync/providers/icloud/typography'
+      );
+      const { folderMoves } = await import('./sync/providers/icloud/groups');
+      settings.icloudTypography = await withGlobalTypography(
+        this,
+        settings.icloud.vaultId,
+        async (log) => {
+          if (settings.libraryFolders) {
+            const observed = settings.icloudFolders;
+            if (
+              !observed ||
+              observed.vault !== settings.icloud.vaultId ||
+              JSON.stringify(observed.order) !== JSON.stringify(settings.libraryFolders)
+            )
+              settings.icloudFolders = await log.groups.save(
+                settings.libraryFolders,
+                observed,
+                folderMoves.get(settings),
+              );
+          }
+          return log.save(
+            settings.globalViewSettings,
+            typographyProfile(this),
+            settings.icloudTypography,
+            this.getDefaultViewSettings(),
+          );
+        },
+      );
+    }
     await Settings.saveSettings(this.fs, settings);
   }
 
@@ -413,7 +462,7 @@ export abstract class BaseAppService implements AppService {
   }
 
   async deleteBook(book: Book, deleteAction: DeleteAction): Promise<void> {
-    if (book.glossaCloud && deleteAction === 'local')
+    if ((book.glossaCloud || book.icloudAsset) && deleteAction === 'local')
       throw new Error('cloud_recovery_check_required');
     return CloudSvc.deleteBook(this.fs, book, deleteAction);
   }
@@ -486,11 +535,7 @@ export abstract class BaseAppService implements AppService {
   }
 
   async uploadBook(book: Book, onProgress?: ProgressHandler): Promise<void> {
-    if (hasGlossaSyncConfig() || book.glossaCloud) {
-      const { uploadGlossaBook } = await import('@/glossa/sync/uploadBook');
-      const { withBookInUse } = await import('@/glossa/sync/bookUse');
-      return withBookInUse(book.hash, () => uploadGlossaBook(this, this.fs, book));
-    }
+    if (book.glossaCloud || hasGlossaSyncConfig()) throw new Error('Use personal cloud upload');
     return CloudSvc.uploadBook(this.fs, this.resolveFilePath.bind(this), book, onProgress);
   }
 
@@ -512,7 +557,7 @@ export abstract class BaseAppService implements AppService {
     redownload = false,
     onProgress?: ProgressHandler,
   ): Promise<void> {
-    if (hasGlossaSyncConfig() || book.glossaCloud) {
+    if (book.glossaCloud) {
       if (onlyCover) throw new Error('cloud_cover_unavailable');
       const { downloadGlossaBook } = await import('@/glossa/sync/downloadBook');
       const { withBookInUse } = await import('@/glossa/sync/bookUse');
@@ -572,7 +617,48 @@ export abstract class BaseAppService implements AppService {
   }
 
   async loadBookConfig(book: Book, settings: SystemSettings): Promise<BookConfig> {
-    return BookSvc.loadBookConfig(this.fs, book, settings);
+    const config = await BookSvc.loadBookConfig(this.fs, book, settings);
+    if (settings.icloud?.vaultId) {
+      const { journalVault, withNoteJournal } = await import('./sync/providers/icloud/noteSync');
+      const vault = journalVault(settings.icloud, book);
+      if (vault) {
+        const { withBookDataWrite } = await import('./bookDataLifecycle');
+        return withBookDataWrite(book.hash, book.removal?.revision ?? 0, () =>
+          withNoteJournal(this, book, vault, async (j) => {
+            const notes = await j.notes();
+            const known = new Set(notes.map((n) => n.id));
+            const legacy = (config.booknotes ?? []).filter((n) => !known.has(n.id));
+            if (legacy.length) await j.save(legacy);
+            const initial = await j.positions.project(config, book.format);
+            if (!initial.config.icloudPosition && config.location)
+              await j.positions.save(
+                config,
+                (await import('@/services/sync/providers/icloud/typography')).readingDevice(this),
+              );
+            const { typographyProfile } = await import('./sync/providers/icloud/typography');
+            const profile = typographyProfile(this);
+            await j.typography.save(
+              config.viewSettings ?? {},
+              profile,
+              undefined,
+              settings.globalViewSettings,
+            );
+            const appearance = await j.typography.project(
+              config.viewSettings ?? {},
+              profile,
+              settings.globalViewSettings,
+            );
+            return {
+              ...initial.config,
+              viewSettings: appearance.view,
+              icloudTypography: appearance.context,
+              booknotes: legacy.length ? await j.notes() : notes,
+            };
+          }),
+        );
+      }
+    }
+    return config;
   }
 
   async fetchBookDetails(book: Book) {
@@ -580,6 +666,29 @@ export abstract class BaseAppService implements AppService {
   }
 
   async saveBookConfig(book: Book, config: BookConfig, settings?: SystemSettings) {
+    if (settings?.icloud?.vaultId) {
+      const { journalVault, withNoteJournal } = await import('./sync/providers/icloud/noteSync');
+      const vault = journalVault(settings.icloud, book);
+      if (vault)
+        return BookSvc.saveBookConfig(this.fs, book, config, settings, async (notes) =>
+          withNoteJournal(this, book, vault, async (j) => {
+            await j.save(notes);
+            await j.positions.save(
+              config,
+              (await import('@/services/sync/providers/icloud/typography')).readingDevice(this),
+            );
+            const { typographyProfile } = await import('./sync/providers/icloud/typography');
+            if (config.viewSettings)
+              config.icloudTypography = await j.typography.save(
+                config.viewSettings,
+                typographyProfile(this),
+                config.icloudTypography,
+                settings.globalViewSettings,
+              );
+            return j.notes();
+          }),
+        );
+    }
     return BookSvc.saveBookConfig(this.fs, book, config, settings);
   }
 

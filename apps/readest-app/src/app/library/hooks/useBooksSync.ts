@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef } from 'react';
 import { Book } from '@/types/book';
 import { useSync } from '@/hooks/useSync';
 import { useEnv } from '@/context/EnvContext';
-import { notifyLibraryUpdated } from '@/utils/libraryEvents';
 import { hasGlossaSyncConfig } from '@/glossa/sync/config';
 import { useAuth } from '@/context/AuthContext';
 import { useLibraryStore } from '@/store/libraryStore';
@@ -79,12 +78,6 @@ export const useBooksSync = () => {
       controller.abort();
     };
   }, [candidate, subject]);
-  const discoveryRef = useRef<{
-    subject: string;
-    app: typeof appService;
-    pending: Promise<number>;
-  } | null>(null);
-
   const getNewBooks = useCallback(() => {
     if (!user) return {};
     const library = useLibraryStore.getState().library;
@@ -125,38 +118,6 @@ export const useBooksSync = () => {
       // row, BackupWindow — routes through here. The file pass works
       // logged out (file sync has no Readest account dependency); the
       // native pull below still requires `user`.
-      if (hasGlossaSyncConfig()) {
-        if (!subject || !appService || !libraryLoaded) return;
-        try {
-          let task = discoveryRef.current;
-          if (!task || task.subject !== subject || task.app !== appService) {
-            const pending = appService.discoverCloudBooks(subject);
-            void pending
-              .then(async () => {
-                const { releaseFinishedDownload } = await import('@/glossa/sync/releaseFinished');
-                await releaseFinishedDownload(appService, subject);
-              })
-              .catch(() => {
-                /* The next catalog refresh can retry the policy check. */
-              });
-            task = { subject, app: appService, pending };
-            discoveryRef.current = task;
-          }
-          const count = await task.pending;
-          if (verbose)
-            eventDispatcher.dispatch('toast', {
-              type: 'info',
-              message: _('{{count}} book(s) synced', { count }),
-            });
-        } catch {
-          if (verbose)
-            eventDispatcher.dispatch('toast', { type: 'error', message: _('Sync failed') });
-        } finally {
-          if (discoveryRef.current?.subject === subject && discoveryRef.current.app === appService)
-            discoveryRef.current = null;
-        }
-        return;
-      }
       const settingsNow = useSettingsStore.getState().settings;
       const backends = getActiveFileSyncBackends(settingsNow);
       const readest = isReadestCloudEnabled(settingsNow);
@@ -255,31 +216,6 @@ export const useBooksSync = () => {
 
   useEffect(() => {
     if (!user || !libraryLoaded) return;
-    if (hasGlossaSyncConfig()) {
-      // Refresh the cached catalog on sign-in even while the network is unavailable.
-      notifyLibraryUpdated();
-      let busy = false,
-        active = true;
-      const poll = async () => {
-        if (!active || busy || document.visibilityState === 'hidden' || !navigator.onLine) return;
-        busy = true;
-        try {
-          await pullLibrary();
-        } finally {
-          busy = false;
-        }
-      };
-      void poll();
-      const timer = window.setInterval(poll, 60_000);
-      window.addEventListener('online', poll);
-      document.addEventListener('visibilitychange', poll);
-      return () => {
-        active = false;
-        window.clearInterval(timer);
-        window.removeEventListener('online', poll);
-        document.removeEventListener('visibilitychange', poll);
-      };
-    }
     if (useSyncInited) void pullLibrary();
     return undefined;
   }, [user, useSyncInited, libraryLoaded, pullLibrary]);

@@ -81,17 +81,6 @@ function SyncActions({ onSyncLibrary }: PanelProps) {
   );
 }
 
-function IntegrationsPanel(props: PanelProps) {
-  if (!hasGlossaSyncConfig()) return <PersonalCloudSettings {...props} />;
-  return (
-    <div className='my-4 w-full' data-setting-id='settings.integrations.cloudSync'>
-      <h2 className='mb-4 px-4 text-lg font-semibold'>Glossa R2</h2>
-      <SyncActions {...props} />
-      <CloudDownloadPolicy />
-    </div>
-  );
-}
-
 const PersonalCloudSettings: React.FC<PanelProps> = ({ onSyncLibrary }) => {
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
@@ -312,6 +301,7 @@ const PersonalCloudSettings: React.FC<PanelProps> = ({ onSyncLibrary }) => {
 
       <div className='w-full' data-setting-id='settings.integrations.cloudSync'>
         <SyncActions onSyncLibrary={onSyncLibrary} />
+        {hasGlossaSyncConfig() && <CloudDownloadPolicy />}
         <SectionTitle className='mb-2'>{_('Cloud Sync')}</SectionTitle>
         <div className='card eink-bordered border-base-200 bg-base-100 overflow-hidden border'>
           <div
@@ -499,4 +489,4 @@ const CloudProviderRow: React.FC<CloudProviderRowProps> = ({
  * navigation rows read as one consistent list.
  */
 
-export default IntegrationsPanel;
+export default PersonalCloudSettings;

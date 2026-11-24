@@ -2,6 +2,11 @@ import { decodePdfLayout, pdfLayoutCodec, maxPdfLayoutBytes } from './pdfLayout'
 import { decodeEpubLayout, epubLayoutCodec, maxLayoutBytes, type SpineRange } from './epubLayout';
 import type { CloudRangeReader } from '@glossa/sync-contracts/reader';
 
+type RangeSource = Pick<CloudRangeReader, 'size' | 'read' | 'close'> &
+  Partial<
+    Pick<CloudRangeReader, 'assets' | 'fileHash' | 'asset' | 'warmZipEntry' | 'warmPdfRanges'>
+  >;
+
 // Convert Blob.slice indices to the half-open absolute range used by PDF.js and zip.js.
 function index(value: number | undefined, length: number, fallback: number) {
   if (value === undefined) return fallback;
@@ -9,10 +14,10 @@ function index(value: number | undefined, length: number, fallback: number) {
   return n < 0 ? Math.max(0, length + n) : Math.min(length, n);
 }
 class RangeBlob extends Blob {
-  private source: CloudRangeReader;
+  private source: RangeSource;
   private begin: number;
   private end: number;
-  constructor(source: CloudRangeReader, begin: number, end: number, type = '') {
+  constructor(source: RangeSource, begin: number, end: number, type = '') {
     super([], { type });
     this.source = source;
     this.begin = begin;
@@ -54,11 +59,11 @@ class RangeBlob extends Blob {
 }
 export class CloudReaderFile extends File {
   private readonly view: RangeBlob;
-  private readonly source: CloudRangeReader;
+  private readonly source: RangeSource;
   // makePDF uses the PDF.js range transport and skips background full-file prefetch.
   readonly glossaRangeSource = true;
   constructor(
-    source: CloudRangeReader,
+    source: RangeSource,
     name: string,
     type: string,
     private readonly previewScope?: string,
@@ -92,11 +97,10 @@ export class CloudReaderFile extends File {
     compressedSize: number;
     compressionMethod: number;
   }) {
-    const asset = this.source.assets.find((a) => a.role === 'layout_manifest');
+    const asset = this.source.assets?.find((a) => a.role === 'layout_manifest');
     if (asset?.codec_version !== epubLayoutCodec || asset.bytes > maxLayoutBytes) return;
-    this.layout ??= this.source
-      .asset('layout_manifest')
-      .then((bytes) => decodeEpubLayout(bytes, this.source.fileHash, this.size))
+    this.layout ??= this.source.asset!('layout_manifest')
+      .then((bytes) => decodeEpubLayout(bytes, this.source.fileHash!, this.size))
       .catch(() => undefined);
     const row = (await this.layout)?.get(entry.filename);
     if (!row || row.header_offset !== entry.offset || row.zip_method !== entry.compressionMethod)
@@ -104,21 +108,20 @@ export class CloudReaderFile extends File {
     const [[start, end]] = row.compressed_ranges;
     // The local ZIP parser still interprets the header, compressed data and linked resources.
     if (end - start + 1 !== entry.compressedSize || start - entry.offset > 30 + 2 * 65535) return;
-    await this.source.warmZipEntry(entry.offset, end + 1);
+    await this.source.warmZipEntry?.(entry.offset, end + 1);
   }
   private pdfLayout?: Promise<ReturnType<typeof decodePdfLayout> | undefined>;
   async warmPdfPage(index: number, parser: string) {
-    const asset = this.source.assets.find((a) => a.role === 'layout_manifest');
+    const asset = this.source.assets?.find((a) => a.role === 'layout_manifest');
     if (asset?.codec_version !== pdfLayoutCodec || asset.bytes > maxPdfLayoutBytes) return;
-    this.pdfLayout ??= this.source
-      .asset('layout_manifest')
-      .then((bytes) => decodePdfLayout(bytes, this.source.fileHash, this.size, parser))
+    this.pdfLayout ??= this.source.asset!('layout_manifest')
+      .then((bytes) => decodePdfLayout(bytes, this.source.fileHash!, this.size, parser))
       .catch(() => undefined);
     const page = (await this.pdfLayout)?.[index];
-    if (page) await this.source.warmPdfRanges(page.ranges).catch(() => undefined);
+    if (page) await this.source.warmPdfRanges?.(page.ranges).catch(() => undefined);
   }
   async headPreview(format: 'epub' | 'pdf') {
-    const asset = this.source.assets.find((a) => a.role === 'head_preview_chunk');
+    const asset = this.source.assets?.find((a) => a.role === 'head_preview_chunk');
     if (!asset) return;
     const { decodeHeadPreview, previewCodec, maxPreviewBytes } = await import('./headPreview');
     if (asset.codec_version !== previewCodec || asset.bytes > maxPreviewBytes) return;
@@ -128,18 +131,18 @@ export class CloudReaderFile extends File {
       asset.blake3,
       asset.bytes,
       this.size,
-      () => this.source.asset('head_preview_chunk'),
+      () => this.source.asset!('head_preview_chunk'),
     );
-    return decodeHeadPreview(bytes, this.source.fileHash, this.size, format);
+    return decodeHeadPreview(bytes, this.source.fileHash!, this.size, format);
   }
   async searchSections(format: 'pdf' | 'epub', language: string) {
     const { decodeSearchPack, searchCodec, maxSearchBytes } = await import('./searchSidecar');
-    const asset = this.source.assets.find((a) => a.role === 'search_sidecar');
+    const asset = this.source.assets?.find((a) => a.role === 'search_sidecar');
     if (asset?.codec_version !== searchCodec || asset.bytes > maxSearchBytes) return undefined;
-    return decodeSearchPack(new Blob([await this.source.asset('search_sidecar')]), {
+    return decodeSearchPack(new Blob([await this.source.asset!('search_sidecar')]), {
       format,
       language,
-      source_file_blake3: this.source.fileHash,
+      source_file_blake3: this.source.fileHash!,
       file_bytes: this.size,
     });
   }

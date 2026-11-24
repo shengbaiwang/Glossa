@@ -543,6 +543,10 @@ pub struct ICloudContainerStatusResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ICloudEnsureDownloadedRequest {
+    #[serde(default)]
+    pub status_only: Option<bool>,
+    #[serde(default)]
+    pub directory_only: Option<bool>,
     /// Absolute path inside the ubiquity container.
     pub path: String,
     #[serde(default)]

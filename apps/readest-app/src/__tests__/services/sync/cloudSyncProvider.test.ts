@@ -295,3 +295,12 @@ describe('icloud backend kind', () => {
     expect(settings.icloud?.syncBooks).toBe(true);
   });
 });
+
+test('a configured legacy endpoint cannot suppress the selected iCloud destination', () => {
+  vi.stubEnv('NEXT_PUBLIC_GLOSSA_SYNC_ORIGIN', 'https://archived.example');
+  try {
+    expect(getEnabledFileSyncBackends(s({ icloud: { enabled: true } }))).toEqual(['icloud']);
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});

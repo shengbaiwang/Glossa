@@ -1,3 +1,7 @@
+import { useSettingsStore } from '@/store/settingsStore';
+import { isVaultId } from './sync/providers/icloud/vault';
+import { withLibraryLock } from './libraryLock';
+import type { CatalogJournal } from './sync/providers/icloud/catalogJournal';
 import type { Book } from '@/types/book';
 import type { DatabaseService } from '@/types/database';
 import type { FileSystem } from '@/types/system';
@@ -84,18 +88,28 @@ const entry = (book: Book): Entry => ({
 });
 
 /** One bound SQL statement is atomic on all adapters, including across IPC. */
-async function upsert(db: DatabaseService, entries: Entry[], migrate = false): Promise<void> {
+async function upsert(
+  db: DatabaseService,
+  entries: Entry[],
+  migrate = false,
+  journal: string[] = [],
+): Promise<void> {
   if (!entries.length) return;
-  await db.execute(
-    `INSERT INTO ${TABLE} (key, payload, fingerprint)
+  const statement = `INSERT INTO ${TABLE} (key, payload, fingerprint)
      SELECT json_extract(value, '$.key'), json_extract(value, '$.payload'),
             json_extract(value, '$.fingerprint')
      FROM json_each(?)
      WHERE ${migrate ? `NOT EXISTS (SELECT 1 FROM ${TABLE} WHERE key = '${MARKER}')` : '1'}
      ON CONFLICT(key) DO UPDATE SET payload = excluded.payload,
-                                   fingerprint = excluded.fingerprint`,
-    [JSON.stringify(entries)],
-  );
+                                   fingerprint = excluded.fingerprint`;
+  const payload = JSON.stringify(entries);
+  if (journal.length) {
+    const literal = "'" + payload.replaceAll("'", "''") + "'";
+    await db.batch([
+      ...journal,
+      statement.replace('json_each(?)', () => 'json_each(' + literal + ')'),
+    ]);
+  } else await db.execute(statement, [payload]);
 }
 
 async function database(io: LibraryIO): Promise<DatabaseService | undefined> {
@@ -200,17 +214,124 @@ export async function writeLibraryRows(
   const current = previous ?? (await loadLibraryRows(io));
   const old = new Map(current.map((book) => [book.hash, book]));
   const entries: Entry[] = [];
+  const changes: { current: Book; previous?: Book }[] = [];
   for (const book of books) {
     const previous = old.get(book.hash);
     // Merge-floor callers retain untouched row objects. Avoid serializing
     // those rows just to discover that their database value is unchanged.
     if (book !== previous) {
       const row = entry(book);
-      if (row.payload !== (previous && JSON.stringify(previous))) entries.push(row);
+      if (row.payload !== (previous && JSON.stringify(previous))) {
+        entries.push(row);
+        changes.push({ current: book, previous });
+      }
     }
     old.delete(book.hash);
   }
   for (const hash of old.keys())
     entries.push({ key: `book:${hash}`, payload: null, fingerprint: null });
-  await upsert(db, entries);
+  const vault = useSettingsStore.getState().settings.icloud?.vaultId;
+  const log = isVaultId(vault) && changes.length ? await catalog(db, vault) : undefined;
+  await upsert(db, entries, false, log ? await log.stage(changes) : []);
+}
+
+async function catalog(db: DatabaseService, vault: string) {
+  const { CatalogJournal } = await import('./sync/providers/icloud/catalogJournal');
+  const log = new CatalogJournal(db, vault);
+  await log.init();
+  return log;
+}
+
+export async function withVaultCatalog<T>(
+  io: LibraryIO & Pick<FileSystem, 'getPrefix'>,
+  vault: string,
+  fn: (log: CatalogJournal, db: DatabaseService) => Promise<T>,
+) {
+  return withLibraryLock(io, async () => {
+    const db = await database(io);
+    if (!db || !isVaultId(vault)) throw new Error('iCloud library database unavailable');
+    return fn(await catalog(db, vault), db);
+  });
+}
+
+export async function syncCatalog(
+  io: LibraryIO & Pick<FileSystem, 'getPrefix'>,
+  provider: import('./sync/file/provider').FileSyncProvider,
+  direction: 'pull' | 'push',
+  check: () => void,
+  delivery?: ReturnType<typeof import('./sync/providers/icloud/delivery').segmentDelivery>,
+) {
+  const vault = provider.vaultId!;
+  const access = <T>(fn: (log: CatalogJournal, db: DatabaseService) => Promise<T>) =>
+    withVaultCatalog(io, vault, (log, db) => {
+      check();
+      return fn(log, db);
+    });
+  const unverified: Pick<Book, 'hash' | 'title'>[] = [];
+  let legacy: Book[] = [];
+  if (direction === 'pull') {
+    const { buildLibraryPath } = await import('./sync/file/layout');
+    const { parseRemoteLibraryIndex, stripDeviceLocalFields } = await import('./sync/file/wire');
+    const raw = await provider.readText(buildLibraryPath('/'));
+    if (raw !== null) {
+      const index = parseRemoteLibraryIndex(raw);
+      if (!index) throw new Error('Cannot verify the previous iCloud book index');
+      legacy = index.books
+        .filter((b) => !b.glossaCloud && !b.duplicateOf)
+        .map(stripDeviceLocalFields);
+    }
+  }
+  await access(async (log, db) => {
+    const books = await loadLibraryRows(io);
+
+    const initial = await log.stage(
+      books.map((current) => ({ current })),
+      true,
+    );
+    if (initial.length) await db.batch(initial);
+    const locals = new Map(books.map((b) => [b.hash, b]));
+    for (const row of legacy) {
+      const existing = locals.get(row.hash);
+      if (
+        (existing &&
+          (existing.glossaCloud || existing.contentFingerprint !== row.contentFingerprint)) ||
+        !(await log.importLegacy(row))
+      )
+        unverified.push({ hash: row.hash, title: row.title });
+    }
+  });
+  const { exchangeSegments } = await import('./sync/providers/icloud/exchangeSegments');
+  await exchangeSegments(
+    provider,
+    provider.rootPath + '/catalog',
+    direction,
+    {
+      cursor: () => access((j) => j.cursor()),
+      receive: (raw) => access((j) => j.receive(raw)),
+      published: (id) => access((j) => j.published(id)),
+      pending: () => access((j) => j.pending()),
+    },
+    check,
+    delivery,
+  );
+  return access(async (log, db) => {
+    const current = await loadLibraryRows(io);
+    const rows = new Map(current.map((b) => [b.hash, b]));
+    const changes: Entry[] = [];
+    const confirmations: { book: Book; actor: string; seq: number }[] = [];
+    const { projectVaultBook } = await import('./sync/providers/icloud/catalogJournal');
+    for (const b of await log.books()) {
+      const old = rows.get(b.hash);
+      if (old && (old.contentFingerprint !== b.contentFingerprint || old.glossaCloud)) continue;
+      const next = projectVaultBook(old, b);
+      if (direction === 'push' && next.removal?.cloudTargets?.['icloud'] === 'pending') {
+        const stamp = await log.removalSegment(next);
+        if (stamp) confirmations.push({ book: next, ...stamp });
+      }
+      if (JSON.stringify(next) !== JSON.stringify(old)) changes.push(entry(next));
+      rows.set(b.hash, next);
+    }
+    if (changes.length) await upsert(db, changes);
+    return { books: [...rows.values()], changed: changes.length, unverified, confirmations };
+  });
 }

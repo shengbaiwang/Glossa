@@ -163,11 +163,11 @@ const FileSyncForm: React.FC<FileSyncFormProps> = ({
         },
       });
 
-      await persist({ lastSyncedAt: Date.now() });
+      if (!result.failures) await persist({ lastSyncedAt: Date.now() });
       // A completed run heals the provider's health surfaces (the Cloud Sync
       // chooser row, the SettingsMenu sync row) — otherwise a pre-restart
       // failure keeps reading "Sync failed" after a successful manual sync.
-      setLastError(kind, null);
+      setLastError(kind, result.failedBooks?.[0]?.reason ?? null);
       if (result.failures > 0) {
         eventDispatcher.dispatch('toast', {
           type: 'warning',
@@ -179,7 +179,10 @@ const FileSyncForm: React.FC<FileSyncFormProps> = ({
       } else {
         eventDispatcher.dispatch('toast', {
           type: 'info',
-          message: _('{{count}} book(s) synced', { count: result.booksSynced }),
+          message:
+            kind === 'icloud'
+              ? _('iCloud folder updated')
+              : _('{{count}} book(s) synced', { count: result.booksSynced }),
         });
       }
     } catch (e) {
@@ -219,7 +222,9 @@ const FileSyncForm: React.FC<FileSyncFormProps> = ({
           syncProgressLabel
             ? syncProgressLabel
             : stored.lastSyncedAt
-              ? _('Synced {{time}}', { time: dayjs(stored.lastSyncedAt).fromNow() })
+              ? _(kind === 'icloud' ? 'Folder checked {{time}}' : 'Synced {{time}}', {
+                  time: dayjs(stored.lastSyncedAt).fromNow(),
+                })
               : _('Never synced')
         }
         description={

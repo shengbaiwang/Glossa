@@ -259,6 +259,12 @@ export interface OneDriveSettings {
  * `deviceId`/`lastSyncedAt`/`providerSelectedAt` are device-local.
  */
 export interface ICloudSettings {
+  fontSelection?: {
+    vault: string;
+    files: import('@/services/sync/providers/icloud/fonts').FontSelection[];
+  };
+  vaultId?: string;
+  syncStats?: boolean;
   /** Selected macOS iCloud Drive folder; device-local and never backed up. */
   documentsPath?: string;
   enabled: boolean;
@@ -355,6 +361,8 @@ export interface HardwarePageTurnerSettings {
 }
 
 export interface SystemSettings {
+  icloudFolders?: import('@/services/sync/providers/icloud/groups').FolderContext;
+  icloudTypography?: import('@/services/sync/providers/icloud/typography').TypographyContext;
   /** Bundled feature availability. Missing flags keep the existing experience enabled. */
   officialModules?: import('@/glossa/plugins/registry').PluginPreferences;
   /** Optional plugin behavior; missing values preserve automatic import preparation. */

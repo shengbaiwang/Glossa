@@ -31,6 +31,7 @@ import { mergeBookConfig, mergeBookMetadata, shouldApplyRemoteBookMetadata } fro
 export type SyncStrategy = 'silent' | 'send' | 'receive';
 
 export interface PullResult {
+  progressCandidate?: import('../providers/icloud/positionJournal').ProgressCandidate;
   /** True when the remote had a config and we merged something into local. */
   applied: boolean;
   /** The merged config to be written back into the local store. */
@@ -280,6 +281,8 @@ export class FileSyncEngine {
    * effects here). `applied: false` when the remote file is absent/malformed.
    */
   async pullBookConfig(book: Book, localConfig: BookConfig): Promise<PullResult> {
+    if (this.provider.vaultId && this.store.syncVaultConfig)
+      return this.store.syncVaultConfig(this.provider, book, 'pull', localConfig);
     const path = buildBookConfigPath(this.provider.rootPath, book.hash);
     const remote = parseRemotePayload(await this.provider.readText(path));
     if (!remote) return { applied: false };
@@ -299,6 +302,10 @@ export class FileSyncEngine {
    * mechanism.
    */
   async pushBookConfig(book: Book, config: BookConfig, deviceId: string): Promise<void> {
+    if (this.provider.vaultId && this.store.syncVaultConfig) {
+      await this.store.syncVaultConfig(this.provider, book, 'push', config);
+      return;
+    }
     const dirPath = buildBookDirPath(this.provider.rootPath, book.hash);
     const path = buildBookConfigPath(this.provider.rootPath, book.hash);
     const dirs = [...ancestorsOf(`${dirPath}/.placeholder`), dirPath];
@@ -328,6 +335,8 @@ export class FileSyncEngine {
    * sync into a full per-book request storm. `no-source` costs zero requests.
    */
   async pushBookFile(book: Book): Promise<PushBookFileResult> {
+    if (this.provider.vaultId && this.store.pushVaultFile)
+      return this.store.pushVaultFile(this.provider, book);
     const dirPath = buildBookDirPath(this.provider.rootPath, book.hash);
     const path = buildBookFilePath(this.provider.rootPath, book);
     const dirs = [...ancestorsOf(`${dirPath}/.placeholder`), dirPath];
@@ -439,6 +448,8 @@ export class FileSyncEngine {
    * loop covers the library-wide variant of this.
    */
   async downloadBookFile(book: Book): Promise<boolean> {
+    if (this.provider.vaultId && this.store.downloadVaultFile)
+      return this.store.downloadVaultFile(this.provider, book);
     const dirPath = buildBookDirPath(this.provider.rootPath, book.hash);
     const entries = await this.provider.list(dirPath);
     const fileEntry = findRemoteBookFile(entries, dirPath, book.format);
@@ -508,6 +519,7 @@ export class FileSyncEngine {
    * counted so one bad apple never aborts the rest of the library.
    */
   async syncLibrary(books: Book[], options: SyncLibraryOptions): Promise<SyncLibraryResult> {
+    books = books.filter((b) => !b.glossaCloud || !!b.downloadedAt);
     const result: SyncLibraryResult = {
       totalBooks: books.length,
       configsUploaded: 0,
@@ -522,6 +534,74 @@ export class FileSyncEngine {
       failures: 0,
       failedBooks: [],
     };
+
+    if (this.provider.vaultId && this.store.syncVaultCatalog) {
+      const pull = options.strategy !== 'send',
+        push = options.strategy !== 'receive';
+      if (pull) {
+        const catalog = await this.store.syncVaultCatalog(this.provider, 'pull');
+        books = catalog.books;
+        result.metadataUpdated = catalog.changed;
+        for (const row of catalog.unverified ?? []) {
+          result.failures++;
+          result.failedBooks.push({
+            ...row,
+            phase: 'library-index',
+            reason: 'Verify the original file in the previous iCloud library',
+          });
+        }
+      }
+      if (push) await this.store.syncVaultCatalog(this.provider, 'push');
+      const active = books.filter(
+        (b) => !b.deletedAt && !b.glossaCloud && !b.duplicateOf && b.contentFingerprint,
+      );
+      result.totalBooks = active.length;
+      let index = 0;
+      await runPool(active, Math.min(3, options.concurrency ?? 2), async (book) => {
+        options.onProgress?.({
+          book,
+          index: index++,
+          total: active.length,
+          action: pull ? 'downloading' : 'uploading',
+        });
+        try {
+          const local = (await this.store.loadConfig(book)) ?? { updatedAt: 0 };
+          if (pull) {
+            const r = await this.pullBookConfig(book, local);
+            if (r.applied && r.mergedConfig) {
+              await this.store.saveBookConfig(book, r.mergedConfig);
+              result.configsDownloaded++;
+            }
+            if (!book.coverDownloadedAt) {
+              const bytes = await this.pullBookCover(book.hash);
+              if (bytes) {
+                await this.store.saveBookCover(book, bytes);
+              }
+            }
+          }
+          if (push) {
+            await this.pushBookConfig(book, local, options.deviceId);
+            result.configsUploaded++;
+            if ((await this.pushBookCover(book)).uploaded) result.coversUploaded++;
+            if (options.syncBooks && (book.downloadedAt || book.filePath)) {
+              const binary = await this.pushBookFile(book);
+              if (binary.uploaded) result.filesUploaded++;
+            }
+          }
+          result.booksSynced++;
+        } catch (error) {
+          result.failures++;
+          result.failedBooks.push({
+            hash: book.hash,
+            title: book.title,
+            phase: 'upload-config',
+            reason: formatFailureReason(error),
+          });
+        }
+      });
+      if (push && result.filesUploaded) await this.store.syncVaultCatalog(this.provider, 'push');
+      return result;
+    }
 
     // Distinct books touched in any direction — the single "N book(s) synced"
     // number the UI surfaces. Tracked as a set because the per-action counters
@@ -1197,6 +1277,7 @@ export class FileSyncEngine {
                 result.configsUploaded += 1;
                 syncedHashes.add(book.hash);
               }
+              if (!canPush) return;
               // Covers ride along with the config-level sync, NOT with syncBooks:
               // the receiving device can't regenerate them without the book bytes.
               // Failures here are warnings, not hard failures.

@@ -285,7 +285,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
         );
         throw new Error('Book not found');
       }
-      if (book.format === 'EPUB' || book.format === 'PDF') {
+      if (book.icloudAsset || book.format === 'EPUB' || book.format === 'PDF') {
         await holdBookForReader(book.hash, signal);
         assertNavActive(signal);
       }

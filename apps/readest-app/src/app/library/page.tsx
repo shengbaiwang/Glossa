@@ -724,7 +724,14 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
       // bookmarks (see InPlaceFolderBookmarkStore in
       // NativeBridgePlugin.swift); here we just sync Tauri's in-memory
       // scope set with the persisted intent.
-      const externalRoots = settings.externalLibraryFolders ?? [];
+      const externalRoots = [...(settings.externalLibraryFolders ?? [])];
+      if (settings.icloud?.documentsPath) {
+        const { isICloudDriveFolder } = await import(
+          '@/services/sync/providers/icloud/buildICloudProvider'
+        );
+        if (isICloudDriveFolder(settings.icloud.documentsPath))
+          externalRoots.push(settings.icloud.documentsPath);
+      }
       if (externalRoots.length > 0 && appService.allowPathsInScopes) {
         await appService.allowPathsInScopes(externalRoots, true);
       }

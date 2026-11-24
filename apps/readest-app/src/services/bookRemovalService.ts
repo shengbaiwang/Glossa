@@ -114,9 +114,11 @@ export async function prepareRemoval(
         removalHistory: archiveRemoval(b, mode === 'local' ? 'localRemoval' : 'removal'),
         [mode === 'local' ? 'localRemoval' : 'removal']: {
           version: 1,
-          ...(mode === 'local' && b.glossaCloud
+          ...(mode === 'local' && (b.glossaCloud || b.icloudAsset)
             ? {
-                cloudScope: recoveryScope(b.glossaCloud),
+                cloudScope: b.glossaCloud
+                  ? recoveryScope(b.glossaCloud)
+                  : 'icloud:' + b.icloudAsset!.vault + ':' + b.icloudAsset!.manifest,
                 downloadedAt: b.downloadedAt ?? null,
                 releaseAfterDays: options.releaseAfterDays,
               }
@@ -165,7 +167,11 @@ export async function runRemoval(
     // Network verification runs outside the library lock. The short commit
     // resolves the durable intent again and validates the book it will unlink.
     let release: ((current: Book) => Promise<void>) | undefined;
-    if (snapshot.localRemoval?.id === id && snapshot.glossaCloud && options.prepareLocal) {
+    if (
+      snapshot.localRemoval?.id === id &&
+      (snapshot.glossaCloud || snapshot.icloudAsset) &&
+      options.prepareLocal
+    ) {
       try {
         release = await options.prepareLocal(snapshot, options.signal);
       } catch (error) {

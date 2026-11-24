@@ -491,12 +491,14 @@ export interface ICloudContainerStatusResponse {
 }
 
 export interface ICloudEnsureDownloadedRequest {
+  statusOnly?: boolean;
+  directoryOnly?: boolean;
   path: string;
   timeoutMs?: number;
 }
 
 export interface ICloudEnsureDownloadedResponse {
-  status: 'ready' | 'notFound' | 'timeout';
+  status: 'ready' | 'notFound' | 'timeout' | 'uploaded' | 'unconfirmed' | 'driveDirectory';
 }
 
 export async function getICloudContainerStatus(): Promise<ICloudContainerStatusResponse> {

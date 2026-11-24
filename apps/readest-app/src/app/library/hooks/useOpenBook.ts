@@ -48,6 +48,14 @@ export const useOpenBook = ({ setLoading, handleBookDownload }: UseOpenBookOptio
       // so a row it has not reconciled yet (or one poisoned by a pre-#5087
       // client, #5265) can be sitting on the mirror without carrying the stamp.
       // Ask the mirror before giving up on it.
+      const cloud = useSettingsStore.getState().settings.icloud;
+      if (
+        cloud?.enabled &&
+        book.icloudAsset &&
+        book.icloudAsset.vault === cloud.vaultId &&
+        ['PDF', 'EPUB'].includes(book.format)
+      )
+        return true;
       if (book.glossaCloud || (!book.uploadedAt && !hasFileSyncMirror())) return true;
       // The row's `downloadedAt` is not proof that the file is still here: a
       // "Remove from Device Only" evicts the file, and an in-place original can
@@ -94,6 +102,7 @@ export const useOpenBook = ({ setLoading, handleBookDownload }: UseOpenBookOptio
       if (
         book.filePath &&
         !book.glossaCloud &&
+        !book.icloudAsset &&
         !book.uploadedAt &&
         !book.deletedAt &&
         !hasFileSyncMirror()

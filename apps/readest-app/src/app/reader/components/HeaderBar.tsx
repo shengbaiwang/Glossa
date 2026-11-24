@@ -20,6 +20,7 @@ import { saveViewSettings } from '@/helpers/settings';
 import { getHeaderTriggerHeight } from '@/utils/insets';
 import Dropdown from '@/components/Dropdown';
 import MenuItem from '@/components/MenuItem';
+import { eventDispatcher } from '@/utils/event';
 import { Overlay } from '@/components/Overlay';
 import { useLongPress } from '@/hooks/useLongPress';
 import ReaderToolbarSettings, {
@@ -222,6 +223,57 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
   };
   const fallbackTools = (close: () => void) => (
     <>
+      {settings.icloud?.vaultId && getBookData(bookKey)?.book?.contentFingerprint && (
+        <MenuItem
+          label={_('Start reading again')}
+          onClick={async () => {
+            close();
+            const book = getBookData(bookKey)?.book;
+            const vault = settings.icloud.vaultId;
+            if (!book || !view || !appService || !vault) return;
+            try {
+              await view.goToFraction(0);
+              const store = useBookDataStore.getState();
+              const config = store.getConfig(bookKey);
+              const location = view.lastLocation?.cfi;
+              if (!config || !location) throw new Error('Missing reading position');
+              const next = {
+                ...config,
+                location,
+                xpointer: undefined,
+                progress: config.progress
+                  ? ([1, config.progress[1]] as [number, number])
+                  : undefined,
+              };
+              const { withNoteJournal } = await import('@/services/sync/providers/icloud/noteSync');
+              const { withBookDataWrite } = await import('@/services/bookDataLifecycle');
+              await withBookDataWrite(book.hash, book.removal?.revision ?? 0, () =>
+                withNoteJournal(appService, book, vault, async (j) =>
+                  j.positions.save(
+                    next,
+                    (await import('@/services/sync/providers/icloud/typography')).readingDevice(
+                      appService,
+                    ),
+                    true,
+                  ),
+                ),
+              );
+              store.setConfig(bookKey, {
+                location,
+                progress: next.progress,
+                xpointer: undefined,
+                icloudPosition: next.icloudPosition,
+              });
+              await store.saveConfig(envConfig, bookKey, store.getConfig(bookKey)!, settings);
+            } catch {
+              void eventDispatcher.dispatch('toast', {
+                type: 'error',
+                message: _('Could not restart reading'),
+              });
+            }
+          }}
+        />
+      )}
       {layout.hidden.includes('bookmark') && (
         <ReaderCommandItem
           id='bookmark'

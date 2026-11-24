@@ -84,6 +84,7 @@ export async function clearVerifiedBookDownload(app: AppService, book: Book): Pr
       try {
         const provider = await createFileSyncProvider(kind, settings);
         if (!provider) continue;
+        if (provider.vaultId) continue;
         const directory = buildBookDirPath(provider.rootPath, book.hash);
         const entry = findRemoteBookFile(await provider.list(directory), directory, book.format);
         if (entry) actual = await remoteFingerprint(app, provider, entry.path, book);

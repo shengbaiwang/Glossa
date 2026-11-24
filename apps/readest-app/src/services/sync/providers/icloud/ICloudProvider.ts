@@ -97,6 +97,10 @@ export const createICloudProvider = (documentsPath: string): FileSyncProvider =>
 
   const provider: FileSyncProvider = {
     rootPath: '/',
+    uploadStatus: async (path) =>
+      (await icloudEnsureDownloaded({ path: abs(path), statusOnly: true })).status === 'uploaded'
+        ? 'uploaded'
+        : 'unconfirmed',
 
     readText: (path) =>
       wrap(async () => ((await ensureDownloaded(path)) ? readTextFile(abs(path)) : null)),
@@ -140,7 +144,7 @@ export const createICloudProvider = (documentsPath: string): FileSyncProvider =>
           const entryPath = `${path === '/' ? '' : path}/${name}`;
           let size: number | undefined;
           let lastModified: string | undefined;
-          if (!isPlaceholder) {
+          if (!isPlaceholder && !path.startsWith('/GlossaSync-v2/')) {
             try {
               const s = await stat(abs(entryPath));
               size = entry.isDirectory ? undefined : (s.size ?? undefined);
@@ -169,7 +173,7 @@ export const createICloudProvider = (documentsPath: string): FileSyncProvider =>
     ensureDir: (paths) =>
       wrap(async () => {
         for (const p of paths) {
-          if (!(await exists(abs(p)))) await mkdir(abs(p));
+          if (!(await exists(abs(p)))) await mkdir(abs(p), { recursive: true });
         }
       }),
 

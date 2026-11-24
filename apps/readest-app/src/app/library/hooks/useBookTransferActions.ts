@@ -1,4 +1,3 @@
-import { hasGlossaSyncConfig } from '@/glossa/sync/config';
 import { useCallback } from 'react';
 import type { Book } from '@/types/book';
 import type { EnvConfigType } from '@/services/environment';
@@ -41,24 +40,6 @@ export const useBookTransferActions = (
 
   const handleBookUpload = useCallback(
     async (book: Book, _syncBooks = true) => {
-      if (hasGlossaSyncConfig() || book.glossaCloud) {
-        let uploaded = false;
-        try {
-          if (appService) {
-            await appService.uploadBook(book);
-            uploaded = true;
-          }
-        } catch {
-          // The file and its personal record remain available for a retry.
-        }
-        eventDispatcher.dispatch('toast', {
-          type: uploaded ? 'info' : 'error',
-          message: uploaded
-            ? _('Book uploaded: {{title}}', { title: book.title })
-            : _('Failed to upload book: {{title}}', { title: book.title }),
-        });
-        return uploaded;
-      }
       const settingsNow = useSettingsStore.getState().settings;
       const backends = getActiveFileSyncBackends(settingsNow);
       const readest = isReadestCloudEnabled(settingsNow);
@@ -82,7 +63,12 @@ export const useBookTransferActions = (
         eventDispatcher.dispatch('toast', {
           type: 'info',
           timeout: 2000,
-          message: _('Book uploaded: {{title}}', { title: book.title }),
+          message: _(
+            backends.length === 1 && backends[0] === 'icloud' && settingsNow.icloud?.vaultId
+              ? 'Written to iCloud Drive: {{title}}'
+              : 'Book uploaded: {{title}}',
+            { title: book.title },
+          ),
         });
         return true;
       }
@@ -104,7 +90,7 @@ export const useBookTransferActions = (
   const handleBookDownload = useCallback(
     async (book: Book, downloadOptions: BookDownloadOptions = {}) => {
       const { redownload = false, queued = false, silent = false } = downloadOptions;
-      if (hasGlossaSyncConfig() || book.glossaCloud) {
+      if (book.glossaCloud) {
         let downloaded = false;
         try {
           if (appService && book.glossaCloud) {

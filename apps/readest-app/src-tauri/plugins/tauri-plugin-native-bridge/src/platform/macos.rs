@@ -174,6 +174,27 @@ pub fn icloud_ensure_downloaded(
             status: status.to_string(),
         })
     };
+    if payload.status_only.unwrap_or(false) {
+        use cocoa::foundation::NSString;
+        extern "C" {
+            static NSURLUbiquitousItemIsUploadedKey: id;
+        }
+        unsafe {
+            let path: id = NSString::alloc(nil).init_str(&payload.path);
+            let url: id = msg_send![class!(NSURL), fileURLWithPath: path];
+            let _: () = msg_send![path, release];
+            let mut value: id = nil;
+            let ok: objc::runtime::BOOL = msg_send![url, getResourceValue: &mut value
+                forKey: NSURLUbiquitousItemIsUploadedKey error: nil];
+            if ok == objc::runtime::YES && value != nil {
+                let uploaded: objc::runtime::BOOL = msg_send![value, boolValue];
+                if uploaded == objc::runtime::YES {
+                    return done("uploaded");
+                }
+            }
+        }
+        return done("unconfirmed");
+    }
     let target = std::path::PathBuf::from(&payload.path);
     if target.exists() {
         return done("ready");

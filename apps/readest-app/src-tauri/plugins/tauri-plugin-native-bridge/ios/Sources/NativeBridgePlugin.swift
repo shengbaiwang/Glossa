@@ -75,6 +75,8 @@ class ReadShareClipHtmlArgs: Decodable {
 }
 
 struct ICloudEnsureDownloadedArgs: Decodable {
+  let statusOnly: Bool?
+  let directoryOnly: Bool?
   let path: String
   let timeoutMs: Int?
 }
@@ -1719,6 +1721,18 @@ class NativeBridgePlugin: Plugin {
     }
     DispatchQueue.global(qos: .userInitiated).async {
       let fm = FileManager.default
+      if args.directoryOnly == true {
+        let url = URL(fileURLWithPath: args.path)
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isUbiquitousItemKey])
+        let driveFolder = values?.isDirectory == true && values?.isUbiquitousItem == true
+        invoke.resolve(["status": driveFolder ? "driveDirectory" : "notFound"])
+        return
+      }
+      if args.statusOnly == true {
+        let values = try? URL(fileURLWithPath: args.path).resourceValues(forKeys: [.ubiquitousItemIsUploadedKey])
+        invoke.resolve(["status": values?.ubiquitousItemIsUploaded == true ? "uploaded" : "unconfirmed"])
+        return
+      }
       if fm.fileExists(atPath: args.path) {
         invoke.resolve(["status": "ready"])
         return

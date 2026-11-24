@@ -26,7 +26,7 @@ export interface FileSyncBackendsSettings {
   googleDrive?: { enabled?: boolean };
   s3?: S3Settings;
   onedrive?: { enabled?: boolean };
-  icloud?: { enabled?: boolean; documentsPath?: string };
+  icloud?: { enabled?: boolean; documentsPath?: string; vaultId?: string };
 }
 
 /**
@@ -60,7 +60,8 @@ const providerCacheKey = (
     return `s3:${c?.enabled}:${c?.endpoint}:${c?.region}:${c?.bucket}:${c?.accessKeyId}:${c?.secretAccessKey}`;
   }
   if (kind === 'onedrive') return 'onedrive';
-  if (kind === 'icloud') return `icloud:${settings.icloud?.documentsPath ?? ''}`;
+  if (kind === 'icloud')
+    return `icloud:${settings.icloud?.documentsPath ?? ''}:${settings.icloud?.vaultId ?? ''}`;
   return 'gdrive';
 };
 
@@ -92,7 +93,7 @@ export const createFileSyncProvider = async (
         : kind === 'onedrive'
           ? await buildOneDriveProvider()
           : kind === 'icloud'
-            ? await buildICloudProvider(settings.icloud?.documentsPath)
+            ? await buildICloudProvider(settings.icloud?.documentsPath, settings.icloud?.vaultId)
             : await buildGoogleDriveProvider();
   if (provider) providerCache.set(kind, { key, provider });
   return provider;

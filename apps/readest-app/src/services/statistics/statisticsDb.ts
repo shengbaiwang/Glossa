@@ -108,6 +108,39 @@ export class StatisticsDb {
     );
   }
 
+  async initICloudDelivery() {
+    await this.db.execute(
+      'CREATE TABLE IF NOT EXISTS interval_delivery (vault TEXT NOT NULL,id TEXT NOT NULL,segment TEXT NOT NULL,PRIMARY KEY(vault,id),UNIQUE(vault,segment))',
+    );
+  }
+  async unpublishedIntervals(vault: string, book: string) {
+    return this.db.select<ReadingInterval & DatabaseRow>(
+      `SELECT i.id,i.session_id AS sessionId,i.book_hash AS bookHash,i.start_ms AS startMs,i.duration_ms AS durationMs FROM glossa_reading_intervals i WHERE i.book_hash=? AND NOT EXISTS(SELECT 1 FROM interval_delivery d WHERE d.vault=? AND d.id=i.id) ORDER BY i.rowid LIMIT 128`,
+      [book, vault],
+    );
+  }
+  async publishedIntervals(vault: string, book: string) {
+    return new Set(
+      (
+        await this.db.select<{ segment: string }>(
+          'SELECT d.segment FROM interval_delivery d JOIN glossa_reading_intervals i ON i.id=d.id WHERE d.vault=? AND i.book_hash=?',
+          [vault, book],
+        )
+      ).map((r) => r.segment),
+    );
+  }
+  async acknowledgeInterval(vault: string, row: ReadingInterval, segment: string) {
+    // Compare immutable bytes before recording the receipt. A crash between
+    // these two statements safely replays the same interval by its primary key.
+    await this.appendReadingIntervals([row]);
+    const result = await this.db.execute(
+      `INSERT INTO interval_delivery(vault,id,segment)
+      SELECT ?,id,? FROM glossa_reading_intervals WHERE id=? AND session_id=? AND book_hash=? AND start_ms=? AND duration_ms=?
+      ON CONFLICT(vault,id) DO UPDATE SET segment=excluded.segment WHERE segment=excluded.segment`,
+      [vault, segment, row.id, row.sessionId, row.bookHash, row.startMs, row.durationMs],
+    );
+    if (!result.rowsAffected) throw new Error('Conflicting reading interval');
+  }
   async getBookReadingTime(bookHash: string, sessionId: string) {
     const [row] = await this.db.select<{ bookMs: number; sessionMs: number }>(
       `SELECT COALESCE(SUM(duration_ms), 0) AS bookMs,

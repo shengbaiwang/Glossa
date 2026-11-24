@@ -5,6 +5,8 @@ import 'overlayscrollbars/overlayscrollbars.css';
 import * as CFI from 'foliate-js/epubcfi.js';
 import { Search, NotebookPen } from '@/components/GlossaIcons';
 
+import { useEnv } from '@/context/EnvContext';
+import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
@@ -32,6 +34,58 @@ type FlatBooknoteRow =
       item: BookNote;
       indexInGroup: number;
     };
+
+function RecoverNotes({ bookKey, notes }: { bookKey: string; notes: BookNote[] }) {
+  const _ = useTranslation();
+  const { envConfig } = useEnv();
+  const [error, setError] = useState(false);
+  const [busy, setBusy] = useState(false);
+  async function restore(item: BookNote) {
+    setBusy(true);
+    setError(false);
+    try {
+      const store = useBookDataStore.getState();
+      const config = store.getConfig(bookKey);
+      const current = config?.booknotes?.find((n) => n.id === item.id);
+      if (
+        !config ||
+        !current ||
+        current.deletedAt !== item.deletedAt ||
+        JSON.stringify(current.icloudEdit) !== JSON.stringify(item.icloudEdit)
+      )
+        return;
+      const next = {
+        ...config,
+        booknotes: config.booknotes!.map((n) =>
+          n === current ? { ...n, deletedAt: null, updatedAt: Date.now() } : n,
+        ),
+      };
+      await store.saveConfig(envConfig, bookKey, next, useSettingsStore.getState().settings);
+      if (store.getConfig(bookKey)?.booknotes === config.booknotes)
+        store.setConfig(bookKey, { booknotes: next.booknotes });
+    } catch {
+      setError(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <details className='content mx-3 my-1'>
+      <summary>{_('Deleted annotations')}</summary>
+      {notes.map((n) => (
+        <div key={n.id} className='my-1'>
+          {n.icloudEdit?.bodies?.map((v) => (
+            <p key={v.id}>{v.text}</p>
+          ))}
+          <button type='button' disabled={busy} onClick={() => void restore(n)}>
+            {_('Restore')} {n.text?.slice(0, 32)}
+          </button>
+        </div>
+      ))}
+      {error && <span role='alert'>{_('Unable to save note. Please try again.')}</span>}
+    </details>
+  );
+}
 
 const BooknoteView: React.FC<{
   bookKey: string;
@@ -421,6 +475,12 @@ const BooknoteView: React.FC<{
         onToggleStyle={toggleStyle}
         onResetFilters={resetFilters}
       />
+      {allNotes.some((n) => n.deletedAt && n.icloudEdit) && (
+        <RecoverNotes
+          bookKey={bookKey}
+          notes={allNotes.filter((n) => n.deletedAt && n.icloudEdit)}
+        />
+      )}
       <div ref={listHostRef}>
         {isEmpty && isFiltering ? (
           <div className='glossa-reader-empty-region'>

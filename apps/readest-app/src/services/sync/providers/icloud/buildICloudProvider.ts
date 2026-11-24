@@ -1,24 +1,34 @@
 import { stat } from '@tauri-apps/plugin-fs';
 import { isTauriAppPlatform } from '@/services/environment';
 import { getOSPlatform } from '@/utils/misc';
-import { getICloudContainerStatus } from '@/utils/bridge';
+import { icloudEnsureDownloaded, getICloudContainerStatus } from '@/utils/bridge';
 import type { FileSyncProvider } from '@/services/sync/file/provider';
 import { createICloudProvider } from './ICloudProvider';
 
 export const isICloudSupportedPlatform = (): boolean =>
   isTauriAppPlatform() && ['ios', 'macos'].includes(getOSPlatform());
 
-/** A dedicated folder selected through the macOS native picker, never the drive root. */
-export const isICloudDriveFolder = (path: string): boolean =>
-  /^\/Users\/[^/]+\/Library\/Mobile Documents\/com~apple~CloudDocs\/.+/.test(path) &&
-  !path.split('/').some((part) => part === '..' || part === '.') &&
-  !path.includes('\0');
+const cloudDocs =
+  /^(?:\/Users\/[^/]+|(?:\/private)?\/var\/mobile)\/Library\/Mobile Documents\/com~apple~CloudDocs\/.+/;
+const fileProviderDirectory =
+  /^(?:\/private)?\/var\/mobile\/Containers\/Shared\/AppGroup\/[a-f0-9-]{36}\/File Provider Storage\/.+/i;
+/** File Provider domains share a path layout. Foundation must confirm the selected iOS domain. */
+export const isICloudDriveFolder = (path: string) =>
+  !path.includes('\0') &&
+  !path.split('/').some((p) => p === '.' || p === '..') &&
+  (cloudDocs.test(path) || (getOSPlatform() === 'ios' && fileProviderDirectory.test(path)));
 
 export const resolveICloudDocumentsPath = async (selectedPath?: string): Promise<string | null> => {
   if (!isICloudSupportedPlatform()) return null;
   try {
-    if (getOSPlatform() === 'macos') {
+    if (selectedPath || getOSPlatform() === 'macos') {
       if (!selectedPath || !isICloudDriveFolder(selectedPath)) return null;
+      if (
+        fileProviderDirectory.test(selectedPath) &&
+        (await icloudEnsureDownloaded({ path: selectedPath, directoryOnly: true })).status !==
+          'driveDirectory'
+      )
+        return null;
       const info = await stat(selectedPath);
       return info.isDirectory ? selectedPath : null;
     }
@@ -40,7 +50,15 @@ export const resolveICloudDocumentsPath = async (selectedPath?: string): Promise
 
 export const buildICloudProvider = async (
   selectedPath?: string,
+  vaultId?: string,
 ): Promise<FileSyncProvider | null> => {
   const path = await resolveICloudDocumentsPath(selectedPath);
-  return path ? createICloudProvider(path) : null;
+  if (!path) return null;
+  const provider = createICloudProvider(path);
+  if (vaultId) {
+    const { verifyVault, vaultRoot } = await import('./vault');
+    await verifyVault(provider, vaultId);
+    return { ...provider, rootPath: vaultRoot(vaultId), vaultId };
+  }
+  return provider;
 };

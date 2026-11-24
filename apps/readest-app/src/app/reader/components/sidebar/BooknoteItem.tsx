@@ -151,11 +151,12 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({
   };
 
   const editNoteInline = () => {
+    editBaseRef.current = item.icloudEdit;
     setEditorDraft(item.note || '');
     setInlineEditMode(true);
   };
 
-  const handleSaveInlineNote = () => {
+  const saveBody = async (draft: string, editBase = item.icloudEdit) => {
     setInlineEditMode(false);
     const config = getConfig(bookKey);
     if (!config) return;
@@ -165,16 +166,34 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({
     );
     if (existingIndex === -1) return;
     const existing = booknotes[existingIndex]!;
-    const nextNote = editorDraft.trim() ? editorDraft : '';
+    const nextNote = draft.trim() ? draft : '';
     const transition = decideNoteBubbleTransition(existing.note, nextNote);
-    const updated: BookNote = { ...existing, note: nextNote, updatedAt: Date.now() };
-    booknotes[existingIndex] = updated;
+    const updated: BookNote = {
+      ...existing,
+      note: nextNote,
+      updatedAt: Date.now(),
+      icloudEdit: editBase && { ...editBase, resolveBody: editBase.bodies.length > 1 },
+    };
+    const changedNotes = booknotes.map((note, index) => (index === existingIndex ? updated : note));
     applyNoteBubbleTransition(getViewsById(bookKey.split('-')[0]!), updated, transition);
-    const updatedConfig = updateBooknotes(bookKey, booknotes);
+    const updatedConfig = updateBooknotes(bookKey, changedNotes);
     if (updatedConfig) {
-      saveConfig(envConfig, bookKey, updatedConfig, settings);
+      try {
+        await saveConfig(envConfig, bookKey, updatedConfig, settings);
+      } catch {
+        setEditorDraft(draft);
+        editBaseRef.current = editBase;
+        setInlineEditMode(true);
+        void eventDispatcher.dispatch('toast', {
+          type: 'error',
+          message: _('Unable to save note. Please try again.'),
+        });
+      }
     }
   };
+
+  const editBaseRef = useRef(item.icloudEdit);
+  const handleSaveInlineNote = () => saveBody(editorDraft, editBaseRef.current);
 
   if (inlineEditMode) {
     return (
@@ -238,6 +257,19 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({
           } as React.CSSProperties
         }
       >
+        {new Set(item.icloudEdit?.bodies.map((v) => v.text)).size > 1 && (
+          <details onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+            <summary>{_('Note versions')}</summary>
+            {item.icloudEdit?.bodies.map((version) => (
+              <div key={version.id}>
+                <p className='whitespace-pre-wrap select-text'>{version.text}</p>
+                <TextButton onClick={() => saveBody(version.text)}>
+                  {_('Use this version')}
+                </TextButton>
+              </div>
+            ))}
+          </details>
+        )}
         {item.note && (
           <div
             className='content prose prose-sm font-size-sm'

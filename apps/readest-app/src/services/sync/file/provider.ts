@@ -51,6 +51,8 @@ export interface FileHead {
 export interface FileSyncProvider {
   /** Normalised root path: leading '/', no trailing slash (root === '/'). */
   readonly rootPath: string;
+  readonly vaultId?: string;
+  uploadStatus?(path: string): Promise<'uploaded' | 'unconfirmed'>;
 
   /** GET text. Resolves `null` when the path doesn't exist (404). */
   readText(path: string): Promise<string | null>;

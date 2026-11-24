@@ -1,3 +1,4 @@
+import type { BookNote } from '@/types/book';
 import { readReadingSpace } from '@/utils/readingSpaces';
 import { SystemSettings } from '@/types/settings';
 import { archiveRemoval } from './bookRemovalState';
@@ -1385,6 +1386,43 @@ export async function loadBookContent(fs: FileSystem, book: Book): Promise<BookC
   const source = await resolveBookContentSource(fs, book);
   if (isBookFileContentSource(source))
     return { book, file: await fs.openFile(source.path, source.base) };
+  if (
+    source.kind === 'missing' &&
+    book.icloudAsset &&
+    !book.deletedAt &&
+    ['PDF', 'EPUB'].includes(book.format)
+  ) {
+    const { useSettingsStore } = await import('@/store/settingsStore');
+    const ref = book.icloudAsset,
+      s = useSettingsStore.getState().settings;
+    if (ref.vault === s.icloud?.vaultId && s.icloud.enabled) {
+      const { createFileSyncProvider } = await import('./sync/file/providerRegistry');
+      const p = await createFileSyncProvider('icloud', s);
+      if (!p || 'sha256:' + ref.file !== (book.storedContentFingerprint ?? book.contentFingerprint))
+        throw new Error('Unverified iCloud book');
+      await (await import('./sync/providers/icloud/vault')).verifyVault(p, ref.vault);
+      const { openVaultBlob } = await import('./sync/providers/icloud/blob');
+      const check = () => {
+        const latest = useSettingsStore.getState().settings.icloud;
+        if (
+          !latest.enabled ||
+          latest.vaultId !== ref.vault ||
+          latest.documentsPath !== s.icloud.documentsPath
+        )
+          throw new Error('iCloud library changed');
+      };
+      return {
+        book,
+        file: await openVaultBlob(
+          p,
+          ref,
+          getLocalBookFilename(book).split('/').pop()!,
+          book.format === 'PDF' ? 'application/pdf' : 'application/epub+zip',
+          check,
+        ),
+      };
+    }
+  }
   if (source.kind === 'missing' && book.glossaCloud && !book.deletedAt) {
     const { openCloudBook } = await import('@/glossa/sync/cloudBook');
     return { book, file: await openCloudBook(book) };
@@ -1431,7 +1469,8 @@ export async function loadBookConfig(
       str = (await fs.readFile(getConfigFilename(book), 'Books', 'text')) as string;
     }
     return deserializeConfig(str, globalViewSettings, DEFAULT_BOOK_SEARCH_CONFIG);
-  } catch {
+  } catch (error) {
+    if (settings.icloud?.vaultId) throw error;
     return deserializeConfig('{}', globalViewSettings, DEFAULT_BOOK_SEARCH_CONFIG);
   }
 }
@@ -1441,25 +1480,45 @@ export async function saveBookConfig(
   book: Book,
   config: BookConfig,
   settings?: SystemSettings,
+  commitNotes?: (notes: BookNote[]) => Promise<BookNote[]>,
 ): Promise<void> {
-  let serializedConfig: string;
-  if (settings) {
-    const globalViewSettings = {
-      ...settings.globalViewSettings,
-      ...(FIXED_LAYOUT_FORMATS.has(book.format) ? DEFAULT_FIXED_LAYOUT_VIEW_SETTINGS : {}),
-    };
-    serializedConfig = serializeConfig(config, globalViewSettings, DEFAULT_BOOK_SEARCH_CONFIG);
-  } else {
-    serializedConfig = serializeRawConfig(config);
-  }
-  const edit = config.booknotes && bookNoteEdits.get(config.booknotes);
+  const serialize = () => {
+    let serializedConfig: string;
+    if (settings) {
+      const globalViewSettings = {
+        ...settings.globalViewSettings,
+        ...(FIXED_LAYOUT_FORMATS.has(book.format) ? DEFAULT_FIXED_LAYOUT_VIEW_SETTINGS : {}),
+      };
+      serializedConfig = serializeConfig(config, globalViewSettings, DEFAULT_BOOK_SEARCH_CONFIG);
+    } else {
+      serializedConfig = serializeRawConfig(config);
+    }
+    return serializedConfig;
+  };
+  const sourceNotes = config.booknotes;
+  const edit = sourceNotes && bookNoteEdits.get(sourceNotes);
   await withBookDataWrite(
     book.hash,
     book.removal?.revision ?? 0,
-    () => fs.writeFile(getConfigFilename(book), 'Books', serializedConfig),
+    async () => {
+      if (commitNotes) {
+        const notes = await commitNotes(sourceNotes ?? []);
+        config = { ...config, booknotes: notes };
+      }
+      const path = getConfigFilename(book);
+      if (commitNotes && fs.moveFile) {
+        const temporary = path + '.tmp-' + crypto.randomUUID();
+        try {
+          await fs.writeFile(temporary, 'Books', serialize());
+          await fs.moveFile(temporary, 'Books', path, 'Books');
+        } finally {
+          await fs.removeFile(temporary, 'Books').catch(() => {});
+        }
+      } else await fs.writeFile(path, 'Books', serialize());
+    },
     edit ? { ...edit, kind: 'notes', data: config.booknotes } : undefined,
   );
-  if (config.booknotes) bookNoteEdits.delete(config.booknotes);
+  if (sourceNotes) bookNoteEdits.delete(sourceNotes);
 }
 
 const isNavObject = (value: unknown): value is Record<string, unknown> =>

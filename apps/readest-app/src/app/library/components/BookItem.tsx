@@ -56,12 +56,19 @@ const BookItem: React.FC<BookItemProps> = ({
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
   const hasFileProvider = getActiveFileSyncBackends(settings).length > 0;
-  const r2 = Boolean(syncOrigin());
-  const canUpload = r2
-    ? !book.glossaCloud && (book.format === 'PDF' || book.format === 'EPUB')
-    : !book.uploadedAt && (isReadestCloudStorageActive(settings) || hasFileProvider);
+  const hasVaultFile =
+    !!book.icloudAsset &&
+    settings.icloud?.enabled &&
+    book.icloudAsset.vault === settings.icloud?.vaultId;
+  const canUpload =
+    !hasVaultFile &&
+    !(book.glossaCloud && settings.icloud?.vaultId) &&
+    (!book.uploadedAt || !!settings.icloud?.vaultId || !!book.glossaCloud) &&
+    !!book.downloadedAt &&
+    (isReadestCloudStorageActive(settings) || hasFileProvider);
   const canDownload =
-    !book.downloadedAt && (r2 ? Boolean(book.glossaCloud) : !book.glossaCloud && book.uploadedAt);
+    !book.downloadedAt &&
+    (book.glossaCloud ? Boolean(syncOrigin()) : hasVaultFile || !!book.uploadedAt);
   const iconSize15 = useResponsiveSize(15);
 
   const [statusPosition, setStatusPosition] = useState<{ x: number; y: number } | null>(null);

@@ -175,7 +175,7 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
       ...original,
       progress: config.progress,
       updatedAt: now,
-      downloadedAt: original.downloadedAt || now,
+      downloadedAt: original.icloudAsset ? original.downloadedAt : original.downloadedAt || now,
     };
     // Refresh updatedAt immutably via the store rather than mutating the
     // caller-provided object. This notifies Zustand subscribers and works
@@ -206,6 +206,20 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
       }
       throw cause;
     }
+    if (
+      configToSave.icloudPosition &&
+      configToSave.icloudPosition !== config.icloudPosition &&
+      get().getConfig(bookKey) === config
+    ) {
+      get().setConfig(bookKey, { icloudPosition: configToSave.icloudPosition });
+    }
+    if (
+      configToSave.icloudTypography &&
+      configToSave.icloudTypography !== config.icloudTypography &&
+      get().getConfig(bookKey)?.viewSettings === config.viewSettings
+    ) {
+      get().setConfig(bookKey, { icloudTypography: configToSave.icloudTypography });
+    }
     const latestRows = useLibraryStore.getState().library;
     const latest = latestRows.find((book) => book.hash === hash);
     if (
@@ -218,7 +232,7 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
           ...latest,
           progress: config.progress,
           updatedAt: now,
-          downloadedAt: latest.downloadedAt || now,
+          downloadedAt: latest.icloudAsset ? latest.downloadedAt : latest.downloadedAt || now,
         },
         ...latestRows.filter((book) => book.hash !== hash),
       ]);

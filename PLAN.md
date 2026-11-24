@@ -1,6 +1,8 @@
-## 2026-11-24 Glossa 云同步
+## 2026-11-24 Glossa 云同步 · iCloud Drive 首版
 
-Glossa R2 为唯一云同步后端，D1 管理控制面。目录并发移动由首个合法提交生效，冲突带回服务端位置；续读点、最远进度与主动重读 epoch 分开保存。参见 [同步契约](docs/design/local-first-cloud-v1.md)。
+Mac 与 iPhone／iPad 选择同一 iCloud Drive 书库目录。书籍和字体按内容摘要存储，批注、续读、排版、分组与统计在本机持久化后增量交换。并发的笔记正文保留各自版本，阅读分叉由当前读者选择是否跳转。参见 [iCloud Drive 同步协议与验收](docs/design/icloud-drive-v2.md)。
+
+官方云开发已封存。已有绑定的恢复路径及 [D1／R2 旧设计](docs/design/local-first-cloud-v1.md) 供兼容和显式迁移使用。
 
 ## 2026-11-22 书库多窗口与 PDF 选文
 

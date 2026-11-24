@@ -57,7 +57,7 @@ const syncState = vi.hoisted(() => ({
 const routing = vi.hoisted(() => ({
   glossa: false,
   readestEnabled: true,
-  backends: [] as ('webdav' | 'gdrive' | 's3' | 'onedrive')[],
+  backends: [] as ('webdav' | 'gdrive' | 's3' | 'onedrive' | 'icloud')[],
 }));
 
 const runFileLibrarySyncPass = vi.hoisted(() =>
@@ -179,19 +179,14 @@ describe('useBooksSync pullLibrary routing (issue #5062)', () => {
       vi.useRealTimers();
     }
   });
-  it('opens only the Glossa catalog on sign-in, manual refresh and reconnect', async () => {
+  it('refreshes personal destinations even with an archived official endpoint', async () => {
     routing.glossa = true;
-    routing.backends = ['s3'];
+    routing.readestEnabled = false;
+    routing.backends = ['icloud'];
     const { result } = renderHook(() => useBooksSync());
-    await waitFor(() => expect(appService.discoverCloudBooks).toHaveBeenCalledWith('user-1'));
     await act(() => result.current.pullLibrary(true, true));
-    expect(appService.discoverCloudBooks).toHaveBeenCalledTimes(2);
-    await act(async () => {
-      window.dispatchEvent(new Event('online'));
-    });
-    expect(appService.discoverCloudBooks).toHaveBeenCalledTimes(3);
-    expect(runFileLibrarySyncPass).not.toHaveBeenCalled();
-    expect(syncState.syncBooks).not.toHaveBeenCalled();
+    expect(runFileLibrarySyncPass).toHaveBeenCalled();
+    expect(appService.discoverCloudBooks).not.toHaveBeenCalled();
   });
 
   it('runs both the file pass and the native pull when both providers are enabled', async () => {

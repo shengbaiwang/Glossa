@@ -71,7 +71,7 @@ export const buildRemotePayload = (
     bookHash: book.hash,
     metaHash: book.metaHash,
     config: trimmed,
-    booknotes: config.booknotes ?? [],
+    booknotes: (config.booknotes ?? []).map(({ icloudEdit: _local, ...note }) => note),
     writerDeviceId: deviceId,
     writerVersion: 'readest-webdav-1',
     updatedAt: Date.now(),
@@ -167,6 +167,10 @@ export const parseRemoteLibraryIndex = (raw: string | null): RemoteLibraryIndex 
  * same reason; the shared index needs the same discipline.
  */
 const DEVICE_LOCAL_BOOK_FIELDS = [
+  'icloudAsset',
+  'icloudGroup',
+  'glossaCloud',
+  'glossaDiscovery',
   'filePath',
   'altFilePaths',
   'coverImageUrl',

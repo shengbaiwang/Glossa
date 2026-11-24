@@ -94,8 +94,9 @@ describe('iCloud folder selection', () => {
     expect(useSettingsStore.getState().settings.googleDrive.enabled).toBe(true);
     expect(saveSettings).toHaveBeenCalledTimes(2);
     expect((screen.getByRole('button', { name: 'Use iCloud' }) as HTMLButtonElement).disabled).toBe(
-      false,
+      true,
     );
+    expect(screen.getByRole('button', { name: 'Open iCloud library' })).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
   });
 });
