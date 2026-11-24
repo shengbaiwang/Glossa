@@ -350,7 +350,10 @@ export interface BookStyle {
 
   // fixed-layout specific
   zoomMode: 'fit-page' | 'fit-width' | 'original-size' | 'custom';
-  spreadMode: 'auto' | 'none';
+  spreadMode: 'auto' | 'none' | 'atlas';
+  hasCoverPage?: boolean;
+  gutterTrim?: { value: number; unit: '%' | 'px' };
+  atlasRotation?: number;
   keepCoverSpread: boolean;
   invertImgColorInDark: boolean;
   applyThemeToPDF: boolean;

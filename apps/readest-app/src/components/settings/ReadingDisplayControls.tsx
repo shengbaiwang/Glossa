@@ -1,6 +1,8 @@
 import { formatShortcutBinding } from '@/helpers/shortcuts';
 import { isMacPlatform } from '@/services/environment';
 import { useShortcutConfig } from '@/hooks/useShortcuts';
+import { fixedSpreadMode, atlasTrimAttribute } from '@/utils/atlas';
+import type { ViewSettings } from '@/types/book';
 import React, { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import {
@@ -62,6 +64,22 @@ const ReadingDisplayControls: React.FC<{
   const [zoomMode, setZoomMode] = useState(viewSettings.zoomMode ?? 'fit-page');
   const [spreadMode, setSpreadMode] = useState(viewSettings.spreadMode ?? 'auto');
   const [keepCoverSpread, setKeepCoverSpread] = useState(viewSettings.keepCoverSpread ?? false);
+  const atlasActive = isPDF && !isScrolledMode && spreadMode === 'atlas';
+  const trim = viewSettings.gutterTrim ?? { value: 0, unit: '%' };
+  const rotation = viewSettings.atlasRotation ?? 0;
+  const hasCoverPage = viewSettings.hasCoverPage ?? true;
+  function changeAtlasOption<K extends 'hasCoverPage' | 'atlasRotation' | 'gutterTrim'>(
+    key: K,
+    value: ViewSettings[K],
+  ) {
+    const next = { ...viewSettings, [key]: value };
+    const renderer = getView(bookKey)?.renderer;
+    if (key === 'hasCoverPage') renderer?.setAttribute('spread', fixedSpreadMode(next, isPDF));
+    if (key === 'atlasRotation') renderer?.setAttribute('atlas-rotation', String(value));
+    if (key === 'gutterTrim')
+      renderer?.setAttribute('atlas-trim', atlasTrimAttribute(next.gutterTrim));
+    void saveViewSettings(envConfig, bookKey, key, value, true, false, true);
+  }
   useEffect(() => {
     onRegisterReset(() => {
       if (!appService) return;
@@ -105,6 +123,15 @@ const ReadingDisplayControls: React.FC<{
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrolledDirection]);
+
+  useEffect(() => {
+    if (spreadMode === (viewSettings.spreadMode ?? 'auto')) return;
+    viewSettings.spreadMode = spreadMode;
+    getView(bookKey)?.renderer.setAttribute('spread', fixedSpreadMode(viewSettings, isPDF));
+    setViewSettings(bookKey, viewSettings);
+    saveViewSettings(envConfig, bookKey, 'spreadMode', spreadMode, false, false, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spreadMode]);
 
   useEffect(() => {
     if (isScrolledMode === viewSettings!.scrolled) return;
@@ -172,21 +199,12 @@ const ReadingDisplayControls: React.FC<{
   }, [zoomMode]);
 
   useEffect(() => {
-    if (spreadMode === (viewSettings.spreadMode ?? 'auto')) return;
-    viewSettings.spreadMode = spreadMode;
-    getView(bookKey)?.renderer.setAttribute('spread', spreadMode);
-    setViewSettings(bookKey, viewSettings);
-    saveViewSettings(envConfig, bookKey, 'spreadMode', spreadMode, false, false, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spreadMode]);
-
-  useEffect(() => {
     if (keepCoverSpread === (viewSettings.keepCoverSpread ?? false)) return;
     if (!bookData?.bookDoc?.sections?.length) return;
     viewSettings.keepCoverSpread = keepCoverSpread;
     const coverSide = bookData.bookDoc.dir === 'rtl' ? 'right' : 'left';
     bookData.bookDoc.sections[0]!.pageSpread = keepCoverSpread ? '' : coverSide;
-    getView(bookKey)?.renderer.setAttribute('spread', spreadMode);
+    getView(bookKey)?.renderer.setAttribute('spread', fixedSpreadMode(viewSettings, isPDF));
     setViewSettings(bookKey, viewSettings);
     saveViewSettings(envConfig, bookKey, 'keepCoverSpread', keepCoverSpread, false, false, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -388,11 +406,87 @@ const ReadingDisplayControls: React.FC<{
               )}
             </div>
 
+            {isPDF && (
+              <MenuItem
+                label={_('Atlas Mode')}
+                Icon={<Columns2 size={iconSize} />}
+                toggled={atlasActive}
+                onClick={() => {
+                  setSpreadMode(atlasActive ? 'none' : 'atlas');
+                  setScrolledMode(false);
+                  setWebtoonMode(false);
+                }}
+              />
+            )}
+            {atlasActive && (
+              <div className='grid gap-2 px-3 py-1'>
+                <div className='flex items-center justify-between gap-2'>
+                  <label htmlFor={`atlas-trim-${bookKey}`}>{_('Gutter Trim')}</label>
+                  <div className='flex items-center gap-1'>
+                    <input
+                      id={`atlas-trim-${bookKey}`}
+                      type='number'
+                      min='0'
+                      max={trim.unit === '%' ? 99 : undefined}
+                      step='any'
+                      className='input input-sm w-20'
+                      value={trim.value}
+                      onChange={(event) => {
+                        if (event.target.validity.valid)
+                          changeAtlasOption('gutterTrim', {
+                            ...trim,
+                            value: Number(event.target.value),
+                          });
+                      }}
+                    />
+                    <select
+                      aria-label={_('Gutter Trim Unit')}
+                      value={trim.unit}
+                      onChange={(event) =>
+                        changeAtlasOption('gutterTrim', {
+                          value: event.target.value === '%' ? Math.min(trim.value, 99) : trim.value,
+                          unit: event.target.value === 'px' ? 'px' : '%',
+                        })
+                      }
+                    >
+                      <option>%</option>
+                      <option>px</option>
+                    </select>
+                  </div>
+                </div>
+                <div className='flex items-center justify-between'>
+                  <span>{_('Spread Rotation')}</span>
+                  <div className='flex items-center gap-2'>
+                    <button
+                      type='button'
+                      className='touch-target glossa-icon-button'
+                      aria-label={_('Rotate Counterclockwise')}
+                      onClick={() => changeAtlasOption('atlasRotation', (rotation + 270) % 360)}
+                    >
+                      ↶
+                    </button>
+                    <output>{rotation}°</output>
+                    <button
+                      type='button'
+                      className='touch-target glossa-icon-button'
+                      aria-label={_('Rotate Clockwise')}
+                      onClick={() => changeAtlasOption('atlasRotation', (rotation + 90) % 360)}
+                    >
+                      ↷
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             <MenuItem
               label={_('Separate Cover Page')}
               Icon={<BookOpen size={iconSize} />}
-              toggled={keepCoverSpread}
-              onClick={() => setKeepCoverSpread(!keepCoverSpread)}
+              toggled={atlasActive ? hasCoverPage : keepCoverSpread}
+              onClick={() =>
+                atlasActive
+                  ? changeAtlasOption('hasCoverPage', !hasCoverPage)
+                  : setKeepCoverSpread(!keepCoverSpread)
+              }
               disabled={spreadMode === 'none'}
             />
             <MenuItem

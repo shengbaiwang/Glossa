@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, render, waitFor, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, waitFor, screen } from '@testing-library/react';
 import ReadingDisplayControls from '@/components/settings/ReadingDisplayControls';
 import { saveViewSettings } from '@/helpers/settings';
 
@@ -44,4 +44,23 @@ it('keeps PDF zoom in the reading footer without duplicate whole-page or reset c
   expect(screen.queryByRole('button', { name: 'Zoom Out' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Fit Page' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Reset Zoom' })).toBeNull();
+});
+
+it('selects atlas mode and saves trim, cover and rotation for this PDF', () => {
+  render(<ReadingDisplayControls bookKey='pdf' onRegisterReset={vi.fn()} />);
+  fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Atlas Mode/ }));
+  expect(fixture.renderer.setAttribute).toHaveBeenCalledWith('spread', 'atlas-cover');
+  fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Separate Cover Page/ }));
+  expect(fixture.renderer.setAttribute).toHaveBeenCalledWith('spread', 'atlas');
+  fireEvent.change(screen.getByRole('spinbutton', { name: 'Gutter Trim' }), {
+    target: { value: '2.5' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Rotate Counterclockwise' }));
+  for (const [key, value] of [
+    ['hasCoverPage', false],
+    ['gutterTrim', { value: 2.5, unit: '%' }],
+    ['atlasRotation', 270],
+  ]) {
+    expect(saveViewSettings).toHaveBeenCalledWith({}, 'pdf', key, value, true, false, true);
+  }
 });

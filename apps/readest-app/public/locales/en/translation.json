@@ -1,4 +1,10 @@
 {
+  "Rotate Clockwise": "Rotate Clockwise",
+  "Rotate Counterclockwise": "Rotate Counterclockwise",
+  "Spread Rotation": "Spread Rotation",
+  "Gutter Trim Unit": "Gutter Trim Unit",
+  "Gutter Trim": "Gutter Trim",
+  "Atlas Mode": "Atlas Mode",
   "Could not open the library window.": "Could not open the library window.",
   "Open Group": "Open Group",
   "Sidebar Actions": "Sidebar Actions",

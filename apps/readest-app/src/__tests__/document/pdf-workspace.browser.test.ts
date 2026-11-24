@@ -47,6 +47,41 @@ afterEach(async () => {
 });
 
 describe('original PDF with the real text and annotation layers', () => {
+  it('pairs original pages, clips their inner edges and rotates the whole atlas spread', async () => {
+    const v = await open();
+    const renderer = v.renderer;
+    renderer.setAttribute('atlas-trim', '5%');
+    renderer.setAttribute('spread', 'atlas');
+    await v.goTo(1);
+    const visible = () => renderer.getContents().filter((c) => c.doc?.defaultView?.frameElement);
+    const rects = () =>
+      visible().map((c) => c.doc.defaultView!.frameElement!.getBoundingClientRect());
+    await expect.poll(() => visible().map((c) => c.index)).toEqual([0, 1]);
+    const [left, right] = rects();
+    expect(left!.right - right!.left).toBeCloseTo((left!.width + right!.width) * 0.05, 0);
+    renderer.setAttribute('atlas-rotation', '90');
+    const [upper, lower] = rects();
+    expect(upper!.top).toBeLessThan(lower!.top);
+    expect(upper!.left).toBeCloseTo(lower!.left, 0);
+    renderer.setAttribute('atlas-rotation', '270');
+    const [bottom, top] = rects();
+    expect(bottom!.top).toBeGreaterThan(top!.top);
+    renderer.setAttribute('atlas-rotation', '0');
+    renderer.setAttribute('atlas-trim', '12px');
+    renderer.setZoom!('original-size', 100);
+    const [a, b] = rects();
+    expect(a!.right - b!.left).toBeCloseTo(24, 0);
+    renderer.setAttribute('atlas-trim', '0px');
+    const [c, d] = rects();
+    expect(c!.right).toBeCloseTo(d!.left, 1);
+    renderer.setAttribute('spread', 'atlas-cover');
+    renderer.setAttribute('spread', 'atlas');
+    renderer.setAttribute('spread', 'atlas-cover');
+    await expect.poll(() => visible().map((c) => c.index)).toEqual([1, 2]);
+    await v.goTo(0);
+    expect(visible().map((c) => c.index)).toEqual([0]);
+  });
+
   for (const scrolled of [false, true]) {
     it(`follows a PDF link from a real pointer click (${scrolled ? 'scroll' : 'pages'})`, async () => {
       const v = await open(scrolled);

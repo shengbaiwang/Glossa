@@ -1,4 +1,10 @@
 {
+  "Rotate Clockwise": "顺时针旋转",
+  "Rotate Counterclockwise": "逆时针旋转",
+  "Spread Rotation": "整幅旋转",
+  "Gutter Trim Unit": "裁剪单位",
+  "Gutter Trim": "中缝裁剪",
+  "Atlas Mode": "图册模式",
   "Jump": "跳转",
   "{{count}} book(s) synced": "已同步 {{count}} 本书",
   "Share font via iCloud": "通过 iCloud 共享字体",

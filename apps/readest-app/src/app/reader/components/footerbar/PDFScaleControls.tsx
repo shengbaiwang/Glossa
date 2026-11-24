@@ -103,7 +103,15 @@ export default function PDFScaleControls({ bookKey }: { bookKey: string }) {
       resize.observe(bar);
     attrs.observe(view.renderer, {
       attributes: true,
-      attributeFilter: ['zoom', 'scale-factor', 'flow', 'scroll-direction'],
+      attributeFilter: [
+        'zoom',
+        'scale-factor',
+        'flow',
+        'scroll-direction',
+        'spread',
+        'atlas-trim',
+        'atlas-rotation',
+      ],
     });
     view.addEventListener('relocate', update);
     view.addEventListener('load', update);

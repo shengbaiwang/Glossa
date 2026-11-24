@@ -1,4 +1,10 @@
 {
+  "Rotate Clockwise": "順時針旋轉",
+  "Rotate Counterclockwise": "逆時針旋轉",
+  "Spread Rotation": "整幅旋轉",
+  "Gutter Trim Unit": "裁切單位",
+  "Gutter Trim": "中縫裁切",
+  "Atlas Mode": "圖冊模式",
   "Could not open the library window.": "無法開啟書庫視窗，請重試。",
   "Open Group": "開啟分組",
   "Sidebar Actions": "側欄操作",

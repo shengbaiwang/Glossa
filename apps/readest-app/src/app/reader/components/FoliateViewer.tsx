@@ -1,3 +1,4 @@
+import { fixedSpreadMode, atlasTrimAttribute } from '@/utils/atlas';
 import clsx from 'clsx';
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -683,7 +684,8 @@ const FoliateViewer: React.FC<{
       }
 
       if (bookDoc.rendition?.layout === 'pre-paginated' && bookDoc.sections) {
-        bookDoc.rendition.spread = viewSettings.spreadMode;
+        bookDoc.rendition.spread =
+          viewSettings.spreadMode === 'atlas' ? 'auto' : viewSettings.spreadMode;
         const coverSide = bookDoc.dir === 'rtl' ? 'right' : 'left';
         bookDoc.sections[0]!.pageSpread = viewSettings.keepCoverSpread ? '' : coverSide;
       }
@@ -781,7 +783,12 @@ const FoliateViewer: React.FC<{
           'zoom',
           viewSettings.webtoonMode ? 'fit-width' : viewSettings.zoomMode,
         );
-        view.renderer.setAttribute('spread', viewSettings.spreadMode);
+        const isPDF = bookData?.book?.format === 'PDF';
+        if (isPDF) {
+          view.renderer.setAttribute('atlas-trim', atlasTrimAttribute(viewSettings.gutterTrim));
+          view.renderer.setAttribute('atlas-rotation', String(viewSettings.atlasRotation ?? 0));
+        }
+        view.renderer.setAttribute('spread', fixedSpreadMode(viewSettings, isPDF));
         view.renderer.setAttribute('scale-factor', viewSettings.zoomLevel);
         view.renderer.setAttribute('scroll-gap', getScrollGapAttr(viewSettings.webtoonMode));
       } else {
